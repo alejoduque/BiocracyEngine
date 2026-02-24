@@ -297,9 +297,9 @@
             
             "".postln;
             "CONSENSUS STATUS:".postln;
-            ("  Democratic Consensus: " ++ (~parliament.controlBuses.consensusLevel.getSynchronous * 100).round(0.1) ++ "%").postln;
-            ("  Total Voting Power: " ++ ~parliament.controlBuses.totalVotes.getSynchronous ++ " votes").postln;
-            ("  Parliament Rotation: " ++ ~parliament.controlBuses.rotationSpeed.getSynchronous ++ "x speed").postln;
+            ("  Democratic Consensus: " ++ (~parliament.localValues.consensusLevel * 100).round(0.1) ++ "%").postln;
+            ("  Total Voting Power: " ++ ~parliament.localValues.totalVotes ++ " votes").postln;
+            ("  Parliament Rotation: " ++ ~parliament.localValues.rotationSpeed ++ "x speed").postln;
             
             "".postln;
             "=== END STATUS REPORT ===".postln;

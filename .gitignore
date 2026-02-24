@@ -5,3 +5,13 @@
 *.mov
 *.mp4
 *.avi
+
+# Python
+__pycache__/
+*.pyc
+venv/
+.env
+
+# Forks & External Deps
+nw_wrld_local/
+nw_wrld_biocracy/

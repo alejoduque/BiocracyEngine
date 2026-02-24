@@ -1,0 +1,601 @@
+<?xml version="1.0" encoding="utf-8"?>
+<svg id="parliament-all-things"
+     xmlns="http://www.w3.org/2000/svg"
+     viewBox="0 0 1600 900"
+     width="100%" height="100vh"
+     style="display: block; margin: 0; padding: 0; background: #0f2027; min-height: 100vh;"
+     aria-labelledby="title desc" role="img">
+  <title id="title">Framework Bio-Token V3.0: Parlamento de Todas las Cosas</title>
+  <desc id="desc">Evolución Fase 2 - Inteligencia Ecológica Multi-Modal integrando eDNA, Redes Fúngicas y Agencia IA siguiendo la Teoría Actor-Red</desc>
+
+  <!-- Fondo que cubre toda la página -->
+  <rect width="100%" height="100%" fill="url(#coolGrad1)"/>
+  
+  <defs>
+    <!-- Gradientes oceánicos -->
+    <radialGradient id="coolGrad1" cx="50%" cy="50%" r="50%">
+      <stop offset="0%" style="stop-color:#0f2027" />
+      <stop offset="100%" style="stop-color:#2c5364" />
+    </radialGradient>
+    
+    <!-- Gradiente para eDNA usando colores V2 -->
+    <linearGradient id="eDNAGradient" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#1e3a8a" stop-opacity="0.08" />
+      <stop offset="25%" stop-color="#ade8f4" stop-opacity="0.08" />
+      <stop offset="50%" stop-color="#56cfe1" stop-opacity="0.08" />
+      <stop offset="100%" stop-color="#80ed99" stop-opacity="0.08" />
+    </linearGradient>
+
+    <!-- Gradiente para Fungi usando colores V2 -->
+    <linearGradient id="fungiGradient" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#1e3a8a" stop-opacity="0.08" />
+      <stop offset="25%" stop-color="#ade8f4" stop-opacity="0.08" />
+      <stop offset="50%" stop-color="#56cfe1" stop-opacity="0.08" />
+      <stop offset="100%" stop-color="#80ed99" stop-opacity="0.08" />
+    </linearGradient>
+
+    <!-- Gradiente para AI usando colores V2 -->
+    <linearGradient id="aiGradient" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#1e3a8a" stop-opacity="0.08" />
+      <stop offset="25%" stop-color="#ade8f4" stop-opacity="0.08" />
+      <stop offset="50%" stop-color="#56cfe1" stop-opacity="0.08" />
+      <stop offset="100%" stop-color="#80ed99" stop-opacity="0.08" />
+    </linearGradient>
+
+    <!-- Filtros de brillo -->
+    <filter id="glow1">
+      <feGaussianBlur stdDeviation="6" result="coloredBlur" />
+      <feMerge>
+        <feMergeNode in="coloredBlur" />
+        <feMergeNode in="SourceGraphic" />
+      </feMerge>
+    </filter>
+
+    <filter id="softGlow">
+      <feGaussianBlur stdDeviation="3" result="coloredBlur" />
+      <feMerge>
+        <feMergeNode in="coloredBlur" />
+        <feMergeNode in="SourceGraphic" />
+      </feMerge>
+    </filter>
+
+    <!-- Marcadores para flujos -->
+    <marker id="flowArrow" markerWidth="8" markerHeight="8" refX="8" refY="4" orient="auto">
+      <path d="M0 0 L8 4 L0 8 z" fill="#8ecae6" opacity="0.8"/>
+    </marker>
+
+    <!-- Marcadores usando colores V2 -->
+    <marker id="ednaArrow" markerWidth="6" markerHeight="6" refX="6" refY="3" orient="auto">
+      <path d="M0 0 L6 3 L0 6 z" fill="#8ecae6" opacity="0.8"/>
+    </marker>
+
+    <!-- Marcadores para Fungi -->
+    <marker id="fungiArrow" markerWidth="6" markerHeight="6" refX="6" refY="3" orient="auto">
+      <path d="M0 0 L6 3 L0 6 z" fill="#8ecae6" opacity="0.8"/>
+    </marker>
+
+    <!-- Marcadores para AI -->
+    <marker id="aiArrow" markerWidth="6" markerHeight="6" refX="6" refY="3" orient="auto">
+      <path d="M0 0 L6 3 L0 6 z" fill="#8ecae6" opacity="0.8"/>
+    </marker>
+
+    <style><![CDATA[
+      /* Tipografía Futura mantenida */
+      .title-main { 
+        fill: #fff; 
+        font-family: 'Futura', Arial, sans-serif; 
+        font-size: 24px; 
+        font-weight: bold; 
+        text-anchor: middle;
+      }
+      
+      .title-section { 
+        fill: #bfdbfe; 
+        font-family: 'Futura', Arial, sans-serif; 
+        font-size: 18px; 
+        font-weight: bold;
+        text-anchor: middle;
+      }
+
+      .title-subsection { 
+        fill: #94a3b8; 
+        font-family: 'Futura', Arial, sans-serif; 
+        font-size: 14px; 
+        font-weight: bold;
+        text-anchor: middle;
+      }
+      
+      .label-distributed { 
+        fill: #fff; 
+        font-family: 'Futura', Arial, sans-serif; 
+        font-size: 14px; 
+        font-weight: bold;
+        text-anchor: middle;
+      }
+      
+      .text-data { 
+        fill: #ade8f4; 
+        font-family: 'Futura', Arial, sans-serif; 
+        font-size: 10px;
+        text-anchor: middle;
+      }
+      
+      .text-emphasis { 
+        fill: #1e3a8a; 
+        font-family: 'Futura', Arial, sans-serif; 
+        font-size: 12px; 
+        font-weight: bold;
+        text-anchor: middle;
+      }
+      
+      .text-success { 
+        fill: #80ed99; 
+        font-family: 'Futura', Arial, sans-serif; 
+        font-size: 12px; 
+        font-weight: bold;
+        text-anchor: middle;
+      }
+
+      .text-edna { 
+        fill: #ade8f4; 
+        font-family: 'Futura', Arial, sans-serif; 
+        font-size: 11px; 
+        font-weight: bold;
+        text-anchor: middle;
+      }
+
+      .text-fungi { 
+        fill: #80ed99; 
+        font-family: 'Futura', Arial, sans-serif; 
+        font-size: 11px; 
+        font-weight: bold;
+        text-anchor: middle;
+      }
+
+      .text-ai { 
+        fill: #56cfe1; 
+        font-family: 'Futura', Arial, sans-serif; 
+        font-size: 11px; 
+        font-weight: bold;
+        text-anchor: middle;
+      }
+
+      /* Elementos interactivos */
+      .species-seat { 
+        cursor: pointer; 
+      }
+
+      /* Control panel styles mantenidos */
+      .control-panel {
+        font-family: 'Futura', Arial, sans-serif;
+        color: #fff;
+        background: rgba(15, 32, 39, 0.9);
+        border-radius: 10px;
+        border: 2px solid #8ecae6;
+        padding: 20px;
+      }
+
+      /* Puntos parlamentarios con minimal rotation */
+      .parliament-dot {
+        cursor: pointer;
+        transition: all 0.3s ease;
+      }
+      
+      .parliament-dot:hover {
+        filter: url(#softGlow);
+      }
+      
+      /* Pulsación muy sutil */
+      .level-1 .parliament-dot { animation: pulse-minimal 4s ease-in-out infinite; }
+      .level-2 .parliament-dot { animation: pulse-minimal 4.5s ease-in-out infinite; }
+      .level-3 .parliament-dot { animation: pulse-minimal 5s ease-in-out infinite; }
+      .level-4 .parliament-dot { animation: pulse-minimal 5.5s ease-in-out infinite; }
+      .level-5 .parliament-dot { animation: pulse-minimal 6s ease-in-out infinite; }
+      .level-6 .parliament-dot { animation: pulse-minimal 6.5s ease-in-out infinite; }
+      .level-7 .parliament-dot { animation: pulse-minimal 7s ease-in-out infinite; }
+      
+      @keyframes pulse-minimal {
+        0%, 100% { opacity: 0.6; }
+        50% { opacity: 0.8; }
+      }
+      
+      /* Rotación mínima del parlamento */
+      .parliament-seats {
+        animation: rotateParliamentMinimal 120s linear infinite;
+        transform-origin: 0 0;
+      }
+      
+      @keyframes rotateParliamentMinimal {
+        0% { transform: rotate(0deg); }
+        100% { transform: rotate(360deg); }
+      }
+
+      /* Nuevos agentes */
+      .edna-particle { 
+        animation: ednaFlow 8s linear infinite; 
+        opacity: 0.7;
+      }
+      
+      @keyframes ednaFlow {
+        0% { opacity: 0; }
+        50% { opacity: 0.8; }
+        100% { opacity: 0; }
+      }
+
+      .fungi-network { 
+        animation: fungiPulse 6s ease-in-out infinite; 
+        stroke-dasharray: 5 5;
+      }
+      
+      @keyframes fungiPulse {
+        0%, 100% { opacity: 0.3; stroke-dashoffset: 0; }
+        50% { opacity: 0.6; stroke-dashoffset: -10; }
+      }
+
+      .ai-core { 
+        animation: aiConsciousness 3s ease-in-out infinite; 
+      }
+      
+      @keyframes aiConsciousness {
+        0%, 100% { opacity: 0.8; transform: scale(1); }
+        50% { opacity: 1; transform: scale(1.05); }
+      }
+
+      /* Flujos de conexión entre agentes */
+      .agent-connection {
+        stroke-dasharray: 3 3;
+        animation: connectionFlow 4s linear infinite;
+        opacity: 0.4;
+      }
+
+      @keyframes connectionFlow {
+        0% { stroke-dashoffset: 0; }
+        100% { stroke-dashoffset: -12; }
+      }
+    ]]></style>
+  </defs>
+
+  <!-- Título principal ampliado -->
+  <text x="800" y="50" class="title-main">PARLAMENTO DE TODAS LAS COSAS - FASE 2</text>
+
+  <!-- Sistema parlamentario ampliado -->
+  <g transform="translate(500,400)">
+    
+    <!-- Retícula de fondo ampliada -->
+    <g stroke="#8ecae6" stroke-opacity="0.3" fill="none">
+      <circle r="40" />   <!-- Núcleo IA -->
+      <circle r="80" />   <!-- Fungi Interior -->
+      <circle r="120" />  <!-- Anillo Acústico 1 -->
+      <circle r="160" />  <!-- Anillo Acústico 2 -->
+      <circle r="200" />  <!-- Anillo Acústico 3 -->
+      <circle r="240" />  <!-- Anillo eDNA -->
+      <circle r="280" />  <!-- Red Exterior -->
+    </g>
+    
+    <!-- Líneas radiales más sutiles -->
+    <g stroke="#219ebc" stroke-opacity="0.2">
+      <line x1="0" y1="-280" x2="0" y2="280" />
+      <line x1="-280" y1="0" x2="280" y2="0" />
+      <line x1="-198" y1="-198" x2="198" y2="198" />
+      <line x1="198" y1="-198" x2="-198" y2="198" />
+    </g>
+
+    <!-- Polígono central dinámico (como el V2) -->
+    <polygon id="spinner" 
+             fill="url(#aiGradient)" 
+             stroke="#fff" 
+             stroke-width="2" 
+             filter="url(#glow1)">
+    </polygon>
+    
+    <!-- CENTRO: Agencia de Evolución IA/Blockchain -->
+    <g class="ai-core">
+      <circle r="35" fill="url(#aiGradient)" stroke="#56cfe1" stroke-width="2" opacity="0.3"/>
+      <polygon points="0,-25 22,12 -22,12" fill="#56cfe1" opacity="0.6"/>
+      <circle r="8" fill="#56cfe1" opacity="0.8"/>
+      <text y="-45" class="text-ai">AGENCIA EVOLUCIÓN IA</text>
+      <text y="55" class="text-ai">Núcleo Meta-Gobernanza</text>
+    </g>
+
+    <!-- ANILLO 1: Redes Fúngicas (r=80) -->
+    <g transform="translate(0,0)">
+      <!-- Conexiones de red fúngica -->
+      <g class="fungi-network">
+        <path d="M0,-80 Q-40,-40 -80,0" stroke="#80ed99" stroke-width="2" fill="none" marker-end="url(#fungiArrow)"/>
+        <path d="M-80,0 Q-40,40 0,80" stroke="#80ed99" stroke-width="2" fill="none" marker-end="url(#fungiArrow)"/>
+        <path d="M0,80 Q40,40 80,0" stroke="#80ed99" stroke-width="2" fill="none" marker-end="url(#fungiArrow)"/>
+        <path d="M80,0 Q40,-40 0,-80" stroke="#80ed99" stroke-width="2" fill="none" marker-end="url(#fungiArrow)"/>
+      </g>
+      
+      <!-- Nodos fúngicos -->
+      <g transform="translate(0,-80)">
+        <circle r="12" fill="url(#fungiGradient)" stroke="#80ed99" stroke-width="2"/>
+        <text y="-20" class="text-fungi">MICORRÍZICA-N</text>
+        <text y="30" class="text-fungi">Red Química</text>
+      </g>
+      <g transform="translate(80,0)">
+        <circle r="12" fill="url(#fungiGradient)" stroke="#80ed99" stroke-width="2"/>
+        <text x="25" y="5" class="text-fungi">FUNGI-E</text>
+      </g>
+      <g transform="translate(0,80)">
+        <circle r="12" fill="url(#fungiGradient)" stroke="#80ed99" stroke-width="2"/>
+        <text y="35" class="text-fungi">SAPRÓBICA-S</text>
+      </g>
+      <g transform="translate(-80,0)">
+        <circle r="12" fill="url(#fungiGradient)" stroke="#80ed99" stroke-width="2"/>
+        <text x="-25" y="5" class="text-fungi">RED-O</text>
+      </g>
+    </g>
+
+    <!-- ANILLOS 2-4: Especies acústicas existentes (r=120, 160, 200) -->
+    <!-- Ara macao (Norte) -->
+    <g class="species-seat" transform="rotate(0) translate(0,-160)">
+      <circle r="18" fill="#3b82f6" fill-opacity="0.3" stroke="#3b82f6" stroke-width="3"/>
+      <text y="-25" class="label-distributed">ARA MACAO</text>
+      <text y="35" style="fill: #f0f9ff; font-family: 'Futura', Arial, sans-serif; font-size: 12px; font-weight: bold; text-anchor: middle;">15 VOTOS</text>
+      <text y="48" class="text-data">VU</text>
+    </g>
+
+    <!-- Atlapetes flaviceps (Noreste) -->
+    <g class="species-seat" transform="rotate(72) translate(0,-160)">
+      <circle r="22" fill="#20b2aa" fill-opacity="0.4" stroke="#20b2aa" stroke-width="3"/>
+      <text y="-30" class="label-distributed">ATLAPETES</text>
+      <text y="40" style="fill: #f0f9ff; font-family: 'Futura', Arial, sans-serif; font-size: 12px; font-weight: bold; text-anchor: middle;">25 VOTOS</text>
+      <text y="53" style="fill: #f0f9ff; font-family: 'Futura', Arial, sans-serif; font-size: 12px; font-weight: bold; text-anchor: middle;">CR</text>
+    </g>
+
+    <!-- Cecropia (Sureste) -->
+    <g class="species-seat" transform="rotate(144) translate(0,-160)">
+      <circle r="20" fill="#80ed99" fill-opacity="0.3" stroke="#80ed99" stroke-width="3"/>
+      <text y="-28" class="label-distributed">CECROPIA</text>
+      <text y="38" class="text-success">20 VOTOS</text>
+      <text y="51" class="text-data">LC</text>
+    </g>
+
+    <!-- Alouatta (Sur) -->
+    <g class="species-seat" transform="rotate(216) translate(0,-160)">
+      <circle r="16" fill="#56cfe1" fill-opacity="0.3" stroke="#56cfe1" stroke-width="3"/>
+      <text y="-26" class="label-distributed">ALOUATTA</text>
+      <text y="36" class="text-data">12 VOTOS</text>
+      <text y="49" class="text-data">LC</text>
+    </g>
+
+    <!-- Tinamus (Noroeste) -->
+    <g class="species-seat" transform="rotate(288) translate(0,-160)">
+      <circle r="14" fill="#ade8f4" fill-opacity="0.3" stroke="#ade8f4" stroke-width="3"/>
+      <text y="-24" class="label-distributed">TINAMUS</text>
+      <text y="34" class="text-data">8 VOTOS</text>
+      <text y="47" class="text-data">LC</text>
+    </g>
+
+    <!-- ANILLO 5: Sitios eDNA ADN Ambiental (r=240) -->
+    <g transform="translate(0,0)">
+      <!-- Sitios de muestreo eDNA -->
+      <g transform="translate(0,-240)">
+        <rect x="-15" y="-8" width="30" height="16" rx="4" fill="url(#eDNAGradient)" stroke="#ade8f4" stroke-width="2"/>
+        <text y="-20" class="text-edna">eDNA-CHOCÓ-N</text>
+        <text y="30" class="text-edna">Biodiversidad: 87%</text>
+        <!-- Partículas eDNA fluyendo -->
+        <g class="edna-particle">
+          <circle cx="0" cy="-50" r="2" fill="#ade8f4" opacity="0.6"/>
+          <circle cx="10" cy="-45" r="1.5" fill="#56cfe1" opacity="0.5"/>
+          <circle cx="-8" cy="-48" r="1" fill="#8ecae6" opacity="0.4"/>
+        </g>
+      </g>
+
+      <g transform="translate(170,-170)">
+        <rect x="-15" y="-8" width="30" height="16" rx="4" fill="url(#eDNAGradient)" stroke="#ade8f4" stroke-width="2"/>
+        <text y="-20" class="text-edna">eDNA-AMAZONIA-NE</text>
+        <text y="30" class="text-edna">Temporal: Mensual</text>
+      </g>
+
+      <g transform="translate(240,0)">
+        <rect x="-15" y="-8" width="30" height="16" rx="4" fill="url(#eDNAGradient)" stroke="#ade8f4" stroke-width="2"/>
+        <text x="35" y="5" class="text-edna">eDNA-CARIBE-E</text>
+        <text x="35" y="20" class="text-edna">Capa Validación</text>
+      </g>
+
+      <g transform="translate(170,170)">
+        <rect x="-15" y="-8" width="30" height="16" rx="4" fill="url(#eDNAGradient)" stroke="#ade8f4" stroke-width="2"/>
+        <text y="30" class="text-edna">eDNA-ANDINA-SE</text>
+      </g>
+
+      <g transform="translate(0,240)">
+        <rect x="-15" y="-8" width="30" height="16" rx="4" fill="url(#eDNAGradient)" stroke="#ade8f4" stroke-width="2"/>
+        <text y="30" class="text-edna">eDNA-PACÍFICA-S</text>
+      </g>
+
+      <g transform="translate(-170,170)">
+        <rect x="-15" y="-8" width="30" height="16" rx="4" fill="url(#eDNAGradient)" stroke="#ade8f4" stroke-width="2"/>
+        <text y="30" class="text-edna">eDNA-ORINOQUIA-SO</text>
+      </g>
+
+      <g transform="translate(-240,0)">
+        <rect x="-15" y="-8" width="30" height="16" rx="4" fill="url(#eDNAGradient)" stroke="#ade8f4" stroke-width="2"/>
+        <text x="-35" y="5" class="text-edna">eDNA-CENTRAL-O</text>
+      </g>
+
+      <g transform="translate(-170,-170)">
+        <rect x="-15" y="-8" width="30" height="16" rx="4" fill="url(#eDNAGradient)" stroke="#ade8f4" stroke-width="2"/>
+        <text y="-20" class="text-edna">eDNA-MAGDALENA-NO</text>
+      </g>
+    </g>
+
+    <!-- Conexiones entre agentes (Actor-Red) -->
+    <g class="agent-connections">
+      <!-- IA a Fungi -->
+      <path class="agent-connection" d="M0,0 Q-40,-40 0,-80" stroke="#56cfe1" stroke-width="1.5" marker-end="url(#aiArrow)"/>
+      <path class="agent-connection" d="M0,0 Q40,-40 0,-80" stroke="#56cfe1" stroke-width="1.5" marker-end="url(#aiArrow)"/>
+      
+      <!-- Fungi a Especies Acústicas -->
+      <path class="agent-connection" d="M0,-80 Q-80,-120 0,-160" stroke="#80ed99" stroke-width="1" marker-end="url(#fungiArrow)"/>
+      
+      <!-- eDNA a Especies Acústicas (validación) -->
+      <path class="agent-connection" d="M0,-240 L0,-180" stroke="#ade8f4" stroke-width="1" marker-end="url(#ednaArrow)"/>
+      
+      <!-- IA a eDNA (optimización) -->
+      <path class="agent-connection" d="M30,30 Q135,-105 0,-240" stroke="#56cfe1" stroke-width="1" marker-end="url(#aiArrow)"/>
+    </g>
+
+    <!-- Etiquetas distribuidas radialmente -->
+    <text x="0" y="-320" class="title-section">INTELIGENCIA MULTI-MODAL</text>
+    <text x="320" y="0" class="title-subsection" transform="rotate(90 320 0)">VALIDACIÓN GENÉTICA</text>
+    <text x="0" y="340" class="title-section">GOBERNANZA POSTHUMANA</text>
+    <text x="-320" y="0" class="title-subsection" transform="rotate(-90 -320 0)">REDES QUÍMICAS</text>
+    
+    <!-- Etiquetas secundarias -->
+    <text x="226" y="-226" class="text-data" transform="rotate(45 226 -226)">MUESTREO eDNA</text>
+    <text x="226" y="226" class="text-data" transform="rotate(-45 226 226)">CONSCIENCIA ALGORÍTMICA</text>
+    <text x="-226" y="226" class="text-data" transform="rotate(45 -226 226)">DEMOCRACIA MICORRÍZICA</text>
+    <text x="-226" y="-226" class="text-data" transform="rotate(-45 -226 -226)">EFECTOS DE RED</text>
+  </g>
+
+  <!-- Panel de controles actualizado -->
+  <foreignObject x="1050" y="100" width="500" height="700">
+    <div xmlns="http://www.w3.org/1999/xhtml" class="control-panel">
+      <h3 style="color: #e0f2fe; margin-top: 0; text-align: center; font-size: 11px;">FASE 2: PARLAMENTO MULTI-AGENTE</h3>
+      
+      <div style="margin: 10px 0; padding: 8px; border-radius: 8px; background: rgba(173, 232, 244, 0.1); border: 1px solid #ade8f4; font-size: 5px;">
+        <h4 style="color: #ade8f4; margin: 0 0 3px 0; font-size: 5px;">MONITOREO eDNA</h4>
+        <div>Sitios Activos: <span style="color: #56cfe1;">8 Regionales</span></div>
+        <div>Tasa Validación: <span style="color: #56cfe1;">92%</span></div>
+        <div>Ciclo Muestreo: <span style="color: #56cfe1;">Mensual</span></div>
+      </div>
+      
+      <div style="margin: 10px 0; padding: 8px; border-radius: 8px; background: rgba(128, 237, 153, 0.1); border: 1px solid #80ed99; font-size: 5px;">
+        <h4 style="color: #80ed99; margin: 0 0 3px 0; font-size: 5px;">REDES FÚNGICAS</h4>
+        <div>Nodos Micorrízicos: <span style="color: #80ed99;">4 Activos</span></div>
+        <div>Cobertura Red: <span style="color: #80ed99;">15 km²</span></div>
+        <div>Señales Químicas: <span style="color: #80ed99;">Detectadas</span></div>
+      </div>
+      
+      <div style="margin: 10px 0; padding: 8px; border-radius: 8px; background: rgba(86, 207, 225, 0.1); border: 1px solid #56cfe1; font-size: 5px;">
+        <h4 style="color: #56cfe1; margin: 0 0 3px 0; font-size: 5px;">AGENCIA EVOLUCIÓN IA</h4>
+        <div>Versión Sistema: <span style="color: #56cfe1;">3.2.1</span></div>
+        <div>Tasa Optimización: <span style="color: #56cfe1;">Tiempo Real</span></div>
+        <div>Meta-Gobernanza: <span style="color: #56cfe1;">Activa</span></div>
+      </div>
+
+      <div style="margin: 10px 0; padding: 8px; border-radius: 8px; background: rgba(32, 178, 170, 0.1); border: 1px solid #20b2aa; font-size: 5px;">
+        <h4 style="color: #e0f2fe; margin: 0 0 3px 0; font-size: 5px;">ESTADO PARLAMENTARIO</h4>
+        <div>Total Agentes: <span style="color: #80ed99;">21 Multi-Modales</span></div>
+        <div>Propuesta Activa: <span style="color: #80ed99;">Protocolo Sincronización Temporal</span></div>
+        <div>Consenso: <span style="color: #80ed99;">Fase 2 Aprobada</span></div>
+        <div>Próxima Evolución: <span style="color: #56cfe1;">Planificación Fase 3</span></div>
+      </div>
+      
+      <div style="font-size: 4px !important; color: #8ecae6; line-height: 0.9; margin-top: 5px; transform: scale(0.8);">
+        <strong style="font-size: 4px !important;">Implementación Teoría Actor-Red:</strong><br/>
+        • IA, eDNA y Fungi como agentes democráticos iguales<br/>
+        • Protocolos sincronización multi-temporal<br/>
+        • Traducción química, genética y algorítmica<br/>
+        • Gobernanza ambiental posthumana<br/>
+        • Integración marco artístico Soleiman López<br/>
+        • Primer prototipo Parlamento de Todas las Cosas
+      </div>
+    </div>
+  </foreignObject>
+
+  <!-- Información teórica expandida -->
+  <g transform="translate(50,750)">
+    <rect x="0" y="0" width="950" height="80" rx="8" fill="#0f2027" fill-opacity="0.8" stroke="#8ecae6" stroke-width="1"/>
+    <text x="475" y="25" style="fill: #e0f2fe; font-family: 'Futura', Arial, sans-serif; font-size: 14px; font-weight: bold; text-anchor: middle;">PARLAMENTO DE TODAS LAS COSAS - MARCO TEÓRICO</text>
+    <text x="475" y="42" class="text-data">Teoría Actor-Red (Bruno Latour) • Simetría Humano/No-Humano • Democracia Multi-Especies</text>
+    <text x="475" y="56" class="text-data">Validación Genética eDNA • Redes Químicas Micorrízicas • Consciencia Algorítmica IA</text>
+    <text x="475" y="70" class="text-data">Inspirado por Soleiman López - Festival de la Imagen 2025 • Gobernanza Biodiversidad Colombiana</text>
+  </g>
+
+  <!-- Información técnica -->
+  <g transform="translate(1050,750)">
+    <rect x="0" y="0" width="500" height="80" rx="8" fill="#0f2027" fill-opacity="0.8" stroke="#20b2aa" stroke-width="1"/>
+    <text x="250" y="25" style="fill: #f0f9ff; font-family: 'Futura', Arial, sans-serif; font-size: 14px; font-weight: bold; text-anchor: middle;">FASE 2: EVOLUCIÓN MULTI-MODAL</text>
+    <text x="250" y="42" class="text-data">21 Agentes Activos • 3 Tipos Agente • Gobernanza Multi-Temporal</text>
+    <text x="250" y="56" class="text-data">eDNA: 8 Sitios • Fungi: 4 Redes • IA: Núcleo Meta-Gobernanza</text>
+    <text x="250" y="70" class="text-data">Primera Democracia Ambiental Posthumana del Mundo</text>
+  </g>
+
+  <!-- JavaScript con polígono animado como V2 -->
+  <script><![CDATA[
+    (function() {
+      const polygon = document.getElementById("spinner");
+      let currentPoints = [];
+      let animationsPaused = false;
+
+      // Generar puntos dinámicos (como V2)
+      function generateStarPoints(spike = 60) {
+        const base = 150;
+        const newPoints = [];
+        for (let i = 0; i < 8; i++) {
+          const angle = (Math.PI * 2 * i) / 8;
+          const variation = base + (Math.random() - 0.5) * spike;
+          const x = Math.cos(angle) * variation;
+          const y = Math.sin(angle) * variation;
+          newPoints.push({ x, y });
+        }
+        return newPoints;
+      }
+
+      function interpolatePoints(p1, p2, t) {
+        return p1.map((pt, i) => ({
+          x: pt.x + (p2[i].x - pt.x) * t,
+          y: pt.y + (p2[i].y - pt.y) * t
+        }));
+      }
+
+      function pointsToString(pts) {
+        return pts.map(p => `${p.x.toFixed(2)},${p.y.toFixed(2)}`).join(" ");
+      }
+
+      let targetPoints = generateStarPoints();
+      currentPoints = targetPoints.map(p => ({ ...p }));
+      let tick = 0;
+
+      function animate() {
+        if (!animationsPaused && polygon) {
+          tick++;
+          if (tick % 180 === 0) {
+            targetPoints = generateStarPoints(60);
+          }
+
+          currentPoints = interpolatePoints(currentPoints, targetPoints, 0.03);
+          polygon.setAttribute("points", pointsToString(currentPoints));
+        }
+        requestAnimationFrame(animate);
+      }
+      
+      console.log('🏛️ Parlamento de Todas las Cosas Fase 2 cargado');
+      console.log('🧬 Agentes eDNA: 8 sitios de muestreo regionales');
+      console.log('🍄 Redes fúngicas: 4 nodos micorrízicos');  
+      console.log('🤖 Agencia Evolución IA: Meta-gobernanza activa');
+      console.log('🌍 Total agentes: 21 participantes democráticos multi-modales');
+      console.log('📚 Marco teórico: Teoría Actor-Red Bruno Latour');
+      console.log('🎨 Inspiración artística: Soleiman López - Festival de la Imagen 2025');
+      
+      // Interacción mínima para Fase 2
+      const allAgents = document.querySelectorAll('.species-seat, .ai-core, [class*="edna"], [class*="fungi"]');
+      allAgents.forEach(agent => {
+        agent.addEventListener('click', function() {
+          console.log('Agente activado - Democracia multi-modal Fase 2');
+        });
+      });
+
+      // Tecla ESPACIO pausa/reanuda animaciones
+      document.addEventListener('keydown', function(e) {
+        if (e.code === 'Space') {
+          e.preventDefault();
+          animationsPaused = !animationsPaused;
+          
+          const allAnimated = document.querySelectorAll('.parliament-seats, .edna-particle, .fungi-network, .ai-core, .agent-connection');
+          allAnimated.forEach(el => {
+            el.style.animationPlayState = animationsPaused ? 'paused' : 'running';
+          });
+          
+          console.log(animationsPaused ? '⏸️ Parlamento Fase 2 pausado' : '▶️ Parlamento Fase 2 reanudado');
+        }
+      });
+
+      // Iniciar animación del polígono
+      animate();
+    })();
+  ]]></script>
+</svg>

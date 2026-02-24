@@ -1,0 +1,78 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Test Framework Bio-Token V4 Zoom Controls</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 20px;
+            background: #1a1a1a;
+            color: white;
+            font-family: Arial, sans-serif;
+        }
+        .test-info {
+            background: #333;
+            padding: 15px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+        }
+        .test-list {
+            list-style: none;
+            padding: 0;
+        }
+        .test-list li {
+            padding: 5px 0;
+            border-left: 3px solid #0ea5e9;
+            padding-left: 10px;
+            margin: 5px 0;
+        }
+        .test-list li.fail {
+            border-left-color: #dc2626;
+        }
+        .test-list li.pass {
+            border-left-color: #16a34a;
+        }
+        iframe {
+            width: 100%;
+            height: 600px;
+            border: 1px solid #444;
+        }
+    </style>
+</head>
+<body>
+    <div class="test-info">
+        <h2>Framework Bio-Token V4 - Zoom Control Test</h2>
+        <p><strong>Test Objectives:</strong></p>
+        <ul class="test-list">
+            <li id="test1">✓ Only + and - buttons should control zoom</li>
+            <li id="test2">✓ Mouse wheel should NOT zoom (should scroll page instead)</li>
+            <li id="test3">✓ 2-finger trackpad gestures should NOT zoom</li>
+            <li id="test4">✓ Keyboard shortcuts (+, -, 0) should NOT zoom</li>
+            <li id="test5">✓ Touch gestures should NOT zoom</li>
+            <li id="test6">✓ 2-finger scroll should work normally</li>
+        </ul>
+        <p><strong>Instructions:</strong></p>
+        <ol>
+            <li>Try clicking the + and - buttons in the bottom-left corner (should work)</li>
+            <li>Try using mouse wheel over the SVG (should NOT zoom)</li>
+            <li>Try 2-finger pinch/zoom gestures on trackpad (should NOT zoom)</li>
+            <li>Try keyboard +, -, 0 keys (should NOT zoom)</li>
+            <li>Try 2-finger scroll to scroll this page (should work normally)</li>
+        </ol>
+    </div>
+
+    <iframe src="Framework-BioToken-V4-Parlamento-de-Todas-las-Cosas.svg" title="Framework Bio-Token V4"></iframe>
+
+    <script>
+        console.log('🧪 Test page loaded');
+        console.log('📋 Manual testing required:');
+        console.log('   1. Click + and - buttons (should zoom)');
+        console.log('   2. Mouse wheel over SVG (should NOT zoom)');
+        console.log('   3. Trackpad pinch gestures (should NOT zoom)');
+        console.log('   4. Keyboard +, -, 0 keys (should NOT zoom)');
+        console.log('   5. 2-finger scroll (should scroll page normally)');
+    </script>
+</body>
+</html>

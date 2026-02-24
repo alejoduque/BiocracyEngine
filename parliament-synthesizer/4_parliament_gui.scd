@@ -312,11 +312,11 @@
                         
                         // Update consensus display
                         ~parliament.consensusDisplay.setProperty(\consensus, 
-                            ~parliament.controlBuses.consensusLevel.getSynchronous);
+                            ~parliament.localValues.consensusLevel);
                         ~parliament.consensusDisplay.refresh;
                         
                         // Update vote counter
-                        ~parliament.voteCounter.value_(~parliament.controlBuses.totalVotes.getSynchronous);
+                        ~parliament.voteCounter.value_(~parliament.localValues.totalVotes);
                         
                     }.defer;
                     0.05.wait; // 20Hz refresh rate

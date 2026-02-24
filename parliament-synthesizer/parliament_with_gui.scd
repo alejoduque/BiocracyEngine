@@ -25,6 +25,17 @@
             harmonicCount: Bus.control(s, 1).set(5)
         );
         
+        // Local value storage to avoid getSynchronous calls
+        ~localValues = ~localValues ?? (
+            consensusLevel: 0.5,
+            speciesPresence: 0.6,
+            masterVolume: 0.7,
+            rotationSpeed: 1.0,
+            totalVotes: 26,
+            grainDensity: 10,
+            harmonicCount: 5
+        );
+        
         // Audio buses
         ~audioBuses = ~audioBuses ?? (
             main: Bus.audio(s, 2),
@@ -329,8 +340,8 @@
                         ~statusLights.keysValuesDo({ |key, light| light.refresh; });
                         
                         // Update counters
-                        ~counters.consensus.value_((~controlBuses.consensusLevel.getSynchronous * 100).round(1));
-                        ~counters.votes.value_(~controlBuses.totalVotes.getSynchronous);
+                        ~counters.consensus.value_((~localValues.consensusLevel * 100).round(1));
+                        ~counters.votes.value_(~localValues.totalVotes);
                         ~counters.species.value_(if(~speciesSynths.notNil, ~speciesSynths.size, 0));
                         
                     }.defer;

@@ -143,11 +143,11 @@
         // OSC status broadcasting
         ~parliament.osc.sendStatus = { |target_addr|
             var status_data = (
-                consensus: ~parliament.controlBuses.consensusLevel.getSynchronous,
-                rotation: ~parliament.controlBuses.rotationSpeed.getSynchronous,
-                totalVotes: ~parliament.controlBuses.totalVotes.getSynchronous,
-                aiConsciousness: ~parliament.controlBuses.aiConsciousness.getSynchronous,
-                masterVolume: ~parliament.controlBuses.masterVolume.getSynchronous,
+                consensus: ~parliament.localValues.consensusLevel,
+                rotation: ~parliament.localValues.rotationSpeed,
+                totalVotes: ~parliament.localValues.totalVotes,
+                aiConsciousness: ~parliament.localValues.aiConsciousness,
+                masterVolume: ~parliament.localValues.masterVolume,
                 activeAgents: (
                     species: ~parliament.agents.acousticSpecies.count({ |agent| agent.synth.notNil }),
                     edna: ~parliament.agents.ednaSites.count({ |agent| agent.synth.notNil }),

@@ -12,6 +12,16 @@
         // Initialize temporal coordination system
         ~parliament.temporal = ();
         
+        // Local value storage to avoid getSynchronous calls
+        ~parliament.localValues = (
+            consensusLevel: 0.5,
+            aiOptimization: 64,
+            totalVotes: 26,
+            rotationSpeed: 1.0,
+            aiConsciousness: 0.8,
+            masterVolume: 0.7
+        );
+        
         // Master clock based on 120-second parliament rotation
         ~parliament.temporal.masterClock = TempoClock(120/60); // 0.5 Hz base frequency
         
@@ -93,7 +103,7 @@
             // Consensus building waves
             consensusWave: {
                 var phase = ~calculatePhase.value(\consensus);
-                var consensus_level = ~parliament.controlBuses.consensusLevel.getSynchronous;
+                var consensus_level = ~parliament.localValues.consensusLevel;
                 var stability = consensus_level.linlin(0, 1, 0.3, 0.95);
                 sin(phase * 2 * pi) * (1 - stability) + stability;
             }
@@ -136,6 +146,7 @@
             if(~parliament.consensusEngine.notNil) {
                 var consensus_wave = ~parliament.temporal.modulators.consensusWave.value;
                 ~parliament.controlBuses.consensusLevel.set(consensus_wave);
+                ~parliament.localValues.consensusLevel = consensus_wave;
             };
         };
         
@@ -180,14 +191,20 @@
         ~triggerConsensusEvaluation = {
             var totalVotes = ~parliament.agents.acousticSpecies.collect(_.votes).sum;
             ~parliament.controlBuses.totalVotes.set(totalVotes);
+            ~parliament.localValues.totalVotes = totalVotes;
             ("Democratic evaluation: " ++ totalVotes ++ " total votes counted").postln;
         };
         
         ~triggerAIOptimization = {
-            var optimization_rate = ~parliament.controlBuses.aiOptimization.getSynchronous;
-            ~parliament.controlBuses.aiOptimization.set(
-                (optimization_rate + rrand(-5, 5)).clip(0, 127)
-            );
+            var optimization_rate = ~parliament.localValues.aiOptimization;
+            var new_rate = (optimization_rate + rrand(-5, 5)).clip(0, 127);
+            ~parliament.controlBuses.aiOptimization.set(new_rate);
+            ~parliament.localValues.aiOptimization = new_rate;
+        };
+        
+        // Function to update local values when control buses change
+        ~updateLocalValue = { |key, value|
+            ~parliament.localValues[key] = value;
         };
         
         ~triggerFungiSporeRelease = {
