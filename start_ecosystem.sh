@@ -19,6 +19,9 @@ cleanup() {
     echo "Matando puente OSC-WebSocket..."
     kill $BRIDGE_PID 2>/dev/null
 
+    echo "Matando Parliament Synthesizer..."
+    kill $PARLIAMENT_PID 2>/dev/null
+
     echo "Buscando procesos huérfanos de sclang..."
     pkill sclang 2>/dev/null
 
@@ -50,8 +53,17 @@ echo ">> Paso 2: Iniciando Motor SuperCollider (Headless)..."
 /Applications/SuperCollider.app/Contents/MacOS/sclang sonETH/0_loader.scd > sclang_log.txt 2>&1 &
 SC_PID=$!
 echo "   sclang corriendo en Background (PID: $SC_PID). Log: sclang_log.txt"
-echo "   Abriendo navegador en http://localhost:9000 ..."
-open http://localhost:9000
+
+# 2.5 Cargar Parliament Synthesizer (requiere que sclang ya esté corriendo)
+sleep 5
+echo ""
+echo ">> Paso 2.5: Cargando Parliament Synthesizer..."
+/Applications/SuperCollider.app/Contents/MacOS/sclang parliament-synthesizer/0_parliament_loader.scd >> sclang_log.txt 2>&1 &
+PARLIAMENT_PID=$!
+echo "   Parliament Synthesizer cargado (PID: $PARLIAMENT_PID)"
+
+echo "   Abriendo navegador en http://localhost:9000/parliament.html ..."
+open http://localhost:9000/parliament.html
 
 # 3. Levantar el Scraper Python de Ethereum (En Foreground)
 echo ""
