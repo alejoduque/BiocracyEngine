@@ -4,6 +4,9 @@
 //   0 → ParliamentStage (Three.js ecological parliament)
 //   1 → AsteroidWaves   (p5.js amber perlin wave graph)
 //   2–9 → reserved slots
+//
+// #parliament-stage is position:absolute;inset:0 inside #canvas-wrap
+// (position:relative), so stageEl.offsetWidth/Height are always reliable.
 
 import p5 from "p5";
 import parliamentStore from "./parliament/parliamentStore";
@@ -23,6 +26,7 @@ let currentKey = "";           // empty = nothing mounted yet
 let stageEl: HTMLElement | null = null;
 let hudEl: HTMLElement | null = null;
 let getLatestState: () => ParliamentState | null = () => null;
+let _switching = false;
 
 // Exposed for parliamentEntry label tracking + FFT feed
 let _activeThreeStage: any = null;
@@ -36,30 +40,14 @@ function updateHUD(name: string, key: string) {
   setTimeout(() => hudEl?.classList.remove("flash"), 600);
 }
 
-// ─── Get reliable pixel dimensions ──────────────────────────────────────────
-// #parliament-stage is width:100%;height:100% inside a flex child.
-// Its own offsetWidth/Height may be 0 if it hasn't been laid out yet.
-// Reading from the parent (#canvas-wrap) is always reliable.
-function getStageSize(): { w: number; h: number } {
-  const parent = stageEl?.parentElement;
-  const w = (parent?.offsetWidth  || parent?.clientWidth  ||
-             stageEl?.offsetWidth  || stageEl?.clientWidth  || 800);
-  const h = (parent?.offsetHeight || parent?.clientHeight ||
-             stageEl?.offsetHeight || stageEl?.clientHeight || 600);
-  return { w, h };
-}
-
-// ─── Ensure element is visible and layout is committed ──────────────────────
-function forceVisible(el: HTMLElement): void {
-  el.style.visibility = "visible";
-  el.style.display    = "block";
-  void el.offsetWidth;                   // sync layout flush (reflow)
-}
+// ─── Show/hide helpers ───────────────────────────────────────────────────────
+function showStage()  { if (stageEl) stageEl.style.visibility = "visible"; }
+function hideStage()  { if (stageEl) stageEl.style.visibility = "hidden";  }
 
 // ─── Teardown ────────────────────────────────────────────────────────────────
 function clearStage() {
   _activeThreeStage = null;
-  currentKey = "";   // always reset so switchTo() can remount
+  currentKey = "";
   if (currentViz) {
     try { currentViz.destroy(); } catch (e) {
       console.warn("[switcher] destroy error:", e);
@@ -67,9 +55,9 @@ function clearStage() {
     currentViz = null;
   }
   if (stageEl) {
-    // Remove all children left by the previous viz
     while (stageEl.firstChild) stageEl.removeChild(stageEl.firstChild);
   }
+  hideStage();
 }
 
 // ─── Mount: slot 0 — Three.js Parliament ────────────────────────────────────
@@ -80,28 +68,23 @@ async function mountParliamentStage(): Promise<Viz> {
 
   const el = stageEl!;
 
-  // ① Pre-size: give the element explicit pixel dimensions derived from its
-  //    parent BEFORE constructing ParliamentStage, so BaseThreeJsModule's
-  //    renderer.setSize() call reads real values instead of 0×0.
-  //    ModuleBase.constructor() will set visibility:hidden but does NOT
-  //    change width/height, so the explicit px sizes persist through super().
-  const { w: pw, h: ph } = getStageSize();
-  el.style.width    = pw + "px";
-  el.style.height   = ph + "px";
-  el.style.visibility = "visible";
-  void el.offsetWidth; // sync reflow so offsetWidth = pw
+  // Show BEFORE construction so BaseThreeJsModule.renderer.setSize() reads
+  // real pixel dimensions. #parliament-stage is position:absolute;inset:0
+  // so offsetWidth/Height match the parent regardless of visibility.
+  showStage();
+  void el.offsetWidth; // sync reflow
 
   const stage = new ParliamentStage(el) as any;
 
-  // ② ModuleBase constructor sets visibility:hidden — restore immediately.
-  el.style.visibility = "visible";
+  // ModuleBase constructor hides elem — restore immediately.
+  showStage();
   void el.offsetWidth;
 
-  // ③ One RAF tick: browser paints the visible element, then we resize
-  //    renderer + composer to the true layout size (in case flex recalculated).
+  // One RAF tick: let the browser paint, then fix up renderer size.
   await new Promise<void>((resolve) => requestAnimationFrame(() => {
     if (!stage || stage.destroyed) { resolve(); return; }
-    const { w, h } = getStageSize();
+    const w = el.offsetWidth  || 800;
+    const h = el.offsetHeight || 600;
     if (w > 0 && h > 0) {
       if (stage.renderer) stage.renderer.setSize(w, h);
       if (stage.camera)   { stage.camera.aspect = w / h; stage.camera.updateProjectionMatrix(); }
@@ -118,8 +101,6 @@ async function mountParliamentStage(): Promise<Viz> {
     destroy: () => {
       _activeThreeStage = null;
       try { stage.destroy(); } catch {}
-      // Clear the explicit px sizing we set, restore CSS-driven layout
-      if (el) { el.style.width = ""; el.style.height = ""; el.style.visibility = "hidden"; }
     },
     onState: (_s) => { /* ParliamentStage subscribes to parliamentStore internally */ },
   };
@@ -127,7 +108,6 @@ async function mountParliamentStage(): Promise<Viz> {
 
 // ─── Mount: slot 1 — AsteroidWaves (p5) ─────────────────────────────────────
 function mountAsteroidWaves(): Promise<Viz> {
-  // Return a promise so switchTo() can await it (matches slot 0 pattern).
   return new Promise((resolve) => {
     const container = stageEl!;
 
@@ -160,7 +140,6 @@ function mountAsteroidWaves(): Promise<Viz> {
       }));
     }
 
-    // Prime meteors immediately from whatever state we have
     buildMeteors(getLatestState());
 
     const sketch = (p: p5) => {
@@ -168,8 +147,9 @@ function mountAsteroidWaves(): Promise<Viz> {
       let noiseY = 0.0;
 
       p.setup = () => {
-        const w = container.offsetWidth  || container.clientWidth  || 800;
-        const h = container.offsetHeight || container.clientHeight || 600;
+        // #parliament-stage is position:absolute;inset:0 — offsetWidth reliable
+        const w = container.offsetWidth  || 800;
+        const h = container.offsetHeight || 600;
         const cvs = p.createCanvas(w, h);
         cvs.parent(container);
         p.textFont("'SF Mono','Fira Code','Consolas',monospace");
@@ -177,18 +157,18 @@ function mountAsteroidWaves(): Promise<Viz> {
 
       p.windowResized = () => {
         if (destroyed) return;
-        const w = container.offsetWidth  || container.clientWidth;
-        const h = container.offsetHeight || container.clientHeight;
+        const w = container.offsetWidth;
+        const h = container.offsetHeight;
         if (w > 0 && h > 0) p.resizeCanvas(w, h);
       };
 
       p.draw = () => {
         if (destroyed) { p.noLoop(); return; }
 
-        // Guard: if canvas was created with 0 size, resize now
+        // If canvas still has zero size (first frame edge case), resize now
         if (p.width < 10 || p.height < 10) {
-          const w = container.offsetWidth  || container.clientWidth;
-          const h = container.offsetHeight || container.clientHeight;
+          const w = container.offsetWidth;
+          const h = container.offsetHeight;
           if (w > 10 && h > 10) p.resizeCanvas(w, h);
           return;
         }
@@ -199,7 +179,7 @@ function mountAsteroidWaves(): Promise<Viz> {
         const maxDist = (p.height / 2) * 0.85;
         const n = meteors.length || 1;
 
-        // ── Dim grid ──────────────────────────────────────────────────────────
+        // Dim grid
         p.strokeWeight(0.5);
         for (let g = 0; g <= 6; g++) {
           p.stroke(AMBER_DIM[0], AMBER_DIM[1], AMBER_DIM[2], 35);
@@ -211,12 +191,12 @@ function mountAsteroidWaves(): Promise<Viz> {
           p.line(x, 0, x, p.height);
         }
 
-        // ── Center axis ───────────────────────────────────────────────────────
+        // Center axis
         p.stroke(AMBER_DIM[0], AMBER_DIM[1], AMBER_DIM[2], 55);
         p.strokeWeight(1);
         p.line(0, centerY, p.width, centerY);
 
-        // ── Waves ─────────────────────────────────────────────────────────────
+        // Waves
         meteors.forEach((m, idx) => {
           const col   = m.color;
           const alpha = 100 + Math.floor((idx / n) * 120);
@@ -257,7 +237,7 @@ function mountAsteroidWaves(): Promise<Viz> {
           p.text(`${m.mass.toFixed(0)}`, p.width - 6, laneY);
         });
 
-        // ── Footer labels ──────────────────────────────────────────────────────
+        // Footer
         p.fill(AMBER_DIM[0], AMBER_DIM[1], AMBER_DIM[2], 100);
         p.textSize(7);
         p.textAlign(p.LEFT, p.BOTTOM);
@@ -271,36 +251,27 @@ function mountAsteroidWaves(): Promise<Viz> {
       };
     };
 
-    // ④ Set explicit px size + show, then defer p5 creation one RAF tick so
-    //    the browser commits layout before p5's setup() reads dimensions.
-    const { w: pw, h: ph } = getStageSize();
-    container.style.width      = pw + "px";
-    container.style.height     = ph + "px";
-    container.style.visibility = "visible";
-    container.style.display    = "block";
+    // Show the container, then defer p5 creation one RAF tick so setup()
+    // reads the correct offsetWidth/Height.
+    showStage();
     void container.offsetWidth;
 
     requestAnimationFrame(() => {
-      if (destroyed) { resolve({ name: "Asteroid Waves", key: "1", destroy: () => {} }); return; }
+      if (destroyed) {
+        resolve({ name: "Asteroid Waves", key: "1", destroy: () => {} });
+        return;
+      }
       myp5 = new p5(sketch);
 
-      const viz: Viz = {
+      resolve({
         name: "Asteroid Waves",
         key: "1",
         destroy: () => {
           destroyed = true;
           if (myp5) { myp5.remove(); myp5 = null; }
-          container.style.width      = "";
-          container.style.height     = "";
-          container.style.visibility = "hidden";
-          container.style.display    = "";
         },
-        onState: (st) => {
-          buildMeteors(st);
-        },
-      };
-
-      resolve(viz);
+        onState: (st) => { buildMeteors(st); },
+      });
     });
   });
 }
@@ -308,21 +279,16 @@ function mountAsteroidWaves(): Promise<Viz> {
 // ─── Mount: slots 2–9 — placeholder ─────────────────────────────────────────
 function mountPlaceholder(key: string): Viz {
   const container = stageEl!;
-  const { w: pw, h: ph } = getStageSize();
-  container.style.width      = pw + "px";
-  container.style.height     = ph + "px";
-  container.style.visibility = "visible";
-  container.style.display    = "block";
-  void container.offsetWidth;
+  showStage();
 
   const canvas = document.createElement("canvas");
-  canvas.style.cssText = "width:100%;height:100%;display:block;";
+  canvas.style.cssText = "position:absolute;inset:0;width:100%;height:100%;";
   container.appendChild(canvas);
 
   const ctx = canvas.getContext("2d")!;
   function draw() {
-    canvas.width  = container.clientWidth  || 800;
-    canvas.height = container.clientHeight || 600;
+    canvas.width  = container.offsetWidth  || 800;
+    canvas.height = container.offsetHeight || 600;
     ctx.fillStyle = "#000804";
     ctx.fillRect(0, 0, canvas.width, canvas.height);
     ctx.font      = "10px 'SF Mono','Fira Code','Consolas',monospace";
@@ -340,26 +306,17 @@ function mountPlaceholder(key: string): Viz {
   return {
     name: `Slot ${key}`,
     key,
-    destroy: () => {
-      ro.disconnect();
-      canvas.remove();
-      container.style.width      = "";
-      container.style.height     = "";
-      container.style.visibility = "hidden";
-      container.style.display    = "";
-    },
+    destroy: () => { ro.disconnect(); canvas.remove(); },
   };
 }
 
 // ─── Switch ──────────────────────────────────────────────────────────────────
-let _switching = false;  // prevent concurrent switchTo calls
-
 async function switchTo(key: string) {
   if (key === currentKey && currentViz) return;
-  if (_switching) return;  // debounce rapid key presses
+  if (_switching) return;
   _switching = true;
 
-  clearStage();   // resets currentKey to ""
+  clearStage();
 
   let viz: Viz;
   try {
@@ -378,7 +335,6 @@ async function switchTo(key: string) {
 
   updateHUD(viz.name, viz.key);
 
-  // Feed current state immediately to the new viz
   const st = getLatestState();
   if (st && viz.onState) viz.onState(st);
 }
@@ -403,12 +359,10 @@ export function initSwitcher(
 
   window.addEventListener("keydown", onKeyDown);
 
-  // Forward every parliament state update to the active viz
   parliamentStore.subscribe((state) => {
     if (currentViz?.onState) currentViz.onState(state);
   });
 
-  // Default to slot 0
   switchTo("0");
 }
 
