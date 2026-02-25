@@ -28,16 +28,26 @@ Lo que sigue está organizado en dos partes: **trabajo técnico concreto** y **v
 - [ ] Transaction density como clima del escenario: alta densidad = neblina de partículas, calor visual. Baja densidad = claridad, silencio visual
 - [ ] Metabolismo basal: cuando no hay transacciones, el sistema sigue respirando — pulso lento de nitrógeno que nunca se detiene, correlato del `~nitrogenLayer` en SC
 
-### Fase 5: Shader Layer — Atmósfera y Unificación
-**Prioridad: Media-Alta**
+### Fase 5: Shader Layer — Atmósfera y Unificación ✓ (v0.5.0)
+**Implementado**
 
-- [ ] Post-processing dinámico ligado a estado del parlamento:
-  - Bloom ∝ consensusLevel (consenso alto = resplandor armónico, pulsante)
-  - Chromatic aberration ∝ turbulencia (bajo consenso = distorsión cromática)
-  - Film grain ligado a transaction density de Ethereum
-  - Vignette que respira con el ciclo de 120s del parlamento
-- [ ] Color grading dinámico: consenso → tonos cálidos/dorados; disenso → fríos/fragmentados; emergencia → saturación roja progresiva
-- [ ] Custom GLSL shaders para partículas de species (vertex displacement por noise, fragment color por IUCN status)
+- [x] Post-processing dinámico ligado a estado del parlamento:
+  - Bloom ∝ consensusLevel — strength 0.25→1.5, radius 0.65→0.30, threshold 0.35→0.08
+  - Chromatic aberration ∝ turbulencia — `ChromaticAberrationShader` GLSL custom, amount 0→0.010
+  - Film grain ∝ ETH CO₂ + nitrogen density — `FilmPass` noiseIntensity 0→0.35
+  - Vignette que respira con el ciclo de 120s — `VignetteShader` offset/darkness desde `phase`
+  - AfterimagePass damp ∝ species activity — 0.82→0.93
+- [x] Color grading dinámico — `ColorGradeShader` GLSL custom:
+  - Consenso alto → tonos cálidos/dorados (warmth=1)
+  - Disenso → fríos/fragmentados (warmth=0, blue-teal shift)
+  - Emergencia → saturación roja progresiva (votes altos + bajo consenso)
+- [x] Identidad visual amplificada por especie:
+  - `emissiveIntensity` ∝ presence × consensus (bloom la multiplica)
+  - Halos: `size` y `opacity` ∝ activity + turbulence
+  - Fungi lines: pulso químico a 6s, `opacity` ∝ chemical × connectivity
+  - eDNA nodes: `scale` ∝ biodiversity
+  - Core consensus: `emissiveIntensity` 0.6→1.8 ∝ consensus
+- [ ] Custom GLSL vertex displacement por noise, fragment color per-species (pendiente)
 
 ### Fase 7: Capas Temporales Visibles
 **Prioridad: Alta — esto es lo que distingue la obra**
@@ -67,9 +77,15 @@ Cada ciclo del motor sonoro tiene que ser legible visualmente sin texto, solo ge
 - [ ] InstancedMesh para nubes de partículas por especie (1,000–5,000 instancias por especie)
 
 ### Fase 9: Datos Reales — Integración Científica
+**Sitio de referencia: Reserva MANAKAI, Colombia**
+`GPS: 4°35'42"N 74°04'12"W` — coordenadas hardcoded como anchor geográfico del sistema.
+Todas las especies acústicas y sitios eDNA referencian este territorio.
+
 - [ ] Conectar con IUCN Red List API para actualizar status de especies en tiempo real
-- [ ] Integrar datos reales de eBird/Xeno-canto para frecuencias base auténticas
-- [ ] Ciclo de muestreo eDNA real: validación mensual ligada a bases de datos de biodiversidad colombiana
+- [ ] Grabaciones de campo propias de la Reserva MANAKAI como buffers granulares en SC
+  — vocalizaciones reales de Ara macao, Alouatta, Tinamus registradas en sitio
+  — no depender de bases de datos de otras latitudes
+- [ ] Ciclo de muestreo eDNA real: validación mensual ligada a bases de datos de biodiversidad colombiana (SiB Colombia)
 - [ ] Algorand testnet: registrar cada votación del parlamento como transacción blockchain (BioToken V3)
 
 ---
@@ -144,7 +160,7 @@ Cada especie tiene una frecuencia base en SC: Ara macao (220Hz), Atlapetes (330H
 
 La síntesis granular en SC puede usar grabaciones de campo reales de estas especies como buffers fuente. El sistema ya tiene la arquitectura granular; solo le faltan los samples. Con audio real, la figura legal y científica del "agente democrático" se vuelve completamente auténtica: el Ara macao literalmente habla en el parlamento con su propia voz.
 
-Banco de datos: Xeno-canto tiene grabaciones CC de todas estas especies. La integración es un `Buffer.read()` en SC.
+Banco de datos primario: grabaciones propias de la Reserva MANAKAI (GPS: 4°35'42"N 74°04'12"W, Colombia). Estas son las especies que habitan ese territorio específico — el sistema habla desde ese lugar, no desde una base de datos global. La integración es un `Buffer.read()` en SC.
 
 ---
 
@@ -152,7 +168,7 @@ Banco de datos: Xeno-canto tiene grabaciones CC de todas estas especies. La inte
 
 1. **InstancedMesh por especie** — densidad visual inmediata, misma arquitectura OSC existente
 2. **Web Audio FFT real** — coherencia audio/visual total, espectrograma auténtico
-3. **Grabaciones de campo en SC granular** — autenticidad del agente acústico
+3. **Grabaciones propias de Reserva MANAKAI en SC granular** — autenticidad del agente acústico desde el territorio (GPS: 4°35'42"N 74°04'12"W)
 4. **Buffer histórico + sedimento visual** — memoria del ecosistema
 5. **Multi-proyector** — escala espacial de instalación
 6. **Algorand blockchain** — cada votación registrada como BioToken transaction
@@ -176,6 +192,6 @@ Banco de datos: Xeno-canto tiene grabaciones CC de todas estas especies. La inte
 - **Custom GLSL shaders** — vertex displacement, fragment color por estado OSC
 - **EffectComposer dinámico** — bloom, chromatic aberration, vignette desde datos
 - **Web Audio API** — `AnalyserNode` → FFT real desde audio SC
-- **`Buffer.read()` en SC** — grabaciones de campo Xeno-canto como fuente granular
+- **`Buffer.read()` en SC** — grabaciones de campo propias de Reserva MANAKAI como fuente granular
 - **Algorand SDK** — registro de votaciones como transacciones BioToken
 - **IUCN Red List API** — status de conservación en tiempo real
