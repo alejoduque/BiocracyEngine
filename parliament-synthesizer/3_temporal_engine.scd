@@ -159,6 +159,10 @@
                     120.wait;
                     "Parliament completed full rotation - Democratic cycle reset".postln;
                     ~triggerConsensusEvaluation.value;
+                    // Broadcast rotation completion to visual layer
+                    if(~parliament.visualDest.notNil) {
+                        ~parliament.visualDest.sendMsg('/parliament/rotation/complete', 1);
+                    };
                 };
             }),
             
@@ -228,25 +232,78 @@
             });
         };
         
+        // Visual broadcast destination (nw_wrld on port 3333)
+        ~parliament.visualDest = NetAddr("127.0.0.1", 3333);
+
+        // High-frequency visual state broadcast (runs at ~10Hz alongside temporal modulations)
+        ~broadcastVisualState = {
+            var dest = ~parliament.visualDest;
+
+            // Parliament-level state
+            dest.sendMsg('/parliament/phase', ~parliament.temporal.modulators.parliamentPhase.value);
+            dest.sendMsg('/parliament/consensus', ~parliament.localValues.consensusLevel);
+            dest.sendMsg('/parliament/consensusWave', ~parliament.temporal.modulators.consensusWave.value);
+            dest.sendMsg('/parliament/rotation', ~parliament.localValues.rotationSpeed);
+            dest.sendMsg('/parliament/votes', ~parliament.localValues.totalVotes);
+
+            // Acoustic species (5 agents)
+            ~parliament.agents.acousticSpecies.do({ |agent, i|
+                var activity = ~parliament.temporal.modulators.acousticActivity.value(i);
+                dest.sendMsg('/agent/species/state', i,
+                    agent.presence,
+                    activity,
+                    agent.votes,
+                    agent.freq
+                );
+            });
+
+            // eDNA sites (8 agents)
+            ~parliament.agents.ednaSites.do({ |agent, i|
+                var validation = ~parliament.temporal.modulators.ednaValidation.value(i);
+                dest.sendMsg('/agent/edna/state', i,
+                    agent.biodiversity,
+                    validation
+                );
+            });
+
+            // Fungi networks (4 agents)
+            ~parliament.agents.fungiNetworks.do({ |agent, i|
+                var chemical = ~parliament.temporal.modulators.fungiChemical.value(i);
+                dest.sendMsg('/agent/fungi/state', i,
+                    chemical,
+                    agent.connectivity,
+                    agent.coverage
+                );
+            });
+
+            // AI Core
+            dest.sendMsg('/agent/ai/state',
+                ~parliament.temporal.modulators.aiConsciousness.value,
+                ~parliament.localValues.aiOptimization
+            );
+        };
+
         // Start temporal engine
         ~startTemporalEngine = {
             "Starting Parliament Temporal Engine...".postln;
-            
-            // Start main synchronization routine
+
+            // Start main synchronization routine (includes visual broadcast)
             ~parliament.temporal.syncRoutine = Routine({
                 loop {
                     ~applyTemporalModulations.value;
+                    ~broadcastVisualState.value;
                     0.1.wait; // 10Hz synchronization rate
                 };
             }).play(~parliament.temporal.masterClock);
-            
+
             // Start event trigger routines
             ~parliament.temporal.triggers.keysValuesDo({ |name, routine|
                 routine.play(~parliament.temporal.masterClock);
             });
-            
+
             ~parliament.status.temporal = true;
             "Temporal Engine started - All agents synchronized".postln;
+            "Visual broadcast active on port 3333 at 10Hz".postln;
         };
         
         // Stop temporal engine

@@ -15,10 +15,13 @@ cleanup() {
     echo "=============================================="
     echo "Matando servidor nw_wrld..."
     kill $NW_PID 2>/dev/null
-    
+
+    echo "Matando puente OSC-WebSocket..."
+    kill $BRIDGE_PID 2>/dev/null
+
     echo "Buscando procesos huérfanos de sclang..."
     pkill sclang 2>/dev/null
-    
+
     echo "Adiós."
     exit 0
 }
@@ -27,9 +30,15 @@ trap cleanup SIGINT SIGTERM
 # 1. Levantar nw_wrld local
 echo ">> Paso 1: Iniciando nw_wrld (Servidor Web y Servidor OSC interno)..."
 cd nw_wrld_local || { echo "Directorio nw_wrld_local no encontrado. Falla."; exit 1; }
-npm run dev --silent &
+npm run serve --silent &
 NW_PID=$!
-echo "   nw_wrld corriendo en Background (PID: $NW_PID). Dashboard en http://localhost:8080"
+echo "   nw_wrld corriendo en Background (PID: $NW_PID). Dashboard en http://localhost:9000"
+
+# 1.5 Levantar puente OSC→WebSocket para el parlamento visual
+echo ">> Paso 1.5: Iniciando puente Parliament OSC→WebSocket..."
+node parliament-bridge.js &
+BRIDGE_PID=$!
+echo "   Puente OSC (UDP:3333) → WebSocket (WS:3334) activo (PID: $BRIDGE_PID)"
 cd ..
 
 # Darle unos segundos a la app web para levantar sus osc servers
@@ -38,9 +47,11 @@ sleep 3
 # 2. Levantar SuperCollider Headless
 echo ""
 echo ">> Paso 2: Iniciando Motor SuperCollider (Headless)..."
-sclang sonETH/0_loader.scd > /dev/null 2>&1 &
+/Applications/SuperCollider.app/Contents/MacOS/sclang sonETH/0_loader.scd > sclang_log.txt 2>&1 &
 SC_PID=$!
-echo "   sclang corriendo en Background (PID: $SC_PID)."
+echo "   sclang corriendo en Background (PID: $SC_PID). Log: sclang_log.txt"
+echo "   Abriendo navegador en http://localhost:9000 ..."
+open http://localhost:9000
 
 # 3. Levantar el Scraper Python de Ethereum (En Foreground)
 echo ""

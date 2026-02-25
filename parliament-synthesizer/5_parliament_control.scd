@@ -212,10 +212,22 @@
             consensus = yesVotes / totalVotes;
             ~parliament.controlBuses.consensusLevel.set(consensus);
             ~parliament.controlBuses.totalVotes.set(totalVotes);
-            
+            ~parliament.localValues.consensusLevel = consensus;
+            ~parliament.localValues.totalVotes = totalVotes;
+
             result = if(consensus > 0.6) { "PASSED" } { "FAILED" };
             ("🏛️ Vote Result: " ++ result ++ " (" ++ (consensus * 100).round ++ "% consensus, " ++ totalVotes ++ " total votes)").postln;
-            
+
+            // Broadcast vote event to visual layer
+            if(~parliament.visualDest.notNil) {
+                ~parliament.visualDest.sendMsg('/parliament/vote/result',
+                    consensus,
+                    if(consensus > 0.6, { 1 }, { 0 }),
+                    yesVotes,
+                    totalVotes
+                );
+            };
+
             consensus;
         };
         
