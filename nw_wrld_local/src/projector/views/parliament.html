@@ -297,6 +297,31 @@
         }
         #biome-map .biome-active { color: var(--amber); }
 
+        /* ─── VIZ SWITCHER HUD ─── */
+        #viz-hud {
+            position: absolute;
+            bottom: 8px;
+            right: 8px;
+            font-size: 7.5px;
+            letter-spacing: 1px;
+            color: var(--text-dim);
+            text-transform: uppercase;
+            pointer-events: none;
+            transition: color 0.2s;
+        }
+        #viz-hud.flash {
+            color: var(--amber-bright);
+        }
+        #viz-hint {
+            position: absolute;
+            top: 6px;
+            right: 8px;
+            font-size: 7px;
+            letter-spacing: 0.5px;
+            color: rgba(102,51,0,0.4);
+            pointer-events: none;
+        }
+
         /* ─── CANVAS OVERLAY ─── */
         #canvas-overlay {
             position: absolute;
@@ -548,6 +573,8 @@
                 <div id="parliament-stage"></div>
                 <div id="canvas-overlay">
                     <!-- 3D-tracked species labels injected by JS -->
+                    <div id="viz-hint">0–9 · switch viz</div>
+                    <div id="viz-hud">[0] Parliament of All Things</div>
                 </div>
             </div>
 

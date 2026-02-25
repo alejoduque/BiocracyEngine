@@ -1,8 +1,10 @@
 // Parliament of All Things — Entry Point
 // OSC control panel wired to parliament-synthesizer SC endpoints
 // Spectrogram canvas + reactive FFT from live state data
+// Visualization switcher: keys 0–9 swap center stage
 
 import parliamentStore, { ParliamentState } from "./parliament/parliamentStore";
+import { initSwitcher, getActiveThreeStage } from "./visualizationSwitcher";
 import * as THREE from "three";
 
 // ─── Data constants ───
@@ -202,13 +204,12 @@ function calcBioToken(state: ParliamentState): number {
 async function init() {
   const container = document.getElementById("parliament-stage");
   if (!container) return;
+  const hudEl = document.getElementById("viz-hud");
 
-  const { default: ParliamentStage } = await import(
-    "../main/starter_modules/ParliamentStage"
-  );
-
-  const stage = new ParliamentStage(container) as any;
-  container.style.visibility = "visible";
+  // ─── Visualization switcher ───────────────────────────────────────────────
+  // Keys 0–9 swap center stage. Left/right panels + spectrogram stay.
+  // getActiveThreeStage() returns the live ParliamentStage when slot 0 is active.
+  initSwitcher(container, hudEl!, () => currentState);
 
   // ─── Build eDNA control rows ───
   const ednaCtrlRows = document.getElementById("edna-ctrl-rows");
@@ -294,13 +295,14 @@ async function init() {
     });
   }
 
-  // Label tracking loop
+  // Label tracking loop — only active when slot 0 (Three.js parliament) is live
   function updateLabels() {
-    if (!canvasWrap || !stage.speciesGroups || !stage.camera) return;
+    const s = getActiveThreeStage();
+    if (!canvasWrap || !s?.speciesGroups || !s?.camera) return;
     for (let i = 0; i < 5; i++) {
-      const grp = stage.speciesGroups[i];
+      const grp = s.speciesGroups[i];
       if (!grp) continue;
-      const pos = worldToCss(grp.position, stage.camera, canvasWrap);
+      const pos = worldToCss(grp.position, s.camera, canvasWrap);
       const el  = speciesLabelEls[i];
       el.style.left = pos.x + "px";
       el.style.top  = (pos.y - 20) + "px";
@@ -373,8 +375,9 @@ async function init() {
     elapsed += 0.016;
     const bins = buildFftBins(currentState, elapsed);
     if (spectroRenderer) spectroRenderer.push(bins, performance.now());
-    // Expose bins to stage for FFT ring animation
-    if (stage._fftBinsExternal !== undefined) stage._fftBinsExternal = bins;
+    // Expose bins to active Three.js stage for FFT ring animation
+    const s = getActiveThreeStage();
+    if (s && s._fftBinsExternal !== undefined) s._fftBinsExternal = bins;
     requestAnimationFrame(animLoop);
   })();
 
