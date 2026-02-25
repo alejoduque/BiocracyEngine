@@ -249,6 +249,7 @@ async function init() {
         <span class="ctrl-val" id="disp-edna-bio-${i}">0.85</span>
       </div>
     `).join("");
+    // eDNA slider wiring happens below, after wireSlider() is defined.
   }
 
   // ─── Build right-panel telemetry rows ───
@@ -378,24 +379,51 @@ async function init() {
     else if (addr === "/parliament/emergency")      { st.consensus = Math.max(0, 1 - v); }
     // volume / fx paths: no local state equivalent, SC handles them
     else return;
+
+    // For atmosphere-driving values, bypass lerp smoothing on the active Three.js stage
+    // so slider movement is immediately visible rather than taking ~1s to converge.
+    const s = getActiveThreeStage();
+    if (s) {
+      if (addr === "/parliament/consensus") {
+        const turbulence = Math.pow(1.0 - Math.min(1, v), 2.0);
+        s._smoothConsensus  = v;
+        s._smoothTurbulence = turbulence;
+        s._smoothWarmth     = 0.25 + v * 0.75;
+        s._smoothEmergency  = Math.max(0, (1 - v) * Math.min(1, (st.votes || 0) / 10) - 0.2);
+      }
+    }
+
     // Notify all subscribers (ParliamentStage, AsteroidWaves, telemetry panel)
     parliamentStore.notifyListeners();
   }
 
-  document.querySelectorAll<HTMLInputElement>("input[type='range'][data-osc]").forEach((slider) => {
+  // ─── Slider display ID map (addr → id prefix used in HTML) ───────────────
+  // Must match the actual element IDs in parliament.html and the edna rows injected above.
+  const SLIDER_DISP_PREFIX: Record<string, string> = {
+    "/agents/species/activity":   "disp-sp-act-",
+    "/agents/species/presence":   "disp-sp-pres-",
+    "/agents/edna/biodiversity":  "disp-edna-bio-",
+    "/agents/fungi/chemical":     "disp-fg-chem-",
+    "/agents/ai/consciousness":   "disp-ai-consciousness",
+    "/parliament/consensus":      "disp-consensus",
+    "/parliament/rotation":       "disp-rotation",
+    "/parliament/fx/reverb":      "disp-reverb",
+    "/parliament/fx/room":        "disp-room",
+    "/parliament/fx/delaytime":   "disp-delaytime",
+    "/parliament/fx/decaytime":   "disp-decaytime",
+  };
+
+  function wireSlider(slider: HTMLInputElement) {
+    if ((slider as any)._sliderWired) return; // already wired
+    (slider as any)._sliderWired = true;
+
     const addr    = slider.dataset.osc!;
     const agentId = slider.dataset.agentId;
+    const prefix  = SLIDER_DISP_PREFIX[addr] ?? `disp-${addr.split("/").pop()}-`;
 
-    // Derive display element id from addr + agentId
-    let dispId: string;
-    if (agentId !== undefined) {
-      const key = addr.replace("/agents/","").replace(/\//g,"-");
-      dispId = `disp-${key}-${agentId}`;
-    } else {
-      const key = addr.split("/").pop()!;
-      dispId = `disp-${key}`;
-    }
-    const dispEl = document.getElementById(dispId);
+    // Derive display element — agent sliders use prefix+id, global sliders use prefix alone
+    const dispId  = agentId !== undefined ? `${prefix}${agentId}` : prefix;
+    const dispEl  = document.getElementById(dispId);
 
     slider.addEventListener("input", () => {
       const v  = parseFloat(slider.value);
@@ -409,7 +437,15 @@ async function init() {
       // 2. Patch local store immediately for instant visual feedback
       patchStoreFromSlider(addr, id, v);
     });
-  });
+  }
+
+  // Wire all currently-present range sliders (includes static HTML ones)
+  document.querySelectorAll<HTMLInputElement>("input[type='range'][data-osc]").forEach(wireSlider);
+
+  // Wire eDNA sliders that were dynamically injected above (they're in the DOM now)
+  if (ednaCtrlRows) {
+    ednaCtrlRows.querySelectorAll<HTMLInputElement>("input[type='range'][data-osc]").forEach(wireSlider);
+  }
 
   // ─── State subscription ───
   const statusDot    = document.getElementById("status-dot");
