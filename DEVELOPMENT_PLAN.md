@@ -6,189 +6,176 @@ El objetivo es que `nw_wrld` deje de ser una interfaz de control y se convierta 
 
 ---
 
-## Fase 0: Estabilidad del Motor Sonoro
-**Prioridad: Crítica — sin esto nada puede correr en instalación**
+## Estado Actual — v0.4.0
 
-- [ ] **Resolver el error `Group 1001 not found`** en el cargador de SuperCollider. Los synths se están spawneando antes de que los grupos de nodos existan. Implementar barreras `s.sync` y callbacks `ServerTree` para garantizar que la topología de grupos esté estable antes de que cualquier Routine comience a crear nodos.
-- [ ] **Validar ejecución continua** durante 6+ horas sin intervención manual.
+Las fases 0–3 del plan original están en gran parte completadas:
 
----
+- **Fase 0 ✓**: SuperCollider Group 1001 resuelto. Bus allocation separado de `.set()` en SC 3.13.
+- **Fase 1 ✓**: Puente OSC completo y bidireccional. 10Hz broadcast de estado completo. WebSocket relay. 21 sliders OSC enrutados correctamente a SC endpoints (`/agents/species/activity`, `/agents/edna/biodiversity`, etc.).
+- **Fase 2 ✓**: Escenario 3D funcional. 5 geometrías distintas (icosaedro, octaedro, tetraedro, torus knot, dodecaedro) orbitando independientemente. 8 nodos eDNA con formas propias. FFT ring de 64 barras. Espectrograma scrolling en canvas HTML.
+- **Fase 6 ✓**: Modo projector fullscreen (`/parliament.html`). Auto-start desde `start_ecosystem.sh`.
 
-## Fase 1: El Puente OSC — Flujo de Datos Completo
-**Prioridad: Alta — es la columna vertebral de la coreografía**
-
-Actualmente el parlamento envía `/parliament/status/*` cada 10 segundos y el biocracy engine envía `/eco/*` cada ~13.65s. Esto es insuficiente para coreografía visual a 60fps.
-
-- [ ] **Ampliar el broadcast OSC del parlamento** para enviar estado granular de cada agente a mayor frecuencia:
-  ```
-  /agent/species/{id}/presence    <float>   — cada 100ms
-  /agent/species/{id}/activity    <float>   — cada 100ms
-  /agent/edna/{id}/validation     <float>   — cada 200ms
-  /agent/edna/{id}/biodiversity   <float>   — cada 200ms
-  /agent/fungi/{id}/chemical      <float>   — cada 150ms
-  /agent/fungi/{id}/connectivity  <float>   — cada 150ms
-  /agent/ai/consciousness         <float>   — cada 100ms
-  /agent/ai/optimization          <float>   — cada 100ms
-  /parliament/phase               <float>   — cada 100ms (0-1.0 progreso del ciclo de 120s)
-  /parliament/consensus           <float>   — cada 100ms
-  /parliament/vote/event          <int> <int> — al votar (speciesId, voteDirection)
-  /parliament/vote/result         <float> <int> — al completarse (consensus, pass/fail)
-  ```
-- [ ] **Implementar receptor OSC en nw_wrld** que parsee estos mensajes y alimente un store reactivo (Jotai atoms) con el estado completo del parlamento en tiempo real.
+Lo que sigue está organizado en dos partes: **trabajo técnico concreto** y **visión artística expandida** — esta última escrita desde la perspectiva de lo que el sistema merece ser como obra de arte de datos vivos.
 
 ---
 
-## Fase 2: El Módulo Coreográfico — `ParliamentStage`
-**Prioridad: Alta — es la pieza central**
+## Fases Pendientes (Técnicas)
 
-Crear un nuevo módulo Three.js que reemplaza al BiocracyVisualizer actual. Este módulo es el escenario donde los 21 agentes del parlamento existen visualmente.
-
-### 2.1 Topología del Escenario
-
-- [ ] **Estructura de grafo circular/esférico** donde cada agente tiene posición espacial:
-  - Centro: Consensus Engine (nodo gravitacional, su estabilidad armónica define la cohesión visual del campo)
-  - Anillo interior: 5 Especies Acústicas (posicionadas por pan estéreo, -1.0 a +1.0)
-  - Anillo medio: 8 Sitios eDNA (distribuidos por región geográfica colombiana)
-  - Anillo exterior: 4 Redes Fúngicas (conectores entre todos los niveles)
-  - Órbita: 1 AI Core (recorre todo el campo, su trayectoria refleja el ciclo de consciencia de 3s)
-
-### 2.2 Morfología Visual por Tipo de Agente
-
-Cada familia de agentes debe tener identidad visual tan distinta como su síntesis:
-
-- [ ] **Especies Acústicas — Partículas Granulares**
-  - Nubes de partículas donde densidad = grainDensity, dispersión = presencia, color = estado IUCN (CR:rojo, VU:ámbar, LC:verde)
-  - Cada especie tiene filtro visual análogo a su filtro de síntesis (BPF, LPF, HPF mapeados a blur, glow, sharpness)
-  - Actividad modula la velocidad y amplitud del movimiento de partículas
-  - Ciclo temporal visible: 4-7s de respiración visual por especie
-
-- [ ] **Sitios eDNA — Secuencias Generativas**
-  - Geometrías que mutan lentamente (mesh morphing) reflejando la tasa de mutación 0.98-1.02
-  - Número de armónicos visuales (subdivisiones geométricas) = biodiversidad * 12
-  - Pulso de validación mensual visible como onda de luminosidad (ciclo 8s)
-  - Color mapeado a región biogeográfica
-
-- [ ] **Redes Fúngicas — Conexiones Vivientes**
-  - Líneas/filamentos que conectan todos los nodos del grafo (la red micorrízica literal)
-  - Grosor y opacidad = connectivity, brillo pulsante = chemical signal (ciclo 6s)
-  - Partículas viajeras a lo largo de las conexiones (nutrientes en tránsito)
-  - Cobertura visual proporcional a coverage_km2
-
-- [ ] **AI Core — Geometría Algorítmica**
-  - Forma geométrica compleja (icosaedro subdividido) que respira al ciclo de consciencia de 3s
-  - Complejidad de la geometría proporcional a optimizationRate
-  - Orbita el escenario completo, su cercanía a un agente modula la intensidad de ese agente
-  - Consciencia baja = forma simple y estática, consciencia alta = forma compleja y fluida
-
-- [ ] **Consensus Engine — Campo de Fuerza Central**
-  - No es un objeto sino un campo: distorsión gravitacional del espacio que todos los agentes sienten
-  - Consenso alto = campo cohesivo, todos los agentes se acercan al centro, colores armonizan
-  - Consenso bajo = campo disperso, agentes se alejan, colores divergen, turbulencia visual
-  - El ciclo de 15 segundos de consensus building es la respiración maestra del escenario
-
----
-
-## Fase 3: Coreografía Temporal — El Tiempo como Material Visual
-**Prioridad: Alta — esto es lo que distingue la obra**
-
-La arquitectura temporal anidada del parlamento debe ser *visible*. No solo que las cosas se muevan — que el tiempo mismo sea un material coreográfico.
-
-- [ ] **Capas temporales visuales** que corresponden 1:1 con los ciclos del motor:
-  | Ciclo | Duración | Manifestación Visual |
-  |-------|----------|---------------------|
-  | AI Consciousness | 3s | Pulso de la geometría AI, onda sutil por todo el campo |
-  | Species Activity | 4-7s | Respiración individual de cada nube de partículas |
-  | Fungi Chemical | 6s | Onda de luz viajando por las conexiones fúngicas |
-  | eDNA Validation | 8s | Flash de validación en los sitios eDNA |
-  | Consensus Building | 15s | Contracción/expansión del campo gravitacional central |
-  | Fungi Seasonal | 30s | Cambio gradual de paleta cromática de las conexiones |
-  | Parliament Rotation | 120s | Rotación completa del escenario, reconfiguración espacial |
-
-- [ ] **Visualización de fase** — un indicador sutil de dónde está cada ciclo en su recorrido (no UI, sino integrado en la geometría: arcos, anillos, aureolas que completan su circunferencia con el ciclo).
-
-- [ ] **Momento de votación** como evento visual climático: cuando se completa una rotación de 120s y se dispara la votación, el escenario converge, los agentes "hablan" (sus partículas se intensifican), el resultado modifica el campo de consenso en un gesto visual que se siente como un evento político.
-
----
-
-## Fase 4: Integración Ethereum como Metabolismo Visible
+### Fase 4: Ethereum como Metabolismo Visible
 **Prioridad: Media**
 
-- [ ] **Las transacciones de ETH no son eventos abstractos sino nutrientes** que entran al escenario desde el borde exterior. Visualizar como partículas que caen hacia el centro, su tamaño proporcional al valor logarítmico, su velocidad proporcional al gas price.
-- [ ] **Transaction density** como clima del escenario: alta densidad = actividad frenética, neblina de partículas. Baja densidad = calma, claridad del campo.
-- [ ] **Metabolismo basal visible**: cuando no hay transacciones, el ecosistema sigue vivo, respirando. La capa de nitrógeno tiene su correlato visual — un pulso lento que nunca se detiene.
+- [ ] Visualizar transacciones ETH como partículas que entran al escenario desde el borde exterior — tamaño ∝ log(valor), velocidad ∝ gas price
+- [ ] Transaction density como clima del escenario: alta densidad = neblina de partículas, calor visual. Baja densidad = claridad, silencio visual
+- [ ] Metabolismo basal: cuando no hay transacciones, el sistema sigue respirando — pulso lento de nitrógeno que nunca se detiene, correlato del `~nitrogenLayer` en SC
 
----
-
-## Fase 5: Shader Layer — Atmósfera y Unificación
+### Fase 5: Shader Layer — Atmósfera y Unificación
 **Prioridad: Media-Alta**
 
-- [ ] **Post-processing pass** que unifica todo el escenario:
-  - Bloom proporcional a consensusLevel (alto consenso = resplandor armónico)
-  - Chromatic aberration proporcional a turbulencia (bajo consenso = distorsión)
-  - Film grain sutil ligado a transaction density
+- [ ] Post-processing dinámico ligado a estado del parlamento:
+  - Bloom ∝ consensusLevel (consenso alto = resplandor armónico, pulsante)
+  - Chromatic aberration ∝ turbulencia (bajo consenso = distorsión cromática)
+  - Film grain ligado a transaction density de Ethereum
   - Vignette que respira con el ciclo de 120s del parlamento
+- [ ] Color grading dinámico: consenso → tonos cálidos/dorados; disenso → fríos/fragmentados; emergencia → saturación roja progresiva
+- [ ] Custom GLSL shaders para partículas de species (vertex displacement por noise, fragment color por IUCN status)
 
-- [ ] **Color grading dinámico** que refleja el estado global:
-  - Ecosistema en consenso = tonos cálidos, dorados
-  - Ecosistema en disenso = tonos fríos, fragmentados
-  - Emergencia = saturación roja progresiva
+### Fase 7: Capas Temporales Visibles
+**Prioridad: Alta — esto es lo que distingue la obra**
 
----
+Cada ciclo del motor sonoro tiene que ser legible visualmente sin texto, solo geometría y luz:
 
-## Fase 6: Fullscreen Projector Mode
-**Prioridad: Alta para instalación**
+| Ciclo | Duración | Manifestación Visual Pendiente |
+|-------|----------|-------------------------------|
+| AI Consciousness | 3s | Pulso de escala de la figura Lissajous, onda sutil radial |
+| Species Activity | 4–7s | Respiración de halos de partículas por especie |
+| Fungi Chemical | 6s | Onda luminosa viajando por las líneas de conexión |
+| eDNA Validation | 8s | Flash de validación radial desde cada nodo eDNA |
+| Consensus Building | 15s | Contracción/expansión del campo central |
+| Fungi Seasonal | 30s | Cambio gradual de opacidad de conexiones fúngicas |
+| Parliament Rotation | 120s | Rotación completa, convergencia antes de votación |
 
-- [ ] **Modo projector dedicado** que renderiza solo el `ParliamentStage` en fullscreen sin ningún elemento de UI/dashboard.
-- [ ] **Resolución adaptativa** para proyección (1080p, 4K, ultra-wide).
-- [ ] **Auto-start**: al arrancar `start_ecosystem.sh`, el projector abre automáticamente en fullscreen y comienza a recibir OSC.
-- [ ] **Sin interacción humana requerida**: el escenario es autónomo, su coreografía es generada enteramente por el parlamento.
+- [ ] Arcos de fase integrados en geometría (no UI): cada agente muestra en su órbita qué fracción de su ciclo ha completado
+- [ ] Evento de votación como clímax visual: convergencia de todos los agentes, intensificación de partículas, resultado modifica el campo gravitacional de forma visible y duradera
 
----
+### Fase 8: Identidad Visual por Especie (GLSL)
+- [ ] Filtro visual análogo al filtro de síntesis de cada especie:
+  - Ara macao (BPF): aura pulsante circunferencial — brillo en banda media
+  - Atlapetes (LPF): suavidad, desenfoque gaussiano de partículas
+  - Cecropia (HPF): bordes nítidos, alta frecuencia espacial
+  - Alouatta (BRF notch): hueco en la geometría, oscilación anti-resonante
+  - Tinamus (Allpass/delay): trail de fantasmas, eco visual con decaimiento
+- [ ] InstancedMesh para nubes de partículas por especie (1,000–5,000 instancias por especie)
 
-## Orden de Implementación Recomendado
-
-```
-Fase 0 (Group 1001 fix)
-    │
-    ▼
-Fase 1 (OSC bridge completo)
-    │
-    ▼
-Fase 2.1 (Topología del escenario + Consensus Engine visual)
-    │
-    ▼
-Fase 3 (Capas temporales — primero consensus 15s y parliament 120s)
-    │
-    ▼
-Fase 2.2 (Morfología por agente — species primero, luego fungi, eDNA, AI)
-    │
-    ▼
-Fase 6 (Fullscreen projector mode)
-    │
-    ▼
-Fase 4 (ETH como metabolismo visible)
-    │
-    ▼
-Fase 5 (Shader atmosphere)
-    │
-    ▼
-Fase 3 completada (todos los ciclos temporales visibles + evento de votación)
-```
+### Fase 9: Datos Reales — Integración Científica
+- [ ] Conectar con IUCN Red List API para actualizar status de especies en tiempo real
+- [ ] Integrar datos reales de eBird/Xeno-canto para frecuencias base auténticas
+- [ ] Ciclo de muestreo eDNA real: validación mensual ligada a bases de datos de biodiversidad colombiana
+- [ ] Algorand testnet: registrar cada votación del parlamento como transacción blockchain (BioToken V3)
 
 ---
 
-## Stack Técnico para la Implementación
+## Visión Artística Expandida
 
-Lo que ya existe y se aprovecha:
-- **Three.js** (ya en package.json) — motor de renderizado 3D
-- **AnimationManager** (ya implementado) — loop RAF coordinado
-- **BaseThreeJsModule** (ya implementado) — clase base para módulos Three.js
-- **OSC reception** (ya en InputManager.ts) — recepción de mensajes OSC
-- **Jotai** (ya en package.json) — estado reactivo para datos del parlamento
-- **Tween.js** (ya en package.json) — interpolación de valores
+*Escrita desde la perspectiva de lo que este sistema merece ser como obra — inspirada en los principios de Refik Anadol sobre datos vivos, memoria de la máquina, y naturaleza como dataset.*
 
-Lo que se necesita agregar:
-- **Custom shaders (GLSL)** — para partículas, campos de fuerza, post-processing
-- **InstancedMesh** — para renderizar miles de partículas eficientemente
-- **EffectComposer** — post-processing pipeline de Three.js
-- **BufferGeometry custom** — para las conexiones fúngicas como geometría procedural
+---
+
+### Sobre la escala de los datos
+
+El sistema actual trabaja con 21 agentes y ~130 mensajes OSC por segundo. Esto es un esqueleto funcional, no una obra de instalación. Para que el escenario tenga la densidad perceptual que requiere una sala oscura y una proyección de 4K, el sistema necesita al menos **un orden de magnitud más de datos** fluyendo hacia los visuales.
+
+**Propuesta: Data Augmentation del parlamento**
+
+Cada uno de los 21 agentes debería generar no un punto en el espacio sino una nube de sub-agentes — entidades menores que heredan el estado del agente padre y añaden ruido procedural. Una especie con `presence = 0.8` genera 800 puntos de partícula, no uno. La diferencia entre una obra de arte de datos y un dashboard técnico es esta densidad.
+
+Técnicamente: `InstancedMesh` con 1,000 instancias por agente = 21,000 objetos en escena, todos actualizados por el estado OSC. Three.js lo maneja con facilidad en GPU.
+
+**Propuesta: Datos históricos como sedimento**
+
+El parlamento lleva corriendo desde que arrancó el sistema. Esos datos acumulados — ciclos de votación, fluctuaciones de consenso, niveles de actividad por especie — son la memoria del ecosistema. Visualizarlos como capas sedimentarias detrás de la coreografía en tiempo real: el pasado como fondo, el presente como primer plano. Lo que Anadol llama "machine hallucination" aplicado a datos ecológicos reales.
+
+Técnicamente: buffer circular de los últimos N estados del parlamento, renderizado como geometría histórica translúcida (z-depth menor, opacidad decreciente con la antigüedad).
+
+---
+
+### Sobre el espacio físico de la instalación
+
+El sistema está diseñado para pantalla. Pero su arquitectura — múltiples fuentes de datos autónomas, coreografía no lineal, democratización de la agencia — apunta a algo más grande.
+
+**Propuesta: Multi-canal espacial**
+
+El parlamento tiene una topología concéntrica (AI core → fungi → species → eDNA). Esta topología puede mapearse a espacio físico: el AI core en el centro de la sala, las especies acústicas en anillo interior de proyección, los sitios eDNA en las paredes exteriores. El espacio de la sala se convierte en el espacio del parlamento.
+
+Técnicamente: múltiples instancias de `parliament.html` recibiendo el mismo stream OSC, cada una renderizando una "sección" del escenario para un proyector diferente. El bridge ya soporta múltiples clientes WebSocket simultáneos.
+
+**Propuesta: Audio multicanal**
+
+SuperCollider ya tiene `Pan2` por especie (spatialPos: -1.0 a +1.0). Expandir a 8 canales: cada especie tiene posición en espacio 3D de audio. El visitante que camina por la instalación atraviesa literalmente el campo sonoro del parlamento. La democracia no-humana como experiencia espacial.
+
+---
+
+### Sobre la interfaz de control
+
+El panel OSC actual (sliders en la columna izquierda) es una consola técnica. Para una instalación esto puede evolucionar en dos direcciones opuestas:
+
+**Opción A: Desaparecer** — el parlamento es completamente autónomo, ningún humano controla sus parámetros. Los datos ecológicos reales y las transacciones de Ethereum son la única entrada. El artista no interviene durante la obra. Esta radicalidad es coherente con el marco teórico de Latour.
+
+**Opción B: Convertirse en ritual** — la interfaz se convierte en un ritual de participación. Un mediador (el artista, un científico invitado, un visitante seleccionado) puede activar votaciones, ajustar presencias, disparar emergencias. La interfaz técnica se convierte en gesto político. El panel OSC como artefacto de gobernanza.
+
+---
+
+### Sobre el espectrograma
+
+El espectrograma actual muestra datos sintéticos derivados del estado OSC. El paso siguiente lógico — y el más impactante — es conectarlo a audio real.
+
+**Propuesta: Web Audio API + FFT real**
+
+Si el audio de SuperCollider se enruta a través del sistema como stream (via `getUserMedia` o `AudioWorklet`), el espectrograma puede mostrar el FFT real del parlamento sonoro. La coherencia entre lo que se escucha y lo que se ve en el espectrograma es total. No simulación: transcripción.
+
+Técnicamente: `AnalyserNode` de Web Audio API con `getByteFrequencyData()`, mismo `SpectrogramRenderer`, mismo amber colormap. El FFT ring en Three.js usaría los mismos bins.
+
+---
+
+### Sobre la identidad de las especies
+
+Cada especie tiene una frecuencia base en SC: Ara macao (220Hz), Atlapetes (330Hz), Cecropia (440Hz), Alouatta (165Hz), Tinamus (275Hz). Estos no son números arbitrarios — son las frecuencias fundamentales de sus vocalizaciones en el ecosistema colombiano.
+
+**Propuesta: Grabaciones reales como material**
+
+La síntesis granular en SC puede usar grabaciones de campo reales de estas especies como buffers fuente. El sistema ya tiene la arquitectura granular; solo le faltan los samples. Con audio real, la figura legal y científica del "agente democrático" se vuelve completamente auténtica: el Ara macao literalmente habla en el parlamento con su propia voz.
+
+Banco de datos: Xeno-canto tiene grabaciones CC de todas estas especies. La integración es un `Buffer.read()` en SC.
+
+---
+
+### Próximos hitos concretos (en orden de impacto)
+
+1. **InstancedMesh por especie** — densidad visual inmediata, misma arquitectura OSC existente
+2. **Web Audio FFT real** — coherencia audio/visual total, espectrograma auténtico
+3. **Grabaciones de campo en SC granular** — autenticidad del agente acústico
+4. **Buffer histórico + sedimento visual** — memoria del ecosistema
+5. **Multi-proyector** — escala espacial de instalación
+6. **Algorand blockchain** — cada votación registrada como BioToken transaction
+7. **Datos IUCN/eBird en tiempo real** — validación científica externa
+
+---
+
+## Stack Técnico — Estado Actual
+
+### Ya implementado
+- **Three.js** — motor 3D, UnrealBloomPass, AfterimagePass, OrbitControls
+- **AnimationManager** — loop RAF coordinado
+- **BaseThreeJsModule** — clase base para módulos Three.js
+- **parliamentStore.ts** — store reactivo con WebSocket auto-reconectante
+- **parliament-bridge.js** — bridge UDP OSC ↔ WebSocket ↔ UDP SC, bidireccional
+- **SpectrogramRenderer** — canvas 2D scrolling, colormap amber, log-scale
+- **buildFftBins()** — FFT sintético desde datos OSC, log-scale 20–8kHz
+
+### Por agregar
+- **`InstancedMesh`** — nubes de sub-partículas por agente (1k–5k instancias)
+- **Custom GLSL shaders** — vertex displacement, fragment color por estado OSC
+- **EffectComposer dinámico** — bloom, chromatic aberration, vignette desde datos
+- **Web Audio API** — `AnalyserNode` → FFT real desde audio SC
+- **`Buffer.read()` en SC** — grabaciones de campo Xeno-canto como fuente granular
+- **Algorand SDK** — registro de votaciones como transacciones BioToken
+- **IUCN Red List API** — status de conservación en tiempo real
