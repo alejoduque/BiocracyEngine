@@ -36,15 +36,24 @@ function updateHUD(name: string, key: string) {
   setTimeout(() => hudEl?.classList.remove("flash"), 600);
 }
 
-// ─── Ensure element is visible and layout is committed ──────────────────────
-// Returns the element's current pixel dimensions.
-function forceVisible(el: HTMLElement): { w: number; h: number } {
-  el.style.visibility = "visible";
-  el.style.display    = "block";         // ensure it participates in layout
-  void el.offsetWidth;                   // sync layout flush (reflow)
-  const w = el.offsetWidth  || el.clientWidth  || 800;
-  const h = el.offsetHeight || el.clientHeight || 600;
+// ─── Get reliable pixel dimensions ──────────────────────────────────────────
+// #parliament-stage is width:100%;height:100% inside a flex child.
+// Its own offsetWidth/Height may be 0 if it hasn't been laid out yet.
+// Reading from the parent (#canvas-wrap) is always reliable.
+function getStageSize(): { w: number; h: number } {
+  const parent = stageEl?.parentElement;
+  const w = (parent?.offsetWidth  || parent?.clientWidth  ||
+             stageEl?.offsetWidth  || stageEl?.clientWidth  || 800);
+  const h = (parent?.offsetHeight || parent?.clientHeight ||
+             stageEl?.offsetHeight || stageEl?.clientHeight || 600);
   return { w, h };
+}
+
+// ─── Ensure element is visible and layout is committed ──────────────────────
+function forceVisible(el: HTMLElement): void {
+  el.style.visibility = "visible";
+  el.style.display    = "block";
+  void el.offsetWidth;                   // sync layout flush (reflow)
 }
 
 // ─── Teardown ────────────────────────────────────────────────────────────────
@@ -60,7 +69,6 @@ function clearStage() {
   if (stageEl) {
     // Remove all children left by the previous viz
     while (stageEl.firstChild) stageEl.removeChild(stageEl.firstChild);
-    stageEl.style.display = "";   // let CSS take over again
   }
 }
 
@@ -70,35 +78,34 @@ async function mountParliamentStage(): Promise<Viz> {
     "../main/starter_modules/ParliamentStage"
   );
 
-  // ① Force the container visible BEFORE construction so that the renderer's
-  //    setSize() inside BaseThreeJsModule reads the real pixel dimensions.
-  //    Note: ModuleBase.constructor() runs FIRST (via super()), setting
-  //    visibility:hidden; then BaseThreeJsModule calls setSize() — so we
-  //    must pre-set visibility on the container *before* new ParliamentStage()
-  //    AND we must also call show() afterward because ModuleBase hides it.
   const el = stageEl!;
+
+  // ① Pre-size: give the element explicit pixel dimensions derived from its
+  //    parent BEFORE constructing ParliamentStage, so BaseThreeJsModule's
+  //    renderer.setSize() call reads real values instead of 0×0.
+  //    ModuleBase.constructor() will set visibility:hidden but does NOT
+  //    change width/height, so the explicit px sizes persist through super().
+  const { w: pw, h: ph } = getStageSize();
+  el.style.width    = pw + "px";
+  el.style.height   = ph + "px";
   el.style.visibility = "visible";
-  el.style.display    = "block";
-  void el.offsetWidth; // sync reflow
+  void el.offsetWidth; // sync reflow so offsetWidth = pw
 
   const stage = new ParliamentStage(el) as any;
 
-  // ② ModuleBase constructor hides the element — call show() to restore it.
-  if (typeof stage.show === "function") stage.show({});
-  else el.style.visibility = "visible";
+  // ② ModuleBase constructor sets visibility:hidden — restore immediately.
+  el.style.visibility = "visible";
+  void el.offsetWidth;
 
-  // ③ Defer one RAF tick so the browser fully commits the visible layout,
-  //    then resize the renderer + composer to the actual pixel dimensions.
+  // ③ One RAF tick: browser paints the visible element, then we resize
+  //    renderer + composer to the true layout size (in case flex recalculated).
   await new Promise<void>((resolve) => requestAnimationFrame(() => {
-    const w = el.offsetWidth  || el.clientWidth  || 800;
-    const h = el.offsetHeight || el.clientHeight || 600;
-    if (stage.renderer && !stage.destroyed) {
-      stage.renderer.setSize(w, h);
-      stage.camera.aspect = w / h;
-      stage.camera.updateProjectionMatrix();
-    }
-    if (stage._composer && !stage.destroyed) {
-      stage._composer.setSize(w, h);
+    if (!stage || stage.destroyed) { resolve(); return; }
+    const { w, h } = getStageSize();
+    if (w > 0 && h > 0) {
+      if (stage.renderer) stage.renderer.setSize(w, h);
+      if (stage.camera)   { stage.camera.aspect = w / h; stage.camera.updateProjectionMatrix(); }
+      if (stage._composer) stage._composer.setSize(w, h);
     }
     resolve();
   }));
@@ -111,6 +118,8 @@ async function mountParliamentStage(): Promise<Viz> {
     destroy: () => {
       _activeThreeStage = null;
       try { stage.destroy(); } catch {}
+      // Clear the explicit px sizing we set, restore CSS-driven layout
+      if (el) { el.style.width = ""; el.style.height = ""; el.style.visibility = "hidden"; }
     },
     onState: (_s) => { /* ParliamentStage subscribes to parliamentStore internally */ },
   };
@@ -262,9 +271,15 @@ function mountAsteroidWaves(): Promise<Viz> {
       };
     };
 
-    // ④ Show container first, then defer p5 creation one RAF tick so the
-    //    browser paints the layout before p5 reads container dimensions.
-    forceVisible(container);
+    // ④ Set explicit px size + show, then defer p5 creation one RAF tick so
+    //    the browser commits layout before p5's setup() reads dimensions.
+    const { w: pw, h: ph } = getStageSize();
+    container.style.width      = pw + "px";
+    container.style.height     = ph + "px";
+    container.style.visibility = "visible";
+    container.style.display    = "block";
+    void container.offsetWidth;
+
     requestAnimationFrame(() => {
       if (destroyed) { resolve({ name: "Asteroid Waves", key: "1", destroy: () => {} }); return; }
       myp5 = new p5(sketch);
@@ -275,7 +290,10 @@ function mountAsteroidWaves(): Promise<Viz> {
         destroy: () => {
           destroyed = true;
           if (myp5) { myp5.remove(); myp5 = null; }
+          container.style.width      = "";
+          container.style.height     = "";
           container.style.visibility = "hidden";
+          container.style.display    = "";
         },
         onState: (st) => {
           buildMeteors(st);
@@ -290,7 +308,12 @@ function mountAsteroidWaves(): Promise<Viz> {
 // ─── Mount: slots 2–9 — placeholder ─────────────────────────────────────────
 function mountPlaceholder(key: string): Viz {
   const container = stageEl!;
-  forceVisible(container);
+  const { w: pw, h: ph } = getStageSize();
+  container.style.width      = pw + "px";
+  container.style.height     = ph + "px";
+  container.style.visibility = "visible";
+  container.style.display    = "block";
+  void container.offsetWidth;
 
   const canvas = document.createElement("canvas");
   canvas.style.cssText = "width:100%;height:100%;display:block;";
@@ -320,7 +343,10 @@ function mountPlaceholder(key: string): Viz {
     destroy: () => {
       ro.disconnect();
       canvas.remove();
+      container.style.width      = "";
+      container.style.height     = "";
       container.style.visibility = "hidden";
+      container.style.display    = "";
     },
   };
 }
