@@ -240,6 +240,19 @@ class ParliamentStore {
     this.notify();
   }
 
+  // Apply a slider/button value immediately to local state so visuals respond
+  // without waiting for SC broadcast round-trip.
+  // Mirrors the same paths as applyOSC but driven by browser sliders.
+  patchFromSlider(address: string, args: number[]) {
+    this.applyOSC(address, args);
+  }
+
+  // Public notify — allows external code to trigger subscriber updates
+  // after directly patching state fields not covered by applyOSC paths.
+  notifyListeners() {
+    this.notify();
+  }
+
   // Consume one-shot events (call after reading them in render loop)
   consumeEvents() {
     this.state.events.voteResult = null;

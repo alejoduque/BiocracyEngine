@@ -45,10 +45,36 @@ function sendOSCArgs(address: string, args: number[]) {
 }
 
 // Expose to HTML button onclick
+// Also patches local state so visuals respond immediately (no SC round-trip required)
 (window as any).sendParliamentAction = (address: string, args: number[]) => {
   if (controlWS && controlWsReady) {
     controlWS.send(JSON.stringify({ direction: "toSC", address, args }));
-    console.log(`[ctrl] → SC ${address}`, args);
+  }
+  // Immediate local state patch for visible effect
+  const st = parliamentStore.state;
+  if (!st) return;
+  if (address === "/parliament/emergency" && args.length > 0) {
+    // Emergency: collapse consensus toward 0 — red alert state
+    st.consensus      = Math.max(0, st.consensus - 0.3 * args[0]);
+    st.consensusWave  = args[0];
+    parliamentStore.notifyListeners();
+  } else if (address === "/parliament/vote") {
+    // Vote: trigger a synthetic vote result event for visual flash
+    st.events.voteResult = {
+      consensus: st.consensus,
+      passed: st.consensus > 0.5,
+      yes: Math.round(st.votes * st.consensus),
+      total: st.votes,
+    };
+    parliamentStore.notifyListeners();
+  } else if (address === "/parliament/stop") {
+    // Stop: silence all species activity
+    st.species.forEach((sp) => { sp.activity = 0.0; sp.presence = 0.1; });
+    parliamentStore.notifyListeners();
+  } else if (address === "/parliament/start") {
+    // Start: restore default activity
+    st.species.forEach((sp) => { sp.activity = 0.5; sp.presence = 0.5; });
+    parliamentStore.notifyListeners();
   }
 };
 
@@ -135,7 +161,7 @@ class SpectrogramRenderer {
 function buildFftBins(state: ParliamentState | null, elapsed: number, numBins = 128): Float32Array {
   const bins = new Float32Array(numBins);
 
-  if (!state) {
+  if (!state || !Array.isArray(state.species) || !Array.isArray(state.edna) || !Array.isArray(state.fungi)) {
     for (let i = 0; i < numBins; i++) {
       bins[i] = Math.max(0, Math.sin(elapsed * 1.8 + i * 0.35) * 0.25 + Math.random() * 0.04);
     }
@@ -190,12 +216,12 @@ function buildFftBins(state: ParliamentState | null, elapsed: number, numBins = 
 
 // ─── BioToken V3 calculation ───
 function calcBioToken(state: ParliamentState): number {
-  if (!state) return 0;
+  if (!state || !Array.isArray(state.species) || !Array.isArray(state.edna) || !Array.isArray(state.fungi)) return 0;
   const avgPresence  = state.species.reduce((s, sp) => s + sp.presence, 0) / 5;
   const avgActivity  = state.species.reduce((s, sp) => s + sp.activity, 0) / 5;
   const avgEdnaBio   = state.edna.reduce((s, e) => s + e.biodiversity, 0) / 8;
   const avgFungiChem = state.fungi.reduce((s, f) => s + f.chemical, 0) / 4;
-  const aiOpt        = state.ai.optimization / 127;
+  const aiOpt        = state.ai?.optimization / 127 || 0;
   // IUCN weight: highest urgency species dominates
   const maxIucnMult  = Math.max(...IUCN_MULT) / 5; // normalize to 0-1
   return avgPresence * avgActivity * avgEdnaBio * avgFungiChem * aiOpt * maxIucnMult;
@@ -318,10 +344,43 @@ async function init() {
   }
 
   // ─── OSC SLIDER WIRING ───
-  // Sliders come in 3 flavors:
-  //  1. Single value: data-osc="/parliament/volume"   → sendOSC(addr, value)
-  //  2. Agent+value:  data-osc="/agents/..."  data-agent-id="N" → sendOSCArgs(addr, [N, value])
-  //  3. FX param:     data-osc="/parliament/fx/..." → sendOSC(addr, value) (bridge logs for now)
+  // Each slider:
+  //   1. Sends OSC to SC over WebSocket (round-trip visual via broadcast)
+  //   2. Also patches parliamentStore state IMMEDIATELY so visuals respond
+  //      without needing SC to echo the value back.
+  //
+  // Slider addr → store mutation mapping:
+  //   /parliament/consensus         → state.consensus
+  //   /parliament/rotation          → state.rotation
+  //   /agents/species/activity [id] → state.species[id].activity
+  //   /agents/species/presence [id] → state.species[id].presence
+  //   /agents/edna/biodiversity [id]→ state.edna[id].biodiversity
+  //   /agents/fungi/chemical [id]   → state.fungi[id].chemical
+  //   /agents/ai/consciousness      → state.ai.consciousness
+  //   /parliament/vote              → trigger vote event
+  //   /parliament/emergency [v]     → state.consensus = v (emergency override)
+  //   FX paths (/parliament/fx/*)   → SC only (no local state equivalent)
+
+  function patchStoreFromSlider(addr: string, id: number | null, v: number) {
+    const st = parliamentStore.state;
+    if (!st) return;
+    if (addr === "/parliament/consensus")           { st.consensus = v; }
+    else if (addr === "/parliament/rotation")       { st.rotation = v; }
+    else if (addr === "/agents/species/activity" && id !== null && st.species[id])
+                                                    { st.species[id].activity = v; }
+    else if (addr === "/agents/species/presence" && id !== null && st.species[id])
+                                                    { st.species[id].presence = v; }
+    else if (addr === "/agents/edna/biodiversity" && id !== null && st.edna[id])
+                                                    { st.edna[id].biodiversity = v; }
+    else if (addr === "/agents/fungi/chemical" && id !== null && st.fungi[id])
+                                                    { st.fungi[id].chemical = v; }
+    else if (addr === "/agents/ai/consciousness")   { st.ai.consciousness = v; }
+    else if (addr === "/parliament/emergency")      { st.consensus = Math.max(0, 1 - v); }
+    // volume / fx paths: no local state equivalent, SC handles them
+    else return;
+    // Notify all subscribers (ParliamentStage, AsteroidWaves, telemetry panel)
+    parliamentStore.notifyListeners();
+  }
 
   document.querySelectorAll<HTMLInputElement>("input[type='range'][data-osc]").forEach((slider) => {
     const addr    = slider.dataset.osc!;
@@ -330,25 +389,25 @@ async function init() {
     // Derive display element id from addr + agentId
     let dispId: string;
     if (agentId !== undefined) {
-      // e.g. /agents/species/activity → sp-act, /agents/edna/biodiversity → edna-bio
       const key = addr.replace("/agents/","").replace(/\//g,"-");
       dispId = `disp-${key}-${agentId}`;
     } else {
-      // e.g. /parliament/volume → volume, /parliament/fx/reverb → reverb
       const key = addr.split("/").pop()!;
       dispId = `disp-${key}`;
     }
     const dispEl = document.getElementById(dispId);
 
     slider.addEventListener("input", () => {
-      const v = parseFloat(slider.value);
+      const v  = parseFloat(slider.value);
+      const id = agentId !== undefined ? parseInt(agentId) : null;
       if (dispEl) dispEl.textContent = v.toFixed(2);
 
-      if (agentId !== undefined) {
-        sendOSCArgs(addr, [parseInt(agentId), v]);
-      } else {
-        sendOSC(addr, v);
-      }
+      // 1. Send to SC
+      if (id !== null) sendOSCArgs(addr, [id, v]);
+      else             sendOSC(addr, v);
+
+      // 2. Patch local store immediately for instant visual feedback
+      patchStoreFromSlider(addr, id, v);
     });
   });
 
@@ -382,6 +441,7 @@ async function init() {
   })();
 
   parliamentStore.subscribe((state) => {
+    if (!state || !Array.isArray(state.species)) return;
     currentState = state;
 
     // Connection
