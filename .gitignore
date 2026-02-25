@@ -12,6 +12,9 @@ __pycache__/
 venv/
 .env
 
-# Forks & External Deps
-nw_wrld_local/
+# External Deps (original nw_wrld fork — not ours)
 nw_wrld_biocracy/
+
+# Build artifacts & logs
+node_modules/
+sclang_log.txt

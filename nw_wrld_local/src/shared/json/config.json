@@ -1,0 +1,55 @@
+{
+  "input": {
+    "type": "midi",
+    "deviceName": "IAC Driver Bus 1",
+    "trackSelectionChannel": 2,
+    "methodTriggerChannel": 1,
+    "velocitySensitive": false,
+    "port": 8000
+  },
+  "aspectRatios": [
+    {
+      "id": "default",
+      "label": "Default (Right 1/2)",
+      "width": "100vw",
+      "height": "100vh"
+    },
+    {
+      "id": "fullscreen",
+      "label": "Full Screen",
+      "width": "100vw",
+      "height": "100vh"
+    },
+    {
+      "id": "16-9",
+      "label": "16:9 (landscape)",
+      "width": "100vw",
+      "height": "56.25vw"
+    },
+    {
+      "id": "9-16",
+      "label": "9:16 (portrait)",
+      "width": "56.25vh",
+      "height": "100vh"
+    },
+    {
+      "id": "4-5",
+      "label": "4:5 (portrait)",
+      "width": "80vh",
+      "height": "100vh"
+    }
+  ],
+  "backgroundColors": [
+    {
+      "id": "grey",
+      "label": "Grey",
+      "value": "#151715"
+    },
+    {
+      "id": "black",
+      "label": "Black",
+      "value": "#000000"
+    }
+  ],
+  "autoRefresh": true
+}

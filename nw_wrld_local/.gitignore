@@ -1,0 +1,19 @@
+# Dependencies
+node_modules/
+
+# Build output
+dist/
+build/
+
+# Logs
+*.log
+sclang_log.txt
+
+# OS
+.DS_Store
+
+# Electron build artifacts
+entitlements.mac.*.plist
+logo.icns
+logo.ico
+logo.png

@@ -1,0 +1,15 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "checkJs": true
+  },
+  "include": [
+    "src/types/**/*.ts",
+    "src/types/**/*.d.ts",
+    "src/main/InputManager.ts",
+    "src/shared/validation/inputEventValidation.ts",
+    "src/shared/validation/jsonBridgeValidation.ts",
+    "src/shared/json/readJsonWithBackup.ts"
+  ],
+  "exclude": ["node_modules", "dist", "release", "build"]
+}
