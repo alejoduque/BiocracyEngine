@@ -3,69 +3,79 @@
 // Keys 0–9 swap what renders inside #parliament-stage.
 //   0 → ParliamentStage (Three.js ecological parliament)
 //   1 → AsteroidWaves   (p5.js amber perlin wave graph)
-//   2–9 → reserved (no-op with "coming soon" indicator)
-//
-// Left/right panels, spectrogram, and telemetry are NOT touched.
-// The switcher just tears down the old viz and mounts the new one
-// in the same #parliament-stage container.
+//   2–9 → reserved slots
 
 import p5 from "p5";
 import parliamentStore from "./parliament/parliamentStore";
+import type { ParliamentState } from "./parliament/parliamentStore";
 
-// ─── Shared state feed from parliament ──────────────────────────────────────
-// The switcher gives each viz a live state ref so they can react to OSC data
-export interface VizContext {
-  container: HTMLElement;
-  getState: () => import("./parliament/parliamentStore").ParliamentState | null;
-}
-
-// ─── Viz interface ──────────────────────────────────────────────────────────
+// ─── Viz interface ───────────────────────────────────────────────────────────
 interface Viz {
   name: string;
-  key: string;        // "0" – "9"
+  key: string;
   destroy: () => void;
-  // Optional: called each time parliament state updates
-  onState?: (state: import("./parliament/parliamentStore").ParliamentState) => void;
+  onState?: (state: ParliamentState) => void;
 }
 
-// ─── Global state ────────────────────────────────────────────────────────────
+// ─── Module-level refs ───────────────────────────────────────────────────────
 let currentViz: Viz | null = null;
-let currentKey  = "0";
+let currentKey = "";           // empty = nothing mounted yet
 let stageEl: HTMLElement | null = null;
-let getLatestState: () => any = () => null;
-
-// ─── HUD element ────────────────────────────────────────────────────────────
 let hudEl: HTMLElement | null = null;
+let getLatestState: () => ParliamentState | null = () => null;
 
+// Exposed for parliamentEntry label tracking + FFT feed
+let _activeThreeStage: any = null;
+export function getActiveThreeStage(): any { return _activeThreeStage; }
+
+// ─── HUD ─────────────────────────────────────────────────────────────────────
 function updateHUD(name: string, key: string) {
   if (!hudEl) return;
-  hudEl.textContent = `[${key}] ${name}`;
+  hudEl.textContent = `[${key}] ${name.toUpperCase()}`;
   hudEl.classList.add("flash");
   setTimeout(() => hudEl?.classList.remove("flash"), 600);
 }
 
-// ─── Stage clear helper ───────────────────────────────────────────────────────
+// ─── Teardown ────────────────────────────────────────────────────────────────
 function clearStage() {
   _activeThreeStage = null;
   if (currentViz) {
-    try { currentViz.destroy(); } catch (e) { console.warn("[switcher] destroy error:", e); }
+    try { currentViz.destroy(); } catch (e) {
+      console.warn("[switcher] destroy error:", e);
+    }
     currentViz = null;
   }
-  // Remove any canvas/elements the viz may have left in the DOM
   if (stageEl) {
+    // Remove all children left by the previous viz
     while (stageEl.firstChild) stageEl.removeChild(stageEl.firstChild);
-    stageEl.style.visibility = "hidden";
   }
 }
 
-// ─── Mount helpers ────────────────────────────────────────────────────────────
+// ─── Mount: slot 0 — Three.js Parliament ────────────────────────────────────
 async function mountParliamentStage(): Promise<Viz> {
   const { default: ParliamentStage } = await import(
     "../main/starter_modules/ParliamentStage"
   );
-  const stage = new ParliamentStage(stageEl!) as any;
+
+  // Make visible and flush layout BEFORE construction so renderer.setSize()
+  // reads the correct offsetWidth/Height. ModuleBase constructor will re-hide
+  // it, so we show it again immediately after.
   stageEl!.style.visibility = "visible";
-  _activeThreeStage = stage;  // expose for label tracking + FFT bin feed
+  void stageEl!.offsetWidth; // sync layout flush
+
+  const stage = new ParliamentStage(stageEl!) as any;
+
+  // ModuleBase constructor sets visibility:hidden — restore it
+  stageEl!.style.visibility = "visible";
+  void stageEl!.offsetWidth;
+
+  // Re-trigger resize so renderer fills the now-visible container correctly
+  if (stage.onWindowResize) stage.onWindowResize();
+  if (stage._composer) {
+    stage._composer.setSize(stageEl!.offsetWidth, stageEl!.offsetHeight);
+  }
+
+  _activeThreeStage = stage;
 
   return {
     name: "Parliament of All Things",
@@ -73,185 +83,180 @@ async function mountParliamentStage(): Promise<Viz> {
     destroy: () => {
       _activeThreeStage = null;
       try { stage.destroy(); } catch {}
+      if (stageEl) stageEl.style.visibility = "hidden";
     },
-    onState: (_s) => {
-      // ParliamentStage subscribes to parliamentStore internally
-    },
+    onState: (_s) => { /* ParliamentStage subscribes to parliamentStore internally */ },
   };
 }
 
+// ─── Mount: slot 1 — AsteroidWaves (p5) ─────────────────────────────────────
 function mountAsteroidWaves(): Viz {
   const container = stageEl!;
   container.style.visibility = "visible";
+  void container.offsetWidth; // layout flush
 
-  // ── Amber palette matching parliament UI ─────────────────────────────────
-  const AMBER         = [255, 136,   0] as const;
-  const AMBER_BRIGHT  = [255, 204,  68] as const;
-  const AMBER_DIM     = [102,  51,   0] as const;
-  const AMBER_MID     = [180,  90,   0] as const;
-  const BG            = [0,    8,    4] as const;
+  // Amber palette
+  const AMBER        = [255, 136,   0] as const;
+  const AMBER_BRIGHT = [255, 204,  68] as const;
+  const AMBER_DIM    = [102,  51,   0] as const;
+  const AMBER_MID    = [180,  90,   0] as const;
+  const BG           = [  0,   8,   4] as const;
+  const SPECIES_COLS = [AMBER_BRIGHT, AMBER, AMBER_MID, AMBER_DIM, AMBER] as const;
+  const SPECIES_LBLS = ["Ara", "Atl", "Cec", "Alo", "Tin"] as const;
 
   let destroyed = false;
   let myp5: p5 | null = null;
+  let meteors: Array<{ mass: number; label: string; color: readonly [number, number, number] }> = [];
 
-  // Live state snapshot — updated by switcher's onState callback
-  let liveState: any = getLatestState();
+  function buildMeteors(st: ParliamentState | null) {
+    if (!st || !Array.isArray(st.species)) {
+      meteors = Array.from({ length: 5 }, (_, i) => ({
+        mass: 50 + i * 60,
+        label: SPECIES_LBLS[i],
+        color: SPECIES_COLS[i % SPECIES_COLS.length],
+      }));
+      return;
+    }
+    meteors = st.species.map((sp, i) => ({
+      mass: 20 + sp.presence * 200 + sp.activity * 150,
+      label: SPECIES_LBLS[i] ?? `S${i}`,
+      color: SPECIES_COLS[i % SPECIES_COLS.length],
+    }));
+  }
+
+  // Prime meteors immediately from whatever state we have
+  buildMeteors(getLatestState());
 
   const sketch = (p: p5) => {
-    let noiseOffsetX = 0.0;
-    let noiseOffsetY = 0.0;
-    let meteors: Array<{ mass: number; label: string; color: readonly [number,number,number] }> = [];
-
-    // Build meteor list from parliament species + eco state
-    function buildMeteorsFromState(st: any) {
-      if (!st) {
-        // Fallback: 5 synthetic meteors
-        meteors = Array.from({ length: 5 }, (_, i) => ({
-          mass: 50 + i * 60,
-          label: `SYN-${i}`,
-          color: i % 2 === 0 ? AMBER : AMBER_MID,
-        }));
-        return;
-      }
-      // Map species to meteor waves
-      const speciesColors = [AMBER_BRIGHT, AMBER, AMBER_MID, AMBER_DIM, AMBER] as const;
-      meteors = st.species.map((sp: any, i: number) => ({
-        mass: 20 + sp.presence * 200 + sp.activity * 150,
-        label: [`Ara`, `Atl`, `Cec`, `Alo`, `Tin`][i],
-        color: speciesColors[i % speciesColors.length],
-      }));
-    }
+    let noiseX = 0.0;
+    let noiseY = 0.0;
 
     p.setup = () => {
-      const canvas = p.createCanvas(container.clientWidth, container.clientHeight);
-      canvas.parent(container);
-      p.textSize(9);
-      p.textAlign(p.CENTER, p.CENTER);
-      p.textFont("'SF Mono', 'Fira Code', 'Consolas', monospace");
-      buildMeteorsFromState(liveState);
+      // Read dimensions after visibility + layout flush above
+      const w = container.clientWidth  || container.offsetWidth  || 800;
+      const h = container.clientHeight || container.offsetHeight || 600;
+      const cvs = p.createCanvas(w, h);
+      cvs.parent(container);
+      p.textFont("'SF Mono','Fira Code','Consolas',monospace");
+    };
+
+    p.windowResized = () => {
+      if (destroyed) return;
+      p.resizeCanvas(container.clientWidth, container.clientHeight);
     };
 
     p.draw = () => {
-      if (destroyed) return;
+      if (destroyed) { p.noLoop(); return; }
 
-      // Background: near-black with slight amber tint
-      p.background(BG[0], BG[1], BG[2], 245);
-
-      const centerY    = p.height / 2;
-      const maxDist    = (p.height / 2) * 0.88;
-      const totalWaves = meteors.length;
-
-      // ── Grid lines (horizontal, dim) ─────────────────────────────────────
-      p.stroke(AMBER_DIM[0], AMBER_DIM[1], AMBER_DIM[2], 40);
-      p.strokeWeight(0.5);
-      const gridLines = 6;
-      for (let g = 0; g <= gridLines; g++) {
-        const gy = p.map(g, 0, gridLines, 0, p.height);
-        p.line(0, gy, p.width, gy);
+      // Guard: if canvas was created with 0 size, resize now
+      if (p.width < 10 || p.height < 10) {
+        const w = container.clientWidth  || container.offsetWidth;
+        const h = container.clientHeight || container.offsetHeight;
+        if (w > 10 && h > 10) p.resizeCanvas(w, h);
+        return;
       }
 
-      // ── Vertical scan lines (amber, very dim) ────────────────────────────
+      p.background(BG[0], BG[1], BG[2], 245);
+
+      const centerY = p.height / 2;
+      const maxDist = (p.height / 2) * 0.85;
+      const n = meteors.length || 1;
+
+      // ── Dim grid ──────────────────────────────────────────────────────────
+      p.strokeWeight(0.5);
+      for (let g = 0; g <= 6; g++) {
+        p.stroke(AMBER_DIM[0], AMBER_DIM[1], AMBER_DIM[2], 35);
+        const gy = p.map(g, 0, 6, 0, p.height);
+        p.line(0, gy, p.width, gy);
+      }
       for (let x = 0; x < p.width; x += 40) {
-        p.stroke(AMBER_DIM[0], AMBER_DIM[1], AMBER_DIM[2], 15);
+        p.stroke(AMBER_DIM[0], AMBER_DIM[1], AMBER_DIM[2], 12);
         p.line(x, 0, x, p.height);
       }
 
-      // ── Center reference line ─────────────────────────────────────────────
-      p.stroke(AMBER_DIM[0], AMBER_DIM[1], AMBER_DIM[2], 60);
+      // ── Center axis ───────────────────────────────────────────────────────
+      p.stroke(AMBER_DIM[0], AMBER_DIM[1], AMBER_DIM[2], 55);
       p.strokeWeight(1);
       p.line(0, centerY, p.width, centerY);
 
-      // ── Meteor waves ──────────────────────────────────────────────────────
-      meteors.forEach((meteor, index) => {
-        const col = meteor.color;
-        // Alpha: brighter waves for more active species
-        const alpha = 120 + Math.floor((index / totalWaves) * 100);
+      // ── Waves ─────────────────────────────────────────────────────────────
+      meteors.forEach((m, idx) => {
+        const col   = m.color;
+        const alpha = 100 + Math.floor((idx / n) * 120);
+        const laneY = centerY + ((idx - (n - 1) / 2) / n) * maxDist * 0.4;
 
         p.stroke(col[0], col[1], col[2], alpha);
-        p.strokeWeight(1.2);
+        p.strokeWeight(1.3);
         p.noFill();
         p.beginShape();
 
-        let highestDistortion = 0;
-        let peakX = 0;
-        let peakY = centerY;
-
-        // Stagger Y so waves don't all overlap in the center
-        const laneOffset = ((index - (totalWaves - 1) / 2) / totalWaves) * maxDist * 0.35;
+        let peakDist = 0, peakX = p.width / 2, peakY = laneY;
+        const distMag = Math.min(m.mass / 10, maxDist * 0.72);
 
         for (let x = 0; x < p.width; x += 3) {
-          const distMag = Math.min(meteor.mass / 10, maxDist * 0.7);
-          const noiseVal = p.noise(noiseOffsetX + x * 0.008, noiseOffsetY + index * 1.5);
-          const distortion = (noiseVal - 0.5) * 2 * distMag;
-          const y = centerY + laneOffset - distortion;
+          const nv   = p.noise(noiseX + x * 0.008, noiseY + idx * 1.5);
+          const dist = (nv - 0.5) * 2 * distMag;
+          const y    = laneY - dist;
           p.vertex(x, y);
-
-          if (Math.abs(distortion) > highestDistortion) {
-            highestDistortion = Math.abs(distortion);
-            peakX = x;
-            peakY = y;
-          }
+          if (Math.abs(dist) > peakDist) { peakDist = Math.abs(dist); peakX = x; peakY = y; }
         }
         p.endShape();
 
-        // ── Peak glow dot ──────────────────────────────────────────────────
+        // Peak dot
         p.noStroke();
-        p.fill(col[0], col[1], col[2], 200);
-        p.ellipse(peakX, peakY, 4, 4);
+        p.fill(col[0], col[1], col[2], 210);
+        p.ellipse(peakX, peakY, 5, 5);
 
-        // ── Label at peak (amber, monospace) ───────────────────────────────
-        p.fill(col[0], col[1], col[2], 200);
-        p.noStroke();
+        // Peak label
         p.textSize(8);
-        p.text(meteor.label.toUpperCase(), peakX, peakY - 13);
+        p.textAlign(p.CENTER, p.BOTTOM);
+        p.fill(col[0], col[1], col[2], 190);
+        p.text(m.label, peakX, peakY - 5);
+
+        // Right-edge mass readout
+        p.textAlign(p.RIGHT, p.CENTER);
+        p.fill(col[0], col[1], col[2], 100);
+        p.textSize(7);
+        p.text(`${m.mass.toFixed(0)}`, p.width - 6, laneY);
       });
 
-      // ── Corner label ─────────────────────────────────────────────────────
-      p.fill(AMBER_DIM[0], AMBER_DIM[1], AMBER_DIM[2], 120);
+      // ── Footer labels ──────────────────────────────────────────────────────
+      p.fill(AMBER_DIM[0], AMBER_DIM[1], AMBER_DIM[2], 100);
       p.textSize(7);
       p.textAlign(p.LEFT, p.BOTTOM);
-      p.text("ASTEROID WAVES · SPECIES ACTIVITY", 8, p.height - 5);
+      p.text("ASTEROID WAVES · SPECIES ACTIVITY + PRESENCE", 8, p.height - 4);
       p.textAlign(p.RIGHT, p.BOTTOM);
-      const massTotal = meteors.reduce((s, m) => s + m.mass, 0);
-      p.text(`Σmass ${massTotal.toFixed(0)}`, p.width - 8, p.height - 5);
-      p.textAlign(p.CENTER, p.CENTER); // restore
+      const totalMass = meteors.reduce((s, m) => s + m.mass, 0);
+      p.text(`Σ ${totalMass.toFixed(0)}`, p.width - 6, p.height - 4);
 
-      // ── Advance noise ────────────────────────────────────────────────────
-      noiseOffsetX += 0.007;
-      noiseOffsetY += 0.007;
-    };
-
-    // Rebuild meteor list when window signals a state update
-    (container as any)._asteroidUpdateState = (st: any) => {
-      liveState = st;
-      buildMeteorsFromState(st);
+      noiseX += 0.007;
+      noiseY += 0.007;
     };
   };
 
   myp5 = new p5(sketch);
 
-  return {
+  const viz: Viz = {
     name: "Asteroid Waves",
     key: "1",
     destroy: () => {
       destroyed = true;
-      delete (container as any)._asteroidUpdateState;
       if (myp5) { myp5.remove(); myp5 = null; }
+      if (container) container.style.visibility = "hidden";
     },
     onState: (st) => {
-      const fn = (container as any)._asteroidUpdateState;
-      if (fn) fn(st);
+      buildMeteors(st);
     },
   };
+
+  return viz;
 }
 
-// ─── VIZ REGISTRY ────────────────────────────────────────────────────────────
-// Keys "2"–"9" return a simple placeholder so pressing them doesn't crash
+// ─── Mount: slots 2–9 — placeholder ─────────────────────────────────────────
 function mountPlaceholder(key: string): Viz {
   const container = stageEl!;
   container.style.visibility = "visible";
 
-  // Simple canvas with amber "coming soon" text
   const canvas = document.createElement("canvas");
   canvas.style.cssText = "width:100%;height:100%;display:block;";
   container.appendChild(canvas);
@@ -262,12 +267,12 @@ function mountPlaceholder(key: string): Viz {
     canvas.height = container.clientHeight || 600;
     ctx.fillStyle = "#000804";
     ctx.fillRect(0, 0, canvas.width, canvas.height);
-    ctx.font = "11px 'SF Mono','Fira Code','Consolas',monospace";
-    ctx.fillStyle = "rgba(102,51,0,0.6)";
+    ctx.font      = "10px 'SF Mono','Fira Code','Consolas',monospace";
+    ctx.fillStyle = "rgba(102,51,0,0.55)";
     ctx.textAlign = "center";
     ctx.textBaseline = "middle";
-    ctx.fillText(`[${key}] — VISUALIZATION SLOT RESERVED`, canvas.width / 2, canvas.height / 2);
-    ctx.fillStyle = "rgba(102,51,0,0.3)";
+    ctx.fillText(`[${key}]  VISUALIZATION SLOT RESERVED`, canvas.width / 2, canvas.height / 2);
+    ctx.fillStyle = "rgba(102,51,0,0.25)";
     ctx.fillText("add module to visualizationSwitcher.ts", canvas.width / 2, canvas.height / 2 + 18);
   }
   draw();
@@ -275,65 +280,54 @@ function mountPlaceholder(key: string): Viz {
   ro.observe(container);
 
   return {
-    name: `Slot ${key} — Reserved`,
+    name: `Slot ${key}`,
     key,
     destroy: () => {
       ro.disconnect();
-      if (canvas.parentNode) canvas.parentNode.removeChild(canvas);
+      canvas.remove();
+      container.style.visibility = "hidden";
     },
   };
 }
 
-// ─── MAIN SWITCH FUNCTION ─────────────────────────────────────────────────────
+// ─── Switch ──────────────────────────────────────────────────────────────────
 async function switchTo(key: string) {
-  if (key === currentKey && currentViz) return; // already there
+  if (key === currentKey && currentViz) return;
   clearStage();
   currentKey = key;
 
   let viz: Viz;
   try {
-    if (key === "0") {
-      viz = await mountParliamentStage();
-    } else if (key === "1") {
-      viz = mountAsteroidWaves();
-      // Feed current state immediately
-      const st = getLatestState();
-      if (st && viz.onState) viz.onState(st);
-    } else {
-      viz = mountPlaceholder(key);
-    }
+    if (key === "0")      viz = await mountParliamentStage();
+    else if (key === "1") viz = mountAsteroidWaves();
+    else                  viz = mountPlaceholder(key);
   } catch (e) {
     console.error("[switcher] mount failed:", e);
+    currentKey = ""; // allow retry
     return;
   }
 
   currentViz = viz;
   updateHUD(viz.name, viz.key);
+
+  // Feed current state immediately to the new viz
+  const st = getLatestState();
+  if (st && viz.onState) viz.onState(st);
 }
 
-// ─── KEYBOARD HANDLER ─────────────────────────────────────────────────────────
+// ─── Keyboard ────────────────────────────────────────────────────────────────
 function onKeyDown(e: KeyboardEvent) {
-  // Only digits 0–9, not if typing in an input
   if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
   if (!/^[0-9]$/.test(e.key)) return;
   e.preventDefault();
   switchTo(e.key);
 }
 
-// ─── ACTIVE THREE.JS STAGE ACCESSOR ─────────────────────────────────────────
-// Returns the live ParliamentStage instance when slot 0 is active, else null.
-// Used by parliamentEntry.ts to feed FFT bins and project 3D labels.
-let _activeThreeStage: any = null;
-
-export function getActiveThreeStage(): any {
-  return _activeThreeStage;
-}
-
-// ─── PUBLIC INIT ─────────────────────────────────────────────────────────────
+// ─── Public API ───────────────────────────────────────────────────────────────
 export function initSwitcher(
   stage: HTMLElement,
   hud: HTMLElement,
-  stateGetter: () => any
+  stateGetter: () => ParliamentState | null
 ) {
   stageEl        = stage;
   hudEl          = hud;
@@ -341,12 +335,12 @@ export function initSwitcher(
 
   window.addEventListener("keydown", onKeyDown);
 
-  // Subscribe to parliament state so active viz gets live data
+  // Forward every parliament state update to the active viz
   parliamentStore.subscribe((state) => {
     if (currentViz?.onState) currentViz.onState(state);
   });
 
-  // Start with slot 0
+  // Default to slot 0
   switchTo("0");
 }
 
