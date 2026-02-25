@@ -218,9 +218,9 @@ class ParliamentStage extends BaseThreeJsModule {
     this._chromaPass.uniforms.amount.value = 0.0;
     this._composer.addPass(this._chromaPass);
 
-    // 4. Film grain — noiseIntensity driven by ETH CO₂/transaction density
-    //    FilmPass(noiseIntensity, scanlineIntensity, count, grayscale)
-    this._filmPass = new FilmPass(0.0, 0.0, 648, false);
+    // 4. Film grain — intensity driven by ETH CO₂/transaction density
+    //    FilmPass(intensity, grayscale) — modern three.js API
+    this._filmPass = new FilmPass(0.0, false);
     this._composer.addPass(this._filmPass);
 
     // 5. Color grading — warmth / emergency
@@ -509,10 +509,9 @@ class ParliamentStage extends BaseThreeJsModule {
     this._chromaPass.uniforms.amount.value = this._smoothTurbulence * 0.010;
 
     // ── 3. FILM GRAIN: ETH CO₂ + nitrogen density ─────────────────────────
-    //    noiseIntensity: 0 (no ETH activity) → 0.35 (high gas price / tx density)
+    //    intensity: 0 (no ETH activity) → 0.35 (high gas price / tx density)
     const grainIntensity = this._smoothCo2 * 0.30 + nitrogen * 0.08;
-    this._filmPass.uniforms.nIntensity.value = grainIntensity;
-    this._filmPass.uniforms.sIntensity.value = grainIntensity * 0.15;
+    this._filmPass.uniforms.intensity.value = grainIntensity;
 
     // ── 4. AFTERIMAGE: persistence damp from activity ─────────────────────
     //    High species activity = more trails (0.93), low = less ghost (0.82)
