@@ -248,7 +248,7 @@ class ParliamentStage extends BaseThreeJsModule {
     this.buildConsensusCore();
 
     parliamentStore.connect();
-    parliamentStore.subscribe((state) => { this.parliamentState = state; });
+    this._unsubscribeStore = parliamentStore.subscribe((state) => { this.parliamentState = state; });
 
     this.setCustomAnimate(() => this.updateStage());
     if (!this.isInitialized) {
@@ -676,7 +676,8 @@ class ParliamentStage extends BaseThreeJsModule {
   static methods = [...BaseThreeJsModule.methods];
 
   destroy() {
-    parliamentStore.disconnect();
+    // Unsubscribe from store but do NOT disconnect — it's a singleton shared across viz switches.
+    if (this._unsubscribeStore) { this._unsubscribeStore(); this._unsubscribeStore = null; }
     super.destroy();
   }
 }
