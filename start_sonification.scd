@@ -30,12 +30,17 @@
     ].do { |file|
         var path = basePath +/+ file;
         ("Loading " ++ file ++ "...").postln;
-        
+
         try {
             if(File.exists(path)) {
                 path.load;
                 ("Loaded at: " ++ Date.getDate.format("%Y-%m-%d %H:%M:%S")).postln;
-                1.wait; // Give each file time to initialize
+                // Server config needs time to boot; synthdefs need time for async compilation
+                if(file.contains("server_config") or: { file.contains("synthdefs") }) {
+                    3.wait;
+                } {
+                    1.wait;
+                };
             } {
                 ("File not found: " ++ path).warn;
             };

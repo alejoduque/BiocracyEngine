@@ -16,3 +16,6 @@ venv/
 
 # SuperCollider
 *.scd~
+node_modules
+sclang_log.txt
+

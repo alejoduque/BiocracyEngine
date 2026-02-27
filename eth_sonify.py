@@ -20,18 +20,18 @@ osc_client = udp_client.SimpleUDPClient(OSC_IP, OSC_PORT)
 # Map Ethereum value to a musical note (MIDI note)
 def map_value_to_note(value, min_note=36, max_note=84):
     # Convert Wei to Ether
-    ether_value = w3.from_wei(value, 'ether')
+    ether_value = float(w3.from_wei(value, 'ether'))
 
-    # Map logarithmically (better for financial values)
-    if ether_value == 0:
+    if ether_value <= 0:
         return min_note
 
-    # Log scale with some tuning to make it musical
-    # Add 1 to avoid log(0)
-    log_value = min(20, max(0, 10 * math.log10(float(ether_value) + 1) - 10))
+    # Log scale tuned for typical ETH TX range (0.0001 to 100 ETH)
+    # log10(0.0001)=-4, log10(0.01)=-2, log10(1)=0, log10(100)=2
+    log_val = math.log10(ether_value)
+    # Map -4..2 → 0..1
+    normalized = max(0.0, min(1.0, (log_val + 4.0) / 6.0))
 
-    # Map to note range
-    note = min_note + (log_value / 20) * (max_note - min_note)
+    note = min_note + normalized * (max_note - min_note)
     return int(note)
 
 # Map gas price to velocity/volume
@@ -96,7 +96,11 @@ async def poll_transactions(poll_interval=3):
 
                             # Extract parameters
                             value = tx_dict['value']
-                            gas_price = tx_dict.get('gasPrice', 0)  # Handle EIP-1559 transactions
+                            # EIP-1559 txs use maxFeePerGas, not gasPrice — fall back through all options
+                            gas_price = (tx_dict.get('gasPrice')
+                                         or tx_dict.get('maxFeePerGas')
+                                         or tx_dict.get('maxPriorityFeePerGas')
+                                         or 20_000_000_000)  # 20 gwei fallback
                             to_address = tx_dict.get('to')
 
                             # Map to musical parameters
@@ -110,16 +114,16 @@ async def poll_transactions(poll_interval=3):
                             # Print info
                             print(f"TX: {tx_hash[:10]}... Value: {w3.from_wei(value, 'ether'):.5f} ETH → Note: {note}, Vel: {velocity}")
 
-                            # Send OSC messages
-                            osc_client.send_message("/eth/note", [note, velocity, instrument, duration])
-
-                            # Additional data for visualization
+                            # Send tx_info FIRST so SC has the real values when /eth/note fires
                             osc_client.send_message("/eth/tx_info", [
                                 str(tx_hash)[:10],                          # Transaction hash (first 10 chars)
                                 float(w3.from_wei(value, 'ether')),         # Value in ether
                                 float(w3.from_wei(gas_price, 'gwei')),      # Gas price in gwei
                                 str(to_address)[-8:] if to_address else "contract_creation"  # Last 8 chars of recipient
                             ])
+
+                            # Then send the note trigger
+                            osc_client.send_message("/eth/note", [note, velocity, instrument, duration])
 
                             # Add a small delay between transactions to spread out the sounds
                             await asyncio.sleep(0.05)

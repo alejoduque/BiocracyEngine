@@ -4,7 +4,7 @@
 // Purpose: Load and control MP3 samples with paulstretch-style time manipulation
 
 (
-s.waitForBoot({
+s.doWhenBooted({
     
     // Sample file paths (relative to project directory)
     ~samplePaths = [
@@ -53,10 +53,11 @@ s.waitForBoot({
         spatialY: 0.0           // Quad Y position (-1 to +1)
     );
     
-    // Create control buses for sample parameters
+    // Create control buses for sample parameters — alloc and set must be separate (SC 3.13: .set returns nil)
     ~sampleBuses = ();
     ~sampleParams.keysValuesDo { |param, val|
-        ~sampleBuses[param] = Bus.control(s, 1).set(val);
+        ~sampleBuses[param] = Bus.control(s, 1);
+        ~sampleBuses[param].set(val);
     };
     
     // Sample loading and buffer management
@@ -89,151 +90,86 @@ s.waitForBoot({
         };
     };
     
-    // Paulstretch-style sample playback SynthDef
-    SynthDef(\samplePlayer, {
-        arg buf=0, amp=0.7, 
-        rate=1, pitch=0, loop=0,
-        // Time stretch parameters
-        timeStretch=1.0, grainSize=0.2, overlap=4,
-        // Effects
-        reverbAmt=0.3, delayAmt=0.2, delayTime=0.5, delayFB=0.3,
-        // Filtering
-        lpf=8000, hpf=20, filterRes=0.1,
-        // Spatial
-        pan=0, spatialX=0, spatialY=0,
-        // Bus connections for real-time control
-        sampleRateBus=(-1), samplePitchBus=(-1), timeStretchBus=(-1),
-        grainSizeBus=(-1), sampleAmpBus=(-1), sampleReverbBus=(-1),
-        sampleDelayBus=(-1), delayTimeBus=(-1), delayFeedbackBus=(-1),
-        lowPassBus=(-1), highPassBus=(-1), filterResBus=(-1),
-        samplePanBus=(-1), sampleSpatialXBus=(-1), sampleSpatialYBus=(-1),
-        roomSizeBus=(-1), distanceEffectBus=(-1);
-        
-        var sig, grains, wet, processed, stretchAmount;
-        var bufChans, monoSig, stereoSig, monoGrains, stereoGrains, distance, distanceAmp, quadSig;
-        
-        // Read control buses with fallbacks
-        var controlRate = Select.kr(sampleRateBus >= 0, [rate, In.kr(sampleRateBus, 1)]);
-        var controlPitch = Select.kr(samplePitchBus >= 0, [pitch, In.kr(samplePitchBus, 1)]);
-        var controlTimeStretch = Select.kr(timeStretchBus >= 0, [timeStretch, In.kr(timeStretchBus, 1)]);
-        var controlGrainSize = Select.kr(grainSizeBus >= 0, [grainSize, In.kr(grainSizeBus, 1)]);
-        var controlAmp = Select.kr(sampleAmpBus >= 0, [amp, In.kr(sampleAmpBus, 1)]);
-        var controlReverb = Select.kr(sampleReverbBus >= 0, [reverbAmt, In.kr(sampleReverbBus, 1)]);
-        var controlDelay = Select.kr(sampleDelayBus >= 0, [delayAmt, In.kr(sampleDelayBus, 1)]);
-        var controlDelayTime = Select.kr(delayTimeBus >= 0, [delayTime, In.kr(delayTimeBus, 1)]);
-        var controlDelayFB = Select.kr(delayFeedbackBus >= 0, [delayFB, In.kr(delayFeedbackBus, 1)]);
-        var controlLPF = Select.kr(lowPassBus >= 0, [lpf, In.kr(lowPassBus, 1)]);
-        var controlHPF = Select.kr(highPassBus >= 0, [hpf, In.kr(highPassBus, 1)]);
-        var controlFilterRes = Select.kr(filterResBus >= 0, [filterRes, In.kr(filterResBus, 1)]);
-        var controlPan = Select.kr(samplePanBus >= 0, [pan, In.kr(samplePanBus, 1)]);
-        
-        // Spatial positioning from spatial GUI
-        var sampleSpatialX = Select.kr(sampleSpatialXBus >= 0, [spatialX, In.kr(sampleSpatialXBus, 1)]);
-        var sampleSpatialY = Select.kr(sampleSpatialYBus >= 0, [spatialY, In.kr(sampleSpatialYBus, 1)]);
-        var roomSizeParam = Select.kr(roomSizeBus >= 0, [0.8, In.kr(roomSizeBus, 1)]);
-        var distanceParam = Select.kr(distanceEffectBus >= 0, [0.5, In.kr(distanceEffectBus, 1)]);
-        
-        // Calculate final playback rate with pitch shift
-        var finalRate = controlRate * controlTimeStretch.reciprocal * (controlPitch / 12).midiratio;
-        
-        // Robust channel handling - read mono as mono, convert to stereo after
-        bufChans = BufChannels.kr(buf);
-        
-        // Read with proper channel count
-        monoSig = PlayBuf.ar(
-            1, buf,  // Read as mono
-            finalRate,
-            loop: loop,
-            doneAction: if(loop == 0, 2, 0)
-        );
-        
-        stereoSig = PlayBuf.ar(
-            2, buf,  // Read as stereo  
-            finalRate,
-            loop: loop,
-            doneAction: if(loop == 0, 2, 0)
-        );
-        
-        // Use Select to choose between mono and stereo, then ensure stereo output
-        sig = Select.ar(bufChans - 1, [
-            [monoSig, monoSig],  // Mono: duplicate to stereo
-            stereoSig            // Stereo: use as is
-        ]);
-        
-        // Granular playback - always mono source, convert to stereo
-        monoGrains = GrainBuf.ar(
-            1,  // Mono granular
-            Dust.kr(overlap / controlGrainSize),
-            controlGrainSize.clip(0.05, 1.0),
-            buf,
-            finalRate,
-            LFNoise2.kr(0.1).range(0, 1),
-            1,  // Mono channels
-            pan: controlPan
-        );
-        
-        stereoGrains = GrainBuf.ar(
-            2,  // Stereo granular
-            Dust.kr(overlap / controlGrainSize),
-            controlGrainSize.clip(0.05, 1.0),
-            buf,
-            finalRate,
-            LFNoise2.kr(0.1).range(0, 1),
-            2,  // Stereo channels
-            pan: controlPan
-        );
-        
-        // Select appropriate granular output
-        grains = Select.ar(bufChans - 1, [
-            [monoGrains, monoGrains],  // Mono: duplicate to stereo
-            stereoGrains               // Stereo: use as is
-        ]);
-        
-        // Crossfade between normal and granular based on time stretch amount
-        stretchAmount = (controlTimeStretch - 1).abs.clip(0, 1);
-        sig = XFade2.ar(sig, grains, stretchAmount.linlin(0, 1, -1, 1));
-        
-        // Apply filtering
-        sig = HPF.ar(sig, controlHPF.clip(20, 2000));
-        sig = RLPF.ar(sig, controlLPF.clip(200, 8000), controlFilterRes.clip(0.1, 0.8));
-        
-        // Delay processing
-        wet = DelayC.ar(
-            sig, 
-            2.0, 
-            controlDelayTime.clip(0.1, 2.0),
-            controlDelayFB.clip(0, 0.95)
-        );
-        sig = sig + (wet * controlDelay);
-        
-        // Reverb processing with spatial room size
-        sig = FreeVerb2.ar(
-            sig[0], sig[1],
-            controlReverb,
-            roomSizeParam.clip(0.1, 0.99),  // Room size from spatial GUI
-            0.3   // Damping
-        );
-        
-        // Calculate distance-based amplitude scaling
-        distance = (sampleSpatialX.squared + sampleSpatialY.squared).sqrt;
-        distanceAmp = 1 - (distance * distanceParam * 0.5);
-        
-        // Final amplitude with distance effect
-        sig = sig * controlAmp.clip(0, 1) * distanceAmp.clip(0.1, 1);
-        
-        // Quadraphonic spatial positioning for samples
-        quadSig = PanAz.ar(
-            4,                    // 4 channels for quad
-            sig.sum,              // Mono sum for panning
-            sampleSpatialX.atan2(sampleSpatialY) / pi,  // Angle from X,Y coordinates
-            1,                    // Amplitude
-            2,                    // Speaker array radius
-            0.5                   // Orientation
-        );
-        
-        // Output to main buses
-        Out.ar(0, quadSig);
-    }).add;
+    // Shared SynthDef builder for sample playback (mono and stereo variants)
+    // Using two SynthDefs avoids the "Buffer UGen channel mismatch" and halves memory per instance
+    [1, 2].do { |numCh|
+        var defName = if(numCh == 1, \samplePlayerMono, \samplePlayerStereo);
+
+        SynthDef(defName, {
+            arg buf=0, amp=0.7,
+            rate=1, pitch=0, loop=0,
+            timeStretch=1.0, grainSize=0.2, overlap=4,
+            reverbAmt=0.3, delayAmt=0.2, delayTime=0.5, delayFB=0.3,
+            lpf=8000, hpf=20, filterRes=0.1,
+            pan=0, spatialX=0, spatialY=0,
+            sampleRateBus=(-1), samplePitchBus=(-1), timeStretchBus=(-1),
+            grainSizeBus=(-1), sampleAmpBus=(-1), sampleReverbBus=(-1),
+            sampleDelayBus=(-1), delayTimeBus=(-1), delayFeedbackBus=(-1),
+            lowPassBus=(-1), highPassBus=(-1), filterResBus=(-1),
+            samplePanBus=(-1), sampleSpatialXBus=(-1), sampleSpatialYBus=(-1),
+            roomSizeBus=(-1), distanceEffectBus=(-1);
+
+            var sig, grains, wet, stretchAmount, distance, distanceAmp, quadSig;
+
+            var controlRate = Select.kr(sampleRateBus >= 0, [rate, In.kr(sampleRateBus, 1)]);
+            var controlPitch = Select.kr(samplePitchBus >= 0, [pitch, In.kr(samplePitchBus, 1)]);
+            var controlTimeStretch = Select.kr(timeStretchBus >= 0, [timeStretch, In.kr(timeStretchBus, 1)]);
+            var controlGrainSize = Select.kr(grainSizeBus >= 0, [grainSize, In.kr(grainSizeBus, 1)]);
+            var controlAmp = Select.kr(sampleAmpBus >= 0, [amp, In.kr(sampleAmpBus, 1)]);
+            var controlReverb = Select.kr(sampleReverbBus >= 0, [reverbAmt, In.kr(sampleReverbBus, 1)]);
+            var controlDelay = Select.kr(sampleDelayBus >= 0, [delayAmt, In.kr(sampleDelayBus, 1)]);
+            var controlDelayTime = Select.kr(delayTimeBus >= 0, [delayTime, In.kr(delayTimeBus, 1)]);
+            var controlDelayFB = Select.kr(delayFeedbackBus >= 0, [delayFB, In.kr(delayFeedbackBus, 1)]);
+            var controlLPF = Select.kr(lowPassBus >= 0, [lpf, In.kr(lowPassBus, 1)]);
+            var controlHPF = Select.kr(highPassBus >= 0, [hpf, In.kr(highPassBus, 1)]);
+            var controlFilterRes = Select.kr(filterResBus >= 0, [filterRes, In.kr(filterResBus, 1)]);
+            var controlPan = Select.kr(samplePanBus >= 0, [pan, In.kr(samplePanBus, 1)]);
+            var sampleSpatialX = Select.kr(sampleSpatialXBus >= 0, [spatialX, In.kr(sampleSpatialXBus, 1)]);
+            var sampleSpatialY = Select.kr(sampleSpatialYBus >= 0, [spatialY, In.kr(sampleSpatialYBus, 1)]);
+            var roomSizeParam = Select.kr(roomSizeBus >= 0, [0.8, In.kr(roomSizeBus, 1)]);
+            var distanceParam = Select.kr(distanceEffectBus >= 0, [0.5, In.kr(distanceEffectBus, 1)]);
+            var finalRate = controlRate * controlTimeStretch.reciprocal * (controlPitch / 12).midiratio;
+
+            // PlayBuf with correct channel count — no mismatch
+            sig = PlayBuf.ar(numCh, buf, finalRate, loop: loop, doneAction: if(loop == 0, 2, 0));
+            // Ensure stereo
+            sig = if(numCh == 1, { [sig, sig] }, { sig });
+
+            // Granular path (stereo output)
+            grains = GrainBuf.ar(
+                2,
+                Dust.kr(overlap / controlGrainSize),
+                controlGrainSize.clip(0.05, 1.0),
+                buf, finalRate,
+                LFNoise2.kr(0.1).range(0, 1),
+                2, pan: controlPan
+            );
+
+            // Crossfade normal ↔ granular
+            stretchAmount = (controlTimeStretch - 1).abs.clip(0, 1);
+            sig = XFade2.ar(sig, grains, stretchAmount.linlin(0, 1, -1, 1));
+
+            // Filtering
+            sig = HPF.ar(sig, controlHPF.clip(20, 2000));
+            sig = RLPF.ar(sig, controlLPF.clip(200, 8000), controlFilterRes.clip(0.1, 0.8));
+
+            // Delay
+            wet = DelayC.ar(sig, 2.0, controlDelayTime.clip(0.1, 2.0), controlDelayFB.clip(0, 0.95));
+            sig = sig + (wet * controlDelay);
+
+            // Reverb
+            sig = FreeVerb2.ar(sig[0], sig[1], controlReverb, roomSizeParam.clip(0.1, 0.99), 0.3);
+
+            // Distance attenuation
+            distance = (sampleSpatialX.squared + sampleSpatialY.squared).sqrt;
+            distanceAmp = 1 - (distance * distanceParam * 0.5);
+            sig = sig * controlAmp.clip(0, 1) * distanceAmp.clip(0.1, 1);
+
+            // Quad panning
+            quadSig = PanAz.ar(4, sig.sum, sampleSpatialX.atan2(sampleSpatialY) / pi, 1, 2, 0.5);
+            Out.ar(0, quadSig);
+        }).add;
+    };
     
     s.sync;
     
@@ -247,14 +183,17 @@ s.waitForBoot({
         
         // Create sample trigger functions
         ~triggerSample = { |index, duration=nil|
-            var sampleName, synthArgs, newSynth;
+            var sampleName, synthArgs, newSynth, defName, buf;
             if(index < ~sampleBuffers.size and: { ~sampleBuffers[index].notNil }) {
+                buf = ~sampleBuffers[index];
                 sampleName = ~sampleNames[index];
+                // Pick the right SynthDef for the buffer's channel count
+                defName = if(buf.numChannels <= 1, \samplePlayerMono, \samplePlayerStereo);
                 synthArgs = [
-                    \buf, ~sampleBuffers[index],
-                    \loop, if(duration.isNil, 0, 1)  // Loop if duration not specified
+                    \buf, buf,
+                    \loop, if(duration.isNil, 0, 1)
                 ];
-                
+
                 // Connect all sample control buses if they exist
                 if(~sampleBuses.notNil) {
                     ~sampleBuses.keysValuesDo { |paramName, bus|
@@ -264,9 +203,9 @@ s.waitForBoot({
                 } {
                     "Sample buses not initialized yet".warn;
                 };
-                
-                "Triggering sample: % (layered)".format(sampleName).postln;
-                newSynth = Synth(\samplePlayer, synthArgs, ~defaultGroup);
+
+                "Triggering sample: % (%, % ch)".format(sampleName, defName, buf.numChannels).postln;
+                newSynth = Synth(defName, synthArgs, ~defaultGroup);
                 
                 // Add to active synths list for tracking
                 ~activeSampleSynths = ~activeSampleSynths.add(newSynth);

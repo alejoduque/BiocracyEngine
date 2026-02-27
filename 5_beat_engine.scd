@@ -30,70 +30,129 @@
     transactionDensity: 0
 );
 
-// Initialize control buses if they don't exist
+// Note: control buses for beat params are allocated here but only after the server is running.
+// Allocation happens inside the doWhenBooted block below to avoid allocating before server exists.
 ~controlBuses = ~controlBuses ?? ();
-~beatParams.keysValuesDo { |key, value|
-    ~controlBuses[key] = ~controlBuses[key] ?? { Bus.control(s, 1).set(value) };
-};
 
 // Enhanced Beat Engine with transaction influence
 ~beatEngine = {
     if(~beatRoutine.notNil) { ~beatRoutine.stop };
+    if(~opalDroneSynth.notNil) { ~opalDroneSynth.set(\gate, 0) };
+    
+    // Start the continuous ambient drone immediately
+    // Safe bus index helper: returns bus index or -1 if bus missing
+    ~bi = { |name| if(~buses.notNil and: { ~buses[name].notNil }, { ~buses[name].index }, { -1 }) };
+
+    ~opalDroneSynth = Synth(\opalDrone, [
+        \freq, 55, // Low ambient anchor
+        \amp, ~beatParams.masterAmp * 0.8,
+        \masterVolBus, ~bi.(\masterVolume),
+        \pitchBus,     ~bi.(\pitchShift),
+        \timeBus,      ~bi.(\timeDilation),
+        \spectralBus,  ~bi.(\spectralShift),
+        \spatialBus,   ~bi.(\spatialSpread),
+        \textureBus,   ~bi.(\textureDepth),
+        \atmosphereBus,~bi.(\atmosphereMix),
+        \memoryBus,    ~bi.(\memoryFeed),
+        \harmonicBus,  ~bi.(\harmonicRich),
+        \resonantBus,  ~bi.(\resonantBody)
+    ], target: if(~defaultGroup.notNil, { ~defaultGroup }, { s.defaultGroup }));
     
     ~beatRoutine = Routine({
-        var baseFreqs = [440, 660, 880];
-        var lastBeat = 0;
+        var step = 0; // 16-step sequencer counter
         var transactionInfluence;
         
         loop {
             var now = SystemClock.seconds;
             var timeSinceLastTx = now - (~beatParams.lastTransactionTime ? now);
-            var freq, amp, dec;
+            var targetGrp = if(~defaultGroup.notNil, { ~defaultGroup }, { s.defaultGroup });
+            var interval;
+            var density;
+            var bMVol, bPitch, bTime, bSpec, bSpat, bText, bAtmo, bMem, bHarm, bRes;
             
             // Calculate transaction influence
             transactionInfluence = (~beatParams.transactionInfluence * 
                 exp(timeSinceLastTx.neg * 0.5)).clip(0, 1);
             
-            // Modulate parameters based on transaction activity
-            freq = baseFreqs.choose * 
-                (1 + (transactionInfluence * ~beatParams.transactionDensity * 0.5));
+            density = ~beatParams.transactionDensity ? 0;
+
+            // Helper to get bus indices safely (nil-safe: checks both ~buses and the entry)
+            bMVol = ~bi.(\masterVolume);
+            bPitch = ~bi.(\pitchShift);
+            bTime = ~bi.(\timeDilation);
+            bSpec = ~bi.(\spectralShift);
+            bSpat = ~bi.(\spatialSpread);
+            bText = ~bi.(\textureDepth);
+            bAtmo = ~bi.(\atmosphereMix);
+            bMem = ~bi.(\memoryFeed);
+            bHarm = ~bi.(\harmonicRich);
+            bRes = ~bi.(\resonantBody);
             
-            amp = ~beatParams.masterAmp * 
-                (0.3 + (transactionInfluence * 0.2));
-            
-            dec = ~beatParams.droneFade * 
-                (1 + (transactionInfluence * 0.5));
-            
-            // Create beat synth with real-time bus connections
-            {
-                var beatSynthArgs = [
-                    \freq, freq,
-                    \amp, amp * 0.7,  // Slightly reduced for cleaner mix
-                    \atk, 0.01 * (1 + (transactionInfluence * 0.5)),
-                    \dec, dec,
-                    \rel, 0.5 * (1 + (transactionInfluence * 0.3)),
-                    \tone, ~beatParams.droneRes,
-                    \res, ~beatParams.droneRes,
-                    \pan, ~beatParams.droneSpace.rand2
-                ];
-                
-                // Connect ALL control buses to beat synths too
-                if(~buses.notNil) {
-                    ~buses.keysValuesDo { |paramName, bus|
-                        var busParamName = (paramName.asString ++ "Bus").asSymbol;
-                        beatSynthArgs = beatSynthArgs ++ [busParamName, bus.index];
-                    };
-                };
-                
-                Synth(\elektronBell, beatSynthArgs);
-            }.value;
-            
-            // Dynamic timing based on transaction activity
-            (1/~beatParams.beatTempo * 
-                (1 + (transactionInfluence * -0.2)) // Slight tempo increase with activity
-            ).wait;
-            
-            lastBeat = now;
+            // 1. Opal Kick (Gem) - Plays on downbeats (0, 8), more active with TX density
+            if((step % 8 == 0) or: ((step % 8 == 6) and: (density > 0.4))) {
+                Synth(\opalKick, [
+                    \out,         0,
+                    \freq,        50,
+                    \amp,         ~beatParams.masterAmp * (0.8 + (density * 0.2)),
+                    \dec,         0.4,
+                    \masterVolBus, bMVol,
+                    \timeBus,      bTime,
+                    \harmonicBus,  bHarm,
+                    \textureBus,   bText,
+                    \spectralBus,  bSpec,
+                    \atmosphereBus, bAtmo,
+                    \spatialBus,   bSpat
+                ], targetGrp);
+            };
+
+            // 2. Opal Percussion (Mass) - Polyrhythmic, influenced by FM parameters
+            if((step % 3 == 0) or: ((step % 5 == 0) and: (transactionInfluence > 0.3))) {
+                Synth(\opalPerc, [
+                    \out,         0,
+                    \freq,        (density.clip(0, 5) * 100 + 300),
+                    \amp,         ~beatParams.masterAmp * (0.5 + (transactionInfluence * 0.3)),
+                    \masterVolBus, bMVol,
+                    \harmonicBus,  bHarm,
+                    \textureBus,   bText,
+                    \resonantBus,  bRes,
+                    \spectralBus,  bSpec,
+                    \timeBus,      bTime,
+                    \memoryBus,    bMem,
+                    \atmosphereBus, bAtmo,
+                    \spatialBus,   bSpat
+                ], targetGrp);
+            };
+
+            // 3. Opal Dust (Granular noise) - Offbeats and glitchy fills
+            if((step % 4 == 2) or: (density > 0.7 and: (0.5.coin))) {
+                Synth(\opalDust, [
+                    \out,         0,
+                    \amp,         ~beatParams.masterAmp * (0.4 + (density * 0.3)),
+                    \masterVolBus, bMVol,
+                    \textureBus,   bText,
+                    \spectralBus,  bSpec,
+                    \timeBus,      bTime,
+                    \pitchBus,     bPitch,
+                    \memoryBus,    bMem,
+                    \atmosphereBus, bAtmo,
+                    \spatialBus,   bSpat
+                ], targetGrp);
+            };
+
+            // Broadcast current state to visuals bridge (so frontend receives data even without ETH TXs)
+            if(~visualsDest.notNil and: { (step % 4) == 0 }) {
+                ~visualsDest.sendMsg('/bio/nutrient', transactionInfluence.linlin(0, 1, 0.1, 0.9));
+                ~visualsDest.sendMsg('/bio/consensus', density.linlin(0, 1, 0.2, 0.8));
+                ~visualsDest.sendMsg('/bio/density', density);
+            };
+
+            // Step sequencer increment
+            step = (step + 1) % 16;
+
+            // 16th note interval calculation
+            interval = (1 / (~beatParams.beatTempo * 4)) *
+                       (1 - (transactionInfluence * 0.1));
+            interval.max(0.05).wait;
         };
     });
     
@@ -202,8 +261,37 @@
     ~beatWindow.front;
 };
 
-// Initialize beat engine
-~beatEngine.value;
+// Initialize beat engine only after server is booted and SynthDefs are registered.
+// s.doWhenBooted fires after the server is confirmed running. Adding s.sync + 0.5s extra
+// ensures 3_synthdefs.scd's own doWhenBooted callback has had time to finish adding
+// SynthDefs and populating ~buses before we try to instantiate \opalDrone.
+s.doWhenBooted({
+    // Allocate beat-params control buses now that the server is actually up
+    ~beatParams.keysValuesDo { |key, value|
+        if(~controlBuses[key].isNil) {
+            ~controlBuses[key] = Bus.control(s, 1);
+            ~controlBuses[key].set(value);
+        };
+    };
+
+    // Wait for 3_synthdefs.scd's doWhenBooted to fully complete:
+    // SynthDef registration + ~buses population needs two s.sync round-trips.
+    // 1.5s on AppClock gives the server enough time even under load.
+    AppClock.sched(1.5, {
+        if(~buses.notNil and: { ~buses[\masterVolume].notNil }) {
+            ~beatEngine.value;
+            "Beat engine started — ~buses ready (% entries).".format(~buses.size).postln;
+        } {
+            // Buses not ready yet — retry once more after another second
+            AppClock.sched(1.0, {
+                ~beatEngine.value;
+                "Beat engine started (delayed retry — buses: %).".format(~buses.notNil).postln;
+                nil;
+            });
+        };
+        nil;
+    });
+});
 
 "Beat engine loaded with transaction influence.".postln;
 )

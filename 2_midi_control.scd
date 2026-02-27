@@ -5,11 +5,19 @@
 // Clear existing MIDI definitions
 MIDIdef.freeAll;
 
-// Initialize MIDI if not already done
-if(MIDIClient.initialized.not) {
-    MIDIClient.init;
-    MIDIIn.connectAll;
-};
+// Defer MIDIClient.init until after the server is booted.
+// On macOS / SC 3.13, MIDIClient.init called at parse time steals UDP port 57120
+// before sclang can bind it, pushing sclang to 57121 and silently dropping all
+// incoming OSC (Python ETH data, parliament bridge, etc.).
+// Deferring to doWhenBooted lets 1_server_config.scd's openUDPPort(57120) claim
+// the port first during the boot sequence.
+s.doWhenBooted({
+    if(MIDIClient.initialized.not) {
+        MIDIClient.init;
+        MIDIIn.connectAll;
+    };
+    "MIDI initialized after server boot (port 57120 safe).".postln;
+});
 
 // Lawrence English ambient parameters - match ~globalParams from synthdefs
 ~soundParams = (
@@ -32,11 +40,12 @@ if(MIDIClient.initialized.not) {
     sparsity: 0.2,        // Minimum gap between events
 );
 
-// Create control buses if not already existing
+// Note: control buses are created by 3_synthdefs.scd which runs after this file.
+// Do NOT create buses here — Bus.control().set() returns nil in SC 3.13, which would
+// overwrite ~buses entries with nil and silently break all MIDI→synth routing.
+// The MIDIdef handlers below reference ~buses[...] which will be valid by the time
+// any MIDI event fires (after the full boot sequence completes).
 ~buses = ~buses ?? ();
-~soundParams.keysValuesDo { |param, val|
-    ~buses[param] = ~buses[param] ?? { Bus.control(s, 1).set(val) };
-};
 
 // Lawrence English Ambient MIDI Mapping - Row 1 (Core Performance, CCs 0-4)
 MIDIdef.cc(\ambientRow1, { |val, num, chan, src|

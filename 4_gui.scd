@@ -268,6 +268,15 @@
                     ~buses[paramName].set(mappedVal);
                     ~controlValues[paramName] = mappedVal;
                     valueLabel.string = displayStr ++ ": " ++ mappedVal.round(0.001);
+                    
+                    // Echo back to HTML GUI if bridge is connected
+                    if(~visualsDest.notNil and: { ~oscToParamMap.notNil }) {
+                        var oscPath = ~oscToParamMap.findKeyForValue(paramName);
+                        if(oscPath.notNil) {
+                            ~visualsDest.sendMsg(oscPath, mappedVal);
+                        };
+                    };
+                    
                     "Bus % set to %".format(paramName, mappedVal.round(0.001)).postln;
                 } {
                     "WARNING: Bus % not found!".format(paramName).warn;

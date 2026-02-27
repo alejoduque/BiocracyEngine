@@ -1,0 +1,170 @@
+@font-face {
+  font-family: "Roboto Mono";
+  src: url("../../dashboard/assets/fonts/Roboto_Mono/RobotoMono-VariableFont_wght.ttf")
+    format("truetype");
+  font-weight: 100 700;
+  font-style: normal;
+  font-display: block;
+}
+
+@font-face {
+  font-family: "Roboto Mono";
+  src: url("../../dashboard/assets/fonts/Roboto_Mono/RobotoMono-Italic-VariableFont_wght.ttf")
+    format("truetype");
+  font-weight: 100 700;
+  font-style: italic;
+  font-display: block;
+}
+
+.dashboard {
+  font-family: "Roboto Mono", monospace;
+}
+
+.dashboard * {
+  font-family: "Roboto Mono", monospace;
+}
+
+.dashboard input[type="checkbox"]:checked {
+  border-color: #d9d9d9;
+}
+
+.dashboard input[type="checkbox"]:checked::after {
+  content: "";
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: 8px;
+  height: 8px;
+  background-color: #d9d9d9;
+}
+
+.dashboard input[type="radio"]:checked {
+  border-color: #d9d9d9;
+}
+
+.dashboard input[type="radio"]:checked::after {
+  content: "";
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: 6px;
+  height: 6px;
+  background-color: #d9d9d9;
+  border-radius: 50%;
+}
+
+.dashboard input[type="checkbox"]:hover,
+.dashboard input[type="radio"]:hover {
+  border-color: #d9d9d9;
+}
+
+.dashboard input[type="number"]::-webkit-inner-spin-button,
+.dashboard input[type="number"]::-webkit-outer-spin-button {
+  opacity: 0.7;
+  filter: invert(1) hue-rotate(180deg);
+  cursor: pointer;
+}
+
+.dashboard input[type="number"]::-webkit-inner-spin-button:hover,
+.dashboard input[type="number"]::-webkit-outer-spin-button:hover {
+  opacity: 0.7;
+  filter: invert(1) hue-rotate(180deg);
+  cursor: pointer;
+}
+
+.projector {
+  width: 100vw;
+  height: 100vh;
+  overflow: hidden;
+}
+
+.projector::after {
+  content: "";
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 9999;
+  background-repeat: no-repeat;
+  background-position: center;
+  background-size: cover;
+  opacity: 0.5;
+  pointer-events: none;
+}
+
+.projector #webpack-dev-server-client-overlay {
+  display: none !important;
+}
+
+.projector .modules {
+  width: 100%;
+  height: 100%;
+}
+
+.projector .module {
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  transform-origin: center;
+}
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+body,
+html {
+  overflow: hidden;
+}
+
+html {
+  filter: saturate(1.5);
+}
+
+* {
+  -webkit-user-select: none;
+  -moz-user-select: none;
+  -ms-user-select: none;
+  user-select: none;
+}
+
+.code-viewer,
+.code-viewer *,
+.debug-log-viewer,
+.debug-log-viewer *,
+.selectable-text,
+.selectable-text *,
+input,
+textarea,
+select,
+[contenteditable="true"],
+[contenteditable="true"] * {
+  -webkit-user-select: text;
+  -moz-user-select: text;
+  -ms-user-select: text;
+  user-select: text;
+}
+
+.debug-log-viewer *::selection {
+  background-color: rgba(150, 150, 150, 0.3);
+  color: inherit;
+}
+
+.debug-log-viewer *::-moz-selection {
+  background-color: rgba(150, 150, 150, 0.3);
+  color: inherit;
+}
+
+.drag-region {
+  -webkit-app-region: drag;
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 30px;
+  z-index: 9999;
+  background: transparent;
+}

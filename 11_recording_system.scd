@@ -4,7 +4,7 @@
 // Purpose: Record final spatialized mix as 4-channel audio files
 
 (
-s.waitForBoot({
+s.doWhenBooted({
     
     // Recording system parameters
     ~recordingParams = (

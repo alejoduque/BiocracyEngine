@@ -1,0 +1,803 @@
+// Parliament of All Things — Entry Point
+// OSC control panel wired to parliament-synthesizer SC endpoints
+// Spectrogram canvas + reactive FFT from live state data
+// Visualization switcher: keys 0–9 swap center stage
+
+import parliamentStore, { ParliamentState } from "./parliament/parliamentStore";
+import { initSwitcher, getActiveThreeStage } from "./visualizationSwitcher";
+import * as THREE from "three";
+
+// ─── Data constants ───
+const SPECIES_NAMES  = ["Ara macao", "Atlapetes", "Cecropia", "Alouatta", "Tinamus"];
+const SPECIES_IUCN   = ["CR", "VU", "LC", "VU", "LC"];
+// IUCN multipliers for BioToken formula (CR=5, EN=3, VU=2, LC=1)
+const IUCN_MULT      = [5, 2, 1, 2, 1];
+const EDNA_IDS       = ["CHO", "AMZ", "COR", "CAR", "ORI", "PAC", "MAG", "GUA"];
+const EDNA_ANGLES_DEG = Array.from({ length: 8 }, (_, i) => (i / 8) * 360);
+
+// ─── OSC bridge WebSocket ───
+let controlWS: WebSocket | null = null;
+let controlWsReady = false;
+
+function connectControlWS() {
+  controlWS = new WebSocket("ws://localhost:3334");
+  controlWS.onopen  = () => { controlWsReady = true; };
+  controlWS.onclose = () => {
+    controlWsReady = false;
+    controlWS = null;
+    setTimeout(connectControlWS, 2000);
+  };
+  controlWS.onerror = () => { controlWS?.close(); };
+
+  // ── SC → browser echo handler ──────────────────────────────────────────
+  // SC sends /soneth/* and /parliament/* back via ~visualsDest (port 3333)
+  // → bridge forwards to WS 3334 → here.
+  // We update: the HTML slider position, the display span, sonethParams, and
+  // apply to active viz — completing the MIDI→SC→browser feedback loop.
+  controlWS.onmessage = (evt) => {
+    try {
+      const { address, args } = JSON.parse(evt.data as string) as { address: string; args: number[] };
+      if (!address || !Array.isArray(args)) return;
+
+      if (address.startsWith("/soneth/")) {
+        const v = args[0];
+        if (typeof v !== "number" || !isFinite(v)) return;
+        const key = address.slice("/soneth/".length);
+
+        // Update sonethParams live object
+        const sp = (window as any).__sonethParams;
+        if (sp && key in sp) sp[key] = v;
+
+        // Apply to active visualization
+        if (typeof (window as any).__applySonethToViz === "function") {
+          (window as any).__applySonethToViz(key, v);
+        }
+
+        // Update HTML slider + display span
+        const slider = document.querySelector<HTMLInputElement>(
+          `input[type='range'][data-osc='${address}']`
+        );
+        if (slider) slider.value = String(v);
+
+        const dispId = `disp-soneth-${key}`;
+        const dispEl = document.getElementById(dispId);
+        if (dispEl) dispEl.textContent = v.toFixed(2);
+      }
+
+      // Also handle /parliament/volume echo from SC master volume changes
+      if (address === "/parliament/volume") {
+        const v = args[0];
+        const slider = document.querySelector<HTMLInputElement>(
+          `input[type='range'][data-osc='/parliament/volume']`
+        );
+        if (slider) slider.value = String(v);
+        const dispEl = document.getElementById("disp-master-vol");
+        if (dispEl) dispEl.textContent = v.toFixed(2);
+      }
+    } catch (_) {}
+  };
+}
+
+// Single-value OSC
+function sendOSC(address: string, value: number) {
+  if (controlWS && controlWsReady) {
+    controlWS.send(JSON.stringify({ direction: "toSC", address, args: [value] }));
+  }
+}
+
+// Multi-arg OSC (agent id + value)
+function sendOSCArgs(address: string, args: number[]) {
+  if (controlWS && controlWsReady) {
+    controlWS.send(JSON.stringify({ direction: "toSC", address, args }));
+  }
+}
+
+// Expose to HTML button onclick
+// Also patches local state so visuals respond immediately (no SC round-trip required)
+(window as any).sendParliamentAction = (address: string, args: number[]) => {
+  if (controlWS && controlWsReady) {
+    controlWS.send(JSON.stringify({ direction: "toSC", address, args }));
+  }
+  // Immediate local state patch for visible effect
+  const st = parliamentStore.state;
+  if (!st) return;
+  if (address === "/parliament/emergency" && args.length > 0) {
+    // Emergency: collapse consensus toward 0 — red alert state
+    st.consensus      = Math.max(0, st.consensus - 0.3 * args[0]);
+    st.consensusWave  = args[0];
+    parliamentStore.notifyListeners();
+  } else if (address === "/parliament/vote") {
+    // Vote: trigger a synthetic vote result event for visual flash
+    st.events.voteResult = {
+      consensus: st.consensus,
+      passed: st.consensus > 0.5,
+      yes: Math.round(st.votes * st.consensus),
+      total: st.votes,
+    };
+    parliamentStore.notifyListeners();
+  } else if (address === "/parliament/stop") {
+    // Stop: silence all species activity
+    st.species.forEach((sp) => { sp.activity = 0.0; sp.presence = 0.1; });
+    parliamentStore.notifyListeners();
+  } else if (address === "/parliament/start") {
+    // Start: restore default activity
+    st.species.forEach((sp) => { sp.activity = 0.5; sp.presence = 0.5; });
+    parliamentStore.notifyListeners();
+  }
+};
+
+// ─── Project 3D world pos to CSS px ───
+function worldToCss(
+  worldPos: THREE.Vector3,
+  camera: THREE.Camera,
+  canvas: HTMLElement
+): { x: number; y: number } {
+  const v = worldPos.clone().project(camera);
+  const w = canvas.offsetWidth;
+  const h = canvas.offsetHeight;
+  return { x: (v.x * 0.5 + 0.5) * w, y: (-v.y * 0.5 + 0.5) * h };
+}
+
+// ─── Flat polar → CSS (for eDNA static labels) ───
+function radarToCss(
+  angleDeg: number, radius: number, canvas: HTMLElement,
+  fov = 50, camZ = 20
+): { x: number; y: number } {
+  const w = canvas.offsetWidth;
+  const h = canvas.offsetHeight;
+  const halfH = Math.tan((fov / 2) * Math.PI / 180) * camZ;
+  const scale = (h / 2) / halfH;
+  const rad = ((angleDeg - 90) * Math.PI) / 180;
+  return { x: w / 2 + Math.cos(rad) * radius * scale, y: h / 2 - Math.sin(rad) * radius * scale };
+}
+
+// ─── Spectrogram canvas renderer ───
+class SpectrogramRenderer {
+  private canvas: HTMLCanvasElement;
+  private ctx: CanvasRenderingContext2D;
+  private width: number;
+  private height: number;
+  private lastPush = 0;
+
+  constructor(canvasEl: HTMLCanvasElement) {
+    this.canvas = canvasEl;
+    this.ctx = canvasEl.getContext("2d")!;
+    this.resize();
+    this.ctx.fillStyle = "#000402";
+    this.ctx.fillRect(0, 0, this.width, this.height);
+    window.addEventListener("resize", () => this.resize());
+  }
+
+  resize() {
+    this.width  = this.canvas.offsetWidth  || 800;
+    this.height = this.canvas.offsetHeight || 72;
+    this.canvas.width  = this.width;
+    this.canvas.height = this.height;
+  }
+
+  // Push a column of FFT bins (0-1 each, length = arbitrary)
+  // Called at ~20fps from main loop
+  push(bins: Float32Array, now: number) {
+    if (now - this.lastPush < 45) return; // ~22fps
+    this.lastPush = now;
+
+    const w = this.width;
+    const h = this.height;
+    const ctx = this.ctx;
+
+    // Scroll left by 1px
+    const imageData = ctx.getImageData(1, 0, w - 1, h);
+    ctx.putImageData(imageData, 0, 0);
+
+    // Write new right-edge column
+    const rightX = w - 1;
+    const numBins = bins.length;
+    for (let y = 0; y < h; y++) {
+      // Map canvas y (0=top) to bin index (0=low freq at bottom)
+      const binIdx = Math.floor(((h - 1 - y) / h) * numBins);
+      const v = Math.min(1, Math.max(0, bins[binIdx] || 0));
+      // Amber colormap: black → dark amber → amber → bright
+      const r = Math.floor(v * 255);
+      const g = Math.floor(v * 0.53 * 255);
+      ctx.fillStyle = `rgb(${r},${g},0)`;
+      ctx.fillRect(rightX, y, 1, 1);
+    }
+  }
+}
+
+// ─── Pseudo-FFT from state (maps to physical frequency space) ───
+function buildFftBins(state: ParliamentState | null, elapsed: number, numBins = 128): Float32Array {
+  const bins = new Float32Array(numBins);
+
+  if (!state || !Array.isArray(state.species) || !Array.isArray(state.edna) || !Array.isArray(state.fungi)) {
+    for (let i = 0; i < numBins; i++) {
+      bins[i] = Math.max(0, Math.sin(elapsed * 1.8 + i * 0.35) * 0.25 + Math.random() * 0.04);
+    }
+    return bins;
+  }
+
+  // Each species contributes a gaussian peak at its audio frequency
+  for (const sp of state.species) {
+    const freq   = sp.freq || 440;
+    // Log-scale mapping: 20Hz..8000Hz → 0..numBins
+    const logMin = Math.log2(20);
+    const logMax = Math.log2(8000);
+    const logF   = Math.log2(Math.max(20, Math.min(8000, freq)));
+    const binIdx = Math.floor(((logF - logMin) / (logMax - logMin)) * (numBins - 1));
+    const amp    = sp.presence * 0.8 + sp.activity * 0.6;
+    const width  = 6 + sp.presence * 8; // broader peak = more present
+    for (let i = 0; i < numBins; i++) {
+      const dist = Math.abs(i - binIdx);
+      bins[i] += amp * Math.exp(-(dist * dist) / (2 * width * width));
+    }
+  }
+
+  // eDNA: adds harmonic overtone bands
+  for (let s = 0; s < state.edna.length; s++) {
+    const ed     = state.edna[s];
+    const baseHz = 55 + s * 7;
+    for (let h = 1; h <= 8; h++) {
+      const hz = baseHz * h * ed.biodiversity;
+      const logMin = Math.log2(20), logMax = Math.log2(8000);
+      const logF = Math.log2(Math.max(20, Math.min(8000, hz)));
+      const b = Math.floor(((logF - logMin) / (logMax - logMin)) * (numBins - 1));
+      const amp = ed.validation * (1 / Math.sqrt(h)) * 0.12;
+      if (b >= 0 && b < numBins) bins[b] += amp;
+    }
+  }
+
+  // Fungi: sub-bass rumble (low bins 0-10)
+  const avgFungi = state.fungi.reduce((s, f) => s + f.chemical, 0) / state.fungi.length;
+  for (let i = 0; i < 10; i++) bins[i] += avgFungi * 0.4 * (1 - i / 10);
+
+  // Eco: CO2 broadband noise floor
+  const co2norm = state.eco.co2 / 127;
+  for (let i = 0; i < numBins; i++) bins[i] += co2norm * 0.08 * Math.random();
+
+  // Normalize
+  let mx = 0;
+  for (let i = 0; i < numBins; i++) if (bins[i] > mx) mx = bins[i];
+  if (mx > 0.01) for (let i = 0; i < numBins; i++) bins[i] = Math.min(1, bins[i] / mx);
+
+  return bins;
+}
+
+// ─── BioToken V3 calculation ───
+function calcBioToken(state: ParliamentState): number {
+  if (!state || !Array.isArray(state.species) || !Array.isArray(state.edna) || !Array.isArray(state.fungi)) return 0;
+  const avgPresence  = state.species.reduce((s, sp) => s + sp.presence, 0) / 5;
+  const avgActivity  = state.species.reduce((s, sp) => s + sp.activity, 0) / 5;
+  const avgEdnaBio   = state.edna.reduce((s, e) => s + e.biodiversity, 0) / 8;
+  const avgFungiChem = state.fungi.reduce((s, f) => s + f.chemical, 0) / 4;
+  const aiOpt        = state.ai?.optimization / 127 || 0;
+  // IUCN weight: highest urgency species dominates
+  const maxIucnMult  = Math.max(...IUCN_MULT) / 5; // normalize to 0-1
+  return avgPresence * avgActivity * avgEdnaBio * avgFungiChem * aiOpt * maxIucnMult;
+}
+
+async function init() {
+  const container = document.getElementById("parliament-stage");
+  if (!container) return;
+  const hudEl = document.getElementById("viz-hud");
+
+  // ─── Visualization switcher ───────────────────────────────────────────────
+  // Keys 0–9 swap center stage. Left/right panels + spectrogram stay.
+  // getActiveThreeStage() returns the live ParliamentStage when slot 0 is active.
+  initSwitcher(container, hudEl!, () => currentState);
+
+  // ─── Build eDNA control rows ───
+  const ednaCtrlRows = document.getElementById("edna-ctrl-rows");
+  const ednaShortNames = ["Chocó", "Amazon", "E.Cord", "Caribb", "Orinoc", "Pacific", "Magdal", "Guayan"];
+  if (ednaCtrlRows) {
+    ednaCtrlRows.innerHTML = EDNA_IDS.map((id, i) => `
+      <div class="ctrl-row">
+        <label>${ednaShortNames[i]}</label>
+        <input type="range" min="0" max="1" step="0.01" value="0.85"
+          data-osc="/agents/edna/biodiversity" data-agent-id="${i}">
+        <span class="ctrl-val" id="disp-edna-bio-${i}">0.85</span>
+      </div>
+    `).join("");
+    // eDNA slider wiring happens below, after wireSlider() is defined.
+  }
+
+  // ─── Build right-panel telemetry rows ───
+  const speciesTele = document.getElementById("species-tele");
+  if (speciesTele) {
+    speciesTele.innerHTML = SPECIES_NAMES.map((name, i) => `
+      <div style="margin-bottom:5px">
+        <div class="tele-row">
+          <span class="lbl" style="min-width:58px;font-size:9px">${name}</span>
+          <span class="uicn-badge uicn-${SPECIES_IUCN[i]}">${SPECIES_IUCN[i]}</span>
+          <div class="tele-bar-wrap"><div class="tele-bar" id="sp-bar-pres-${i}" style="width:50%"></div></div>
+          <span class="val" id="sp-val-${i}">—</span>
+        </div>
+        <div style="display:flex;gap:6px;margin-bottom:1px;padding-left:2px">
+          <span class="label">ACT</span><span class="value-sm" id="sp-act-${i}">—</span>
+          <span class="label">FREQ</span><span class="value-sm" id="sp-frq-${i}">—</span>
+          <span class="label">VOT</span><span class="value-sm" id="sp-vot-${i}">—</span>
+        </div>
+      </div>
+    `).join("");
+  }
+
+  const ednaTele = document.getElementById("edna-tele");
+  if (ednaTele) {
+    ednaTele.innerHTML = EDNA_IDS.map((id, i) => `
+      <div class="tele-row" style="margin-bottom:2px">
+        <span class="lbl" style="min-width:28px">${id}</span>
+        <div class="tele-bar-wrap"><div class="tele-bar" id="ed-bar-${i}" style="width:85%"></div></div>
+        <span class="val" id="ed-bio-${i}" style="min-width:32px">—</span>
+        <span class="val" id="ed-val-${i}" style="min-width:32px;color:var(--text-dim)">—</span>
+      </div>
+    `).join("");
+  }
+
+  const fungiTele = document.getElementById("fungi-tele");
+  const fungiNames = ["N.Myco","C.Spore","S.Web","Coastal"];
+  if (fungiTele) {
+    fungiTele.innerHTML = fungiNames.map((name, i) => `
+      <div class="tele-row" style="margin-bottom:2px">
+        <span class="lbl" style="min-width:40px">${name}</span>
+        <div class="tele-bar-wrap"><div class="tele-bar" id="fg-bar-${i}" style="width:60%"></div></div>
+        <span class="val" id="fg-chem-${i}">—</span>
+        <span class="val" id="fg-conn-${i}" style="color:var(--text-dim)">—</span>
+      </div>
+    `).join("");
+  }
+
+  // ─── Canvas labels ───
+  const overlay    = document.getElementById("canvas-overlay");
+  const canvasWrap = document.getElementById("canvas-wrap");
+  const speciesLabelEls: HTMLElement[] = [];
+
+  if (overlay && canvasWrap) {
+    for (let i = 0; i < 5; i++) {
+      const el = document.createElement("div");
+      el.className = "species-label";
+      el.id = `sp-label-${i}`;
+      el.textContent = SPECIES_NAMES[i].toUpperCase();
+      overlay.appendChild(el);
+      speciesLabelEls.push(el);
+    }
+    EDNA_ANGLES_DEG.forEach((deg, i) => {
+      const pos = radarToCss(deg, 9.5, canvasWrap);
+      const el  = document.createElement("div");
+      el.className  = "edna-label";
+      el.style.left = pos.x + "px";
+      el.style.top  = pos.y + "px";
+      el.textContent = EDNA_IDS[i];
+      overlay.appendChild(el);
+    });
+  }
+
+  // Label tracking loop — only active when slot 0 (Three.js parliament) is live
+  function updateLabels() {
+    const s = getActiveThreeStage();
+    if (!canvasWrap || !s?.speciesGroups || !s?.camera) return;
+    for (let i = 0; i < 5; i++) {
+      const grp = s.speciesGroups[i];
+      if (!grp) continue;
+      const pos = worldToCss(grp.position, s.camera, canvasWrap);
+      const el  = speciesLabelEls[i];
+      el.style.left = pos.x + "px";
+      el.style.top  = (pos.y - 20) + "px";
+    }
+  }
+  (function labelLoop() { updateLabels(); requestAnimationFrame(labelLoop); })();
+
+  // ─── Spectrogram renderer (external canvas, not Three.js) ───
+  const spectroCanvas = document.getElementById("spectrogram-canvas") as HTMLCanvasElement;
+  let spectroRenderer: SpectrogramRenderer | null = null;
+  if (spectroCanvas) {
+    spectroRenderer = new SpectrogramRenderer(spectroCanvas);
+  }
+
+  // ─── OSC SLIDER WIRING ───
+  // Each slider:
+  //   1. Sends OSC to SC over WebSocket (round-trip visual via broadcast)
+  //   2. Also patches parliamentStore state IMMEDIATELY so visuals respond
+  //      without needing SC to echo the value back.
+  //
+  // Slider addr → store mutation mapping:
+  //   /parliament/consensus         → state.consensus
+  //   /parliament/rotation          → state.rotation
+  //   /agents/species/activity [id] → state.species[id].activity
+  //   /agents/species/presence [id] → state.species[id].presence
+  //   /agents/edna/biodiversity [id]→ state.edna[id].biodiversity
+  //   /agents/fungi/chemical [id]   → state.fungi[id].chemical
+  //   /agents/ai/consciousness      → state.ai.consciousness
+  //   /parliament/vote              → trigger vote event
+  //   /parliament/emergency [v]     → state.consensus = v (emergency override)
+  //   FX paths (/parliament/fx/*)   → SC only (no local state equivalent)
+
+  // ─── sonETH ambient params — live values shared with visual switches ────────
+  // Keyed by the last OSC path segment (e.g. "/soneth/pitchshift" → "pitchshift").
+  // visualizationSwitcher reads this via getSonethParams() exported below.
+  const sonethParams: Record<string, number> = {
+    volume:        0.5,
+    pitchshift:    0.5,
+    timedilation:  0.3,
+    spectralshift: 0.4,
+    spatialspread: 0.5,
+    texturedepth:  0.3,
+    atmospheremix: 0.5,
+    memoryfeed:    0.4,
+    harmonicrich:  0.5,
+    resonantbody:  0.4,
+    masteramp:     0.7,
+    filtercutoff:  0.5,
+    noiselevel:    0.2,
+    noisefilt:     0.5,
+    dronedepth:    0.4,
+    dronefade:     0.5,
+    dronespace:    0.5,
+    dronemix:      0.4,
+    delayfeedback: 0.3,
+    txinfluence:   0.5,
+  };
+  // Expose so visualizationSwitcher.ts can reach it at runtime via window
+  (window as any).__sonethParams = sonethParams;
+
+  function patchStoreFromSlider(addr: string, id: number | null, v: number) {
+    const st = parliamentStore.state;
+    if (!st) return;
+    if (addr === "/parliament/consensus")           { st.consensus = v; }
+    else if (addr === "/parliament/rotation")       { st.rotation = v; }
+    else if (addr === "/agents/species/activity" && id !== null && st.species?.[id])
+                                                    { st.species[id].activity = v; }
+    else if (addr === "/agents/species/presence" && id !== null && st.species?.[id])
+                                                    { st.species[id].presence = v; }
+    else if (addr === "/agents/edna/biodiversity" && id !== null && st.edna?.[id])
+                                                    { st.edna[id].biodiversity = v; }
+    else if (addr === "/agents/fungi/chemical" && id !== null && st.fungi?.[id])
+                                                    { st.fungi[id].chemical = v; }
+    else if (addr === "/agents/ai/consciousness")   { st.ai?.consciousness !== undefined && (st.ai.consciousness = v); }
+    else if (addr === "/parliament/emergency")      { st.consensus = Math.max(0, 1 - v); }
+    else if (addr.startsWith("/soneth/")) {
+      // sonETH ambient param — update live object, then apply to active viz
+      const key = addr.slice("/soneth/".length);
+      sonethParams[key] = v;
+      applySonethToViz(key, v);
+      // Notify slot 2 ZKP interval scheduler about txinfluence/harmonicrich changes
+      if (key === "txinfluence" || key === "harmonicrich") {
+        window.dispatchEvent(new Event("soneth-param-change"));
+      }
+      // SC is notified via sendOSC() in wireSlider — no store notify needed here
+      return;
+    }
+    // volume / fx paths: no local state equivalent, SC handles them
+    else return;
+
+    // For atmosphere-driving values, bypass lerp smoothing on the active Three.js stage
+    // so slider movement is immediately visible rather than taking ~1s to converge.
+    const s = getActiveThreeStage();
+    if (s) {
+      if (addr === "/parliament/consensus") {
+        const turbulence = Math.pow(1.0 - Math.min(1, v), 2.0);
+        s._smoothConsensus  = v;
+        s._smoothTurbulence = turbulence;
+        s._smoothWarmth     = 0.25 + v * 0.75;
+        s._smoothEmergency  = Math.max(0, (1 - v) * Math.min(1, (st.votes || 0) / 10) - 0.2);
+      }
+    }
+
+    // Notify all subscribers (ParliamentStage, AsteroidWaves, telemetry panel)
+    parliamentStore.notifyListeners();
+  }
+
+  // ─── Apply a single sonETH param change to the currently active visualization ─
+  function applySonethToViz(key: string, v: number) {
+    // Slot 0 — ParliamentStage (Three.js): direct property writes bypass lerp
+    const s = getActiveThreeStage();
+    if (s && !s.destroyed) {
+      if (key === "spectralshift") {
+        // Spectral shift → bloom threshold (0→low threshold=more glows, 1→high threshold=selective)
+        if (s._bloom) s._bloom.threshold = 0.35 - v * 0.30; // 0.35 (all v=0) → 0.05 (all v=1)
+      }
+      if (key === "atmospheremix") {
+        // Atmosphere mix → afterimage damp (reverb = more trails)
+        if (s._afterimage?.uniforms?.damp) s._afterimage.uniforms.damp.value = 0.80 + v * 0.17;
+      }
+      if (key === "resonantbody") {
+        // Resonant body → chromatic aberration (filter resonance = more RGB split)
+        if (s._chromaPass?.uniforms?.amount) s._chromaPass.uniforms.amount.value = v * 0.012;
+      }
+      if (key === "memoryfeed") {
+        // Memory feed → bloom strength offset on top of consensus-driven value
+        if (s._bloom) s._bloom.strength = Math.min(2.0, (s._bloom.strength || 0.6) + (v - 0.4) * 0.4);
+      }
+      // ETH-derived ambient params (broadcast at 10Hz by beat engine)
+      if (key === "ethActivity") {
+        // ETH activity → camera orbit speed + bloom intensity
+        if (s._cameraOrbitSpeed !== undefined) s._cameraOrbitSpeed = 0.3 + v * 2.0;
+        if (s._bloom) s._bloom.strength = 0.4 + v * 0.8;
+      }
+      if (key === "txDensity") {
+        // TX density → afterimage trails (more txs = more ghosting)
+        if (s._afterimage?.uniforms?.damp) s._afterimage.uniforms.damp.value = 0.82 + v * 0.15;
+      }
+      if (key === "ethEvent") {
+        // Immediate TX event → flash bloom momentarily
+        if (s._bloom) {
+          const base = s._bloom.strength;
+          s._bloom.strength = Math.min(2.5, base + 0.6);
+          setTimeout(() => { if (s._bloom) s._bloom.strength = base; }, 300);
+        }
+      }
+    }
+
+    // Slot 1 — AsteroidWaves: write into window.__slot1Soneth for draw() to read
+    if (!(window as any).__slot1Soneth) (window as any).__slot1Soneth = {};
+    (window as any).__slot1Soneth[key] = v;
+
+    // Slot 2 — LowEarthPoint: write into window.__slot2Soneth for applyState() to read
+    if (!(window as any).__slot2Soneth) (window as any).__slot2Soneth = {};
+    (window as any).__slot2Soneth[key] = v;
+
+    // Slot 3 — PerlinBlob: write into window.__slot3Soneth; p5 draw() reads it each frame
+    if (!(window as any).__slot3Soneth) (window as any).__slot3Soneth = {};
+    (window as any).__slot3Soneth[key] = v;
+    // Also poke directly into the active slot 2 stage if it's mounted
+    const activeViz = (window as any).__activeVizStage2;
+    if (activeViz && !activeViz.destroyed) {
+      if (key === "pitchshift" && activeViz.pointCloud) {
+        // Pitch shift → Y-axis scale stretch on white cloud
+        activeViz.pointCloud.scale.y = 0.4 + v * 2.2;
+      }
+      if (key === "timedilation" && activeViz.cameraSettings) {
+        // Time dilation → rotation damping (high = slow, low = fast — inverted)
+        const base = (window as any).__slot2Soneth?.txinfluence ?? 0.5;
+        activeViz.cameraSettings.cameraSpeed = (0.1 + base * 7.9) * (1.1 - v * 0.9);
+      }
+      if (key === "texturedepth" && activeViz.pointCloud?.material) {
+        // Texture depth → white point size grain
+        activeViz.pointCloud.material.size = 0.02 + v * 0.18;
+      }
+      if (key === "harmonicrich" && activeViz.redLinesGroup) {
+        // Harmonic rich → red Bézier midZ scale (more complex curves)
+        activeViz.redLinesGroup.scale.z = 0.5 + v * 3.0;
+      }
+      if (key === "spatialspread" && activeViz.linesGroup) {
+        // Spatial spread → white lines group XY spread
+        const ss = 0.4 + v * 1.2;
+        activeViz.linesGroup.scale.x = ss;
+        activeViz.linesGroup.scale.y = ss;
+      }
+      // ETH-derived ambient params for slot 2
+      if (key === "ethActivity" && activeViz.pointCloud?.material) {
+        // ETH activity → particle opacity and size pulse
+        activeViz.pointCloud.material.opacity = 0.3 + v * 0.7;
+        activeViz.pointCloud.material.size = 0.03 + v * 0.12;
+      }
+      if (key === "ethEvent" && activeViz.pointCloud) {
+        // TX event → brief scale pulse
+        const origScale = activeViz.pointCloud.scale.x;
+        activeViz.pointCloud.scale.set(origScale * 1.15, origScale * 1.15, origScale * 1.15);
+        setTimeout(() => {
+          if (activeViz.pointCloud) activeViz.pointCloud.scale.set(origScale, origScale, origScale);
+        }, 200);
+      }
+    }
+  }
+
+  // Expose so the SC→browser echo handler in connectControlWS() can call it
+  (window as any).__applySonethToViz = applySonethToViz;
+
+  // ─── Slider display ID map (addr → id prefix used in HTML) ───────────────
+  // Must match the actual element IDs in parliament.html and the edna rows injected above.
+  const SLIDER_DISP_PREFIX: Record<string, string> = {
+    "/agents/species/activity":   "disp-sp-act-",
+    "/agents/species/presence":   "disp-sp-pres-",
+    "/agents/edna/biodiversity":  "disp-edna-bio-",
+    "/agents/fungi/chemical":     "disp-fg-chem-",
+    "/agents/ai/consciousness":   "disp-ai-consciousness",
+    "/parliament/consensus":      "disp-consensus",
+    "/parliament/rotation":       "disp-rotation",
+    "/parliament/fx/reverb":      "disp-reverb",
+    "/parliament/fx/room":        "disp-room",
+    "/parliament/fx/delaytime":   "disp-delaytime",
+    "/parliament/fx/decaytime":   "disp-decaytime",
+    // sonETH ambient controls — id suffix is the param key (no agent-id)
+    "/soneth/volume":        "disp-soneth-volume",
+    "/soneth/pitchshift":    "disp-soneth-pitchshift",
+    "/soneth/timedilation":  "disp-soneth-timedilation",
+    "/soneth/spectralshift": "disp-soneth-spectralshift",
+    "/soneth/spatialspread": "disp-soneth-spatialspread",
+    "/soneth/texturedepth":  "disp-soneth-texturedepth",
+    "/soneth/atmospheremix": "disp-soneth-atmospheremix",
+    "/soneth/memoryfeed":    "disp-soneth-memoryfeed",
+    "/soneth/harmonicrich":  "disp-soneth-harmonicrich",
+    "/soneth/resonantbody":  "disp-soneth-resonantbody",
+    "/soneth/beatTempo":     "disp-soneth-beatTempo",
+    "/soneth/txInfluence":   "disp-soneth-txInfluence",
+  };
+
+  function wireSlider(slider: HTMLInputElement) {
+    if ((slider as any)._sliderWired) return; // already wired
+    (slider as any)._sliderWired = true;
+
+    const addr    = slider.dataset.osc!;
+    const agentId = slider.dataset.agentId;
+    const prefix  = SLIDER_DISP_PREFIX[addr] ?? `disp-${addr.split("/").pop()}-`;
+
+    // Derive display element — agent sliders use prefix+id, global sliders use prefix alone
+    const dispId  = agentId !== undefined ? `${prefix}${agentId}` : prefix;
+    const dispEl  = document.getElementById(dispId);
+
+    slider.addEventListener("input", () => {
+      const v  = parseFloat(slider.value);
+      const id = agentId !== undefined ? parseInt(agentId) : null;
+      if (dispEl) dispEl.textContent = v.toFixed(2);
+
+      // 1. Send to SC
+      if (id !== null) sendOSCArgs(addr, [id, v]);
+      else             sendOSC(addr, v);
+
+      // 2. Patch local store immediately for instant visual feedback
+      patchStoreFromSlider(addr, id, v);
+    });
+  }
+
+  // Wire all currently-present range sliders (includes static HTML ones)
+  document.querySelectorAll<HTMLInputElement>("input[type='range'][data-osc]").forEach(wireSlider);
+
+  // Wire eDNA sliders that were dynamically injected above (they're in the DOM now)
+  if (ednaCtrlRows) {
+    ednaCtrlRows.querySelectorAll<HTMLInputElement>("input[type='range'][data-osc]").forEach(wireSlider);
+  }
+
+  // ─── State subscription ───
+  const statusDot    = document.getElementById("status-dot");
+  const statusTxt    = document.getElementById("status-txt");
+  const hdrConsensus = document.getElementById("hdr-consensus");
+  const hdrPhase     = document.getElementById("hdr-phase");
+  const hdrVotes     = document.getElementById("hdr-votes");
+  const hdrBiotoken  = document.getElementById("hdr-biotoken");
+  const hdrIucnMult  = document.getElementById("hdr-iucn-mult");
+  const footerClock  = document.getElementById("footer-clock");
+  const footerEvent  = document.getElementById("footer-event");
+  const voteResultFill = document.getElementById("vote-result-fill") as HTMLElement;
+  const voteResultTxt  = document.getElementById("vote-result-txt");
+
+  let lastUpdate = 0;
+  let eventFlash = 0;
+  let elapsed    = 0;
+  let currentState: ParliamentState | null = null;
+
+  // Animate loop: push spectrogram + update stage FFT exposure
+  (function animLoop() {
+    elapsed += 0.016;
+    const bins = buildFftBins(currentState, elapsed);
+    if (spectroRenderer) spectroRenderer.push(bins, performance.now());
+    // Expose bins to active Three.js stage for FFT ring animation
+    const s = getActiveThreeStage();
+    if (s && s._fftBinsExternal !== undefined) s._fftBinsExternal = bins;
+    requestAnimationFrame(animLoop);
+  })();
+
+  parliamentStore.subscribe((state) => {
+    if (!state || !Array.isArray(state.species)) return;
+    currentState = state;
+
+    // Connection
+    if (statusDot) statusDot.className = state.connected ? "on" : "";
+    if (statusTxt)  statusTxt.textContent  = state.connected ? "ONLINE" : "OFFLINE";
+
+    // Header
+    if (hdrConsensus) hdrConsensus.textContent = state.consensus.toFixed(3);
+    if (hdrPhase)     hdrPhase.textContent     = (state.phase * 360).toFixed(1) + "°";
+    if (hdrVotes)     hdrVotes.textContent     = String(state.votes);
+
+    // BioToken live
+    const bt = calcBioToken(state);
+    if (hdrBiotoken) hdrBiotoken.textContent = bt.toFixed(3);
+    const iucnMult = Math.max(...IUCN_MULT);
+    if (hdrIucnMult) hdrIucnMult.textContent = `×${iucnMult}`;
+
+    // Footer clock
+    if (footerClock) {
+      const rem = ((1 - state.phase) * 120).toFixed(1);
+      footerClock.textContent = `${rem}s / ${(state.phase * 360).toFixed(1)}°`;
+    }
+
+    // Throttle panel to ~10fps
+    const now = performance.now();
+    if (now - lastUpdate < 100) return;
+    lastUpdate = now;
+
+    const setBar = (id: string, v: number) => {
+      const el = document.getElementById(id);
+      if (el) el.style.width = (v * 100).toFixed(1) + "%";
+    };
+    const setVal = (id: string, t: string) => {
+      const el = document.getElementById(id);
+      if (el) el.textContent = t;
+    };
+
+    // Parliament state bars
+    setBar("bar-consensus", state.consensus);    setVal("val-consensus", state.consensus.toFixed(3));
+    setBar("bar-wave", state.consensusWave);      setVal("val-wave", state.consensusWave.toFixed(3));
+    setBar("bar-rotation", Math.min(state.rotation / 2, 1)); setVal("val-rotation", state.rotation.toFixed(3));
+    setBar("bar-votes", state.votes / 26);        setVal("val-votes", String(state.votes));
+
+    // BioToken breakdown
+    const avgEdna  = state.edna.reduce((s, e) => s + e.biodiversity, 0) / 8;
+    const avgFungi = state.fungi.reduce((s, f) => s + f.chemical, 0) / 4;
+    const btVal = calcBioToken(state);
+    setVal("biotoken-value", btVal.toFixed(4));
+    setVal("bt-iucn",  String(iucnMult));
+    setVal("bt-edna",  avgEdna.toFixed(2));
+    setVal("bt-fungi", avgFungi.toFixed(2));
+
+    // Species
+    state.species.forEach((sp, i) => {
+      setBar(`sp-bar-pres-${i}`, sp.presence);
+      setVal(`sp-val-${i}`, sp.presence.toFixed(2));
+      setVal(`sp-act-${i}`, sp.activity.toFixed(2));
+      setVal(`sp-frq-${i}`, sp.freq.toFixed(0) + "Hz");
+      setVal(`sp-vot-${i}`, String(sp.votes));
+    });
+
+    // eDNA
+    state.edna.forEach((ed, i) => {
+      setBar(`ed-bar-${i}`, ed.biodiversity);
+      setVal(`ed-bio-${i}`, ed.biodiversity.toFixed(3));
+      setVal(`ed-val-${i}`, ed.validation.toFixed(3));
+      // Highlight biome map row
+      const bm = document.getElementById(`bm-${EDNA_IDS[i]}`);
+      if (bm) bm.className = ed.biodiversity > 0.7 ? "biome-active" : "";
+    });
+
+    // Fungi
+    state.fungi.forEach((fg, i) => {
+      setBar(`fg-bar-${i}`, fg.chemical);
+      setVal(`fg-chem-${i}`, fg.chemical.toFixed(2));
+      setVal(`fg-conn-${i}`, fg.connectivity.toFixed(2));
+    });
+
+    // AI
+    setBar("bar-ai-c", state.ai.consciousness);
+    setVal("val-ai-c", state.ai.consciousness.toFixed(3));
+    setBar("bar-ai-o", state.ai.optimization / 127);
+    setVal("val-ai-o", String(Math.round(state.ai.optimization)));
+
+    // Eco
+    setBar("bar-co2",  state.eco.co2 / 127);        setVal("val-co2",  state.eco.co2.toFixed(0));
+    setBar("bar-myco", state.eco.mycoPulse / 5);     setVal("val-myco", state.eco.mycoPulse.toFixed(2));
+    setBar("bar-phos", state.eco.phosphorus / 127);  setVal("val-phos", state.eco.phosphorus.toFixed(0));
+    setBar("bar-nitr", state.eco.nitrogen / 127);    setVal("val-nitr", state.eco.nitrogen.toFixed(0));
+
+    // Vote result flash
+    if (state.events.voteResult && footerEvent) {
+      const vr = state.events.voteResult;
+      const pct = (vr.consensus * 100).toFixed(1);
+      footerEvent.textContent = vr.passed
+        ? `VOTE PASSED — ${pct}% (${vr.yes}/${vr.total})`
+        : `VOTE FAILED — ${pct}% (${vr.yes}/${vr.total})`;
+      footerEvent.style.color = vr.passed ? "var(--amber-bright)" : "var(--red-alert)";
+      if (voteResultFill) {
+        voteResultFill.style.width = pct + "%";
+        voteResultFill.style.background = vr.passed ? "var(--amber-bright)" : "rgba(255,60,0,0.7)";
+      }
+      if (voteResultTxt) voteResultTxt.textContent = vr.passed ? "PASSED" : "FAILED";
+      eventFlash = Date.now();
+    }
+    if (footerEvent && Date.now() - eventFlash > 8000) {
+      footerEvent.textContent = "—";
+      footerEvent.style.color = "var(--text-dim)";
+    }
+  });
+
+  connectControlWS();
+
+  // Fullscreen on double-click
+  document.getElementById("canvas-wrap")?.addEventListener("dblclick", () => {
+    if (!document.fullscreenElement) {
+      document.documentElement.requestFullscreen().catch(() => {});
+    } else {
+      document.exitFullscreen().catch(() => {});
+    }
+  });
+}
+
+init();

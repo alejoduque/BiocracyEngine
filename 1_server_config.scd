@@ -6,9 +6,14 @@
 // Required by: all other components
 
 (
+// Force sclang OSC receive port to 57120 BEFORE anything else claims the port.
+// MIDIClient.init (loaded next in 2_midi_control.scd) can steal 57120 if it initializes first.
+// thisProcess.openUDPPort is idempotent — safe to call even if already open.
+thisProcess.openUDPPort(57120);
+
 // Server configuration
 Server.default.options.numBuffers = 1024 * 16;
-Server.default.options.memSize = 8192 * 16;
+Server.default.options.memSize = 8192 * 64;  // 512MB — needed for heavy SynthDefs + samples at 96kHz
 Server.default.options.maxNodes = 1024 * 32;
 Server.default.options.numOutputBusChannels = 4;  // Enable 4-channel output for spatial audio
 Server.default.options.numInputBusChannels = 2;
@@ -43,9 +48,13 @@ Server.default.options.numInputBusChannels = 2;
         )
     };
     
-    // Create default group properly
+    // Wait until server is truly running before creating groups/buses
+    while({ s.serverRunning.not }, { 0.1.wait });
+    s.sync;
+
+    // Create default group
     ~defaultGroup = Group.new(s, \addToHead);
-    s.sync;  // Wait for group creation
+    s.sync;
     
     // Setup audio buses
     ~audioBuses = (
@@ -54,16 +63,26 @@ Server.default.options.numInputBusChannels = 2;
         transactions: Bus.audio(s, 2)
     );
     
-    // Setup control buses
+    // Setup control buses — alloc and set must be separate (SC 3.13: .set returns nil)
     ~controlBuses = (
-        volume: Bus.control(s, 1).set(~audioParams.masterVolume),
-        transactionVolume: Bus.control(s, 1).set(~audioParams.transactionVolume),
-        beatVolume: Bus.control(s, 1).set(~audioParams.beatVolume)
+        volume: Bus.control(s, 1),
+        transactionVolume: Bus.control(s, 1),
+        beatVolume: Bus.control(s, 1)
     );
+    ~controlBuses.volume.set(~audioParams.masterVolume);
+    ~controlBuses.transactionVolume.set(~audioParams.transactionVolume);
+    ~controlBuses.beatVolume.set(~audioParams.beatVolume);
     
     // Setup OSC
+    ~visualsDest = NetAddr("127.0.0.1", 3333);
+    "sclang OSC receive port: %".format(NetAddr.langPort).postln;
     if(NetAddr.langPort != 57120) {
-        "Warning: SuperCollider is not using default OSC port 57120".warn;
+        "WARNING: sclang is on port % not 57120 — Python ETH data will NOT arrive!".format(NetAddr.langPort).warn;
+        // Try to open 57120 if it isn't the active port
+        thisProcess.openUDPPort(57120);
+        "Attempted to open port 57120 as fallback.".postln;
+    } {
+        "✓ sclang on port 57120 — Python OSC will reach SC correctly.".postln;
     };
     
     // Test sound function
