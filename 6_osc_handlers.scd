@@ -150,19 +150,31 @@ s.doWhenBooted({
 
     // --- Web GUI Bidirectional OSC Mappings ---
     ~oscToParamMap = Dictionary.newFrom([
-        // Core Performance
+        // ── Core Performance (Row 1) ─────────────────────────────────────
         "/soneth/volume", \masterVolume,
         "/soneth/pitchshift", \pitchShift,
         "/soneth/timedilation", \timeDilation,
         "/soneth/spectralshift", \spectralShift,
         "/soneth/spatialspread", \spatialSpread,
-        // Ambient Processing
+        // ── Ambient Processing (Row 2) ───────────────────────────────────
         "/soneth/texturedepth", \textureDepth,
         "/soneth/atmospheremix", \atmosphereMix,
         "/soneth/memoryfeed", \memoryFeed,
         "/soneth/harmonicrich", \harmonicRich,
         "/soneth/resonantbody", \resonantBody,
-        // FX Chain backups/alternates
+        // ── Drone/Noise Controls (Row 3) — echo to browser for visual sync
+        "/soneth/masteramp", \masterAmp,
+        "/soneth/filtercutoff", \filterCutoff,
+        "/soneth/noiselevel", \noiseLevel,
+        "/soneth/noisefilt", \noiseFilt,
+        "/soneth/dronedepth", \droneDepth,
+        // ── Additional Controls (Row 4) ──────────────────────────────────
+        "/soneth/dronefade", \droneFade,
+        "/soneth/dronespace", \droneSpace,
+        "/soneth/dronemix", \droneMix,
+        "/soneth/delayfeedback", \delayFeedback,
+        "/soneth/txinfluence", \transactionInfluence,
+        // ── FX Chain backups/alternates ───────────────────────────────────
         "/parliament/fx/reverb", \atmosphereMix,
         "/parliament/fx/room", \droneSpace,
         "/parliament/fx/delaytime", \timeDilation,
@@ -202,9 +214,129 @@ s.doWhenBooted({
         }, oscPath);
     };
 
+    // ── Beat engine params (stored in ~beatParams, not ~buses) ─────────
+    // These come from the HTML sonETH sliders but need special routing.
+    OSCdef(\beatTempoOSC, { |msg|
+        var val = msg[1].asFloat;
+        // HTML slider sends 0–1; map to 0.5–2.0 tempo
+        var tempo = val.linexp(0.001, 1, 0.5, 2.0);
+        if(~beatParams.notNil) { ~beatParams.beatTempo = tempo };
+        "Beat Tempo set to % (raw %)".format(tempo.round(0.01), val.round(0.01)).postln;
+    }, "/soneth/beatTempo");
+
+    OSCdef(\txInfluenceOSC, { |msg|
+        var val = msg[1].asFloat;
+        if(~beatParams.notNil) { ~beatParams.transactionInfluence = val };
+        // Also update the control bus if it exists
+        if(~buses.notNil and: { ~buses[\transactionInfluence].notNil }) {
+            ~buses[\transactionInfluence].set(val);
+        };
+    }, "/soneth/txInfluence");
+
+    // ── Parliament Vote / Emergency / Start / Stop handlers ────────────
+    // These arrive from the browser buttons via the bridge.
+    // They affect the beat engine, drone, and echo back to visuals.
+
+    OSCdef(\voteHandler, { |msg|
+        var consensus, passed;
+        // Vote triggers a sonic event: tempo burst + harmonic bell chord
+        "VOTE triggered — consensus surge".postln;
+
+        // Temporarily accelerate beat tempo for 4 seconds
+        if(~beatParams.notNil) {
+            var origTempo = ~beatParams.beatTempo;
+            ~beatParams.beatTempo = origTempo * 1.6;
+            AppClock.sched(4.0, {
+                if(~beatParams.notNil) { ~beatParams.beatTempo = origTempo };
+                nil;
+            });
+        };
+
+        // Spawn a chord of bells (root + 5th + octave) as "vote chime"
+        if(~buses.notNil) {
+            var bi = { |name| if(~buses[name].notNil, { ~buses[name].index }, { -1 }) };
+            var targetGrp = if(~defaultGroup.notNil, { ~defaultGroup }, { s.defaultGroup });
+            #[60, 67, 72].do { |note, i|
+                Synth(\elektronBell, [
+                    \freq, note.midicps,
+                    \amp, 0.22 - (i * 0.04),
+                    \atk, 0.8, \dec, 0.6, \rel, 2.5,
+                    \pan, (i - 1) * 0.5,
+                    \masterVolBus, bi.(\masterVolume),
+                    \atmosphereBus, bi.(\atmosphereMix),
+                    \memoryBus, bi.(\memoryFeed),
+                    \harmonicBus, bi.(\harmonicRich),
+                    \resonantBus, bi.(\resonantBody),
+                    \spectralBus, bi.(\spectralShift),
+                    \timeBus, bi.(\timeDilation),
+                    \textureBus, bi.(\textureDepth),
+                    \spatialBus, bi.(\spatialSpread)
+                ], targetGrp);
+            };
+        };
+
+        // Echo vote event to visuals bridge
+        if(~visualsDest.notNil) {
+            ~visualsDest.sendMsg('/parliament/vote/sonic', 1.0);
+        };
+    }, "/parliament/vote");
+
+    OSCdef(\emergencyHandler, { |msg|
+        var intensity = msg[1].asFloat;
+        "EMERGENCY consensus override — intensity %".format(intensity.round(0.01)).postln;
+
+        // Drop drone pitch to sub-bass, increase noise
+        if(~opalDroneSynth.notNil) {
+            ~opalDroneSynth.set(\freq, 35);
+        };
+        if(~buses.notNil and: { ~buses[\noiseLevel].notNil }) {
+            var origNoise = ~buses[\noiseLevel].getSynchronous;
+            ~buses[\noiseLevel].set((origNoise + 0.15).clip(0, 0.3));
+            // Restore after 6 seconds
+            AppClock.sched(6.0, {
+                if(~buses.notNil and: { ~buses[\noiseLevel].notNil }) {
+                    ~buses[\noiseLevel].set(origNoise);
+                };
+                if(~opalDroneSynth.notNil) {
+                    ~opalDroneSynth.set(\freq, 55);
+                };
+                nil;
+            });
+        };
+
+        // Echo to visuals
+        if(~visualsDest.notNil) {
+            ~visualsDest.sendMsg('/parliament/emergency/sonic', intensity);
+        };
+    }, "/parliament/emergency");
+
+    OSCdef(\startHandler, { |msg|
+        "Parliament START — restoring beat engine".postln;
+        // Re-engage beat engine at normal tempo
+        if(~beatParams.notNil) {
+            ~beatParams.beatTempo = 1.0;
+            ~beatParams.masterAmp = 0.7;
+        };
+        if(~opalDroneSynth.notNil) {
+            ~opalDroneSynth.set(\freq, 55, \amp, 0.4);
+        };
+    }, "/parliament/start");
+
+    OSCdef(\stopHandler, { |msg|
+        "Parliament STOP — fading out".postln;
+        // Fade beat engine to near silence
+        if(~beatParams.notNil) {
+            ~beatParams.masterAmp = 0.05;
+        };
+        if(~opalDroneSynth.notNil) {
+            ~opalDroneSynth.set(\amp, 0.02);
+        };
+    }, "/parliament/stop");
+
     "OSC Handlers initialized:".postln;
     "- Listening on port: %".format(NetAddr.langPort).postln;
     "- Transaction sonification & Front-End OSC mappings ready".postln;
+    "- Parliament vote/emergency/start/stop handlers active".postln;
     "- Use ~testSound.value; to test audio".postln;
     "- Use ~startOSCMonitor.value; to debug OSC".postln;
 });

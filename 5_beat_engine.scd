@@ -59,9 +59,19 @@
     ], target: if(~defaultGroup.notNil, { ~defaultGroup }, { s.defaultGroup }));
     
     ~beatRoutine = Routine({
-        var step = 0; // 16-step sequencer counter
+        var step = 0;
+        var bar = 0;           // bar counter for slow evolution
+        var phrase = 0;        // phrase counter (every 4 bars)
         var transactionInfluence;
-        
+        // Evolving pattern seeds — mutate every phrase
+        var kickPattern   = #[1,0,0,0, 0,0,0,0, 1,0,0,0, 0,0,0,0];
+        var percDivisor   = 3;    // polyrhythmic divisor — shifts each phrase
+        var dustProb      = 0.3;  // base probability for dust hits
+        var droneBaseFreq = 55;   // drone pitch — drifts over time
+        // Pitch pool for percussion melodic variation
+        var pitchPool     = #[200, 300, 400, 500, 600, 800];
+        var poolIdx       = 0;
+
         loop {
             var now = SystemClock.seconds;
             var timeSinceLastTx = now - (~beatParams.lastTransactionTime ? now);
@@ -69,32 +79,64 @@
             var interval;
             var density;
             var bMVol, bPitch, bTime, bSpec, bSpat, bText, bAtmo, bMem, bHarm, bRes;
-            
+            var elapsed = now % 300; // 5-minute macro cycle
+
             // Calculate transaction influence
-            transactionInfluence = (~beatParams.transactionInfluence * 
+            transactionInfluence = (~beatParams.transactionInfluence *
                 exp(timeSinceLastTx.neg * 0.5)).clip(0, 1);
-            
+
             density = ~beatParams.transactionDensity ? 0;
 
-            // Helper to get bus indices safely (nil-safe: checks both ~buses and the entry)
-            bMVol = ~bi.(\masterVolume);
+            // Bus indices
+            bMVol  = ~bi.(\masterVolume);
             bPitch = ~bi.(\pitchShift);
-            bTime = ~bi.(\timeDilation);
-            bSpec = ~bi.(\spectralShift);
-            bSpat = ~bi.(\spatialSpread);
-            bText = ~bi.(\textureDepth);
-            bAtmo = ~bi.(\atmosphereMix);
-            bMem = ~bi.(\memoryFeed);
-            bHarm = ~bi.(\harmonicRich);
-            bRes = ~bi.(\resonantBody);
-            
-            // 1. Opal Kick (Gem) - Plays on downbeats (0, 8), more active with TX density
-            if((step % 8 == 0) or: ((step % 8 == 6) and: (density > 0.4))) {
+            bTime  = ~bi.(\timeDilation);
+            bSpec  = ~bi.(\spectralShift);
+            bSpat  = ~bi.(\spatialSpread);
+            bText  = ~bi.(\textureDepth);
+            bAtmo  = ~bi.(\atmosphereMix);
+            bMem   = ~bi.(\memoryFeed);
+            bHarm  = ~bi.(\harmonicRich);
+            bRes   = ~bi.(\resonantBody);
+
+            // ── PHRASE EVOLUTION: every 4 bars (64 steps) mutate the pattern ──────
+            if(step == 0) {
+                bar = bar + 1;
+                if(bar % 4 == 0) {
+                    phrase = phrase + 1;
+                    // Rotate kick pattern: shift downbeat, add/remove ghost hits
+                    kickPattern = Array.fill(16, { |i|
+                        if(i == 0, { 1 }, {          // downbeat always
+                        if(i == (8 + (phrase % 5)),   // moving secondary hit
+                            { 1 },
+                            { if((density > 0.4) and: { (i % (3 + (phrase % 3))) == 0 },
+                                { 0.6.coin.asInteger },  // density-gated fills
+                                { 0 })
+                            })
+                        })
+                    });
+                    // Shift polyrhythmic divisor: 3→5→7→4→3...
+                    percDivisor = #[3, 5, 7, 4, 6].wrapAt(phrase);
+                    // Evolve dust probability with density
+                    dustProb = (0.15 + (density * 0.4) + (transactionInfluence * 0.2)).clip(0.05, 0.7);
+                    // Drift drone pitch: cycle through harmonically-related notes
+                    droneBaseFreq = #[55, 62, 73, 82, 49, 65, 55, 41].wrapAt(phrase);
+                    // Update drone pitch live
+                    if(~opalDroneSynth.notNil) {
+                        ~opalDroneSynth.set(\freq, droneBaseFreq);
+                    };
+                };
+            };
+
+            // ── 1. KICK — evolving pattern instead of fixed 0,8 ──────────────────
+            if(kickPattern.wrapAt(step) == 1) {
+                // Subtle frequency drift: ±5Hz per bar for organic feel
+                var kickFreq = 50 + ((bar % 7) - 3 * 1.5);
                 Synth(\opalKick, [
                     \out,         0,
-                    \freq,        50,
-                    \amp,         ~beatParams.masterAmp * (0.8 + (density * 0.2)),
-                    \dec,         0.4,
+                    \freq,        kickFreq,
+                    \amp,         ~beatParams.masterAmp * (0.7 + (density * 0.3)),
+                    \dec,         0.3 + (transactionInfluence * 0.3),
                     \masterVolBus, bMVol,
                     \timeBus,      bTime,
                     \harmonicBus,  bHarm,
@@ -105,12 +147,20 @@
                 ], targetGrp);
             };
 
-            // 2. Opal Percussion (Mass) - Polyrhythmic, influenced by FM parameters
-            if((step % 3 == 0) or: ((step % 5 == 0) and: (transactionInfluence > 0.3))) {
+            // ── 2. PERC — shifting polyrhythm + melodic variation ────────────────
+            if((step % percDivisor == 0) or: {
+                (step % 5 == 0) and: { transactionInfluence > 0.3 } and: { 0.6.coin }
+            }) {
+                // Pick from pitch pool with slow rotation
+                var percFreq = pitchPool.wrapAt(poolIdx);
+                poolIdx = (poolIdx + 1) % pitchPool.size;
+                // Slight random detune for humanization
+                percFreq = percFreq * rrand(0.95, 1.05);
+
                 Synth(\opalPerc, [
                     \out,         0,
-                    \freq,        (density.clip(0, 5) * 100 + 300),
-                    \amp,         ~beatParams.masterAmp * (0.5 + (transactionInfluence * 0.3)),
+                    \freq,        percFreq,
+                    \amp,         ~beatParams.masterAmp * (0.4 + (transactionInfluence * 0.35)),
                     \masterVolBus, bMVol,
                     \harmonicBus,  bHarm,
                     \textureBus,   bText,
@@ -123,11 +173,11 @@
                 ], targetGrp);
             };
 
-            // 3. Opal Dust (Granular noise) - Offbeats and glitchy fills
-            if((step % 4 == 2) or: (density > 0.7 and: (0.5.coin))) {
+            // ── 3. DUST — probability-based, not grid-locked ─────────────────────
+            if(dustProb.coin) {
                 Synth(\opalDust, [
                     \out,         0,
-                    \amp,         ~beatParams.masterAmp * (0.4 + (density * 0.3)),
+                    \amp,         ~beatParams.masterAmp * (0.3 + (density * 0.35)),
                     \masterVolBus, bMVol,
                     \textureBus,   bText,
                     \spectralBus,  bSpec,
@@ -139,19 +189,20 @@
                 ], targetGrp);
             };
 
-            // Broadcast current state to visuals bridge (so frontend receives data even without ETH TXs)
+            // Broadcast current state to visuals bridge
             if(~visualsDest.notNil and: { (step % 4) == 0 }) {
                 ~visualsDest.sendMsg('/bio/nutrient', transactionInfluence.linlin(0, 1, 0.1, 0.9));
                 ~visualsDest.sendMsg('/bio/consensus', density.linlin(0, 1, 0.2, 0.8));
                 ~visualsDest.sendMsg('/bio/density', density);
             };
 
-            // Step sequencer increment
+            // Step + interval
             step = (step + 1) % 16;
 
-            // 16th note interval calculation
+            // Interval with micro-swing: odd steps slightly delayed for groove
             interval = (1 / (~beatParams.beatTempo * 4)) *
                        (1 - (transactionInfluence * 0.1));
+            if(step.odd) { interval = interval * rrand(1.0, 1.12) }; // swing
             interval.max(0.05).wait;
         };
     });

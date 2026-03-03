@@ -106,25 +106,98 @@ function sendOSCArgs(address: string, args: number[]) {
     st.consensus      = Math.max(0, st.consensus - 0.3 * args[0]);
     st.consensusWave  = args[0];
     parliamentStore.notifyListeners();
+    // Visual burst: slam brightness down, red shift across all slots
+    triggerVoteVisualBurst("emergency", args[0]);
   } else if (address === "/parliament/vote") {
     // Vote: trigger a synthetic vote result event for visual flash
+    const passed = st.consensus > 0.5;
     st.events.voteResult = {
       consensus: st.consensus,
-      passed: st.consensus > 0.5,
+      passed,
       yes: Math.round(st.votes * st.consensus),
       total: st.votes,
     };
     parliamentStore.notifyListeners();
+    // Visual burst: bloom flash + color surge across all slots
+    triggerVoteVisualBurst(passed ? "passed" : "failed", st.consensus);
   } else if (address === "/parliament/stop") {
     // Stop: silence all species activity
     st.species.forEach((sp) => { sp.activity = 0.0; sp.presence = 0.1; });
     parliamentStore.notifyListeners();
+    // Visual: dim everything
+    triggerVoteVisualBurst("stop", 0);
   } else if (address === "/parliament/start") {
     // Start: restore default activity
     st.species.forEach((sp) => { sp.activity = 0.5; sp.presence = 0.5; });
     parliamentStore.notifyListeners();
+    // Visual: restore brightness
+    triggerVoteVisualBurst("start", 0.5);
   }
 };
+
+// ─── Vote/Emergency visual burst across ALL 4 visualization slots ──────────
+function triggerVoteVisualBurst(type: string, intensity: number) {
+  const applyViz = (window as any).__applySonethToViz;
+  if (typeof applyViz !== "function") return;
+
+  if (type === "passed") {
+    // Bloom flash + warm glow: spike volume/bloom, then decay over 3s
+    applyViz("volume", 1.0);
+    applyViz("atmospheremix", 0.95);
+    applyViz("harmonicrich", 0.9);
+    applyViz("memoryfeed", 0.8);
+    setTimeout(() => {
+      applyViz("volume", 0.5);
+      applyViz("atmospheremix", 0.5);
+      applyViz("harmonicrich", 0.5);
+      applyViz("memoryfeed", 0.4);
+    }, 3000);
+  } else if (type === "failed") {
+    // Red alert flash: spectral shift + resonant spike, then decay
+    applyViz("spectralshift", 0.9);
+    applyViz("resonantbody", 0.95);
+    applyViz("texturedepth", 0.8);
+    setTimeout(() => {
+      applyViz("spectralshift", 0.4);
+      applyViz("resonantbody", 0.4);
+      applyViz("texturedepth", 0.3);
+    }, 3000);
+  } else if (type === "emergency") {
+    // Emergency: max spectral + resonant + spatial collapse, slow recovery
+    applyViz("spectralshift", 1.0);
+    applyViz("resonantbody", 1.0);
+    applyViz("spatialspread", 0.0);
+    applyViz("volume", 0.15);
+    applyViz("texturedepth", 0.9);
+    setTimeout(() => {
+      applyViz("spectralshift", 0.4);
+      applyViz("resonantbody", 0.4);
+      applyViz("spatialspread", 0.5);
+      applyViz("volume", 0.5);
+      applyViz("texturedepth", 0.3);
+    }, 6000);
+  } else if (type === "stop") {
+    // Fade to minimum across all params
+    ["volume", "atmospheremix", "harmonicrich", "memoryfeed", "texturedepth"].forEach(p => {
+      applyViz(p, 0.05);
+    });
+  } else if (type === "start") {
+    // Restore defaults
+    applyViz("volume", 0.5);
+    applyViz("pitchshift", 0.5);
+    applyViz("timedilation", 0.3);
+    applyViz("spectralshift", 0.4);
+    applyViz("spatialspread", 0.5);
+    applyViz("texturedepth", 0.3);
+    applyViz("atmospheremix", 0.5);
+    applyViz("memoryfeed", 0.4);
+    applyViz("harmonicrich", 0.5);
+    applyViz("resonantbody", 0.4);
+  }
+
+  // Broadcast event flag to p5.js slots for custom flash effects
+  (window as any).__voteEvent = { type, intensity, time: performance.now() };
+}
 
 // ─── Project 3D world pos to CSS px ───
 function worldToCss(
@@ -434,6 +507,8 @@ async function init() {
     dronemix:      0.4,
     delayfeedback: 0.3,
     txinfluence:   0.5,
+    beatTempo:     0.5,
+    txInfluence:   0.5,
   };
   // Expose so visualizationSwitcher.ts can reach it at runtime via window
   (window as any).__sonethParams = sonethParams;
@@ -485,92 +560,168 @@ async function init() {
     parliamentStore.notifyListeners();
   }
 
-  // ─── Apply a single sonETH param change to the currently active visualization ─
+  // ─── Apply a single sonETH param change to ALL visualizations ──────────────
+  // This is the central instrument control matrix. Every sonETH parameter drives
+  // both SuperCollider audio (via OSC) AND visual parameters in all 4 slots.
+  // When a slot is not mounted its window.__slotNSoneth still updates, so the
+  // values are ready when the user switches to that slot.
+  //
+  // CONTROL MATRIX (10 params × 4 slots = 40 visual bindings):
+  //
+  //   PARAM            │ SLOT 0 Parliament      │ SLOT 1 AsteroidWaves   │ SLOT 2 LowEarthPoint    │ SLOT 3 PerlinBlob
+  //   ─────────────────┼────────────────────────┼────────────────────────┼─────────────────────────┼─────────────────────
+  //   volume           │ point light intensity  │ wave stroke alpha      │ white cloud opacity     │ stroke opacity
+  //   pitchShift       │ species Z amplitude    │ lane X offset          │ white cloud Y-stretch   │ noise intensity
+  //   timeDilation     │ orbit speed multiplier │ noise X zoom           │ rotation damping         │ cycle frames
+  //   spectralShift    │ bloom threshold        │ amber→cyan tint        │ line hue shift           │ layer compression
+  //   spatialSpread    │ camera distance        │ lane spread override   │ white lines XY spread    │ blob X/Y offset
+  //   textureDepth     │ film grain intensity   │ grid line density      │ white point size         │ stroke weight range
+  //   atmosphereMix    │ afterimage damp        │ background ghosting    │ red cloud opacity        │ layer count
+  //   memoryFeed       │ bloom strength offset  │ ghost trail alpha      │ red lines opacity        │ ghost alpha
+  //   harmonicRich     │ lissajous complexity   │ wave harmonic overlay  │ red Bézier Z-scale       │ hue drift
+  //   resonantBody     │ chroma aberration      │ peak dot glow size     │ red cloud scale          │ inner layer weight
+
   function applySonethToViz(key: string, v: number) {
-    // Slot 0 — ParliamentStage (Three.js): direct property writes bypass lerp
+
+    // ── SLOT 0 — ParliamentStage (Three.js post-processing + scene) ──────────
     const s = getActiveThreeStage();
     if (s && !s.destroyed) {
-      if (key === "spectralshift") {
-        // Spectral shift → bloom threshold (0→low threshold=more glows, 1→high threshold=selective)
-        if (s._bloom) s._bloom.threshold = 0.35 - v * 0.30; // 0.35 (all v=0) → 0.05 (all v=1)
+      switch (key) {
+        case "volume":
+          // Volume → point light intensity (scene brightness, 0.5→2.5)
+          if (s._ptLight) s._ptLight.intensity = 0.5 + v * 2.0;
+          break;
+        case "pitchshift":
+          // Pitch → species Z oscillation amplitude factor (stored, read in updateStage)
+          s._sonethPitchZ = v; // 0→0 Z swing, 1→full Z swing
+          break;
+        case "timedilation":
+          // Time dilation → orbit speed multiplier (high = slower orbits)
+          s._sonethTimeScale = v; // read in updateStage orbit calc
+          break;
+        case "spectralshift":
+          // Spectral → bloom threshold (low cutoff=more glow, high=selective)
+          if (s._bloom) s._bloom.threshold = 0.35 - v * 0.30;
+          break;
+        case "spatialspread":
+          // Spatial → camera distance offset (wide=far, narrow=close)
+          if (s.controls) {
+            s.controls.minDistance = 8 + v * 8;   // 8→16
+            s.controls.maxDistance = 40 - v * 15;  // 40→25
+          }
+          break;
+        case "texturedepth":
+          // Texture → film grain intensity (granular = noisy image)
+          if (s._filmPass) s._filmPass.uniforms.intensity.value = v * 0.40;
+          break;
+        case "atmospheremix":
+          // Atmosphere → afterimage persistence (reverb = visual trails)
+          if (s._afterimage?.uniforms?.damp) s._afterimage.uniforms.damp.value = 0.80 + v * 0.17;
+          break;
+        case "memoryfeed":
+          // Memory → bloom strength offset (delay feedback = lingering glow)
+          if (s._bloom) s._bloom.strength = Math.min(2.0, (s._bloom.strength || 0.6) + (v - 0.4) * 0.4);
+          break;
+        case "harmonicrich":
+          // Harmonic → Lissajous curve complexity (FM ratio = more lobes)
+          s._sonethHarmonicLiss = v; // read in updateStage lissajous calc
+          break;
+        case "resonantbody":
+          // Resonant → chromatic aberration (filter Q = RGB split)
+          if (s._chromaPass?.uniforms?.amount) s._chromaPass.uniforms.amount.value = v * 0.012;
+          break;
       }
-      if (key === "atmospheremix") {
-        // Atmosphere mix → afterimage damp (reverb = more trails)
-        if (s._afterimage?.uniforms?.damp) s._afterimage.uniforms.damp.value = 0.80 + v * 0.17;
-      }
-      if (key === "resonantbody") {
-        // Resonant body → chromatic aberration (filter resonance = more RGB split)
-        if (s._chromaPass?.uniforms?.amount) s._chromaPass.uniforms.amount.value = v * 0.012;
-      }
-      if (key === "memoryfeed") {
-        // Memory feed → bloom strength offset on top of consensus-driven value
-        if (s._bloom) s._bloom.strength = Math.min(2.0, (s._bloom.strength || 0.6) + (v - 0.4) * 0.4);
-      }
-      // ETH-derived ambient params (broadcast at 10Hz by beat engine)
+      // ETH-derived event params (kept for beat engine broadcasts)
       if (key === "ethActivity") {
-        // ETH activity → camera orbit speed + bloom intensity
-        if (s._cameraOrbitSpeed !== undefined) s._cameraOrbitSpeed = 0.3 + v * 2.0;
         if (s._bloom) s._bloom.strength = 0.4 + v * 0.8;
+        s._sonethTimeScale = 1.0 - v * 0.5; // faster orbits with ETH activity
       }
       if (key === "txDensity") {
-        // TX density → afterimage trails (more txs = more ghosting)
         if (s._afterimage?.uniforms?.damp) s._afterimage.uniforms.damp.value = 0.82 + v * 0.15;
       }
-      if (key === "ethEvent") {
-        // Immediate TX event → flash bloom momentarily
-        if (s._bloom) {
-          const base = s._bloom.strength;
-          s._bloom.strength = Math.min(2.5, base + 0.6);
-          setTimeout(() => { if (s._bloom) s._bloom.strength = base; }, 300);
-        }
+      if (key === "ethEvent" && s._bloom) {
+        const base = s._bloom.strength;
+        s._bloom.strength = Math.min(2.5, base + 0.6);
+        setTimeout(() => { if (s._bloom) s._bloom.strength = base; }, 300);
       }
     }
 
-    // Slot 1 — AsteroidWaves: write into window.__slot1Soneth for draw() to read
+    // ── SLOT 1 — AsteroidWaves (p5.js): write to window global, draw() reads ─
     if (!(window as any).__slot1Soneth) (window as any).__slot1Soneth = {};
     (window as any).__slot1Soneth[key] = v;
 
-    // Slot 2 — LowEarthPoint: write into window.__slot2Soneth for applyState() to read
+    // ── SLOT 2 — LowEarthPoint (Three.js): write global + poke stage directly ─
     if (!(window as any).__slot2Soneth) (window as any).__slot2Soneth = {};
     (window as any).__slot2Soneth[key] = v;
 
-    // Slot 3 — PerlinBlob: write into window.__slot3Soneth; p5 draw() reads it each frame
-    if (!(window as any).__slot3Soneth) (window as any).__slot3Soneth = {};
-    (window as any).__slot3Soneth[key] = v;
-    // Also poke directly into the active slot 2 stage if it's mounted
     const activeViz = (window as any).__activeVizStage2;
     if (activeViz && !activeViz.destroyed) {
-      if (key === "pitchshift" && activeViz.pointCloud) {
-        // Pitch shift → Y-axis scale stretch on white cloud
-        activeViz.pointCloud.scale.y = 0.4 + v * 2.2;
+      switch (key) {
+        case "volume":
+          // Volume → white cloud opacity (presence)
+          if (activeViz.pointCloud?.material) {
+            activeViz.pointCloud.material.opacity = 0.15 + v * 0.85;
+          }
+          break;
+        case "pitchshift":
+          // Pitch → white cloud Y-axis stretch
+          if (activeViz.pointCloud) activeViz.pointCloud.scale.y = 0.4 + v * 2.2;
+          break;
+        case "timedilation":
+          // Time dilation → rotation damping (high = slow, inverted)
+          if (activeViz.cameraSettings) {
+            const base = (window as any).__slot2Soneth?.txinfluence ?? 0.5;
+            activeViz.cameraSettings.cameraSpeed = (0.1 + base * 7.9) * (1.1 - v * 0.9);
+          }
+          break;
+        case "spectralshift":
+          // Spectral → line color hue shift (rebuild with new color)
+          activeViz._sonethHue = v; // read in next line rebuild cycle
+          break;
+        case "spatialspread":
+          // Spatial → white lines XY spread
+          if (activeViz.linesGroup) {
+            const ss = 0.4 + v * 1.2;
+            activeViz.linesGroup.scale.x = ss;
+            activeViz.linesGroup.scale.y = ss;
+          }
+          break;
+        case "texturedepth":
+          // Texture → white point size (grain detail)
+          if (activeViz.pointCloud?.material) activeViz.pointCloud.material.size = 0.02 + v * 0.18;
+          break;
+        case "atmospheremix":
+          // Atmosphere → red cloud opacity (reverb = red haze presence)
+          if (activeViz.redPointCloud?.material) {
+            activeViz.redPointCloud.material.opacity = 0.05 + v * 0.90;
+          }
+          break;
+        case "memoryfeed":
+          // Memory → red Bézier lines opacity (delay = lingering connections)
+          if (activeViz.redLinesGroup) {
+            activeViz.redLinesGroup.children.forEach((child: any) => {
+              if (child.material) { child.material.opacity = v * 0.50; child.material.transparent = true; }
+            });
+          }
+          break;
+        case "harmonicrich":
+          // Harmonic → red Bézier midZ scale (FM = complex curves)
+          if (activeViz.redLinesGroup) activeViz.redLinesGroup.scale.z = 0.5 + v * 3.0;
+          break;
+        case "resonantbody":
+          // Resonant → red cloud scale (filter Q = red mass expansion)
+          if (activeViz.redPointCloud) {
+            const rs = 0.3 + v * 2.0;
+            activeViz.redPointCloud.scale.setScalar(rs);
+          }
+          break;
       }
-      if (key === "timedilation" && activeViz.cameraSettings) {
-        // Time dilation → rotation damping (high = slow, low = fast — inverted)
-        const base = (window as any).__slot2Soneth?.txinfluence ?? 0.5;
-        activeViz.cameraSettings.cameraSpeed = (0.1 + base * 7.9) * (1.1 - v * 0.9);
-      }
-      if (key === "texturedepth" && activeViz.pointCloud?.material) {
-        // Texture depth → white point size grain
-        activeViz.pointCloud.material.size = 0.02 + v * 0.18;
-      }
-      if (key === "harmonicrich" && activeViz.redLinesGroup) {
-        // Harmonic rich → red Bézier midZ scale (more complex curves)
-        activeViz.redLinesGroup.scale.z = 0.5 + v * 3.0;
-      }
-      if (key === "spatialspread" && activeViz.linesGroup) {
-        // Spatial spread → white lines group XY spread
-        const ss = 0.4 + v * 1.2;
-        activeViz.linesGroup.scale.x = ss;
-        activeViz.linesGroup.scale.y = ss;
-      }
-      // ETH-derived ambient params for slot 2
+      // ETH event params for slot 2
       if (key === "ethActivity" && activeViz.pointCloud?.material) {
-        // ETH activity → particle opacity and size pulse
         activeViz.pointCloud.material.opacity = 0.3 + v * 0.7;
         activeViz.pointCloud.material.size = 0.03 + v * 0.12;
       }
       if (key === "ethEvent" && activeViz.pointCloud) {
-        // TX event → brief scale pulse
         const origScale = activeViz.pointCloud.scale.x;
         activeViz.pointCloud.scale.set(origScale * 1.15, origScale * 1.15, origScale * 1.15);
         setTimeout(() => {
@@ -578,10 +729,156 @@ async function init() {
         }, 200);
       }
     }
+
+    // ── SLOT 3 — PerlinBlob (p5.js): write global, draw() reads each frame ───
+    if (!(window as any).__slot3Soneth) (window as any).__slot3Soneth = {};
+    (window as any).__slot3Soneth[key] = v;
   }
 
   // Expose so the SC→browser echo handler in connectControlWS() can call it
   (window as any).__applySonethToViz = applySonethToViz;
+
+  // ─── Diagnostic Monitor Overlay (toggle with Shift+D) ───────────────────────
+  // Shows live param values, last-update timestamps, and slot write confirmations.
+  // Green = received in last 2s, amber = stale (>2s), grey = never received.
+  (function initDiagMonitor() {
+    const CORE_PARAMS = [
+      "volume","pitchshift","timedilation","spectralshift","spatialspread",
+      "texturedepth","atmospheremix","memoryfeed","harmonicrich","resonantbody",
+    ];
+    const EXTRA_PARAMS = [
+      "masteramp","filtercutoff","noiselevel","noisefilt","dronedepth",
+      "dronefade","dronespace","dronemix","delayfeedback","txinfluence",
+      "beatTempo","txInfluence",
+    ];
+    const ALL_PARAMS = [...CORE_PARAMS, ...EXTRA_PARAMS];
+    const SLOTS = ["S0:Parliament","S1:Asteroid","S2:LowEarth","S3:Perlin"];
+
+    const lastSeen: Record<string, number> = {};
+    let overlay: HTMLDivElement | null = null;
+    let visible = false;
+
+    function createOverlay() {
+      overlay = document.createElement("div");
+      overlay.id = "diag-monitor";
+      overlay.style.cssText = `
+        position:fixed; top:8px; right:8px; z-index:99999;
+        background:rgba(0,4,2,0.94); border:1px solid #1a3a1a;
+        border-radius:6px; padding:12px 14px; font:14px/1.5 monospace;
+        color:#88aa88; max-height:90vh; overflow-y:auto; pointer-events:auto;
+        min-width:480px;
+      `;
+      overlay.innerHTML = `
+        <div style="color:#44ff66;font-weight:bold;margin-bottom:6px;font-size:16px;">
+          DIAG MONITOR <span style="color:#666;font-weight:normal;font-size:12px;">(Shift+D to hide)</span>
+        </div>
+        <div style="display:flex;gap:8px;margin-bottom:6px;font-size:13px;">
+          <span style="color:#0f0;">●</span> &lt;2s
+          <span style="color:#fa0;">●</span> stale
+          <span style="color:#444;">●</span> never
+        </div>
+        <table id="diag-table" style="border-collapse:collapse;width:100%;font-size:13px;"></table>
+        <div id="diag-ws-status" style="margin-top:8px;color:#666;font-size:13px;">WS: —</div>
+        <div id="diag-msg-count" style="color:#666;font-size:13px;">msgs: 0</div>
+      `;
+      document.body.appendChild(overlay);
+
+      const table = document.getElementById("diag-table") as HTMLTableElement;
+      // Header row
+      const hdr = table.insertRow();
+      hdr.innerHTML = `<th style="text-align:left;color:#44ff66;padding:2px 4px;">Param</th>
+        <th style="color:#44ff66;padding:2px 4px;">Val</th>
+        ${SLOTS.map(s => `<th style="color:#44ff66;padding:2px 4px;font-size:11px;">${s}</th>`).join("")}
+        <th style="color:#44ff66;padding:2px 4px;">Age</th>`;
+
+      ALL_PARAMS.forEach(p => {
+        const row = table.insertRow();
+        row.id = `diag-row-${p}`;
+        row.innerHTML = `
+          <td style="padding:2px 6px;">${p}</td>
+          <td id="dv-${p}" style="text-align:center;color:#666;padding:2px 4px;">—</td>
+          <td id="ds0-${p}" style="text-align:center;padding:2px 4px;">●</td>
+          <td id="ds1-${p}" style="text-align:center;padding:2px 4px;">●</td>
+          <td id="ds2-${p}" style="text-align:center;padding:2px 4px;">●</td>
+          <td id="ds3-${p}" style="text-align:center;padding:2px 4px;">●</td>
+          <td id="da-${p}" style="text-align:right;color:#666;padding:2px 4px;">—</td>
+        `;
+      });
+    }
+
+    // Hook into applySonethToViz to track arrivals
+    const origApply = applySonethToViz;
+    function trackedApply(key: string, v: number) {
+      lastSeen[key] = performance.now();
+      origApply(key, v);
+    }
+    (window as any).__applySonethToViz = trackedApply;
+
+    // Also track in patchStoreFromSlider path (re-wrap not needed — it calls applySonethToViz internally)
+
+    let msgCount = 0;
+    // Intercept WS messages for counting
+    const origOnMessage = controlWS?.onmessage;
+    function patchWSCounting() {
+      if (!controlWS) return;
+      const prevHandler = controlWS.onmessage;
+      controlWS.onmessage = (evt) => {
+        msgCount++;
+        if (prevHandler) prevHandler.call(controlWS, evt);
+      };
+    }
+    // Re-patch after reconnect
+    const origConnect = connectControlWS;
+
+    // Update loop
+    setInterval(() => {
+      if (!visible || !overlay) return;
+      const now = performance.now();
+      const sp = (window as any).__sonethParams || {};
+      const s1 = (window as any).__slot1Soneth || {};
+      const s2 = (window as any).__slot2Soneth || {};
+      const s3 = (window as any).__slot3Soneth || {};
+
+      ALL_PARAMS.forEach(p => {
+        const valEl = document.getElementById(`dv-${p}`);
+        const ageEl = document.getElementById(`da-${p}`);
+        const val = sp[p];
+        if (valEl) valEl.textContent = typeof val === "number" ? val.toFixed(3) : "—";
+
+        const age = lastSeen[p] ? (now - lastSeen[p]) / 1000 : -1;
+        const color = age < 0 ? "#444" : age < 2 ? "#0f0" : "#fa0";
+        if (ageEl) {
+          ageEl.textContent = age < 0 ? "—" : age.toFixed(1) + "s";
+          ageEl.style.color = color;
+        }
+
+        // Slot dots: green if the slot global has this param set
+        const slotVals = [sp[p], s1[p], s2[p], s3[p]];
+        [0,1,2,3].forEach(si => {
+          const dot = document.getElementById(`ds${si}-${p}`);
+          if (dot) {
+            const has = typeof slotVals[si] === "number";
+            dot.style.color = has ? (age >= 0 && age < 2 ? "#0f0" : "#fa0") : "#444";
+          }
+        });
+      });
+
+      // WS status
+      const wsEl = document.getElementById("diag-ws-status");
+      if (wsEl) wsEl.textContent = `WS: ${controlWsReady ? "CONNECTED" : "DISCONNECTED"}`;
+      const msgEl = document.getElementById("diag-msg-count");
+      if (msgEl) msgEl.textContent = `msgs: ${msgCount}`;
+    }, 200);
+
+    // Toggle with Shift+D
+    document.addEventListener("keydown", (e) => {
+      if (e.shiftKey && e.key === "D") {
+        visible = !visible;
+        if (visible && !overlay) createOverlay();
+        if (overlay) overlay.style.display = visible ? "block" : "none";
+      }
+    });
+  })();
 
   // ─── Slider display ID map (addr → id prefix used in HTML) ───────────────
   // Must match the actual element IDs in parliament.html and the edna rows injected above.

@@ -163,6 +163,11 @@ class ParliamentStage extends BaseThreeJsModule {
     this.parliamentState  = null;
     this._fftBinsExternal = null;  // set by parliamentEntry.ts
 
+    // sonETH instrument params — written by applySonethToViz(), read in updateStage()
+    this._sonethPitchZ       = 0.5;  // pitchshift → species Z oscillation amplitude
+    this._sonethTimeScale    = 0.3;  // timedilation → orbit speed multiplier (0=fast, 1=slow)
+    this._sonethHarmonicLiss = 0.5;  // harmonicrich → lissajous curve complexity
+
     // Smoothed atmosphere values (prevent jumps)
     this._smoothConsensus  = 0.5;
     this._smoothTurbulence = 0.0;
@@ -581,17 +586,19 @@ class ParliamentStage extends BaseThreeJsModule {
       const wfm = this.speciesMeshes[i];
       const sdm = this.speciesSolidMats[i];
 
-      // Orbit speed: dramatically faster with activity (10× range vs before)
-      // At activity=0: crawl (0.0008 rad/frame). At activity=1: 0.022 rad/frame (27× faster).
-      const orbitSpeed = 0.0008 + i * 0.0002 + sp.activity * 0.021;
+      // Orbit speed: activity-driven, modulated by sonETH timeDilation
+      // timeDilation 0→fast orbits (×1.5), 1→slow orbits (×0.2)
+      const timeScaleMul = 1.5 - (this._sonethTimeScale ?? 0.3) * 1.3;
+      const orbitSpeed = (0.0008 + i * 0.0002 + sp.activity * 0.021) * Math.max(0.1, timeScaleMul);
       this.speciesOrbitAngle[i] += orbitSpeed;
       const a  = this.speciesOrbitAngle[i];
       // Orbit radius shrinks when presence is low (agent fading from parliament)
       const orbitR = SPECIES_R * (0.4 + sp.presence * 0.6);
       const cx = Math.cos(a) * orbitR;
       const cy = Math.sin(a) * orbitR;
-      // Z oscillation amplitude: 0 (dormant) → 3.5 (fully active)
-      const cz = Math.sin(elapsed * 0.4 + i * 1.2) * (sp.activity * 3.5);
+      // Z oscillation: activity × sonETH pitchShift (0→no Z, 1→full Z swing)
+      const pitchZ = this._sonethPitchZ ?? 0.5;
+      const cz = Math.sin(elapsed * 0.4 + i * 1.2) * (sp.activity * 3.5 * (0.2 + pitchZ * 1.6));
       grp.position.set(cx, cy, cz);
 
       // Self-rotation: activity → fast spin (0.005 → 0.12 rad/frame)
@@ -699,11 +706,13 @@ class ParliamentStage extends BaseThreeJsModule {
     // Core emissive intensity from consensus — bloom then amplifies
     this._consensusCore.material.emissiveIntensity = 0.6 + this._smoothConsensus * 1.2;
 
-    // ── Lissajous (AI) ────────────────────────────────────────────────────
+    // ── Lissajous (AI + sonETH harmonicRich) ────────────────────────────
     const ai     = state ? state.ai : { consciousness: 0.5, optimization: 64 };
-    const a_rat  = 2 + Math.round(ai.consciousness * 3);
-    const delta  = (ai.optimization / 127) * Math.PI + elapsed * 0.25;
-    const lScale = 0.55 + ai.consciousness * 0.2;
+    // harmonicRich adds extra lobes (FM ratio → visual complexity)
+    const harmLiss = this._sonethHarmonicLiss ?? 0.5;
+    const a_rat  = 2 + Math.round(ai.consciousness * 3 + harmLiss * 3);
+    const delta  = (ai.optimization / 127) * Math.PI + elapsed * (0.15 + harmLiss * 0.3);
+    const lScale = 0.55 + ai.consciousness * 0.2 + harmLiss * 0.15;
     const lPos   = this._lissajousPos;
     const lSegs  = lPos.length / 3 - 1;
     for (let i = 0; i <= lSegs; i++) {

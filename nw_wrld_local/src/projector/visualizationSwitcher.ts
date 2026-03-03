@@ -199,6 +199,8 @@ function mountAsteroidWaves(): Viz {
 
       // Read live sonETH params (set by parliamentEntry.applySonethToViz)
       const sp1 = (window as any).__slot1Soneth ?? {};
+      // Volume → wave stroke alpha multiplier (0.2 silent → 1.0 full)
+      const volAlpha = 0.2 + (sp1.volume ?? 0.7) * 0.8;
       // Memory Feed (0→0.4 default) modulates ghost trail: high memoryfeed = more trailing
       const memFeed = sp1.memoryfeed ?? 0.4; // 0–1
       // Time Dilation modulates noise X zoom (detail): high = fine detail, low = broad
@@ -207,25 +209,53 @@ function mountAsteroidWaves(): Viz {
       const pitchSh = sp1.pitchshift ?? 0.5;  // 0–1
       // Spectral Shift modulates amber→cyan color tint on waves
       const spectralSh = sp1.spectralshift ?? 0.4; // 0–1
+      // Spatial Spread → lane spread override (overrides state-driven value)
+      const spatialOvr = sp1.spatialspread;
+      if (typeof spatialOvr === "number") laneSpread = 0.10 + spatialOvr * 0.80;
+      // Texture Depth → extra grid lines density (0→sparse, 1→dense)
+      const texDens = sp1.texturedepth ?? 0.3;
+      // Atmosphere Mix → background ghosting (reverb = visual smear)
+      const atmGhost = sp1.atmospheremix ?? 0.5;
+      // Harmonic Rich → harmonic wave overlay (adds sub-octave ghost wave)
+      const harmOvr = sp1.harmonicrich ?? 0.5;
+      // Resonant Body → peak dot glow size (filter Q = resonant bloom)
+      const resDot = sp1.resonantbody ?? 0.4;
 
-      // Background alpha: presence = clean wipe; memoryfeed = more ghost trails
+      // Vote event flash: white flash on passed, red on failed/emergency
+      const voteEvt = (window as any).__voteEvent;
+      let voteFlash = 0;
+      if (voteEvt && (performance.now() - voteEvt.time) < 1500) {
+        voteFlash = 1.0 - (performance.now() - voteEvt.time) / 1500;
+      }
+
+      // Background alpha: presence + atmospheremix control ghosting
       const avgPres = meteors.length ? meteors.reduce((s, m) => s + m.presence, 0) / meteors.length : 0.5;
-      const bgAlpha = Math.floor(Math.max(40, 200 + avgPres * 50 - memFeed * 160));
-      p.background(BG[0], BG[1], BG[2], bgAlpha);
+      const bgAlpha = Math.floor(Math.max(25, 200 + avgPres * 50 - memFeed * 120 - atmGhost * 80));
+      if (voteFlash > 0 && voteEvt) {
+        const isRed = voteEvt.type === "failed" || voteEvt.type === "emergency";
+        const fr = isRed ? 60 + voteFlash * 180 : voteFlash * 255;
+        const fg = isRed ? 10 : voteFlash * 200;
+        const fb = isRed ? 0 : voteFlash * 120;
+        p.background(BG[0] + fr, BG[1] + fg, BG[2] + fb, bgAlpha);
+      } else {
+        p.background(BG[0], BG[1], BG[2], bgAlpha);
+      }
 
       const centerY = p.height / 2;
       const maxDist = (p.height / 2) * 0.85;
       const n = meteors.length || 1;
 
-      // Dim grid
+      // Dim grid — density driven by textureDepth (6→18 horizontal, 40→12px vertical spacing)
+      const gridH = Math.round(6 + texDens * 12);
+      const gridVSpacing = Math.max(8, Math.round(40 - texDens * 28));
       p.strokeWeight(0.5);
-      for (let g = 0; g <= 6; g++) {
-        p.stroke(AMBER_DIM[0], AMBER_DIM[1], AMBER_DIM[2], 35);
-        const gy = p.map(g, 0, 6, 0, p.height);
+      for (let g = 0; g <= gridH; g++) {
+        p.stroke(AMBER_DIM[0], AMBER_DIM[1], AMBER_DIM[2], 25 + texDens * 20);
+        const gy = p.map(g, 0, gridH, 0, p.height);
         p.line(0, gy, p.width, gy);
       }
-      for (let x = 0; x < p.width; x += 40) {
-        p.stroke(AMBER_DIM[0], AMBER_DIM[1], AMBER_DIM[2], 12);
+      for (let x = 0; x < p.width; x += gridVSpacing) {
+        p.stroke(AMBER_DIM[0], AMBER_DIM[1], AMBER_DIM[2], 8 + texDens * 15);
         p.line(x, 0, x, p.height);
       }
 
@@ -237,8 +267,8 @@ function mountAsteroidWaves(): Viz {
       // Waves — laneSpread and noiseScrollSpeed are live from onState
       meteors.forEach((m, idx) => {
         const col = m.color;
-        // Alpha: presence drives how bold/visible each wave is (dim at 0, full at 1)
-        const alpha = Math.floor(40 + m.presence * 215);
+        // Alpha: presence × volume control how bold each wave is
+        const alpha = Math.floor((40 + m.presence * 215) * volAlpha);
         // Lane position: spread by the live laneSpread value
         const laneY = centerY + ((idx - (n - 1) / 2) / n) * maxDist * laneSpread;
 
@@ -268,16 +298,37 @@ function mountAsteroidWaves(): Viz {
         }
         p.endShape();
 
-        // Peak dot — larger when active
+        // Harmonic overlay: sub-octave ghost wave (harmonicRich adds a 2nd wave at half frequency)
+        if (harmOvr > 0.15) {
+          p.stroke(tintR, tintG, tintB, Math.floor(alpha * harmOvr * 0.4));
+          p.strokeWeight(0.3 + m.activity * 1.5);
+          p.noFill();
+          p.beginShape();
+          for (let x = 0; x < p.width; x += 4) {
+            const nv2 = p.noise(noiseX + (x + xOff) * noiseZoom * 0.5, noiseY + idx * 1.5 + 10);
+            const dist2 = (nv2 - 0.5) * 2 * distMag * 0.6;
+            p.vertex(x, laneY - dist2);
+          }
+          p.endShape();
+        }
+
+        // Peak dot — size driven by activity + resonantBody (filter Q = bigger resonant bloom)
         p.noStroke();
         p.fill(col[0], col[1], col[2], 210);
-        const dotSize = 3 + m.activity * 10;
+        const dotSize = 3 + m.activity * 10 + resDot * 8;
         p.ellipse(peakX, peakY, dotSize, dotSize);
+        // Resonant glow ring around peak dot
+        if (resDot > 0.3) {
+          p.noFill();
+          p.stroke(col[0], col[1], col[2], Math.floor(60 * resDot));
+          p.strokeWeight(0.5);
+          p.ellipse(peakX, peakY, dotSize * 2.2, dotSize * 2.2);
+        }
 
         // Peak label
         p.textSize(8 + m.activity * 4);
         p.textAlign(p.CENTER, p.BOTTOM);
-        p.fill(col[0], col[1], col[2], 190);
+        p.fill(col[0], col[1], col[2], Math.floor(190 * volAlpha));
         p.text(m.label, peakX, peakY - 5);
 
         // Right-edge: mass + live activity/presence readout
@@ -663,28 +714,33 @@ function mountPerlinBlob(): Viz {
     p.draw = () => {
       if (blobDestroyed) return;
 
-      // Pull sonETH params from window global each frame
+      // Pull sonETH params from window global each frame — all 10 unified controls
       const sp3 = (window as any).__slot3Soneth ?? {};
       const vol = sp3.volume ?? sp3.masteramp ?? 0.7;
       const pitSh = sp3.pitchshift ?? 0.5;
-      const grSz = sp3.grainsize ?? 0.3;
       const timeDil = sp3.timedilation ?? 0.3;
       const specSh = sp3.spectralshift ?? 0.5;
+      const spatSp = sp3.spatialspread ?? 0.5;
+      const texDep = sp3.texturedepth ?? 0.3;
       const atmMix = sp3.atmospheremix ?? sp3.reverbmix ?? 0.5;
-      const fmR = sp3.fmratio ?? sp3.dronedepth ?? 0.5;
-      const fmD = sp3.fmdepth ?? sp3.noiselevel ?? 0.3;
       const memFd = sp3.memoryfeed ?? sp3.delaymix ?? 0.4;
+      const harmR = sp3.harmonicrich ?? sp3.fmratio ?? sp3.dronedepth ?? 0.5;
+      const resB = sp3.resonantbody ?? 0.4;
 
-      blobParams.intensity = 5 + pitSh * 75;
-      blobParams.noiseSpeed = 0.001 + grSz * 0.024;
-      blobParams.cycleFrames = Math.round(120 + (1 - timeDil) * 780);
-      blobParams.layerCount = Math.round(2 + atmMix * 10);
-      blobParams.strokeOpacity = 0.2 + vol * 0.80;
-      blobParams.strokeWeightLo = 0.05 + fmD * 0.45;
-      blobParams.strokeWeightHi = 0.4 + fmD * 3.1;
-      blobParams.ghostAlpha = Math.round(5 + (1 - memFd) * 60);
-      blobParams.compressionP = specSh;
-      blobParams.hueDrift = (fmR * 360) % 360;
+      blobParams.intensity = 5 + pitSh * 75;              // pitchshift → noise amplitude
+      blobParams.noiseSpeed = 0.001 + texDep * 0.024;     // texturedepth → morph speed (was grainsize)
+      blobParams.cycleFrames = Math.round(120 + (1 - timeDil) * 780); // timedilation → data cycle
+      blobParams.layerCount = Math.round(2 + atmMix * 10); // atmospheremix → layer count
+      blobParams.strokeOpacity = 0.2 + vol * 0.80;        // volume → stroke opacity
+      blobParams.strokeWeightLo = 0.05 + resB * 0.50;     // resonantbody → inner layer weight
+      blobParams.strokeWeightHi = 0.4 + resB * 3.0;       // resonantbody → outer layer weight
+      blobParams.ghostAlpha = Math.round(5 + (1 - memFd) * 60); // memoryfeed → ghost trail
+      blobParams.compressionP = specSh;                    // spectralshift → layer compression
+      blobParams.hueDrift = (harmR * 360) % 360;           // harmonicrich → hue drift
+
+      // spatialspread → blob center X/Y offset (panning the visual field)
+      const blobOffX = (spatSp - 0.5) * p.width * 0.3;    // ±15% of width
+      const blobOffY = (spatSp - 0.5) * p.height * 0.15;  // ±7.5% of height
 
       const numLayers = blobParams.layerCount;
       const cycleFrames = blobParams.cycleFrames;
@@ -703,15 +759,30 @@ function mountPerlinBlob(): Viz {
       const adjusted = Math.min(200, Math.abs(displayVal) * blobParams.intensity + 5);
       const maxRadius = (Math.min(p.width, p.height) * 0.8) / 2;
 
+      // Vote event flash for Slot 3
+      const voteEvt3 = (window as any).__voteEvent;
+      let voteFlash3 = 0;
+      if (voteEvt3 && (performance.now() - voteEvt3.time) < 2000) {
+        voteFlash3 = 1.0 - (performance.now() - voteEvt3.time) / 2000;
+      }
+
       // Ghost overlay (creates motion trail; fully black = no ghost)
       p.push();
       p.noStroke();
-      p.fill(0, 0, 0, blobParams.ghostAlpha);
+      if (voteFlash3 > 0 && voteEvt3) {
+        const isRed3 = voteEvt3.type === "failed" || voteEvt3.type === "emergency";
+        const r3 = isRed3 ? Math.floor(voteFlash3 * 120) : 0;
+        const g3 = isRed3 ? 0 : Math.floor(voteFlash3 * 40);
+        const b3 = isRed3 ? 0 : Math.floor(voteFlash3 * 20);
+        p.fill(r3, g3, b3, blobParams.ghostAlpha);
+      } else {
+        p.fill(0, 0, 0, blobParams.ghostAlpha);
+      }
       p.rect(0, 0, p.width, p.height);
       p.pop();
 
       p.push();
-      p.translate(p.width / 2, p.height / 2);
+      p.translate(p.width / 2 + blobOffX, p.height / 2 + blobOffY);
 
       // Ensure noiseOffsets has enough entries
       while (noiseOffsets.length < numLayers) noiseOffsets.push(p.random(1000));
