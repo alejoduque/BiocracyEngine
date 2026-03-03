@@ -14,15 +14,17 @@
 
     try {
         
-        // Define theme colors - oscilloscope inspired with lighter text
+        // Define theme colors — matched to nw_wrld parliament.html amber palette
         mainTheme = (
-            background: Color.fromHexString("#1E1E2E"),
-            foreground: Color.fromHexString("#F8F8F2"),  // Much lighter text
-            accent: Color.fromHexString("#89B4FA"),
-            green: Color.fromHexString("#A6E3A1"),
-            red: Color.fromHexString("#F38BA8"),
-            yellow: Color.fromHexString("#F9E2AF"),
-            purple: Color.fromHexString("#CBA6F7")
+            background: Color.fromHexString("#000804"),     // --bg
+            foreground: Color(1, 0.533, 0, 0.85),          // --text (amber rgba)
+            accent: Color.fromHexString("#ff8800"),         // --amber
+            green: Color.fromHexString("#44ff66"),          // parliament green indicators
+            red: Color(1, 0.235, 0, 0.85),                 // --red-alert
+            yellow: Color.fromHexString("#ffcc44"),         // --amber-bright
+            purple: Color.fromHexString("#ffcc44"),         // headers use amber-bright (was purple)
+            dim: Color.fromHexString("#663300"),            // --amber-dim
+            border: Color(1, 0.533, 0, 0.25)               // --border
         );
 
         backgroundColor = mainTheme.background;
@@ -30,34 +32,34 @@
         accentColor = mainTheme.accent;
 
         // Create and store window with enhanced styling (larger for merged controls + samples + recording)
-        ~mainWindow = Window("Ethereum Sonification Control - MERGED + SAMPLES", Rect(100, 100, 1100, 1120))
+        ~mainWindow = Window("SøNETH — BiocracyEngine Control", Rect(100, 100, 1100, 1120))
             .background_(backgroundColor);
 
         ~mainWindow.view.layout_(VLayout().margins_(15).spacing_(15));
 
         // Create header
         ~header = StaticText()
-            .string_("ETHEREUM SONIFICATION")
-            .font_(Font("Helvetica", 22, true))  // 2px smaller
+            .string_("SøNETH — BIOCRACY ENGINE")
+            .font_(Font("Helvetica", 22, true))
             .align_(\center)
-            .stringColor_(mainTheme.purple);
+            .stringColor_(mainTheme.yellow);
 
         // Create main container views for merged controls + samples
-        statusView = View().background_(backgroundColor.blend(Color.black, 0.2))
+        statusView = View().background_(backgroundColor.blend(mainTheme.accent, 0.03))
             .layout_(HLayout().margins_(15).spacing_(20));
-        counterView = View().background_(backgroundColor.blend(Color.black, 0.2))
+        counterView = View().background_(backgroundColor.blend(mainTheme.accent, 0.03))
             .layout_(HLayout().margins_(15).spacing_(20));
-        controlView = View().background_(backgroundColor.blend(Color.black, 0.1))
+        controlView = View().background_(backgroundColor.blend(mainTheme.accent, 0.05))
             .layout_(HLayout().margins_(15).spacing_(20));
-        controlViewRow2 = View().background_(backgroundColor.blend(Color.black, 0.1))
+        controlViewRow2 = View().background_(backgroundColor.blend(mainTheme.accent, 0.05))
             .layout_(HLayout().margins_(15).spacing_(20));
-        controlViewRow3 = View().background_(backgroundColor.blend(Color.black, 0.1))
+        controlViewRow3 = View().background_(backgroundColor.blend(mainTheme.accent, 0.04))
             .layout_(HLayout().margins_(15).spacing_(20));
-        controlViewRow4 = View().background_(backgroundColor.blend(Color.black, 0.1))
+        controlViewRow4 = View().background_(backgroundColor.blend(mainTheme.accent, 0.04))
             .layout_(HLayout().margins_(15).spacing_(20));
         
         // Create sample views
-        sampleView = View().background_(backgroundColor.blend(mainTheme.purple, 0.05))
+        sampleView = View().background_(backgroundColor.blend(mainTheme.accent, 0.04))
             .layout_(VLayout().margins_(15).spacing_(10));
         sampleControlView = View().background_(backgroundColor.blend(Color.black, 0.1))
             .layout_(HLayout().margins_(15).spacing_(15));
@@ -126,7 +128,7 @@
 
             counter = NumberBox()
                 .enabled_(false)
-                .background_(mainTheme.background.blend(Color.black, 0.3))
+                .background_(backgroundColor.blend(mainTheme.accent, 0.08))
                 .normalColor_(mainTheme.yellow)
                 .stringColor_(mainTheme.yellow)
                 .font_(Font("Monaco", 14, true))
@@ -354,7 +356,7 @@
             .string_("SAMPLE TRIGGERS")
             .font_(Font("Helvetica", 16, true))
             .align_(\center)
-            .stringColor_(mainTheme.purple);
+            .stringColor_(mainTheme.yellow);
         
         // Create sample button container
         sampleButtonView = View().background_(backgroundColor)
@@ -365,8 +367,8 @@
         ~sampleNames.do { |name, i|
             var button = Button()
                 .states_([
-                    [name, textColor, backgroundColor.blend(mainTheme.purple, 0.1)],
-                    [name, backgroundColor, mainTheme.purple]
+                    [name, textColor, backgroundColor.blend(mainTheme.accent, 0.12)],
+                    [name, backgroundColor, mainTheme.accent]
                 ])
                 .font_(Font("Helvetica", 10))
                 .maxHeight_(40)
@@ -442,7 +444,7 @@
                 .maxHeight_(70)
                 .maxWidth_(70)
                 .mode_(\vert)
-                .color_([mainTheme.background, Color.cyan, mainTheme.foreground, mainTheme.foreground.alpha_(0.2)])
+                .color_([mainTheme.background, mainTheme.dim, mainTheme.foreground, mainTheme.foreground.alpha_(0.2)])
                 .value_(spec.unmap(defaultVal));
 
             displayStr = label.asString;
@@ -450,7 +452,7 @@
 
             valueLabel = StaticText()
                 .string_(displayStr ++ ": " ++ defaultVal.round(0.001))
-                .stringColor_(Color.cyan)  // Clear blue color for paulstretch knobs
+                .stringColor_(mainTheme.dim)  // Amber-dim for sample knob labels
                 .font_(Font("Monaco", 9))
                 .align_(\center);
 
@@ -465,7 +467,7 @@
                     \grainSize, "GRAIN SIZE",
                     displayStr.toUpper
                 ))
-                .stringColor_(Color.cyan.alpha_(0.8))
+                .stringColor_(mainTheme.dim.alpha_(0.8))
                 .font_(Font("Helvetica", 8, true))
                 .align_(\center);
 
@@ -485,7 +487,7 @@
                     ~sampleBuses[paramName].set(mappedVal);
                     ~sampleControlValues[paramName] = mappedVal;
                     valueLabel.string = displayStr ++ ": " ++ mappedVal.round(0.001);
-                    valueLabel.stringColor = Color.cyan;  // Keep blue color on updates
+                    valueLabel.stringColor = mainTheme.dim;  // Keep amber-dim on updates
                     "Sample Bus % set to %".format(paramName, mappedVal.round(0.001)).postln;
                 } {
                     "WARNING: Sample Bus % not found!".format(paramName).warn;
@@ -513,7 +515,7 @@
 
 
         // Create recording controls section
-        recordingView = View().background_(backgroundColor.blend(mainTheme.red, 0.05))
+        recordingView = View().background_(backgroundColor.blend(mainTheme.red, 0.06))
             .layout_(HLayout().margins_(15).spacing_(15));
         recordingView.fixedHeight = 80;
         
@@ -559,7 +561,7 @@
         
         // Spatial GUI button
         ~spatialGuiButton = Button()
-            .states_([["SPATIAL GUI", mainTheme.foreground, backgroundColor.blend(mainTheme.cyan, 0.2)]])
+            .states_([["SPATIAL GUI", mainTheme.foreground, backgroundColor.blend(mainTheme.accent, 0.15)]])
             .font_(Font("Helvetica", 10))
             .action_({
                 var spatialPath = "/Users/a/Documents/p r o y e c t o s/D O C T O R A D O - TADEO 2024/Sonificando ETH/eth_sonification/SøNeth/12_spatial_gui.scd";
@@ -584,10 +586,10 @@
 
         // Add footer
         ~footer = StaticText()
-            .string_("Ethereum Sonification v2.0 - Spatial Audio + Samples Ready")
-            .font_(Font("Monaco", 8))  // 2px smaller
+            .string_("SøNETH BiocracyEngine — Spatial Audio + Samples")
+            .font_(Font("Monaco", 8))
             .align_(\right)
-            .stringColor_(textColor.alpha_(0.8));  // Slightly more visible
+            .stringColor_(mainTheme.dim.alpha_(0.6));
         ~mainWindow.layout.add(~footer);
 
         // Create update routine

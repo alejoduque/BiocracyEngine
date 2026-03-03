@@ -19,3 +19,4 @@ venv/
 node_modules
 sclang_log.txt
 
+archive/
