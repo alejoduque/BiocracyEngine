@@ -13,6 +13,69 @@ import p5 from "p5";
 import parliamentStore from "./parliament/parliamentStore";
 import type { ParliamentState } from "./parliament/parliamentStore";
 
+// ─── Species roster for parliament consensus display ─────────────────────────
+// Extended roster of tropical dry forest + broader ecosystem species.
+// Each entry: [short label (3–4 chars), full scientific name, IUCN status].
+// Slots 1–3 draw from this roster and shuffle names reactively.
+const SPECIES_ROSTER: [string, string, string][] = [
+  ["Ara", "Ara macao", "CR"],
+  ["Atl", "Atlapetes", "VU"],
+  ["Cec", "Cecropia", "LC"],
+  ["Alo", "Alouatta palliata", "VU"],
+  ["Tin", "Tinamus major", "LC"],
+  ["Hrp", "Harpia harpyja", "NT"],
+  ["Pan", "Panthera onca", "NT"],
+  ["Tap", "Tapirus bairdii", "EN"],
+  ["Cro", "Crocodylus acutus", "VU"],
+  ["Boa", "Boa constrictor", "LC"],
+  ["Den", "Dendrobates auratus", "LC"],
+  ["Bra", "Bradypus variegatus", "LC"],
+  ["Nas", "Nasua narica", "LC"],
+  ["Sar", "Sarcoramphus papa", "LC"],
+  ["Ram", "Ramphastos sulfuratus", "LC"],
+  ["Phr", "Pharomachrus mocinno", "NT"],
+  ["Cai", "Caiman crocodilus", "LC"],
+  ["Das", "Dasyprocta punctata", "LC"],
+  ["Pec", "Pecari tajacu", "LC"],
+  ["Tam", "Tamandua mexicana", "LC"],
+  ["Igu", "Iguana iguana", "LC"],
+  ["Cei", "Ceiba pentandra", "LC"],
+  ["Och", "Ochroma pyramidale", "LC"],
+  ["Pas", "Passiflora ligularis", "LC"],
+  ["Hel", "Heliconia latispatha", "LC"],
+  ["Fic", "Ficus insipida", "LC"],
+  ["Cal", "Caligo memnon", "LC"],
+  ["Mor", "Morpho peleides", "LC"],
+  ["Hyl", "Hylocereus costaricensis", "LC"],
+  ["Phy", "Phyllostachys aurea", "LC"],
+];
+
+// Shuffle helper — Fisher-Yates
+function shuffleArray<T>(arr: T[]): T[] {
+  const a = arr.slice();
+  for (let i = a.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [a[i], a[j]] = [a[j], a[i]];
+  }
+  return a;
+}
+
+// Pick N random species from the roster (no duplicates)
+function pickSpecies(n: number): [string, string, string][] {
+  return shuffleArray(SPECIES_ROSTER).slice(0, n);
+}
+
+// IUCN status → amber palette color
+function iucnColor(status: string): readonly [number, number, number] {
+  switch (status) {
+    case "CR": return [255, 51, 0];
+    case "EN": return [255, 102, 0];
+    case "NT": return [255, 170, 0];
+    case "VU": return [255, 136, 0];
+    default:   return [136, 170, 0]; // LC
+  }
+}
+
 // ─── Viz interface ───────────────────────────────────────────────────────────
 interface Viz {
   name: string;
@@ -118,17 +181,18 @@ function mountAsteroidWaves(): Viz {
   const container = stageEl!;
 
   // Amber palette
-  const AMBER = [255, 136, 0] as const;
-  const AMBER_BRIGHT = [255, 204, 68] as const;
   const AMBER_DIM = [102, 51, 0] as const;
-  const AMBER_MID = [180, 90, 0] as const;
   const BG = [0, 8, 4] as const;
-  const SPECIES_COLS = [AMBER_BRIGHT, AMBER, AMBER_MID, AMBER_DIM, AMBER] as const;
-  const SPECIES_LBLS = ["Ara", "Atl", "Cec", "Alo", "Tin"] as const;
 
   let destroyed = false;
   let myp5: p5 | null = null;
-  let meteors: Array<{ mass: number; label: string; color: readonly [number, number, number]; activity: number; presence: number }> = [];
+  let meteors: Array<{ mass: number; label: string; fullName: string; color: readonly [number, number, number]; activity: number; presence: number }> = [];
+
+  // Rotating species roster — reshuffled periodically based on activity
+  let activeRoster = pickSpecies(5);
+  let shuffleCooldown = 0;       // frames until next species swap
+  const SHUFFLE_BASE = 300;      // ~5 sec at 60fps
+  const SHUFFLE_MIN = 60;        // ~1 sec at high activity
 
   // Live scroll speed and lane spread — updated by onState, read every draw frame
   let noiseScrollSpeed = 0.007; // default; ranges 0.001 (dormant) → 0.04 (fully active)
@@ -136,10 +200,12 @@ function mountAsteroidWaves(): Viz {
 
   function buildMeteors(st: ParliamentState | null) {
     if (!st || !Array.isArray(st.species)) {
+      activeRoster = pickSpecies(5);
       meteors = Array.from({ length: 5 }, (_, i) => ({
         mass: 50 + i * 60,
-        label: SPECIES_LBLS[i],
-        color: SPECIES_COLS[i % SPECIES_COLS.length],
+        label: activeRoster[i][0],
+        fullName: activeRoster[i][1],
+        color: iucnColor(activeRoster[i][2]),
         activity: 0.5,
         presence: 0.5,
       }));
@@ -147,17 +213,32 @@ function mountAsteroidWaves(): Viz {
       laneSpread = 0.4;
       return;
     }
+
+    // Reactively shuffle: higher avg activity = more frequent species rotation
+    const avgActivity = st.species.reduce((s, sp) => s + sp.activity, 0) / st.species.length;
+    shuffleCooldown--;
+    if (shuffleCooldown <= 0) {
+      // Swap 1–2 species with new ones from the roster
+      const swapCount = avgActivity > 0.6 ? 2 : 1;
+      const available = SPECIES_ROSTER.filter(r => !activeRoster.some(a => a[1] === r[1]));
+      const replacements = shuffleArray(available).slice(0, swapCount);
+      for (let s = 0; s < replacements.length; s++) {
+        const targetIdx = Math.floor(Math.random() * activeRoster.length);
+        activeRoster[targetIdx] = replacements[s];
+      }
+      shuffleCooldown = Math.round(SHUFFLE_BASE - avgActivity * (SHUFFLE_BASE - SHUFFLE_MIN));
+    }
+
     meteors = st.species.map((sp, i) => ({
       // mass drives wave amplitude (distMag). Full range: 20 (both 0) → 370 (both 1).
       mass: 20 + sp.presence * 200 + sp.activity * 150,
-      label: SPECIES_LBLS[i] ?? `S${i}`,
-      color: SPECIES_COLS[i % SPECIES_COLS.length],
+      label: activeRoster[i]?.[0] ?? `S${i}`,
+      fullName: activeRoster[i]?.[1] ?? "",
+      color: iucnColor(activeRoster[i]?.[2] ?? "LC"),
       activity: sp.activity,
       presence: sp.presence,
     }));
 
-    // Average activity drives how fast the noise field scrolls (wave turbulence speed)
-    const avgActivity = st.species.reduce((s, sp) => s + sp.activity, 0) / st.species.length;
     // Average presence drives how spread apart the lanes are
     const avgPresence = st.species.reduce((s, sp) => s + sp.presence, 0) / st.species.length;
 
@@ -325,17 +406,18 @@ function mountAsteroidWaves(): Viz {
           p.ellipse(peakX, peakY, dotSize * 2.2, dotSize * 2.2);
         }
 
-        // Peak label
-        p.textSize(8 + m.activity * 4);
+        // Peak label — show full name at high activity, short label otherwise
+        const showFull = m.activity > 0.4 && m.fullName;
+        p.textSize(showFull ? 7 + m.activity * 3 : 8 + m.activity * 4);
         p.textAlign(p.CENTER, p.BOTTOM);
         p.fill(col[0], col[1], col[2], Math.floor(190 * volAlpha));
-        p.text(m.label, peakX, peakY - 5);
+        p.text(showFull ? m.fullName : m.label, peakX, peakY - 5);
 
         // Right-edge: mass + live activity/presence readout
         p.textAlign(p.RIGHT, p.CENTER);
         p.fill(col[0], col[1], col[2], 100);
         p.textSize(7);
-        p.text(`${m.mass.toFixed(0)} | A:${m.activity.toFixed(2)} P:${m.presence.toFixed(2)}`, p.width - 6, laneY);
+        p.text(`${m.label} ${m.mass.toFixed(0)} | A:${m.activity.toFixed(2)} P:${m.presence.toFixed(2)}`, p.width - 6, laneY);
       });
 
       // Footer
@@ -589,6 +671,82 @@ async function mountLowEarthPoint(): Promise<Viz> {
 
   applyState(getLatestState());
 
+  // ── Species parliament overlay — bottom-left, shuffling names with vote indicators ──
+  const spOverlay2 = document.createElement("div");
+  spOverlay2.style.cssText = [
+    "position:absolute;bottom:8px;left:8px;",
+    "pointer-events:none;z-index:3;",
+    "font-family:'SF Mono','Fira Code','Consolas',monospace;",
+    "font-size:8px;line-height:1.5;",
+    "mix-blend-mode:screen;",
+  ].join("");
+  stageEl!.appendChild(spOverlay2);
+
+  let s2Roster = pickSpecies(8);
+  let s2ShuffleTick = 0;
+  const s2Rows: HTMLElement[] = [];
+  for (let i = 0; i < 8; i++) {
+    const row = document.createElement("div");
+    row.style.cssText = "background:transparent;white-space:nowrap;transition:opacity 0.3s;";
+    row.textContent = `${s2Roster[i][0]} ${s2Roster[i][1]}`;
+    row.style.color = `rgb(${iucnColor(s2Roster[i][2]).join(",")})`;
+    row.style.opacity = "0.5";
+    spOverlay2.appendChild(row);
+    s2Rows.push(row);
+  }
+
+  // RAF loop: shuffle species, simulate voting with opacity/flash
+  let s2Animating = true;
+  let s2LastTick = 0;
+  function s2Raf(ts: number) {
+    if (!s2Animating) return;
+    requestAnimationFrame(s2Raf);
+    if (ts - s2LastTick < 80) return;
+    s2LastTick = ts;
+
+    const st = getLatestState();
+    const avgAct = st?.species
+      ? st.species.reduce((s, sp) => s + sp.activity, 0) / st.species.length
+      : 0.3;
+
+    s2ShuffleTick++;
+    // Swap frequency: higher activity = faster reshuffling
+    const swapEvery = Math.max(15, Math.round(60 - avgAct * 45));
+    if (s2ShuffleTick % swapEvery === 0) {
+      const available = SPECIES_ROSTER.filter(r => !s2Roster.some(a => a[1] === r[1]));
+      if (available.length > 0) {
+        const newSp = available[Math.floor(Math.random() * available.length)];
+        const replaceIdx = Math.floor(Math.random() * s2Roster.length);
+        s2Roster[replaceIdx] = newSp;
+        const row = s2Rows[replaceIdx];
+        row.textContent = `${newSp[0]} ${newSp[1]}`;
+        row.style.color = `rgb(${iucnColor(newSp[2]).join(",")})`;
+        // Flash on replacement — "vote in"
+        row.style.opacity = "1.0";
+        row.style.textShadow = "0 0 6px currentColor";
+        setTimeout(() => {
+          row.style.opacity = "0.5";
+          row.style.textShadow = "";
+        }, 400);
+      }
+    }
+
+    // Pulse random row to simulate voting activity
+    if (Math.random() < avgAct * 0.3) {
+      const ri = Math.floor(Math.random() * s2Rows.length);
+      const row = s2Rows[ri];
+      const voteSymbol = Math.random() > 0.3 ? " +" : " -";
+      const origText = row.textContent ?? "";
+      row.textContent = origText.replace(/ [+-]$/, "") + voteSymbol;
+      row.style.opacity = "0.9";
+      setTimeout(() => {
+        row.style.opacity = "0.5";
+        row.textContent = origText.replace(/ [+-]$/, "");
+      }, 250);
+    }
+  }
+  requestAnimationFrame(s2Raf);
+
   // ZKP match() pulse driven by txinfluence sonETH param — fires periodically
   let zkMatchInterval: ReturnType<typeof setInterval> | null = null;
   function scheduleZkMatch() {
@@ -618,8 +776,10 @@ async function mountLowEarthPoint(): Promise<Viz> {
       if (zkMatchInterval) clearInterval(zkMatchInterval);
       window.removeEventListener("soneth-param-change", scheduleZkMatch);
       zkAnimating = false;
+      s2Animating = false;
       zkStage.destroyed = true;
       if (zkWrapper.parentNode) zkWrapper.parentNode.removeChild(zkWrapper);
+      if (spOverlay2.parentNode) spOverlay2.parentNode.removeChild(spOverlay2);
       try { stage.destroy(); } catch { }
       if (wrapper.parentNode) wrapper.parentNode.removeChild(wrapper);
     },
@@ -653,18 +813,21 @@ function mountPerlinBlob(): Viz {
 
   // Live ETH ticker lines — written by onState; read by ZKP RAF
   // Each entry: [label, valueStr]
+  // Species labels rotate from the roster on each state update
+  let s3Roster = pickSpecies(5);
+  let s3RotateCounter = 0;
   const ethRows: [string, string][] = [
     ["consensus", "0.500"],
-    ["sp[0].pres", "0.500"],
-    ["sp[0].act", "0.500"],
-    ["sp[1].pres", "0.500"],
-    ["sp[1].act", "0.500"],
-    ["sp[2].pres", "0.500"],
-    ["sp[2].act", "0.500"],
-    ["sp[3].pres", "0.500"],
-    ["sp[3].act", "0.500"],
-    ["sp[4].pres", "0.500"],
-    ["sp[4].act", "0.500"],
+    [s3Roster[0][0] + ".pres", "0.500"],
+    [s3Roster[0][0] + ".act", "0.500"],
+    [s3Roster[1][0] + ".pres", "0.500"],
+    [s3Roster[1][0] + ".act", "0.500"],
+    [s3Roster[2][0] + ".pres", "0.500"],
+    [s3Roster[2][0] + ".act", "0.500"],
+    [s3Roster[3][0] + ".pres", "0.500"],
+    [s3Roster[3][0] + ".act", "0.500"],
+    [s3Roster[4][0] + ".pres", "0.500"],
+    [s3Roster[4][0] + ".act", "0.500"],
     ["edna[0].bio", "0.500"],
     ["edna[1].bio", "0.500"],
     ["edna[2].bio", "0.500"],
@@ -933,6 +1096,7 @@ function mountPerlinBlob(): Viz {
   // ETH value rows in right column (one per ethRows entry)
   // Each row: label dim-white | value bright-white (updated in onState)
   const ethValueEls: HTMLElement[] = [];
+  const ethLabelEls: HTMLElement[] = [];
   ethRows.forEach(([label]) => {
     const row = document.createElement("div");
     row.style.cssText = "display:flex;justify-content:space-between;padding:0;margin:0;line-height:1.3;background:transparent;";
@@ -949,6 +1113,7 @@ function mountPerlinBlob(): Viz {
     row.appendChild(val);
     zkRight.appendChild(row);
     ethValueEls.push(val);
+    ethLabelEls.push(lbl);
   });
 
   // RAF — shuffle left column formulas at ~20ms cadence
@@ -999,14 +1164,116 @@ function mountPerlinBlob(): Viz {
   }
   requestAnimationFrame(zkBlobRaf);
 
+  // ── Species parliament strip — bottom, scrolling species names with vote pulses ──
+  const spStrip3 = document.createElement("div");
+  spStrip3.style.cssText = [
+    "position:absolute;bottom:6px;left:0;right:0;",
+    "pointer-events:none;z-index:3;",
+    "font-family:'SF Mono','Fira Code','Consolas',monospace;",
+    "font-size:7px;line-height:1.4;",
+    "mix-blend-mode:screen;",
+    "display:flex;flex-wrap:wrap;gap:2px 10px;",
+    "padding:0 8px;",
+  ].join("");
+  container.appendChild(spStrip3);
+
+  let s3StripRoster = pickSpecies(12);
+  const s3StripEls: HTMLElement[] = [];
+  for (let i = 0; i < 12; i++) {
+    const el = document.createElement("span");
+    el.style.cssText = "transition:opacity 0.3s,color 0.3s;opacity:0.4;white-space:nowrap;";
+    el.textContent = s3StripRoster[i][1];
+    el.style.color = `rgb(${iucnColor(s3StripRoster[i][2]).join(",")})`;
+    spStrip3.appendChild(el);
+    s3StripEls.push(el);
+  }
+
+  // Periodic species replacement + vote pulse via RAF
+  let s3StripAnimating = true;
+  let s3StripTick = 0;
+  function s3StripRaf() {
+    if (!s3StripAnimating) return;
+    requestAnimationFrame(s3StripRaf);
+    s3StripTick++;
+    if (s3StripTick % 90 === 0) { // ~1.5s at 60fps
+      const st = getLatestState();
+      const avgAct = st?.species
+        ? st.species.reduce((s, sp) => s + sp.activity, 0) / st.species.length
+        : 0.3;
+      // Replace 1–3 species based on activity
+      const swapCount = Math.ceil(avgAct * 3);
+      const available = SPECIES_ROSTER.filter(r => !s3StripRoster.some(a => a[1] === r[1]));
+      const replacements = shuffleArray(available).slice(0, swapCount);
+      for (let s = 0; s < replacements.length; s++) {
+        const idx = Math.floor(Math.random() * s3StripRoster.length);
+        s3StripRoster[idx] = replacements[s];
+        const el = s3StripEls[idx];
+        el.textContent = replacements[s][1];
+        el.style.color = `rgb(${iucnColor(replacements[s][2]).join(",")})`;
+        el.style.opacity = "1.0";
+        el.style.textShadow = "0 0 4px currentColor";
+        setTimeout(() => {
+          el.style.opacity = "0.4";
+          el.style.textShadow = "";
+        }, 500);
+      }
+    }
+    // Random vote pulse
+    if (s3StripTick % 20 === 0 && Math.random() < 0.4) {
+      const ri = Math.floor(Math.random() * s3StripEls.length);
+      const el = s3StripEls[ri];
+      const vote = Math.random() > 0.25 ? " +" : " -";
+      const orig = el.textContent ?? "";
+      el.textContent = orig.replace(/ [+-]$/, "") + vote;
+      el.style.opacity = "0.85";
+      setTimeout(() => {
+        el.textContent = orig.replace(/ [+-]$/, "");
+        el.style.opacity = "0.4";
+      }, 300);
+    }
+  }
+  requestAnimationFrame(s3StripRaf);
+
   // ── onState — update ETH live values + blob intensity from parliament data ─
   function onState(st: ParliamentState) {
     if (blobDestroyed) return;
 
-    // Update ETH live value display in ZKP right column
+    // Rotate species names in the ETH ticker — swap one species per N state updates
     const sp = st.species;
     const fn = st.fungi;
     const ed = st.edna;
+
+    s3RotateCounter++;
+    const avgAct3 = sp.length
+      ? sp.reduce((s: number, x: any) => s + x.activity, 0) / sp.length
+      : 0.3;
+    const rotateEvery = Math.max(8, Math.round(40 - avgAct3 * 30));
+    if (s3RotateCounter % rotateEvery === 0) {
+      const available = SPECIES_ROSTER.filter(r => !s3Roster.some(a => a[1] === r[1]));
+      if (available.length > 0) {
+        const newSp = available[Math.floor(Math.random() * available.length)];
+        const replaceIdx = Math.floor(Math.random() * s3Roster.length);
+        s3Roster[replaceIdx] = newSp;
+        // Update label elements (indices 1–10: pairs of pres/act for 5 species)
+        for (let si = 0; si < 5; si++) {
+          const presIdx = 1 + si * 2;
+          const actIdx = 2 + si * 2;
+          if (ethLabelEls[presIdx]) ethLabelEls[presIdx].textContent = s3Roster[si][0] + ".pres";
+          if (ethLabelEls[actIdx]) ethLabelEls[actIdx].textContent = s3Roster[si][0] + ".act";
+        }
+        // Flash the replaced labels
+        const pIdx = 1 + replaceIdx * 2;
+        const aIdx = 2 + replaceIdx * 2;
+        [pIdx, aIdx].forEach(idx => {
+          if (ethLabelEls[idx]) {
+            ethLabelEls[idx].style.color = `rgb(${iucnColor(newSp[2]).join(",")})`;
+            setTimeout(() => {
+              if (ethLabelEls[idx]) ethLabelEls[idx].style.color = "rgba(220,220,220,0.55)";
+            }, 600);
+          }
+        });
+      }
+    }
 
     const updates: string[] = [
       st.consensus.toFixed(3),
@@ -1062,9 +1329,11 @@ function mountPerlinBlob(): Viz {
     destroy: () => {
       blobDestroyed = true;
       zkBlobAnimating = false;
+      s3StripAnimating = false;
       ro.disconnect();
       if (myp5) { try { myp5.remove(); } catch { } myp5 = null; }
       if (zkWrapper.parentNode) zkWrapper.parentNode.removeChild(zkWrapper);
+      if (spStrip3.parentNode) spStrip3.parentNode.removeChild(spStrip3);
       if (canvasWrap.parentNode) canvasWrap.parentNode.removeChild(canvasWrap);
     },
     onState,

@@ -572,7 +572,12 @@ async function init() {
   // Label tracking loop — only active when slot 0 (Three.js parliament) is live
   function updateLabels() {
     const s = getActiveThreeStage();
-    if (!canvasWrap || !s?.speciesGroups || !s?.camera) return;
+    // Hide species + eDNA labels when not on slot 0
+    if (!canvasWrap || !s?.speciesGroups || !s?.camera) {
+      if (overlay) overlay.style.visibility = "hidden";
+      return;
+    }
+    if (overlay) overlay.style.visibility = "visible";
     for (let i = 0; i < 5; i++) {
       const grp = s.speciesGroups[i];
       if (!grp) continue;
