@@ -183,18 +183,40 @@ s.doWhenBooted({
 
     ~oscToParamMap.keysValuesDo { |oscPath, paramName|
         OSCdef(paramName, { |msg|
-            var val = msg[1].asFloat;
-            
-            // 1. Update the control bus if it exists
+            var rawVal = msg[1].asFloat;
+            var val;
+
+            // ── Remap normalized 0–1 HTML values to real parameter ranges ──
+            // These params are sent as 0–1 from the browser but SC buses
+            // expect their native units. Without this, e.g. spectralShift=0.01
+            // closes the filter completely and kills all sound.
+            val = switch(paramName,
+                // ── Row 1: Core Performance ──────────────────────────────────────────
+                \masterVolume,   { rawVal.linlin(0, 1, 0.01, 1) },         // amp — floor 0.01 (never fully mute)
+                \pitchShift,     { rawVal.linlin(0, 1, -24, 24) },         // semitones (0.5 = center, no shift)
+                \timeDilation,   { rawVal.linexp(0.0001, 1, 0.5, 6) },    // stretch ratio 0.5x–6x
+                \spectralShift,  { rawVal.linexp(0.0001, 1, 80, 3000) },  // Hz — floor 80Hz, ceiling 3000Hz
+                \spatialSpread,  { rawVal.linlin(0, 1, -1, 1) },           // pan -1(L) to +1(R), 0.5=center
+                // ── Row 2: Ambient Processing ────────────────────────────────────────
+                \textureDepth,   { rawVal.linlin(0, 1, 0, 0.6) },          // granular density 0–0.6
+                \atmosphereMix,  { rawVal.linlin(0, 1, 0, 0.9) },          // reverb 0–0.9
+                \memoryFeed,     { rawVal.linlin(0, 1, 0, 0.8) },          // delay feedback 0–0.8
+                \harmonicRich,   { rawVal.linexp(0.0001, 1, 0.1, 8) },    // FM ratio 0.1–8
+                \resonantBody,   { rawVal.linlin(0, 1, 0.1, 0.8) },       // filter Q 0.1–0.8
+                // ── all others pass raw 0–1 natively ─────────────────────────────────
+                { rawVal }
+            );
+
+            // 1. Update the control bus
             if(~buses.notNil and: { ~buses[paramName].notNil }) {
                 ~buses[paramName].set(val);
             };
-            
+
             // 2. Update the internal state value
             if(~controlValues.notNil) {
                 ~controlValues[paramName] = val;
             };
-            
+
             // 3. Update the UI Knob visually (MUST be deferred to AppClock)
             {
                 if(~knobViews.notNil and: { ~knobViews[paramName].notNil }) {
@@ -204,13 +226,12 @@ s.doWhenBooted({
                     };
                 };
                 if(~controlLabels.notNil and: { ~controlLabels[paramName].notNil }) {
-                    // Get string case by looking at knob names
                     var displayStr = paramName.asString;
                     displayStr = displayStr[0].toUpper ++ displayStr[1..];
                     ~controlLabels[paramName].string = displayStr ++ ": " ++ val.round(0.001);
                 };
             }.defer;
-            
+
         }, oscPath);
     };
 

@@ -98,6 +98,8 @@ class PerlinBlob extends ModuleBase {
     this.p_noiseSpeed = 0.005;
     this.p_colorHueOff = 0;
     this.p_compression = 0.5;
+    this.p_brightness = 70;   // 0–100, driven by consensus
+    this.p_saturation = 70;  // 0–100, driven by consensus
 
     this.noiseOffsets = [];
     this._bridgeWS = null;
@@ -176,7 +178,7 @@ class PerlinBlob extends ModuleBase {
           );
 
           const hue = (p.map(i, 0, numLayers - 1, 200, 250) + this.p_colorHueOff) % 360;
-          p.stroke(p.color(`hsb(${hue}, 70%, 70%)`));
+          p.stroke(p.color(`hsb(${hue}, ${this.p_saturation}%, ${this.p_brightness}%)`));
 
           const applyCompression = p.random() < this.p_compression;
           let compressionAngle = 0;
@@ -307,6 +309,8 @@ class PerlinBlob extends ModuleBase {
 
               if (methodName === "updateNutrient") {
                 options = { nutrientValue: val, isRemote: true };
+              } else if (methodName === "updateConsensus") {
+                options = { gasValue: val, isRemote: true };
               }
 
               this[methodName](options);
@@ -331,7 +335,13 @@ class PerlinBlob extends ModuleBase {
     // Inject directly as the next goal value for the Blob to animate towards
     this.nextValue = nutrientValue * 100; // Map 0-1 to 0-100 visual range
     this.frameCounter = 0; // Trigger interpolation immediately
-    // no echo back needed for visual streams
+  }
+
+  // Received from SC via /bio/consensus — drives blob brightness across all modules
+  updateConsensus({ gasValue = 0, isRemote = false }) {
+    // consensus 0–1 → saturation 30–100%, brightness 40–100%
+    this.p_saturation = 30 + gasValue * 70;
+    this.p_brightness = 40 + gasValue * 60;
   }
 
   // Reactive UI Methods (0.0 to 1.0 coming from SC Sliders)

@@ -165,7 +165,7 @@
             masterVolume: ControlSpec(0.01, 1, \lin),   // Allow near-silence but not complete mute
             pitchShift: ControlSpec(-24, 24, \lin),     // ±2 octaves for dramatic pitch blending
             timeDilation: ControlSpec(0.5, 6, \exp),    // More dramatic time stretching
-            spectralShift: ControlSpec(80, 8000, \exp), // Full audible filter range
+            spectralShift: ControlSpec(80, 3000, \exp),   // Hz — safe range, never silence at either extreme
             spatialSpread: ControlSpec(-1, 1, \lin),
             textureDepth: ControlSpec(0, 0.6, \lin),    // More texture range for performance
             atmosphereMix: ControlSpec(0, 0.9, \lin),   // More reverb range
@@ -248,7 +248,7 @@
 
             valueLabel = StaticText()
                 .string_(displayStr ++ ": " ++ defaultVal.round(0.001))
-                .stringColor_(textColor)
+                .stringColor_(Color.white)
                 .font_(Font("Monaco", 10))  // 2px smaller
                 .align_(\center);
 
@@ -452,7 +452,7 @@
 
             valueLabel = StaticText()
                 .string_(displayStr ++ ": " ++ defaultVal.round(0.001))
-                .stringColor_(mainTheme.dim)  // Amber-dim for sample knob labels
+                .stringColor_(Color.white)
                 .font_(Font("Monaco", 9))
                 .align_(\center);
 
@@ -467,7 +467,7 @@
                     \grainSize, "GRAIN SIZE",
                     displayStr.toUpper
                 ))
-                .stringColor_(mainTheme.dim.alpha_(0.8))
+                .stringColor_(Color.white)
                 .font_(Font("Helvetica", 8, true))
                 .align_(\center);
 
@@ -487,7 +487,7 @@
                     ~sampleBuses[paramName].set(mappedVal);
                     ~sampleControlValues[paramName] = mappedVal;
                     valueLabel.string = displayStr ++ ": " ++ mappedVal.round(0.001);
-                    valueLabel.stringColor = mainTheme.dim;  // Keep amber-dim on updates
+                    valueLabel.stringColor = Color.white;  // Keep white on updates
                     "Sample Bus % set to %".format(paramName, mappedVal.round(0.001)).postln;
                 } {
                     "WARNING: Sample Bus % not found!".format(paramName).warn;

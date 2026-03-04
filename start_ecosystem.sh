@@ -11,10 +11,20 @@ echo "=============================================="
 # Mata cualquier instancia anterior antes de arrancar para liberar puertos
 # y evitar que MIDIClient / scsynth / node retengan 57120, 3333, 3334, 9001.
 echo ">> Limpiando procesos anteriores..."
-pkill -9 sclang    2>/dev/null; sleep 0.3
-pkill -9 scsynth   2>/dev/null; sleep 0.3
-pkill -9 node      2>/dev/null; sleep 0.2
-pkill -9 python3   2>/dev/null; sleep 0.2
+
+# Intentar cierre amable primero (SIGTERM)
+pkill sclang 2>/dev/null
+pkill scsynth 2>/dev/null
+pkill node 2>/dev/null
+pkill python3 2>/dev/null
+sleep 0.5
+
+# Forzar si siguen vivos
+pkill -9 sclang 2>/dev/null
+pkill -9 scsynth 2>/dev/null
+pkill -9 node 2>/dev/null
+pkill -9 python3 2>/dev/null
+
 # Liberar puertos específicos del ecosistema por si quedaron huérfanos
 for PORT in 57110 57120 3333 3334 9001; do
     lsof -ti:"$PORT" | xargs kill -9 2>/dev/null

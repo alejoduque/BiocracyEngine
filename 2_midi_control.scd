@@ -63,12 +63,12 @@ MIDIdef.cc(\ambientRow1, { |val, num, chan, src|
         "Pitch Shift: % semitones".format(scaled.round(0.1)).postln;
     }
     {num == 2} {
-        scaled = val.linexp(0, 127, 0.5, 8.0);
+        scaled = val.linexp(0, 127, 0.5, 6.0);   // matches OSC/GUI ceiling of 6x
         ~buses[\timeDilation].set(scaled);
         "Time Dilation: %x".format(scaled.round(0.01)).postln;
     }
     {num == 3} {
-        scaled = val.linexp(0, 127, 60, 12000);
+        scaled = val.linexp(0, 127, 60, 3000);   // Hz — ceiling 3000 to avoid filter silence
         ~buses[\spectralShift].set(scaled);
         "Spectral Shift: % Hz".format(scaled.round(1)).postln;
     }
@@ -95,7 +95,7 @@ MIDIdef.cc(\ambientRow2, { |val, num, chan, src|
         "Atmosphere Mix: %".format(scaled.round(0.001)).postln;
     }
     {num == 34} {
-        scaled = val.linlin(0, 127, 0.0, 0.95);
+        scaled = val.linlin(0, 127, 0.0, 0.8);   // matches OSC/GUI ceiling of 0.8
         ~buses[\memoryFeed].set(scaled);
         "Memory Feed: %".format(scaled.round(0.001)).postln;
     }
@@ -105,7 +105,7 @@ MIDIdef.cc(\ambientRow2, { |val, num, chan, src|
         "Harmonic Rich: %".format(scaled.round(0.01)).postln;
     }
     {num == 36} {
-        scaled = val.linlin(0, 127, 0.1, 0.9);
+        scaled = val.linlin(0, 127, 0.1, 0.8);   // matches OSC/GUI ceiling of 0.8
         ~buses[\resonantBody].set(scaled);
         "Resonant Body: %".format(scaled.round(0.01)).postln;
     };

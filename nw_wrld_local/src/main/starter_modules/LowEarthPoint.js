@@ -149,6 +149,7 @@ class LowEarthPointModule extends BaseThreeJsModule {
     this.p_opacity = 0.1;
     this.p_speedOff = 0;
     this.p_zScale = 1.0;
+    this.p_brightness = 0.5; // 0–1, driven by consensus
 
     this.primary = this.primary.bind(this);
     this.setCustomAnimate(this.animateLoop.bind(this));
@@ -233,7 +234,7 @@ class LowEarthPointModule extends BaseThreeJsModule {
       THREE,
       points: this.points,
       count: halfPointIndex,
-      color: new THREE.Color().setHSL(this.p_colorHueOff, 0.5, 0.5).getHex(),
+      color: new THREE.Color().setHSL(this.p_colorHueOff, 0.5, this.p_brightness).getHex(),
       opacity: this.p_opacity,
       midZScale: this.p_zScale,
     });
@@ -252,7 +253,7 @@ class LowEarthPointModule extends BaseThreeJsModule {
       THREE,
       points: this.redPoints,
       count: halfRedPointIndex,
-      color: new THREE.Color().setHSL((this.p_colorHueOff + 0.5) % 1.0, 1.0, 0.5).getHex(),
+      color: new THREE.Color().setHSL((this.p_colorHueOff + 0.5) % 1.0, 1.0, this.p_brightness).getHex(),
       opacity: this.p_opacity * 1.5,
       midZScale: this.p_zScale * 2,
     });
@@ -343,6 +344,8 @@ class LowEarthPointModule extends BaseThreeJsModule {
                 options = { duration: val * 1000, isRemote: true };
               } else if (methodName === "updateDensity") {
                 options = { densityValue: val, isRemote: true };
+              } else if (methodName === "updateConsensus") {
+                options = { gasValue: val, isRemote: true };
               }
 
               this[methodName](options);
@@ -360,22 +363,24 @@ class LowEarthPointModule extends BaseThreeJsModule {
     this._bridgeWS.send(JSON.stringify({ direction: "toSC", address, args: [value] }));
   }
 
-  // --- MAPPED DATA METHODS ---
   // Received from SC via /bio/density
   updateDensity({ densityValue, isRemote = false }) {
-    // densityValue is mapped roughly 0.0-1.0 from SC based on Tx per second
-    // Increase global rotation speed and trigger connection highlights based on density
-
-    // Scale camera speed dynamically (1.0 is default, up to 5.0 for high density)
     const targetSpeed = 1.0 + (densityValue * 4.0);
     this.cameraSettings.cameraSpeed = targetSpeed;
-
-    // If high density, trigger point flashes
     if (densityValue > 0.6) {
       this.primary({ duration: densityValue * 500 });
     }
-
     console.log(`[${this.name}] Global Density Updated: ${densityValue.toFixed(3)} -> Speed: ${targetSpeed.toFixed(2)}`);
+  }
+
+  // Received from SC via /bio/consensus — drives brightness across all modules
+  updateConsensus({ gasValue = 0, isRemote = false }) {
+    // consensus 0–1 → HSL lightness 0.15–0.75 (dark → bright)
+    this.p_brightness = 0.15 + gasValue * 0.6;
+    // Also boost opacity slightly with consensus
+    this.p_opacity = 0.05 + gasValue * 0.35;
+    this.createLines();
+    this.createRedLines();
   }
 
   // Reactive UI Methods (0.0 to 1.0 coming from SC Sliders)

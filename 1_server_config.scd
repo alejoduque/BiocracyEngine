@@ -7,15 +7,36 @@
 
 (
 // Force sclang OSC receive port to 57120 BEFORE anything else claims the port.
-// MIDIClient.init (loaded next in 2_midi_control.scd) can steal 57120 if it initializes first.
-// thisProcess.openUDPPort is idempotent — safe to call even if already open.
 thisProcess.openUDPPort(57120);
 
-// Server configuration
+// --- DYNAMIC DEVICE DETECTION ---
+// MOTU 828x Gen5 → 4-channel spatial mode
+// No MOTU → Apple Core Audio built-in → 2-channel stereo fallback
+~detectAudioDevice = {
+    var devices = ServerOptions.outDevices;
+    var motu = devices.select({ |d|
+        d.contains("MOTU") or: { d.contains("828") } or: { d.contains("Gen5") }
+    }).first;
+
+    if(motu.notNil) {
+        "✓ MOTU 828x detected: % — enabling 4-channel spatial mode.".format(motu).postln;
+        Server.default.options.device = motu;
+        Server.default.options.numOutputBusChannels = 4;
+        Server.default.options.numInputBusChannels = 2;
+    } {
+        "i MOTU not found — falling back to Apple Core Audio (2-channel stereo).".postln;
+        Server.default.options.device = nil; // Let macOS pick the default (built-in speakers)
+        Server.default.options.numOutputBusChannels = 2; // Stereo only
+        Server.default.options.numInputBusChannels = 2;
+    };
+};
+
+~detectAudioDevice.value;
+
+// Server performance configuration
 Server.default.options.numBuffers = 1024 * 16;
-Server.default.options.memSize = 8192 * 64;  // 512MB — needed for heavy SynthDefs + samples at 96kHz
+Server.default.options.memSize = 8192 * 64; 
 Server.default.options.maxNodes = 1024 * 32;
-Server.default.options.numOutputBusChannels = 4;  // Enable 4-channel output for spatial audio
 Server.default.options.numInputBusChannels = 2;
 
 // Create initialization routine

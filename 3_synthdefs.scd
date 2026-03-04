@@ -18,7 +18,7 @@ s.doWhenBooted({
         masterVolume: 0.3,    // CC 0  - ACTUAL master volume control
         pitchShift: 0.0,      // CC 1  - Frequency shift in semitones (-24 to +24)
         timeDilation: 2.0,    // CC 2  - Stretch/compress time (decay multiplier)
-        spectralShift: 1000,  // CC 3  - Filter frequency for spectral shaping
+        spectralShift: 1000,  // CC 3  - Filter frequency for spectral shaping (200–4500 Hz)
         spatialSpread: 0.0,   // CC 4  - Spatial positioning (-1 to 1)
 
         // === Ambient Processing (Row 2) ===
@@ -119,7 +119,8 @@ s.doWhenBooted({
         sig = sig * env;
 
         // Soft low-pass (not resonant) — no ringing, just warmth
-        sig = LPF.ar(sig, spectralFreq.clip(200, 6000));
+        // Clamp 200–3000Hz: above 3000 LPF is transparent on these pads
+        sig = LPF.ar(sig, spectralFreq.clip(200, 3000));
 
         // Slow shimmer via gentle pitch modulation
         grains = PitchShift.ar(sig, 0.3, LFNoise2.kr(0.2).range(0.98, 1.02), textureDensity * 0.3);
@@ -184,7 +185,8 @@ s.doWhenBooted({
         
         // Distortion & Filter (Opal drive)
         sig = (sig * (1 + (fmD * 5))).tanh;
-        sig = LPF.ar(sig, filt.clip(100, 18000));
+        // Kick LPF: cap at 3000Hz
+        sig = LPF.ar(sig, filt.clip(100, 3000));
         
         // Reverb tail
         sig = sig + FreeVerb.ar(sig, revM * 0.5, 0.7, 0.2);
@@ -226,7 +228,9 @@ s.doWhenBooted({
             [1, 0.8, 0.5, 0.3, 0.1] * (tStretch * 0.5)
         ).sum;
         
-        sig = BPF.ar(sig, filt.clip(200, 15000), 0.5);
+        // Changed from BPF to LPF: BPF at high freq passes almost nothing (silence);
+        // LPF at high freq is transparent — sound always passes through.
+        sig = LPF.ar(sig, filt.clip(300, 3000));
         sig = sig * EnvGen.ar(Env.perc(0.001, 1.5 * tStretch), doneAction: 2);
 
         // Ping-pong delay
@@ -275,11 +279,11 @@ s.doWhenBooted({
             VarSaw.ar(baseFreq * 1.5, 0, width: LFNoise1.kr(0.2).range(0.1, 0.9))
         ]) * 0.3;
         
-        // Dense filtering
+        // Drone RLPF: clamp filt BEFORE applying LFNoise multiplier, ceiling 3000Hz
         sig = RLPF.ar(
             sig, 
-            LFNoise2.kr(0.05).exprange(filt * 0.5, filt * 2.0).clip(50, 15000), 
-            res.linexp(0, 1, 0.9, 0.1)
+            LFNoise2.kr(0.05).exprange(filt.clip(80, 3000) * 0.5, filt.clip(80, 3000) * 1.5).clip(80, 4500), 
+            res.linexp(0, 1, 0.9, 0.15)  // rq floor raised to 0.15 — prevents instability at high Q
         );
         
         // Granular texturizer
@@ -322,7 +326,9 @@ s.doWhenBooted({
         
         // Crackle / Dust generator
         grains = Dust2.ar(dens.linexp(0, 1, 10, 500));
-        sig = BPF.ar(grains, filt * (1 + (pitch / 24)).clip(200, 18000), 0.1);
+        // Changed from BPF to LPF: BPF at high freq silences the signal entirely;
+        // LPF at high freq is open — dust crackle always comes through.
+        sig = LPF.ar(grains, filt.clip(200, 3000));
         
         // Delay + Reverb wash
         wet = CombC.ar(sig, 0.5, 0.15, 2.0) * dMix;

@@ -224,13 +224,16 @@ function radarToCss(
   return { x: w / 2 + Math.cos(rad) * radius * scale, y: h / 2 - Math.sin(rad) * radius * scale };
 }
 
-// ─── Spectrogram canvas renderer ───
+// ─── Spectrogram canvas renderer (enriched: 256-bin, sonETH-reactive color) ───
 class SpectrogramRenderer {
   private canvas: HTMLCanvasElement;
   private ctx: CanvasRenderingContext2D;
   private width: number;
   private height: number;
   private lastPush = 0;
+  private prevBins: Float32Array | null = null;
+  // ImageData buffer for fast pixel writes (avoids per-pixel fillRect)
+  private colData: ImageData | null = null;
 
   constructor(canvasEl: HTMLCanvasElement) {
     this.canvas = canvasEl;
@@ -243,94 +246,217 @@ class SpectrogramRenderer {
 
   resize() {
     this.width  = this.canvas.offsetWidth  || 800;
-    this.height = this.canvas.offsetHeight || 72;
+    this.height = this.canvas.offsetHeight || 144;
     this.canvas.width  = this.width;
     this.canvas.height = this.height;
+    this.colData = this.ctx.createImageData(1, this.height);
   }
 
   // Push a column of FFT bins (0-1 each, length = arbitrary)
-  // Called at ~20fps from main loop
+  // Called at ~30fps from main loop. sonETH params modulate color.
   push(bins: Float32Array, now: number) {
-    if (now - this.lastPush < 45) return; // ~22fps
+    if (now - this.lastPush < 33) return; // ~30fps
     this.lastPush = now;
 
     const w = this.width;
     const h = this.height;
     const ctx = this.ctx;
 
-    // Scroll left by 1px
-    const imageData = ctx.getImageData(1, 0, w - 1, h);
+    // Temporal smoothing: blend with previous frame for less flickery look
+    if (this.prevBins && this.prevBins.length === bins.length) {
+      for (let i = 0; i < bins.length; i++) {
+        bins[i] = bins[i] * 0.7 + this.prevBins[i] * 0.3;
+      }
+    }
+    this.prevBins = new Float32Array(bins);
+
+    // Scroll left by 2px for denser waterfall
+    const imageData = ctx.getImageData(2, 0, w - 2, h);
     ctx.putImageData(imageData, 0, 0);
 
-    // Write new right-edge column
-    const rightX = w - 1;
+    // Read sonETH params for color modulation
+    const sp = (window as any).__sonethParams || {};
+    const spectral = sp.spectralshift ?? 0.4;   // hue shift: 0=pure amber, 1=cyan tint
+    const texture  = sp.texturedepth  ?? 0.3;    // grain: adds noise to brightness
+    const memory   = sp.memoryfeed    ?? 0.4;    // glow: brightens mid-range
+
+    // Write 2 new right-edge columns using ImageData for speed
     const numBins = bins.length;
+    const colBuf = this.colData!;
+    const d = colBuf.data;
+
     for (let y = 0; y < h; y++) {
-      // Map canvas y (0=top) to bin index (0=low freq at bottom)
-      const binIdx = Math.floor(((h - 1 - y) / h) * numBins);
-      const v = Math.min(1, Math.max(0, bins[binIdx] || 0));
-      // Amber colormap: black → dark amber → amber → bright
-      const r = Math.floor(v * 255);
-      const g = Math.floor(v * 0.53 * 255);
-      ctx.fillStyle = `rgb(${r},${g},0)`;
-      ctx.fillRect(rightX, y, 1, 1);
+      // Map canvas y (0=top) to bin index (0=low freq at bottom) with cubic interpolation
+      const t = (h - 1 - y) / h;
+      const fIdx = t * (numBins - 1);
+      const lo = Math.floor(fIdx);
+      const hi = Math.min(lo + 1, numBins - 1);
+      const frac = fIdx - lo;
+      const raw = (bins[lo] || 0) * (1 - frac) + (bins[hi] || 0) * frac;
+      let v = Math.min(1, Math.max(0, raw));
+
+      // Memory/glow boost: lift mid-range values
+      v = v + memory * 0.15 * v * (1 - v) * 4; // bell curve boost
+      // Texture grain: micro-noise on brightness
+      v = v + (Math.random() - 0.5) * texture * 0.08;
+      v = Math.min(1, Math.max(0, v));
+
+      // 4-stop amber colormap: black → dark red → amber → bright amber-white
+      // Spectral param subtly shifts the mid-tones (not the whole palette)
+      let r: number, g: number, b: number;
+      if (v < 0.33) {
+        // Black → dark red/brown
+        const t2 = v / 0.33;
+        r = Math.floor(120 * t2);
+        g = Math.floor(20 * t2);
+        b = 0;
+      } else if (v < 0.66) {
+        // Dark red → amber (with subtle spectral tint in green channel)
+        const t2 = (v - 0.33) / 0.33;
+        r = Math.floor(120 + 135 * t2);
+        g = Math.floor(20 + (116 + spectral * 40) * t2);
+        b = Math.floor(spectral * 30 * t2);
+      } else {
+        // Amber → bright white-amber
+        const t2 = (v - 0.66) / 0.34;
+        r = Math.floor(255);
+        g = Math.floor(136 + 119 * t2);
+        b = Math.floor(spectral * 30 + (180 - spectral * 30) * t2);
+      }
+
+      const off = y * 4;
+      d[off]     = r;
+      d[off + 1] = g;
+      d[off + 2] = b;
+      d[off + 3] = 255;
     }
+
+    // Write 2 pixel-wide columns for denser waterfall
+    ctx.putImageData(colBuf, w - 2, 0);
+    ctx.putImageData(colBuf, w - 1, 0);
   }
 }
 
-// ─── Pseudo-FFT from state (maps to physical frequency space) ───
-function buildFftBins(state: ParliamentState | null, elapsed: number, numBins = 128): Float32Array {
+// ─── Pseudo-FFT from state (256 bins, sonETH-reactive, log-frequency) ───
+function buildFftBins(state: ParliamentState | null, elapsed: number, numBins = 256): Float32Array {
   const bins = new Float32Array(numBins);
+  const sp = (window as any).__sonethParams || {};
+  const volume     = sp.volume        ?? 0.5;
+  const pitch      = sp.pitchshift    ?? 0.5;
+  const timeDil    = sp.timedilation  ?? 0.3;
+  const harmonic   = sp.harmonicrich  ?? 0.5;
+  const resonant   = sp.resonantbody  ?? 0.4;
+  const atmosphere = sp.atmospheremix ?? 0.5;
+  const spatial    = sp.spatialspread ?? 0.5;
+
+  // Slow-breathing base layer (always visible, reacts to time dilation)
+  const breathRate = 0.4 + timeDil * 1.2;
+  for (let i = 0; i < numBins; i++) {
+    const normI = i / numBins;
+    bins[i] = Math.max(0,
+      Math.sin(elapsed * breathRate + normI * 2.5) * 0.12 +
+      Math.sin(elapsed * breathRate * 0.37 + normI * 7) * 0.06 +
+      Math.random() * 0.02
+    ) * volume;
+  }
 
   if (!state || !Array.isArray(state.species) || !Array.isArray(state.edna) || !Array.isArray(state.fungi)) {
+    // Still produce a living spectrogram even without state
     for (let i = 0; i < numBins; i++) {
-      bins[i] = Math.max(0, Math.sin(elapsed * 1.8 + i * 0.35) * 0.25 + Math.random() * 0.04);
+      bins[i] += Math.max(0,
+        Math.sin(elapsed * 1.8 + i * 0.35) * 0.25 * volume +
+        Math.sin(elapsed * 0.7 + i * 0.12) * 0.15 * harmonic
+      );
     }
     return bins;
   }
 
-  // Each species contributes a gaussian peak at its audio frequency
-  for (const sp of state.species) {
-    const freq   = sp.freq || 440;
-    // Log-scale mapping: 20Hz..8000Hz → 0..numBins
-    const logMin = Math.log2(20);
-    const logMax = Math.log2(8000);
-    const logF   = Math.log2(Math.max(20, Math.min(8000, freq)));
-    const binIdx = Math.floor(((logF - logMin) / (logMax - logMin)) * (numBins - 1));
-    const amp    = sp.presence * 0.8 + sp.activity * 0.6;
-    const width  = 6 + sp.presence * 8; // broader peak = more present
-    for (let i = 0; i < numBins; i++) {
-      const dist = Math.abs(i - binIdx);
-      bins[i] += amp * Math.exp(-(dist * dist) / (2 * width * width));
+  const logMin = Math.log2(20);
+  const logMax = Math.log2(12000); // extended range to 12kHz
+
+  // Species: gaussian peaks at audio frequencies, with harmonic overtones
+  for (const spc of state.species) {
+    const freq  = (spc.freq || 440) * (0.5 + pitch);  // pitch-shifted
+    const amp   = (spc.presence * 0.8 + spc.activity * 0.6) * volume;
+    const width = 4 + spc.presence * 10 + resonant * 6; // resonance widens peaks
+
+    // Fundamental + harmonics (harmonic richness controls overtone count)
+    const maxH = 1 + Math.floor(harmonic * 5);
+    for (let h = 1; h <= maxH; h++) {
+      const hz = freq * h;
+      if (hz > 12000) break;
+      const logF = Math.log2(Math.max(20, Math.min(12000, hz)));
+      const binIdx = Math.floor(((logF - logMin) / (logMax - logMin)) * (numBins - 1));
+      const hAmp = amp * (1 / Math.pow(h, 0.8 + resonant * 0.5));
+      for (let i = Math.max(0, binIdx - 20); i < Math.min(numBins, binIdx + 20); i++) {
+        const dist = Math.abs(i - binIdx);
+        bins[i] += hAmp * Math.exp(-(dist * dist) / (2 * width * width));
+      }
     }
   }
 
-  // eDNA: adds harmonic overtone bands
+  // eDNA: harmonic overtone combs (wider spread with atmosphere)
   for (let s = 0; s < state.edna.length; s++) {
     const ed     = state.edna[s];
     const baseHz = 55 + s * 7;
-    for (let h = 1; h <= 8; h++) {
-      const hz = baseHz * h * ed.biodiversity;
-      const logMin = Math.log2(20), logMax = Math.log2(8000);
-      const logF = Math.log2(Math.max(20, Math.min(8000, hz)));
+    for (let h = 1; h <= 12; h++) {
+      const hz = baseHz * h * ed.biodiversity * (0.8 + pitch * 0.4);
+      const logF = Math.log2(Math.max(20, Math.min(12000, hz)));
       const b = Math.floor(((logF - logMin) / (logMax - logMin)) * (numBins - 1));
-      const amp = ed.validation * (1 / Math.sqrt(h)) * 0.12;
-      if (b >= 0 && b < numBins) bins[b] += amp;
+      const hAmp = ed.validation * (1 / Math.sqrt(h)) * 0.15 * volume;
+      // Spread each overtone by atmosphere amount
+      const spread = 1 + Math.floor(atmosphere * 3);
+      for (let j = -spread; j <= spread; j++) {
+        const idx = b + j;
+        if (idx >= 0 && idx < numBins) {
+          bins[idx] += hAmp * (1 - Math.abs(j) / (spread + 1));
+        }
+      }
     }
   }
 
-  // Fungi: sub-bass rumble (low bins 0-10)
+  // Fungi: sub-bass rumble (low bins) + spatial-modulated resonance
   const avgFungi = state.fungi.reduce((s, f) => s + f.chemical, 0) / state.fungi.length;
-  for (let i = 0; i < 10; i++) bins[i] += avgFungi * 0.4 * (1 - i / 10);
+  const bassWidth = 10 + Math.floor(spatial * 15);
+  for (let i = 0; i < bassWidth; i++) {
+    bins[i] += avgFungi * 0.5 * (1 - i / bassWidth) * volume;
+  }
 
-  // Eco: CO2 broadband noise floor
-  const co2norm = state.eco.co2 / 127;
-  for (let i = 0; i < numBins; i++) bins[i] += co2norm * 0.08 * Math.random();
+  // Eco: CO2 broadband noise floor + atmosphere-scaled pink noise
+  const co2norm = (state.eco?.co2 || 0) / 127;
+  for (let i = 0; i < numBins; i++) {
+    // Pink noise: amplitude decreases with frequency
+    const pink = 1 / Math.sqrt(1 + i * 0.1);
+    bins[i] += co2norm * 0.1 * Math.random() * pink;
+    bins[i] += atmosphere * 0.04 * Math.random() * pink;
+  }
 
-  // Normalize
+  // Resonant peaks: Q-scaled narrow peaks at resonant frequencies
+  if (resonant > 0.2) {
+    const resFreqs = [120, 280, 560, 1100, 2200, 4400];
+    for (const rf of resFreqs) {
+      const logF = Math.log2(Math.max(20, rf));
+      const b = Math.floor(((logF - logMin) / (logMax - logMin)) * (numBins - 1));
+      const q = resonant * 0.35;
+      const rw = Math.max(1, Math.floor(3 - resonant * 2));
+      for (let j = -rw; j <= rw; j++) {
+        const idx = b + j;
+        if (idx >= 0 && idx < numBins) bins[idx] += q * (1 - Math.abs(j) / (rw + 1));
+      }
+    }
+  }
+
+  // Normalize with soft knee (preserves dynamics better than hard clamp)
   let mx = 0;
   for (let i = 0; i < numBins; i++) if (bins[i] > mx) mx = bins[i];
-  if (mx > 0.01) for (let i = 0; i < numBins; i++) bins[i] = Math.min(1, bins[i] / mx);
+  if (mx > 0.01) {
+    const scale = 1 / mx;
+    for (let i = 0; i < numBins; i++) {
+      bins[i] = Math.min(1, bins[i] * scale);
+      // Soft gamma curve: lifts quiet details without clipping peaks
+      bins[i] = Math.pow(bins[i], 0.75);
+    }
+  }
 
   return bins;
 }
