@@ -1,8 +1,25 @@
 const path = require("path");
+const webpack = require("webpack");
+const fs = require("fs");
+
+// Read .env file for build-time token injection
+function loadEnv() {
+  const envPath = path.resolve(__dirname, ".env");
+  const vars = {};
+  try {
+    const lines = fs.readFileSync(envPath, "utf8").split("\n");
+    for (const line of lines) {
+      const match = line.match(/^\s*([A-Z_]+)\s*=\s*(.+)\s*$/);
+      if (match) vars[match[1]] = match[2];
+    }
+  } catch { /* .env not found — tokens will be empty */ }
+  return vars;
+}
 
 module.exports = (env, argv) => {
   const mode = argv?.mode || "development";
   const isProduction = mode === "production";
+  const envVars = loadEnv();
 
   return {
     mode,
@@ -74,7 +91,11 @@ module.exports = (env, argv) => {
         },
       ],
     },
-    plugins: [],
+    plugins: [
+      new webpack.DefinePlugin({
+        __IUCN_TOKEN__: JSON.stringify(envVars.IUCN_API_TOKEN || ""),
+      }),
+    ],
     devServer: {
       static: [
         path.join(__dirname, "dist"),

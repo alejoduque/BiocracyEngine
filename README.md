@@ -69,6 +69,17 @@ Launches all services: nw_wrld, parliament-bridge, SuperCollider, Python ETH scr
 3. **Bridge**: `cd nw_wrld_local && node parliament-bridge.js`
 4. **nw_wrld**: `cd nw_wrld_local && npx electron .`
 
+### IUCN Red List API Setup
+
+Species data is fetched live from the IUCN Red List API v4 (Colombian endangered species including plants). The token is injected at build time via webpack DefinePlugin — never committed to the repo.
+
+```bash
+cp nw_wrld_local/.env.example nw_wrld_local/.env
+# Edit .env and add your IUCN API token (get one at https://api.iucnredlist.org/)
+```
+
+Data flow: **RLI local server** (localhost:3001, CORS-friendly) → **IUCN API direct** → **hardcoded fallback roster**. If you run the companion [RLI_maplayer](https://github.com/alejoduque/RLI_maplayer) project, species data is served locally with full CORS support.
+
 ---
 
 ## Control Matrix
@@ -255,14 +266,17 @@ BiocracyEngine/
 └── nw_wrld_local/
     ├── parliament-bridge.js        # OSC↔WebSocket bridge + diagnostics
     ├── diag-sweep.js               # Node.js diagnostic sweep
+    ├── .env.example                 # Template for IUCN API token
+    ├── webpack.config.js            # Webpack build (DefinePlugin injects .env tokens)
     ├── src/projector/
     │   ├── parliamentEntry.ts      # Central control hub (applySonethToViz)
     │   ├── visualizationSwitcher.ts # Slots 0–3 mount/unmount + shared utils
     │   ├── dataStructureVisuals.ts  # Slots 4–9 (TimeTravel, DynGraph, Splay, Geometry, MemHier, Hashing)
+    │   ├── speciesFetcher.ts        # IUCN Red List API integration (3-tier fallback)
     │   ├── parliament/
     │   │   └── parliamentStore.ts  # Reactive state store
     │   └── views/
-    │       └── parliament.html     # HTML GUI (34 sliders + vote panel)
+    │       └── parliament.html     # HTML GUI (dynamic species sliders + vote panel)
     └── src/main/starter_modules/
         ├── ParliamentStage.js      # Slot 0: Three.js 3D scene
         ├── LowEarthPointModule.js  # Slot 2: Three.js point cloud (consensus brightness)

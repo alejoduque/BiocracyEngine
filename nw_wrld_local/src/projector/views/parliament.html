@@ -390,75 +390,16 @@
                 </div>
             </div>
 
-            <!-- Acoustic Species Controls -->
+            <!-- Acoustic Species Controls (injected by JS from live IUCN data) -->
             <div class="tele-section">
                 <div class="tele-section-title">Species Activity → SC</div>
-                <!-- Each slider sends /agents/species/activity [id, value] -->
-                <div class="ctrl-row">
-                    <label>Ara macao</label>
-                    <input type="range" min="0" max="1" step="0.01" value="0.5"
-                        data-osc="/agents/species/activity" data-agent-id="0">
-                    <span class="ctrl-val" id="disp-sp-act-0">0.50</span>
-                </div>
-                <div class="ctrl-row">
-                    <label>Atlapetes</label>
-                    <input type="range" min="0" max="1" step="0.01" value="0.5"
-                        data-osc="/agents/species/activity" data-agent-id="1">
-                    <span class="ctrl-val" id="disp-sp-act-1">0.50</span>
-                </div>
-                <div class="ctrl-row">
-                    <label>Cecropia</label>
-                    <input type="range" min="0" max="1" step="0.01" value="0.5"
-                        data-osc="/agents/species/activity" data-agent-id="2">
-                    <span class="ctrl-val" id="disp-sp-act-2">0.50</span>
-                </div>
-                <div class="ctrl-row">
-                    <label>Alouatta</label>
-                    <input type="range" min="0" max="1" step="0.01" value="0.5"
-                        data-osc="/agents/species/activity" data-agent-id="3">
-                    <span class="ctrl-val" id="disp-sp-act-3">0.50</span>
-                </div>
-                <div class="ctrl-row">
-                    <label>Tinamus</label>
-                    <input type="range" min="0" max="1" step="0.01" value="0.5"
-                        data-osc="/agents/species/activity" data-agent-id="4">
-                    <span class="ctrl-val" id="disp-sp-act-4">0.50</span>
-                </div>
+                <div id="species-activity-ctrl"></div>
             </div>
 
-            <!-- Species Presence -->
+            <!-- Species Presence (injected by JS from live IUCN data) -->
             <div class="tele-section">
                 <div class="tele-section-title">Species Presence → SC</div>
-                <div class="ctrl-row">
-                    <label>Ara macao</label>
-                    <input type="range" min="0" max="1" step="0.01" value="0.6"
-                        data-osc="/agents/species/presence" data-agent-id="0">
-                    <span class="ctrl-val" id="disp-sp-pres-0">0.60</span>
-                </div>
-                <div class="ctrl-row">
-                    <label>Atlapetes</label>
-                    <input type="range" min="0" max="1" step="0.01" value="0.8"
-                        data-osc="/agents/species/presence" data-agent-id="1">
-                    <span class="ctrl-val" id="disp-sp-pres-1">0.80</span>
-                </div>
-                <div class="ctrl-row">
-                    <label>Cecropia</label>
-                    <input type="range" min="0" max="1" step="0.01" value="0.9"
-                        data-osc="/agents/species/presence" data-agent-id="2">
-                    <span class="ctrl-val" id="disp-sp-pres-2">0.90</span>
-                </div>
-                <div class="ctrl-row">
-                    <label>Alouatta</label>
-                    <input type="range" min="0" max="1" step="0.01" value="0.7"
-                        data-osc="/agents/species/presence" data-agent-id="3">
-                    <span class="ctrl-val" id="disp-sp-pres-3">0.70</span>
-                </div>
-                <div class="ctrl-row">
-                    <label>Tinamus</label>
-                    <input type="range" min="0" max="1" step="0.01" value="0.5"
-                        data-osc="/agents/species/presence" data-agent-id="4">
-                    <span class="ctrl-val" id="disp-sp-pres-4">0.50</span>
-                </div>
+                <div id="species-presence-ctrl"></div>
             </div>
 
             <!-- eDNA + Fungi controls -->

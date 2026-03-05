@@ -4,7 +4,9 @@
 // Falls back to hardcoded roster if the API is unreachable.
 
 const IUCN_API_BASE = "https://api.iucnredlist.org";
-const IUCN_TOKEN = "A9hZkdTdTdKJR3nxYExL2nFxQcC8pWXkwAnh";
+// Injected at build time by webpack DefinePlugin from .env
+declare const __IUCN_TOKEN__: string;
+const IUCN_TOKEN = typeof __IUCN_TOKEN__ !== "undefined" ? __IUCN_TOKEN__ : "";
 
 // RLI local server (if running) — has CORS enabled
 const RLI_SERVER = "http://localhost:3001";

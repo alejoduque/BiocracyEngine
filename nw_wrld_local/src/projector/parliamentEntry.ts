@@ -16,54 +16,6 @@ let IUCN_MULT = [2, 1, 3, 5, 5];
 const EDNA_IDS = ["CHO", "AMZ", "COR", "CAR", "ORI", "PAC", "MAG", "GUA"];
 const EDNA_ANGLES_DEG = Array.from({ length: 8 }, (_, i) => (i / 8) * 360);
 
-// ─── Live species fetch (IUCN Red List API for Colombia) ───
-function initLiveSpecies() {
-  fetchSpeciesRoster(30).then(({ roster, source }) => {
-    if (source === "fallback" || roster.length === 0) {
-      console.log("[parliament] Using fallback species roster");
-      return;
-    }
-    console.log(`[parliament] Live species loaded from ${source}: ${roster.length} species`);
-
-    // Update the global visualization roster
-    updateSpeciesRoster(roster);
-
-    // Update the dashboard species (first 5)
-    const dash5 = roster.slice(0, 5);
-    SPECIES_NAMES = dash5.map(([, name]) => name);
-    SPECIES_IUCN = dash5.map(([, , cat]) => cat);
-    IUCN_MULT = computeIUCNMults(dash5);
-
-    // Re-render dashboard telemetry labels if DOM is ready
-    const speciesTele = document.getElementById("species-tele");
-    if (speciesTele) {
-      speciesTele.innerHTML = SPECIES_NAMES.map((name, i) => `
-        <div style="margin-bottom:5px">
-          <div class="tele-row">
-            <span class="lbl" style="min-width:58px;font-size:9px">${name}</span>
-            <span class="uicn-badge uicn-${SPECIES_IUCN[i]}">${SPECIES_IUCN[i]}</span>
-            <div class="tele-bar-wrap"><div class="tele-bar" id="sp-bar-pres-${i}" style="width:50%"></div></div>
-            <span class="val" id="sp-val-${i}">—</span>
-          </div>
-          <div style="display:flex;gap:6px;margin-bottom:1px;padding-left:2px">
-            <span class="label">ACT</span><span class="value-sm" id="sp-act-${i}">—</span>
-            <span class="label">FREQ</span><span class="value-sm" id="sp-frq-${i}">—</span>
-            <span class="label">VOT</span><span class="value-sm" id="sp-vot-${i}">—</span>
-          </div>
-        </div>
-      `).join("");
-    }
-
-    // Update canvas overlay labels
-    for (let i = 0; i < 5; i++) {
-      const el = document.getElementById(`sp-label-${i}`);
-      if (el) el.textContent = SPECIES_NAMES[i].toUpperCase();
-    }
-  }).catch(e => {
-    console.warn("[parliament] Species fetch failed, using fallback:", e);
-  });
-}
-
 // ─── OSC bridge WebSocket ───
 let controlWS: WebSocket | null = null;
 let controlWsReady = false;
@@ -547,6 +499,36 @@ async function init() {
     `).join("");
     // eDNA slider wiring happens below, after wireSlider() is defined.
   }
+
+  // ─── Build species control rows (left panel) ───
+  function renderSpeciesSliders() {
+    const actCtrl = document.getElementById("species-activity-ctrl");
+    const presCtrl = document.getElementById("species-presence-ctrl");
+    if (actCtrl) {
+      actCtrl.innerHTML = SPECIES_NAMES.map((name, i) => {
+        const shortName = name.length > 14 ? name.slice(0, 13) + "…" : name;
+        return `<div class="ctrl-row">
+          <label title="${name}">${shortName}</label>
+          <input type="range" min="0" max="1" step="0.01" value="0.50"
+            data-osc="/agents/species/activity" data-agent-id="${i}">
+          <span class="ctrl-val" id="disp-sp-act-${i}">0.50</span>
+        </div>`;
+      }).join("");
+    }
+    if (presCtrl) {
+      presCtrl.innerHTML = SPECIES_NAMES.map((name, i) => {
+        const shortName = name.length > 14 ? name.slice(0, 13) + "…" : name;
+        const defVal = [0.95, 0.80, 0.90, 0.70, 0.50][i] ?? 0.50;
+        return `<div class="ctrl-row">
+          <label title="${name}">${shortName}</label>
+          <input type="range" min="0" max="1" step="0.01" value="${defVal.toFixed(2)}"
+            data-osc="/agents/species/presence" data-agent-id="${i}">
+          <span class="ctrl-val" id="disp-sp-pres-${i}">${defVal.toFixed(2)}</span>
+        </div>`;
+      }).join("");
+    }
+  }
+  renderSpeciesSliders();
 
   // ─── Build right-panel telemetry rows ───
   const speciesTele = document.getElementById("species-tele");
@@ -1126,6 +1108,12 @@ async function init() {
     ednaCtrlRows.querySelectorAll<HTMLInputElement>("input[type='range'][data-osc]").forEach(wireSlider);
   }
 
+  // Wire species sliders that were dynamically injected above
+  ["species-activity-ctrl", "species-presence-ctrl"].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.querySelectorAll<HTMLInputElement>("input[type='range'][data-osc]").forEach(wireSlider);
+  });
+
   // ─── State subscription ───
   const statusDot = document.getElementById("status-dot");
   const statusTxt = document.getElementById("status-txt");
@@ -1271,7 +1259,58 @@ async function init() {
   connectControlWS();
 
   // Fetch live Colombian species from IUCN Red List API
-  initLiveSpecies();
+  fetchSpeciesRoster(30).then(({ roster, source }) => {
+    if (source === "fallback" || roster.length === 0) {
+      console.log("[parliament] Using fallback species roster");
+      return;
+    }
+    console.log(`[parliament] Live species loaded from ${source}: ${roster.length} species`);
+
+    // Update the global visualization roster
+    updateSpeciesRoster(roster);
+
+    // Update the dashboard species (first 5)
+    const dash5 = roster.slice(0, 5);
+    SPECIES_NAMES = dash5.map(([, name]) => name);
+    SPECIES_IUCN = dash5.map(([, , cat]) => cat);
+    IUCN_MULT = computeIUCNMults(dash5);
+
+    // Re-render dashboard telemetry labels if DOM is ready
+    const speciesTeleEl = document.getElementById("species-tele");
+    if (speciesTeleEl) {
+      speciesTeleEl.innerHTML = SPECIES_NAMES.map((name, i) => `
+        <div style="margin-bottom:5px">
+          <div class="tele-row">
+            <span class="lbl" style="min-width:58px;font-size:9px">${name}</span>
+            <span class="uicn-badge uicn-${SPECIES_IUCN[i]}">${SPECIES_IUCN[i]}</span>
+            <div class="tele-bar-wrap"><div class="tele-bar" id="sp-bar-pres-${i}" style="width:50%"></div></div>
+            <span class="val" id="sp-val-${i}">—</span>
+          </div>
+          <div style="display:flex;gap:6px;margin-bottom:1px;padding-left:2px">
+            <span class="label">ACT</span><span class="value-sm" id="sp-act-${i}">—</span>
+            <span class="label">FREQ</span><span class="value-sm" id="sp-frq-${i}">—</span>
+            <span class="label">VOT</span><span class="value-sm" id="sp-vot-${i}">—</span>
+          </div>
+        </div>
+      `).join("");
+    }
+
+    // Re-render left-panel species sliders with live names
+    renderSpeciesSliders();
+    // Re-wire the newly injected sliders
+    ["species-activity-ctrl", "species-presence-ctrl"].forEach(cid => {
+      const el = document.getElementById(cid);
+      if (el) el.querySelectorAll<HTMLInputElement>("input[type='range'][data-osc]").forEach(wireSlider);
+    });
+
+    // Update canvas overlay labels
+    for (let i = 0; i < 5; i++) {
+      const el = document.getElementById(`sp-label-${i}`);
+      if (el) el.textContent = SPECIES_NAMES[i].toUpperCase();
+    }
+  }).catch(e => {
+    console.warn("[parliament] Species fetch failed, using fallback:", e);
+  });
 
   // Fullscreen on double-click
   document.getElementById("canvas-wrap")?.addEventListener("dblclick", () => {
