@@ -8,11 +8,11 @@ import { initSwitcher, getActiveThreeStage } from "./visualizationSwitcher";
 import * as THREE from "three";
 
 // ─── Data constants ───
-const SPECIES_NAMES  = ["Ara macao", "Atlapetes", "Cecropia", "Alouatta", "Tinamus"];
-const SPECIES_IUCN   = ["CR", "VU", "LC", "VU", "LC"];
+const SPECIES_NAMES = ["Ara macao", "Atlapetes", "Cecropia", "Alouatta", "Tinamus"];
+const SPECIES_IUCN = ["CR", "VU", "LC", "VU", "LC"];
 // IUCN multipliers for BioToken formula (CR=5, EN=3, VU=2, LC=1)
-const IUCN_MULT      = [5, 2, 1, 2, 1];
-const EDNA_IDS       = ["CHO", "AMZ", "COR", "CAR", "ORI", "PAC", "MAG", "GUA"];
+const IUCN_MULT = [5, 2, 1, 2, 1];
+const EDNA_IDS = ["CHO", "AMZ", "COR", "CAR", "ORI", "PAC", "MAG", "GUA"];
 const EDNA_ANGLES_DEG = Array.from({ length: 8 }, (_, i) => (i / 8) * 360);
 
 // ─── OSC bridge WebSocket ───
@@ -21,7 +21,7 @@ let controlWsReady = false;
 
 function connectControlWS() {
   controlWS = new WebSocket("ws://localhost:3334");
-  controlWS.onopen  = () => { controlWsReady = true; };
+  controlWS.onopen = () => { controlWsReady = true; };
   controlWS.onclose = () => {
     controlWsReady = false;
     controlWS = null;
@@ -74,7 +74,7 @@ function connectControlWS() {
         const dispEl = document.getElementById("disp-master-vol");
         if (dispEl) dispEl.textContent = v.toFixed(2);
       }
-    } catch (_) {}
+    } catch (_) { }
   };
 }
 
@@ -103,8 +103,8 @@ function sendOSCArgs(address: string, args: number[]) {
   if (!st) return;
   if (address === "/parliament/emergency" && args.length > 0) {
     // Emergency: collapse consensus toward 0 — red alert state
-    st.consensus      = Math.max(0, st.consensus - 0.3 * args[0]);
-    st.consensusWave  = args[0];
+    st.consensus = Math.max(0, st.consensus - 0.3 * args[0]);
+    st.consensusWave = args[0];
     parliamentStore.notifyListeners();
     // Visual burst: slam brightness down, red shift across all slots
     triggerVoteVisualBurst("emergency", args[0]);
@@ -245,9 +245,9 @@ class SpectrogramRenderer {
   }
 
   resize() {
-    this.width  = this.canvas.offsetWidth  || 800;
+    this.width = this.canvas.offsetWidth || 800;
     this.height = this.canvas.offsetHeight || 144;
-    this.canvas.width  = this.width;
+    this.canvas.width = this.width;
     this.canvas.height = this.height;
     this.colData = this.ctx.createImageData(1, this.height);
   }
@@ -277,8 +277,8 @@ class SpectrogramRenderer {
     // Read sonETH params for color modulation
     const sp = (window as any).__sonethParams || {};
     const spectral = sp.spectralshift ?? 0.4;   // hue shift: 0=pure amber, 1=cyan tint
-    const texture  = sp.texturedepth  ?? 0.3;    // grain: adds noise to brightness
-    const memory   = sp.memoryfeed    ?? 0.4;    // glow: brightens mid-range
+    const texture = sp.texturedepth ?? 0.3;    // grain: adds noise to brightness
+    const memory = sp.memoryfeed ?? 0.4;    // glow: brightens mid-range
 
     // Write 2 new right-edge columns using ImageData for speed
     const numBins = bins.length;
@@ -325,7 +325,7 @@ class SpectrogramRenderer {
       }
 
       const off = y * 4;
-      d[off]     = r;
+      d[off] = r;
       d[off + 1] = g;
       d[off + 2] = b;
       d[off + 3] = 255;
@@ -341,13 +341,13 @@ class SpectrogramRenderer {
 function buildFftBins(state: ParliamentState | null, elapsed: number, numBins = 256): Float32Array {
   const bins = new Float32Array(numBins);
   const sp = (window as any).__sonethParams || {};
-  const volume     = sp.volume        ?? 0.5;
-  const pitch      = sp.pitchshift    ?? 0.5;
-  const timeDil    = sp.timedilation  ?? 0.3;
-  const harmonic   = sp.harmonicrich  ?? 0.5;
-  const resonant   = sp.resonantbody  ?? 0.4;
+  const volume = sp.volume ?? 0.5;
+  const pitch = sp.pitchshift ?? 0.5;
+  const timeDil = sp.timedilation ?? 0.3;
+  const harmonic = sp.harmonicrich ?? 0.5;
+  const resonant = sp.resonantbody ?? 0.4;
   const atmosphere = sp.atmospheremix ?? 0.5;
-  const spatial    = sp.spatialspread ?? 0.5;
+  const spatial = sp.spatialspread ?? 0.5;
 
   // Slow-breathing base layer (always visible, reacts to time dilation)
   const breathRate = 0.4 + timeDil * 1.2;
@@ -376,8 +376,8 @@ function buildFftBins(state: ParliamentState | null, elapsed: number, numBins = 
 
   // Species: gaussian peaks at audio frequencies, with harmonic overtones
   for (const spc of state.species) {
-    const freq  = (spc.freq || 440) * (0.5 + pitch);  // pitch-shifted
-    const amp   = (spc.presence * 0.8 + spc.activity * 0.6) * volume;
+    const freq = (spc.freq || 440) * (0.5 + pitch);  // pitch-shifted
+    const amp = (spc.presence * 0.8 + spc.activity * 0.6) * volume;
     const width = 4 + spc.presence * 10 + resonant * 6; // resonance widens peaks
 
     // Fundamental + harmonics (harmonic richness controls overtone count)
@@ -397,7 +397,7 @@ function buildFftBins(state: ParliamentState | null, elapsed: number, numBins = 
 
   // eDNA: harmonic overtone combs (wider spread with atmosphere)
   for (let s = 0; s < state.edna.length; s++) {
-    const ed     = state.edna[s];
+    const ed = state.edna[s];
     const baseHz = 55 + s * 7;
     for (let h = 1; h <= 12; h++) {
       const hz = baseHz * h * ed.biodiversity * (0.8 + pitch * 0.4);
@@ -464,13 +464,13 @@ function buildFftBins(state: ParliamentState | null, elapsed: number, numBins = 
 // ─── BioToken V3 calculation ───
 function calcBioToken(state: ParliamentState): number {
   if (!state || !Array.isArray(state.species) || !Array.isArray(state.edna) || !Array.isArray(state.fungi)) return 0;
-  const avgPresence  = state.species.reduce((s, sp) => s + sp.presence, 0) / 5;
-  const avgActivity  = state.species.reduce((s, sp) => s + sp.activity, 0) / 5;
-  const avgEdnaBio   = state.edna.reduce((s, e) => s + e.biodiversity, 0) / 8;
+  const avgPresence = state.species.reduce((s, sp) => s + sp.presence, 0) / 5;
+  const avgActivity = state.species.reduce((s, sp) => s + sp.activity, 0) / 5;
+  const avgEdnaBio = state.edna.reduce((s, e) => s + e.biodiversity, 0) / 8;
   const avgFungiChem = state.fungi.reduce((s, f) => s + f.chemical, 0) / 4;
-  const aiOpt        = state.ai?.optimization / 127 || 0;
+  const aiOpt = state.ai?.optimization / 127 || 0;
   // IUCN weight: highest urgency species dominates
-  const maxIucnMult  = Math.max(...IUCN_MULT) / 5; // normalize to 0-1
+  const maxIucnMult = Math.max(...IUCN_MULT) / 5; // normalize to 0-1
   return avgPresence * avgActivity * avgEdnaBio * avgFungiChem * aiOpt * maxIucnMult;
 }
 
@@ -532,7 +532,7 @@ async function init() {
   }
 
   const fungiTele = document.getElementById("fungi-tele");
-  const fungiNames = ["N.Myco","C.Spore","S.Web","Coastal"];
+  const fungiNames = ["N.Myco", "C.Spore", "S.Web", "Coastal"];
   if (fungiTele) {
     fungiTele.innerHTML = fungiNames.map((name, i) => `
       <div class="tele-row" style="margin-bottom:2px">
@@ -545,7 +545,7 @@ async function init() {
   }
 
   // ─── Canvas labels ───
-  const overlay    = document.getElementById("canvas-overlay");
+  const overlay = document.getElementById("canvas-overlay");
   const canvasWrap = document.getElementById("canvas-wrap");
   const speciesLabelEls: HTMLElement[] = [];
 
@@ -560,10 +560,10 @@ async function init() {
     }
     EDNA_ANGLES_DEG.forEach((deg, i) => {
       const pos = radarToCss(deg, 9.5, canvasWrap);
-      const el  = document.createElement("div");
-      el.className  = "edna-label";
+      const el = document.createElement("div");
+      el.className = "edna-label";
       el.style.left = pos.x + "px";
-      el.style.top  = pos.y + "px";
+      el.style.top = pos.y + "px";
       el.textContent = EDNA_IDS[i];
       overlay.appendChild(el);
     });
@@ -582,9 +582,9 @@ async function init() {
       const grp = s.speciesGroups[i];
       if (!grp) continue;
       const pos = worldToCss(grp.position, s.camera, canvasWrap);
-      const el  = speciesLabelEls[i];
+      const el = speciesLabelEls[i];
       el.style.left = pos.x + "px";
-      el.style.top  = (pos.y - 20) + "px";
+      el.style.top = (pos.y - 20) + "px";
     }
   }
   (function labelLoop() { updateLabels(); requestAnimationFrame(labelLoop); })();
@@ -618,28 +618,28 @@ async function init() {
   // Keyed by the last OSC path segment (e.g. "/soneth/pitchshift" → "pitchshift").
   // visualizationSwitcher reads this via getSonethParams() exported below.
   const sonethParams: Record<string, number> = {
-    volume:        0.5,
-    pitchshift:    0.5,
-    timedilation:  0.3,
+    volume: 0.5,
+    pitchshift: 0.5,
+    timedilation: 0.3,
     spectralshift: 0.4,
     spatialspread: 0.5,
-    texturedepth:  0.3,
+    texturedepth: 0.3,
     atmospheremix: 0.5,
-    memoryfeed:    0.4,
-    harmonicrich:  0.5,
-    resonantbody:  0.4,
-    masteramp:     0.7,
-    filtercutoff:  0.5,
-    noiselevel:    0.2,
-    noisefilt:     0.5,
-    dronedepth:    0.4,
-    dronefade:     0.5,
-    dronespace:    0.5,
-    dronemix:      0.4,
+    memoryfeed: 0.4,
+    harmonicrich: 0.5,
+    resonantbody: 0.4,
+    masteramp: 0.7,
+    filtercutoff: 0.5,
+    noiselevel: 0.2,
+    noisefilt: 0.5,
+    dronedepth: 0.4,
+    dronefade: 0.5,
+    dronespace: 0.5,
+    dronemix: 0.4,
     delayfeedback: 0.3,
-    txinfluence:   0.5,
-    beatTempo:     0.5,
-    txInfluence:   0.5,
+    txinfluence: 0.5,
+    beatTempo: 0.5,
+    txInfluence: 0.5,
   };
   // Expose so visualizationSwitcher.ts can reach it at runtime via window
   (window as any).__sonethParams = sonethParams;
@@ -647,18 +647,14 @@ async function init() {
   function patchStoreFromSlider(addr: string, id: number | null, v: number) {
     const st = parliamentStore.state;
     if (!st) return;
-    if (addr === "/parliament/consensus")           { st.consensus = v; }
-    else if (addr === "/parliament/rotation")       { st.rotation = v; }
-    else if (addr === "/agents/species/activity" && id !== null && st.species?.[id])
-                                                    { st.species[id].activity = v; }
-    else if (addr === "/agents/species/presence" && id !== null && st.species?.[id])
-                                                    { st.species[id].presence = v; }
-    else if (addr === "/agents/edna/biodiversity" && id !== null && st.edna?.[id])
-                                                    { st.edna[id].biodiversity = v; }
-    else if (addr === "/agents/fungi/chemical" && id !== null && st.fungi?.[id])
-                                                    { st.fungi[id].chemical = v; }
-    else if (addr === "/agents/ai/consciousness")   { st.ai?.consciousness !== undefined && (st.ai.consciousness = v); }
-    else if (addr === "/parliament/emergency")      { st.consensus = Math.max(0, 1 - v); }
+    if (addr === "/parliament/consensus") { st.consensus = v; }
+    else if (addr === "/parliament/rotation") { st.rotation = v; }
+    else if (addr === "/agents/species/activity" && id !== null && st.species?.[id]) { st.species[id].activity = v; }
+    else if (addr === "/agents/species/presence" && id !== null && st.species?.[id]) { st.species[id].presence = v; }
+    else if (addr === "/agents/edna/biodiversity" && id !== null && st.edna?.[id]) { st.edna[id].biodiversity = v; }
+    else if (addr === "/agents/fungi/chemical" && id !== null && st.fungi?.[id]) { st.fungi[id].chemical = v; }
+    else if (addr === "/agents/ai/consciousness") { st.ai?.consciousness !== undefined && (st.ai.consciousness = v); }
+    else if (addr === "/parliament/emergency") { st.consensus = Math.max(0, 1 - v); }
     else if (addr.startsWith("/soneth/")) {
       // sonETH ambient param — update live object, then apply to active viz
       const key = addr.slice("/soneth/".length);
@@ -680,10 +676,10 @@ async function init() {
     if (s) {
       if (addr === "/parliament/consensus") {
         const turbulence = Math.pow(1.0 - Math.min(1, v), 2.0);
-        s._smoothConsensus  = v;
+        s._smoothConsensus = v;
         s._smoothTurbulence = turbulence;
-        s._smoothWarmth     = 0.25 + v * 0.75;
-        s._smoothEmergency  = Math.max(0, (1 - v) * Math.min(1, (st.votes || 0) / 10) - 0.2);
+        s._smoothWarmth = 0.25 + v * 0.75;
+        s._smoothEmergency = Math.max(0, (1 - v) * Math.min(1, (st.votes || 0) / 10) - 0.2);
       }
     }
 
@@ -864,6 +860,13 @@ async function init() {
     // ── SLOT 3 — PerlinBlob (p5.js): write global, draw() reads each frame ───
     if (!(window as any).__slot3Soneth) (window as any).__slot3Soneth = {};
     (window as any).__slot3Soneth[key] = v;
+
+    // ── SLOTS 4-9: Forward to new visualizer modules ───
+    for (let i = 4; i <= 9; i++) {
+      const slotKey = `__slot${i}Soneth`;
+      if (!(window as any)[slotKey]) (window as any)[slotKey] = {};
+      (window as any)[slotKey][key] = v;
+    }
   }
 
   // Expose so the SC→browser echo handler in connectControlWS() can call it
@@ -874,16 +877,16 @@ async function init() {
   // Green = received in last 2s, amber = stale (>2s), grey = never received.
   (function initDiagMonitor() {
     const CORE_PARAMS = [
-      "volume","pitchshift","timedilation","spectralshift","spatialspread",
-      "texturedepth","atmospheremix","memoryfeed","harmonicrich","resonantbody",
+      "volume", "pitchshift", "timedilation", "spectralshift", "spatialspread",
+      "texturedepth", "atmospheremix", "memoryfeed", "harmonicrich", "resonantbody",
     ];
     const EXTRA_PARAMS = [
-      "masteramp","filtercutoff","noiselevel","noisefilt","dronedepth",
-      "dronefade","dronespace","dronemix","delayfeedback","txinfluence",
-      "beatTempo","txInfluence",
+      "masteramp", "filtercutoff", "noiselevel", "noisefilt", "dronedepth",
+      "dronefade", "dronespace", "dronemix", "delayfeedback", "txinfluence",
+      "beatTempo", "txInfluence",
     ];
     const ALL_PARAMS = [...CORE_PARAMS, ...EXTRA_PARAMS];
-    const SLOTS = ["S0:Parliament","S1:Asteroid","S2:LowEarth","S3:Perlin"];
+    const SLOTS = ["S0:Parliament", "S1:Asteroid", "S2:LowEarth", "S3:Perlin"];
 
     const lastSeen: Record<string, number> = {};
     let overlay: HTMLDivElement | null = null;
@@ -985,7 +988,7 @@ async function init() {
 
         // Slot dots: green if the slot global has this param set
         const slotVals = [sp[p], s1[p], s2[p], s3[p]];
-        [0,1,2,3].forEach(si => {
+        [0, 1, 2, 3].forEach(si => {
           const dot = document.getElementById(`ds${si}-${p}`);
           if (dot) {
             const has = typeof slotVals[si] === "number";
@@ -1014,52 +1017,52 @@ async function init() {
   // ─── Slider display ID map (addr → id prefix used in HTML) ───────────────
   // Must match the actual element IDs in parliament.html and the edna rows injected above.
   const SLIDER_DISP_PREFIX: Record<string, string> = {
-    "/agents/species/activity":   "disp-sp-act-",
-    "/agents/species/presence":   "disp-sp-pres-",
-    "/agents/edna/biodiversity":  "disp-edna-bio-",
-    "/agents/fungi/chemical":     "disp-fg-chem-",
-    "/agents/ai/consciousness":   "disp-ai-consciousness",
-    "/parliament/consensus":      "disp-consensus",
-    "/parliament/rotation":       "disp-rotation",
-    "/parliament/fx/reverb":      "disp-reverb",
-    "/parliament/fx/room":        "disp-room",
-    "/parliament/fx/delaytime":   "disp-delaytime",
-    "/parliament/fx/decaytime":   "disp-decaytime",
+    "/agents/species/activity": "disp-sp-act-",
+    "/agents/species/presence": "disp-sp-pres-",
+    "/agents/edna/biodiversity": "disp-edna-bio-",
+    "/agents/fungi/chemical": "disp-fg-chem-",
+    "/agents/ai/consciousness": "disp-ai-consciousness",
+    "/parliament/consensus": "disp-consensus",
+    "/parliament/rotation": "disp-rotation",
+    "/parliament/fx/reverb": "disp-reverb",
+    "/parliament/fx/room": "disp-room",
+    "/parliament/fx/delaytime": "disp-delaytime",
+    "/parliament/fx/decaytime": "disp-decaytime",
     // sonETH ambient controls — id suffix is the param key (no agent-id)
-    "/soneth/volume":        "disp-soneth-volume",
-    "/soneth/pitchshift":    "disp-soneth-pitchshift",
-    "/soneth/timedilation":  "disp-soneth-timedilation",
+    "/soneth/volume": "disp-soneth-volume",
+    "/soneth/pitchshift": "disp-soneth-pitchshift",
+    "/soneth/timedilation": "disp-soneth-timedilation",
     "/soneth/spectralshift": "disp-soneth-spectralshift",
     "/soneth/spatialspread": "disp-soneth-spatialspread",
-    "/soneth/texturedepth":  "disp-soneth-texturedepth",
+    "/soneth/texturedepth": "disp-soneth-texturedepth",
     "/soneth/atmospheremix": "disp-soneth-atmospheremix",
-    "/soneth/memoryfeed":    "disp-soneth-memoryfeed",
-    "/soneth/harmonicrich":  "disp-soneth-harmonicrich",
-    "/soneth/resonantbody":  "disp-soneth-resonantbody",
-    "/soneth/beatTempo":     "disp-soneth-beatTempo",
-    "/soneth/txInfluence":   "disp-soneth-txInfluence",
+    "/soneth/memoryfeed": "disp-soneth-memoryfeed",
+    "/soneth/harmonicrich": "disp-soneth-harmonicrich",
+    "/soneth/resonantbody": "disp-soneth-resonantbody",
+    "/soneth/beatTempo": "disp-soneth-beatTempo",
+    "/soneth/txInfluence": "disp-soneth-txInfluence",
   };
 
   function wireSlider(slider: HTMLInputElement) {
     if ((slider as any)._sliderWired) return; // already wired
     (slider as any)._sliderWired = true;
 
-    const addr    = slider.dataset.osc!;
+    const addr = slider.dataset.osc!;
     const agentId = slider.dataset.agentId;
-    const prefix  = SLIDER_DISP_PREFIX[addr] ?? `disp-${addr.split("/").pop()}-`;
+    const prefix = SLIDER_DISP_PREFIX[addr] ?? `disp-${addr.split("/").pop()}-`;
 
     // Derive display element — agent sliders use prefix+id, global sliders use prefix alone
-    const dispId  = agentId !== undefined ? `${prefix}${agentId}` : prefix;
-    const dispEl  = document.getElementById(dispId);
+    const dispId = agentId !== undefined ? `${prefix}${agentId}` : prefix;
+    const dispEl = document.getElementById(dispId);
 
     slider.addEventListener("input", () => {
-      const v  = parseFloat(slider.value);
+      const v = parseFloat(slider.value);
       const id = agentId !== undefined ? parseInt(agentId) : null;
       if (dispEl) dispEl.textContent = v.toFixed(2);
 
       // 1. Send to SC
       if (id !== null) sendOSCArgs(addr, [id, v]);
-      else             sendOSC(addr, v);
+      else sendOSC(addr, v);
 
       // 2. Patch local store immediately for instant visual feedback
       patchStoreFromSlider(addr, id, v);
@@ -1075,21 +1078,21 @@ async function init() {
   }
 
   // ─── State subscription ───
-  const statusDot    = document.getElementById("status-dot");
-  const statusTxt    = document.getElementById("status-txt");
+  const statusDot = document.getElementById("status-dot");
+  const statusTxt = document.getElementById("status-txt");
   const hdrConsensus = document.getElementById("hdr-consensus");
-  const hdrPhase     = document.getElementById("hdr-phase");
-  const hdrVotes     = document.getElementById("hdr-votes");
-  const hdrBiotoken  = document.getElementById("hdr-biotoken");
-  const hdrIucnMult  = document.getElementById("hdr-iucn-mult");
-  const footerClock  = document.getElementById("footer-clock");
-  const footerEvent  = document.getElementById("footer-event");
+  const hdrPhase = document.getElementById("hdr-phase");
+  const hdrVotes = document.getElementById("hdr-votes");
+  const hdrBiotoken = document.getElementById("hdr-biotoken");
+  const hdrIucnMult = document.getElementById("hdr-iucn-mult");
+  const footerClock = document.getElementById("footer-clock");
+  const footerEvent = document.getElementById("footer-event");
   const voteResultFill = document.getElementById("vote-result-fill") as HTMLElement;
-  const voteResultTxt  = document.getElementById("vote-result-txt");
+  const voteResultTxt = document.getElementById("vote-result-txt");
 
   let lastUpdate = 0;
   let eventFlash = 0;
-  let elapsed    = 0;
+  let elapsed = 0;
   let currentState: ParliamentState | null = null;
 
   // Animate loop: push spectrogram + update stage FFT exposure
@@ -1109,12 +1112,12 @@ async function init() {
 
     // Connection
     if (statusDot) statusDot.className = state.connected ? "on" : "";
-    if (statusTxt)  statusTxt.textContent  = state.connected ? "ONLINE" : "OFFLINE";
+    if (statusTxt) statusTxt.textContent = state.connected ? "ONLINE" : "OFFLINE";
 
     // Header
     if (hdrConsensus) hdrConsensus.textContent = state.consensus.toFixed(3);
-    if (hdrPhase)     hdrPhase.textContent     = (state.phase * 360).toFixed(1) + "°";
-    if (hdrVotes)     hdrVotes.textContent     = String(state.votes);
+    if (hdrPhase) hdrPhase.textContent = (state.phase * 360).toFixed(1) + "°";
+    if (hdrVotes) hdrVotes.textContent = String(state.votes);
 
     // BioToken live
     const bt = calcBioToken(state);
@@ -1143,18 +1146,18 @@ async function init() {
     };
 
     // Parliament state bars
-    setBar("bar-consensus", state.consensus);    setVal("val-consensus", state.consensus.toFixed(3));
-    setBar("bar-wave", state.consensusWave);      setVal("val-wave", state.consensusWave.toFixed(3));
+    setBar("bar-consensus", state.consensus); setVal("val-consensus", state.consensus.toFixed(3));
+    setBar("bar-wave", state.consensusWave); setVal("val-wave", state.consensusWave.toFixed(3));
     setBar("bar-rotation", Math.min(state.rotation / 2, 1)); setVal("val-rotation", state.rotation.toFixed(3));
-    setBar("bar-votes", state.votes / 26);        setVal("val-votes", String(state.votes));
+    setBar("bar-votes", state.votes / 26); setVal("val-votes", String(state.votes));
 
     // BioToken breakdown
-    const avgEdna  = state.edna.reduce((s, e) => s + e.biodiversity, 0) / 8;
+    const avgEdna = state.edna.reduce((s, e) => s + e.biodiversity, 0) / 8;
     const avgFungi = state.fungi.reduce((s, f) => s + f.chemical, 0) / 4;
     const btVal = calcBioToken(state);
     setVal("biotoken-value", btVal.toFixed(4));
-    setVal("bt-iucn",  String(iucnMult));
-    setVal("bt-edna",  avgEdna.toFixed(2));
+    setVal("bt-iucn", String(iucnMult));
+    setVal("bt-edna", avgEdna.toFixed(2));
     setVal("bt-fungi", avgFungi.toFixed(2));
 
     // Species
@@ -1190,10 +1193,10 @@ async function init() {
     setVal("val-ai-o", String(Math.round(state.ai.optimization)));
 
     // Eco
-    setBar("bar-co2",  state.eco.co2 / 127);        setVal("val-co2",  state.eco.co2.toFixed(0));
-    setBar("bar-myco", state.eco.mycoPulse / 5);     setVal("val-myco", state.eco.mycoPulse.toFixed(2));
-    setBar("bar-phos", state.eco.phosphorus / 127);  setVal("val-phos", state.eco.phosphorus.toFixed(0));
-    setBar("bar-nitr", state.eco.nitrogen / 127);    setVal("val-nitr", state.eco.nitrogen.toFixed(0));
+    setBar("bar-co2", state.eco.co2 / 127); setVal("val-co2", state.eco.co2.toFixed(0));
+    setBar("bar-myco", state.eco.mycoPulse / 5); setVal("val-myco", state.eco.mycoPulse.toFixed(2));
+    setBar("bar-phos", state.eco.phosphorus / 127); setVal("val-phos", state.eco.phosphorus.toFixed(0));
+    setBar("bar-nitr", state.eco.nitrogen / 127); setVal("val-nitr", state.eco.nitrogen.toFixed(0));
 
     // Vote result flash
     if (state.events.voteResult && footerEvent) {
@@ -1221,9 +1224,9 @@ async function init() {
   // Fullscreen on double-click
   document.getElementById("canvas-wrap")?.addEventListener("dblclick", () => {
     if (!document.fullscreenElement) {
-      document.documentElement.requestFullscreen().catch(() => {});
+      document.documentElement.requestFullscreen().catch(() => { });
     } else {
-      document.exitFullscreen().catch(() => {});
+      document.exitFullscreen().catch(() => { });
     }
   });
 }

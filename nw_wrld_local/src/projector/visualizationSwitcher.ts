@@ -12,12 +12,20 @@
 import p5 from "p5";
 import parliamentStore from "./parliament/parliamentStore";
 import type { ParliamentState } from "./parliament/parliamentStore";
+import {
+  mountTimeTravel,
+  mountDynamicGraphs,
+  mountDynamicOptimality,
+  mountGeometry,
+  mountMemoryHierarchy,
+  mountHashing
+} from "./dataStructureVisuals";
 
 // ─── Species roster for parliament consensus display ─────────────────────────
 // Extended roster of tropical dry forest + broader ecosystem species.
 // Each entry: [short label (3–4 chars), full scientific name, IUCN status].
 // Slots 1–3 draw from this roster and shuffle names reactively.
-const SPECIES_ROSTER: [string, string, string][] = [
+export const SPECIES_ROSTER: [string, string, string][] = [
   ["Ara", "Ara macao", "CR"],
   ["Atl", "Atlapetes", "VU"],
   ["Cec", "Cecropia", "LC"],
@@ -51,7 +59,7 @@ const SPECIES_ROSTER: [string, string, string][] = [
 ];
 
 // Shuffle helper — Fisher-Yates
-function shuffleArray<T>(arr: T[]): T[] {
+export function shuffleArray<T>(arr: T[]): T[] {
   const a = arr.slice();
   for (let i = a.length - 1; i > 0; i--) {
     const j = Math.floor(Math.random() * (i + 1));
@@ -60,24 +68,27 @@ function shuffleArray<T>(arr: T[]): T[] {
   return a;
 }
 
-// Pick N random species from the roster (no duplicates)
-function pickSpecies(n: number): [string, string, string][] {
-  return shuffleArray(SPECIES_ROSTER).slice(0, n);
+// Pick N species from the roster, ensuring the first 5 always align 
+// with the UI dashboard sliders (Ara, Atl, Cec, Alo, Tin).
+export function pickSpecies(n: number): [string, string, string][] {
+  const first5 = SPECIES_ROSTER.slice(0, 5);
+  const rest = shuffleArray(SPECIES_ROSTER.slice(5));
+  return [...first5, ...rest].slice(0, n);
 }
 
 // IUCN status → amber palette color
-function iucnColor(status: string): readonly [number, number, number] {
+export function iucnColor(status: string): readonly [number, number, number] {
   switch (status) {
     case "CR": return [255, 51, 0];
     case "EN": return [255, 102, 0];
     case "NT": return [255, 170, 0];
     case "VU": return [255, 136, 0];
-    default:   return [136, 170, 0]; // LC
+    default: return [136, 170, 0]; // LC
   }
 }
 
 // ─── Viz interface ───────────────────────────────────────────────────────────
-interface Viz {
+export interface Viz {
   name: string;
   key: string;
   destroy: () => void;
@@ -105,8 +116,8 @@ function updateHUD(name: string, key: string) {
 }
 
 // ─── Show/hide helpers ───────────────────────────────────────────────────────
-function showStage() { if (stageEl) stageEl.style.visibility = "visible"; }
-function hideStage() { if (stageEl) stageEl.style.visibility = "hidden"; }
+export function showStage(stageEl: HTMLElement | null) { if (stageEl) stageEl.style.visibility = "visible"; }
+function hideStage(stageEl: HTMLElement | null) { if (stageEl) stageEl.style.visibility = "hidden"; }
 
 // ─── Teardown ────────────────────────────────────────────────────────────────
 function clearStage() {
@@ -121,7 +132,7 @@ function clearStage() {
   if (stageEl) {
     while (stageEl.firstChild) stageEl.removeChild(stageEl.firstChild);
   }
-  hideStage();
+  hideStage(stageEl);
 }
 
 // ─── Mount: slot 0 — Three.js Parliament ────────────────────────────────────
@@ -138,7 +149,7 @@ async function mountParliamentStage(): Promise<Viz> {
   wrapper.style.cssText = "position:absolute;inset:0;";
   stageEl!.appendChild(wrapper);
 
-  showStage();
+  showStage(stageEl);
   void wrapper.offsetWidth; // sync reflow
 
   const stage = new ParliamentStage(wrapper) as any;
@@ -435,7 +446,7 @@ function mountAsteroidWaves(): Viz {
     };
   };
 
-  showStage();
+  showStage(stageEl);
   void container.offsetWidth; // sync reflow
 
   // Pass container as 2nd arg — p5 creates canvas directly inside it
@@ -466,7 +477,7 @@ async function mountLowEarthPoint(): Promise<Viz> {
   wrapper.style.cssText = "position:absolute;inset:0;";
   stageEl!.appendChild(wrapper);
 
-  showStage();
+  showStage(stageEl);
   void wrapper.offsetWidth;
 
   const stage = new LowEarthPointModule(wrapper) as any;
@@ -790,7 +801,7 @@ async function mountLowEarthPoint(): Promise<Viz> {
 // ─── Mount: slot 3 — PerlinBlob (p5 white-phosphor) + ZKP ETH live overlay ───
 function mountPerlinBlob(): Viz {
   const container = stageEl!;
-  showStage();
+  showStage(stageEl);
 
   // ── p5 sketch canvas ───────────────────────────────────────────────────────
   const canvasWrap = document.createElement("div");
@@ -1343,7 +1354,7 @@ function mountPerlinBlob(): Viz {
 // ─── Mount: slots 4–9 — placeholder ─────────────────────────────────────────
 function mountPlaceholder(key: string): Viz {
   const container = stageEl!;
-  showStage();
+  showStage(stageEl);
 
   const canvas = document.createElement("canvas");
   canvas.style.cssText = "position:absolute;inset:0;width:100%;height:100%;";
@@ -1390,6 +1401,12 @@ async function switchTo(key: string) {
     else if (key === "1") viz = mountAsteroidWaves();
     else if (key === "2") viz = await mountLowEarthPoint();
     else if (key === "3") viz = mountPerlinBlob();
+    else if (key === "4") viz = mountTimeTravel(stageEl!, getLatestState);
+    else if (key === "5") viz = mountDynamicGraphs(stageEl!, getLatestState);
+    else if (key === "6") viz = mountDynamicOptimality(stageEl!, getLatestState);
+    else if (key === "7") viz = mountGeometry(stageEl!, getLatestState);
+    else if (key === "8") viz = mountMemoryHierarchy(stageEl!, getLatestState);
+    else if (key === "9") viz = mountHashing(stageEl!, getLatestState);
     else viz = mountPlaceholder(key);
   } catch (e) {
     console.error("[switcher] mount failed:", e);

@@ -31,13 +31,18 @@ ETH Blockchain ──► Python (web3) ──► OSC ──► SuperCollider (au
                                     WS:3334
                                        │
                                        ▼
-                            nw_wrld Browser (4 visual slots)
+                            nw_wrld Browser (10 visual slots)
                                        │
-                            ┌──────────┼──────────┐──────────┐
-                            ▼          ▼          ▼          ▼
-                        Slot 0     Slot 1     Slot 2     Slot 3
-                      Parliament  Asteroid   LowEarth   Perlin
-                       (Three.js)  (p5.js)   (Three.js)  (p5.js)
+              ┌────────┬────────┬──────┼──────┬────────┬────────┐
+              ▼        ▼        ▼      ▼      ▼        ▼        ▼
+          Slot 0   Slot 1   Slot 2  Slot 3  Slot 4  Slot 5   Slot 6
+         Parliament Asteroid LowEarth Perlin TimeTravel DynGraph Splay
+          (Three)   (p5)    (Three)  (p5)    (p5)     (p5)     (p5)
+              ┌────────┬────────┐
+              ▼        ▼        ▼
+          Slot 7   Slot 8   Slot 9
+         Geometry MemHier  Hashing
+          (p5)     (p5)     (p5)
 ```
 
 ### Control Surfaces
@@ -68,7 +73,9 @@ Launches all services: nw_wrld, parliament-bridge, SuperCollider, Python ETH scr
 
 ## Control Matrix
 
-10 core sonETH parameters × 4 visual slots = 40 bindings. Every slider/knob/MIDI CC drives both SC audio buses and all visualizations simultaneously.
+10 core sonETH parameters × 10 visual slots = 100 bindings. Every slider/knob/MIDI CC drives both SC audio buses and all visualizations simultaneously.
+
+### Slots 0–3 (Three.js + p5.js core modules)
 
 | Param | SC Audio | Slot 0 Parliament | Slot 1 AsteroidWaves | Slot 2 LowEarthPoint | Slot 3 PerlinBlob |
 |---|---|---|---|---|---|
@@ -82,6 +89,38 @@ Launches all services: nw_wrld, parliament-bridge, SuperCollider, Python ETH scr
 | **memoryFeed** | delay feedback 0–0.8 | bloom strength | ghost trail alpha | red lines opacity | ghost alpha |
 | **harmonicRich** | FM ratio 0.1–8 | lissajous complexity | harmonic overlay | Bezier Z-scale | hue drift |
 | **resonantBody** | filter Q 0.1–0.8 | chroma aberration | peak dot glow | red cloud scale | inner weight |
+
+### Slots 4–6 (p5.js data structure visualizations)
+
+| Param | Slot 4 TimeTravel | Slot 5 DynamicGraphs | Slot 6 DynamicOptimality |
+|---|---|---|---|
+| **volume** | trace + marker alpha | connection + node alpha, label brightness | beam + node alpha, label size |
+| **pitchShift** | sinusoidal trace modulation | vertical gravity center bias | root Y position + layer spacing |
+| **timeDilation** | scroll speed, radar spin | system overdrive speed | root float, scroll speed, snap force |
+| **spectralShift** | trace color phosphor→cyan | center pull magnetism, glitch scale | breathing amplitude, vibration freq |
+| **spatialSpread** | vertical lane range | spring rest length | tree horizontal width |
+| **textureDepth** | grid density/weight, radar rings | radar arc opacity, node size | grid opacity/weight, node rotation |
+| **atmosphereMix** | ghosting depth | afterimage depth | sonar scan columns |
+| **memoryFeed** | background trail alpha | background trail alpha | background trail alpha |
+| **harmonicRich** | echo traces, diagonal sub-grid | node color amber↔white | beam color intensity |
+| **resonantBody** | marker glow size, resonance rings | outer glow rings on nodes | node wireframe size |
+| **txInfluence** | glitch probability, chromatic tears | jitter intensity, glitch lines | beam distortion tears |
+
+### Slots 7–9 (p5.js data structure visualizations)
+
+| Param | Slot 7 Geometry | Slot 8 MemoryHierarchy | Slot 9 Hashing |
+|---|---|---|---|
+| **volume** | ray brightness, sweep alpha | block/text visibility | scanline visibility |
+| **pitchShift** | ray angular amplitude | layer vertical spacing | bucket vertical offset |
+| **timeDilation** | grid animation, drift speed, radar spin | hex refresh rate, block noise speed | hash mutation speed |
+| **spectralShift** | sweep color amber↔cyan | per-layer color amber↔cyan | glitch tears, text rotation |
+| **spatialSpread** | ray Y lane distribution | layer width distribution | key↔bucket column spread |
+| **textureDepth** | grid density/weight, radar sub-rings | inner grid density, hex count/size | scanline intensity/weight |
+| **atmosphereMix** | ghosting depth | afterimage depth | afterimage depth |
+| **memoryFeed** | background trail alpha | background trail alpha | background trail alpha |
+| **harmonicRich** | harmonic echo rays | crosshatch density, cross-hatch | collision line weight |
+| **resonantBody** | target crosshair glow, outer rings | CRT border opacity/weight | bucket border stroke |
+| **txInfluence** | glitch distortion tears | block displacement glitches | collision path amplitude, tears |
 
 ### Consensus → Brightness (all modules)
 
@@ -218,7 +257,8 @@ BiocracyEngine/
     ├── diag-sweep.js               # Node.js diagnostic sweep
     ├── src/projector/
     │   ├── parliamentEntry.ts      # Central control hub (applySonethToViz)
-    │   ├── visualizationSwitcher.ts # 4 visual slots mount/unmount
+    │   ├── visualizationSwitcher.ts # Slots 0–3 mount/unmount + shared utils
+    │   ├── dataStructureVisuals.ts  # Slots 4–9 (TimeTravel, DynGraph, Splay, Geometry, MemHier, Hashing)
     │   ├── parliament/
     │   │   └── parliamentStore.ts  # Reactive state store
     │   └── views/
