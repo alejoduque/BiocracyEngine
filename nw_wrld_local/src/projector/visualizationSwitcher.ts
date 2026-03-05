@@ -22,41 +22,57 @@ import {
 } from "./dataStructureVisuals";
 
 // ─── Species roster for parliament consensus display ─────────────────────────
-// Extended roster of tropical dry forest + broader ecosystem species.
+// Populated at runtime from IUCN Red List API (Colombian species).
+// Fallback: hardcoded tropical dry forest + broader ecosystem species.
 // Each entry: [short label (3–4 chars), full scientific name, IUCN status].
-// Slots 1–3 draw from this roster and shuffle names reactively.
-export const SPECIES_ROSTER: [string, string, string][] = [
-  ["Ara", "Ara macao", "CR"],
-  ["Atl", "Atlapetes", "VU"],
-  ["Cec", "Cecropia", "LC"],
-  ["Alo", "Alouatta palliata", "VU"],
-  ["Tin", "Tinamus major", "LC"],
-  ["Hrp", "Harpia harpyja", "NT"],
+// Slots 1–9 draw from this roster and shuffle names reactively.
+
+import type { RosterEntry } from "./speciesFetcher";
+
+// Hardcoded fallback roster (used when IUCN API is unreachable)
+const FALLBACK_ROSTER: [string, string, string][] = [
+  ["Tre", "Tremarctos ornatus", "VU"],
   ["Pan", "Panthera onca", "NT"],
   ["Tap", "Tapirus bairdii", "EN"],
+  ["Pod", "Podocnemis lewyana", "CR"],
+  ["Ate", "Atelopus nahumae", "CR"],
+  ["Har", "Harpia harpyja", "NT"],
+  ["Cer", "Ceroxylon quindiuense", "EN"],
+  ["Cat", "Cattleya trianae", "EN"],
+  ["Esp", "Espeletia grandiflora", "VU"],
+  ["Alo", "Alouatta palliata", "VU"],
   ["Cro", "Crocodylus acutus", "VU"],
-  ["Boa", "Boa constrictor", "LC"],
   ["Den", "Dendrobates auratus", "LC"],
   ["Bra", "Bradypus variegatus", "LC"],
-  ["Nas", "Nasua narica", "LC"],
   ["Sar", "Sarcoramphus papa", "LC"],
-  ["Ram", "Ramphastos sulfuratus", "LC"],
   ["Phr", "Pharomachrus mocinno", "NT"],
-  ["Cai", "Caiman crocodilus", "LC"],
-  ["Das", "Dasyprocta punctata", "LC"],
-  ["Pec", "Pecari tajacu", "LC"],
-  ["Tam", "Tamandua mexicana", "LC"],
-  ["Igu", "Iguana iguana", "LC"],
   ["Cei", "Ceiba pentandra", "LC"],
   ["Och", "Ochroma pyramidale", "LC"],
   ["Pas", "Passiflora ligularis", "LC"],
   ["Hel", "Heliconia latispatha", "LC"],
   ["Fic", "Ficus insipida", "LC"],
-  ["Cal", "Caligo memnon", "LC"],
   ["Mor", "Morpho peleides", "LC"],
-  ["Hyl", "Hylocereus costaricensis", "LC"],
-  ["Phy", "Phyllostachys aurea", "LC"],
+  ["Gua", "Gustavia superba", "LC"],
+  ["Bro", "Brownea ariza", "NT"],
+  ["Sag", "Saguinus oedipus", "CR"],
+  ["Cai", "Caiman crocodilus", "LC"],
+  ["Pec", "Pecari tajacu", "LC"],
+  ["Ara", "Ara macao", "CR"],
+  ["Cal", "Caligo memnon", "LC"],
+  ["Que", "Quercus humboldtii", "VU"],
+  ["Mag", "Magnolia hernandezii", "CR"],
 ];
+
+// Mutable roster — replaced when live data arrives
+export let SPECIES_ROSTER: [string, string, string][] = FALLBACK_ROSTER.slice();
+
+// Called by speciesFetcher when live data is available
+export function updateSpeciesRoster(newRoster: RosterEntry[]) {
+  if (newRoster.length > 0) {
+    SPECIES_ROSTER = newRoster;
+    console.log(`[roster] Updated with ${newRoster.length} live species`);
+  }
+}
 
 // Shuffle helper — Fisher-Yates
 export function shuffleArray<T>(arr: T[]): T[] {
