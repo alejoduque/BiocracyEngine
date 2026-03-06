@@ -34,6 +34,32 @@
 // Allocation happens inside the doWhenBooted block below to avoid allocating before server exists.
 ~controlBuses = ~controlBuses ?? ();
 
+// ─── Helper: Compute pitch pool from live control values ───
+~computePitchPool = { |harmRich=1.0, txInfluence=0.0, density=0.5|
+    var basePitch = 200;
+    var pitchShift = txInfluence * 200;  // TX activity raises base pitch 0–200 Hz
+    var spread = harmRich.linexp(0.1, 8.0, 0.5, 2.0);  // narrow→wide spread
+    var numSteps = (4 + (density * 3)).round.clip(4, 7);  // 4–7 notes
+
+    Array.fill(numSteps, { |i|
+        (basePitch * spread * (i + 1)) + pitchShift;
+    });
+};
+
+// ─── Helper: Select voicing strategy from control values ───
+~selectVoicing = { |resBdy=0.4, texDep=0.2|
+    case
+    { texDep < 0.2 } { \single }                      // sparse
+    { (resBdy > 0.6) and: { texDep < 0.5 } } { \dyad }   // pairs
+    { texDep > 0.6 } { \triad }                       // full chords
+    { \dyad };                                        // default
+};
+
+// ─── Helper: Get harmonic count from control ───
+~getHarmonicCount = { |harmRich=1.0|
+    (harmRich.linexp(0.1, 8.0, 1, 8)).round.clip(1, 8);
+};
+
 // Enhanced Beat Engine with transaction influence
 ~beatEngine = {
     if(~beatRoutine.notNil) { ~beatRoutine.stop };
@@ -72,6 +98,11 @@
         var pitchPool     = #[200, 300, 400, 500, 600, 800];
         var poolIdx       = 0;
 
+        // Live control values (read each beat)
+        var harmRich, resBdy, atmMix, memFeed, texDep, dronFade, txInf;
+        var voicingMode;
+        var harmCount;
+
         loop {
             var now = SystemClock.seconds;
             var timeSinceLastTx = now - (~beatParams.lastTransactionTime ? now);
@@ -80,6 +111,20 @@
             var density;
             var bMVol, bPitch, bTime, bSpec, bSpat, bText, bAtmo, bMem, bHarm, bRes;
             var elapsed = now % 300; // 5-minute macro cycle
+
+            // ─── Read live GUI control values every beat ───
+            harmRich = Select.kr(~bi.(\harmonicRich) >= 0, [1.0, In.kr(~bi.(\harmonicRich), 1)]);
+            resBdy   = Select.kr(~bi.(\resonantBody) >= 0, [0.4, In.kr(~bi.(\resonantBody), 1)]);
+            atmMix   = Select.kr(~bi.(\atmosphereMix) >= 0, [0.4, In.kr(~bi.(\atmosphereMix), 1)]);
+            memFeed  = Select.kr(~bi.(\memoryFeed) >= 0, [0.3, In.kr(~bi.(\memoryFeed), 1)]);
+            texDep   = Select.kr(~bi.(\textureDepth) >= 0, [0.2, In.kr(~bi.(\textureDepth), 1)]);
+            dronFade = Select.kr(~bi.(\droneFade) >= 0, [0.5, In.kr(~bi.(\droneFade), 1)]);
+            txInf    = Select.kr(~bi.(\txInfluence) >= 0, [0.5, In.kr(~bi.(\txInfluence), 1)]);
+
+            // ─── Compute melodic parameters from control matrix ───
+            pitchPool = ~computePitchPool.(harmRich, txInfluence, density);
+            voicingMode = ~selectVoicing.(resBdy, texDep);
+            harmCount = ~getHarmonicCount.(harmRich);
 
             // Calculate transaction influence
             transactionInfluence = (~beatParams.transactionInfluence *
@@ -151,26 +196,69 @@
             if((step % percDivisor == 0) or: {
                 (step % 5 == 0) and: { transactionInfluence > 0.3 } and: { 0.6.coin }
             }) {
-                // Pick from pitch pool with slow rotation
-                var percFreq = pitchPool.wrapAt(poolIdx);
+                var baseFreq = pitchPool.wrapAt(poolIdx);
                 poolIdx = (poolIdx + 1) % pitchPool.size;
-                // Slight random detune for humanization
-                percFreq = percFreq * rrand(0.95, 1.05);
 
-                Synth(\opalPerc, [
-                    \out,         0,
-                    \freq,        percFreq,
-                    \amp,         ~beatParams.masterAmp * (0.4 + (transactionInfluence * 0.35)),
-                    \masterVolBus, bMVol,
-                    \harmonicBus,  bHarm,
-                    \textureBus,   bText,
-                    \resonantBus,  bRes,
-                    \spectralBus,  bSpec,
-                    \timeBus,      bTime,
-                    \memoryBus,    bMem,
-                    \atmosphereBus, bAtmo,
-                    \spatialBus,   bSpat
-                ], targetGrp);
+                // ─ Voicing: single note, dyad, or triad based on texture control ─
+                case
+                { voicingMode == \single } {
+                    // Single pitched note
+                    var percFreq = baseFreq * rrand(0.95, 1.05);
+                    Synth(\opalPerc, [
+                        \out,          0,
+                        \freq,         percFreq,
+                        \amp,          ~beatParams.masterAmp * (0.4 + (transactionInfluence * 0.35)),
+                        \masterVolBus, bMVol,
+                        \harmonicBus,  bHarm,
+                        \textureBus,   bText,
+                        \resonantBus,  bRes,
+                        \spectralBus,  bSpec,
+                        \timeBus,      bTime,
+                        \memoryBus,    bMem,
+                        \atmosphereBus, bAtmo,
+                        \spatialBus,   bSpat
+                    ], targetGrp);
+                }
+                { voicingMode == \dyad } {
+                    // Two-note interval
+                    2.do { |voice|
+                        var harmFreq = baseFreq * ([1.0, 1.5][voice]) * rrand(0.98, 1.02);
+                        Synth(\opalPerc, [
+                            \out,          0,
+                            \freq,         harmFreq,
+                            \amp,          ~beatParams.masterAmp * (0.4 + (transactionInfluence * 0.35)) * [1.0, 0.6][voice],
+                            \masterVolBus, bMVol,
+                            \harmonicBus,  bHarm,
+                            \textureBus,   bText,
+                            \resonantBus,  bRes,
+                            \spectralBus,  bSpec,
+                            \timeBus,      bTime,
+                            \memoryBus,    bMem,
+                            \atmosphereBus, bAtmo,
+                            \spatialBus,   bSpat
+                        ], targetGrp);
+                    };
+                }
+                { voicingMode == \triad } {
+                    // Full harmonic series (up to harmCount)
+                    (harmCount.clip(2, 5)).do { |h|
+                        var harmFreq = baseFreq * (h + 1) * resBdy.linexp(0.1, 0.8, 0.95, 1.15);
+                        Synth(\opalPerc, [
+                            \out,          0,
+                            \freq,         harmFreq,
+                            \amp,          ~beatParams.masterAmp * (0.4 + (transactionInfluence * 0.35)) * (1.0 / (h + 1.5)),
+                            \masterVolBus, bMVol,
+                            \harmonicBus,  bHarm,
+                            \textureBus,   bText,
+                            \resonantBus,  bRes,
+                            \spectralBus,  bSpec,
+                            \timeBus,      bTime,
+                            \memoryBus,    bMem,
+                            \atmosphereBus, bAtmo,
+                            \spatialBus,   bSpat
+                        ], targetGrp);
+                    };
+                };
             };
 
             // ── 3. DUST — probability-based, not grid-locked ─────────────────────
