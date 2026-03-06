@@ -917,7 +917,7 @@ async function init() {
       "beatTempo", "txInfluence",
     ];
     const ALL_PARAMS = [...CORE_PARAMS, ...EXTRA_PARAMS];
-    const SLOTS = ["S0:Parliament", "S1:Asteroid", "S2:LowEarth", "S3:Perlin"];
+    const SLOTS = ["S0:Parliament", "S1:Asteroid", "S2:LowEarth", "S3:Perlin", "S4:Module", "S5:Module", "S6:Module", "S7:Module", "S8:Module", "S9:Module"];
 
     const lastSeen: Record<string, number> = {};
     let overlay: HTMLDivElement | null = null;
@@ -930,8 +930,8 @@ async function init() {
         position:fixed; top:8px; right:8px; z-index:99999;
         background:rgba(0,4,2,0.94); border:1px solid #1a3a1a;
         border-radius:6px; padding:12px 14px; font:14px/1.5 monospace;
-        color:#88aa88; max-height:90vh; overflow-y:auto; pointer-events:auto;
-        min-width:480px;
+        color:#88aa88; max-height:90vh; width:600px; overflow-y:auto; overflow-x:auto; pointer-events:auto;
+        min-width:600px;
       `;
       overlay.innerHTML = `
         <div style="color:#44ff66;font-weight:bold;margin-bottom:6px;font-size:16px;">
@@ -959,13 +959,13 @@ async function init() {
       ALL_PARAMS.forEach(p => {
         const row = table.insertRow();
         row.id = `diag-row-${p}`;
+        const slotDots = Array.from({length: 10}, (_, i) =>
+          `<td id="ds${i}-${p}" style="text-align:center;padding:2px 4px;">●</td>`
+        ).join("");
         row.innerHTML = `
           <td style="padding:2px 6px;">${p}</td>
           <td id="dv-${p}" style="text-align:center;color:#666;padding:2px 4px;">—</td>
-          <td id="ds0-${p}" style="text-align:center;padding:2px 4px;">●</td>
-          <td id="ds1-${p}" style="text-align:center;padding:2px 4px;">●</td>
-          <td id="ds2-${p}" style="text-align:center;padding:2px 4px;">●</td>
-          <td id="ds3-${p}" style="text-align:center;padding:2px 4px;">●</td>
+          ${slotDots}
           <td id="da-${p}" style="text-align:right;color:#666;padding:2px 4px;">—</td>
         `;
       });
@@ -1000,9 +1000,18 @@ async function init() {
       if (!visible || !overlay) return;
       const now = performance.now();
       const sp = (window as any).__sonethParams || {};
-      const s1 = (window as any).__slot1Soneth || {};
-      const s2 = (window as any).__slot2Soneth || {};
-      const s3 = (window as any).__slot3Soneth || {};
+      const slotGlobals = [
+        sp, // S0: main soneth params
+        (window as any).__slot1Soneth || {},
+        (window as any).__slot2Soneth || {},
+        (window as any).__slot3Soneth || {},
+        (window as any).__slot4Soneth || {},
+        (window as any).__slot5Soneth || {},
+        (window as any).__slot6Soneth || {},
+        (window as any).__slot7Soneth || {},
+        (window as any).__slot8Soneth || {},
+        (window as any).__slot9Soneth || {},
+      ];
 
       ALL_PARAMS.forEach(p => {
         const valEl = document.getElementById(`dv-${p}`);
@@ -1018,11 +1027,10 @@ async function init() {
         }
 
         // Slot dots: green if the slot global has this param set
-        const slotVals = [sp[p], s1[p], s2[p], s3[p]];
-        [0, 1, 2, 3].forEach(si => {
+        [0, 1, 2, 3, 4, 5, 6, 7, 8, 9].forEach(si => {
           const dot = document.getElementById(`ds${si}-${p}`);
           if (dot) {
-            const has = typeof slotVals[si] === "number";
+            const has = typeof slotGlobals[si][p] === "number";
             dot.style.color = has ? (age >= 0 && age < 2 ? "#0f0" : "#fa0") : "#444";
           }
         });
