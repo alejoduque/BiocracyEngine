@@ -291,6 +291,22 @@
             ~knobViews = ~knobViews ?? ();
             ~knobViews[paramName] = knob;
 
+            // Monitor bus changes (from MIDI) and update knob visual + label
+            // Defer the watcher creation until the bus exists
+            AppClock.sched(0.5, {
+                if(~buses.notNil and: {~buses[paramName].notNil}) {
+                    ~buses[paramName].addDependant({
+                        {
+                            knob.value = spec.unmap(~buses[paramName].getSynchronous);
+                            valueLabel.string = displayStr ++ ": " ++ ~buses[paramName].getSynchronous.round(0.001);
+                        }.defer;
+                    });
+                    nil;  // remove the scheduled function
+                } {
+                    0.1;  // retry in 0.1s
+                };
+            });
+
             container;
         };
 
