@@ -50,64 +50,74 @@ s.doWhenBooted({
 // Lawrence English Ambient MIDI Mapping - Row 1 (Core Performance, CCs 0-4)
 MIDIdef.cc(\ambientRow1, { |val, num, chan, src|
     var scaled;
-    
+
     case
     {num == 0} {
         scaled = val.linlin(0, 127, 0.0, 1.0);
         ~buses[\masterVolume].set(scaled);
         "Master Volume: %".format(scaled.round(0.001)).postln;
+        if(~visualsDest.notNil) { ~visualsDest.sendMsg("/soneth/volume", scaled); };
     }
     {num == 1} {
         scaled = val.linlin(0, 127, -24, 24);
         ~buses[\pitchShift].set(scaled);
         "Pitch Shift: % semitones".format(scaled.round(0.1)).postln;
+        if(~visualsDest.notNil) { ~visualsDest.sendMsg("/soneth/pitchshift", scaled.linlin(-24, 24, 0, 1)); };
     }
     {num == 2} {
         scaled = val.linexp(0, 127, 0.5, 6.0);   // matches OSC/GUI ceiling of 6x
         ~buses[\timeDilation].set(scaled);
         "Time Dilation: %x".format(scaled.round(0.01)).postln;
+        if(~visualsDest.notNil) { ~visualsDest.sendMsg("/soneth/timedilation", scaled.linexp(0.5, 6.0, 0, 1)); };
     }
     {num == 3} {
         scaled = val.linexp(0, 127, 60, 3000);   // Hz — ceiling 3000 to avoid filter silence
         ~buses[\spectralShift].set(scaled);
         "Spectral Shift: % Hz".format(scaled.round(1)).postln;
+        if(~visualsDest.notNil) { ~visualsDest.sendMsg("/soneth/spectralshift", scaled.linexp(60, 3000, 0, 1)); };
     }
     {num == 4} {
         scaled = val.linlin(0, 127, -1.0, 1.0);
         ~buses[\spatialSpread].set(scaled);
         "Spatial Spread: %".format(scaled.round(0.01)).postln;
+        if(~visualsDest.notNil) { ~visualsDest.sendMsg("/soneth/spatialspread", scaled.linlin(-1.0, 1.0, 0, 1)); };
     };
 }, nil, nil);  // Listen on all channels
 
 // Lawrence English Ambient MIDI Mapping - Row 2 (Ambient Processing, CCs 32-36)
 MIDIdef.cc(\ambientRow2, { |val, num, chan, src|
     var scaled;
-    
+
     case
     {num == 32} {
         scaled = val.linlin(0, 127, 0.0, 1.0);
         ~buses[\textureDepth].set(scaled);
         "Texture Depth: %".format(scaled.round(0.001)).postln;
+        if(~visualsDest.notNil) { ~visualsDest.sendMsg("/soneth/texturedepth", scaled); };
     }
     {num == 33} {
         scaled = val.linlin(0, 127, 0.0, 1.0);
         ~buses[\atmosphereMix].set(scaled);
         "Atmosphere Mix: %".format(scaled.round(0.001)).postln;
+        if(~visualsDest.notNil) { ~visualsDest.sendMsg("/soneth/atmospheremix", scaled); };
     }
     {num == 34} {
         scaled = val.linlin(0, 127, 0.0, 0.8);   // matches OSC/GUI ceiling of 0.8
         ~buses[\memoryFeed].set(scaled);
         "Memory Feed: %".format(scaled.round(0.001)).postln;
+        if(~visualsDest.notNil) { ~visualsDest.sendMsg("/soneth/memoryfeed", scaled.linlin(0, 0.8, 0, 1)); };
     }
     {num == 35} {
         scaled = val.linexp(0, 127, 0.1, 8.0);
         ~buses[\harmonicRich].set(scaled);
         "Harmonic Rich: %".format(scaled.round(0.01)).postln;
+        if(~visualsDest.notNil) { ~visualsDest.sendMsg("/soneth/harmonicrich", scaled.linexp(0.1, 8.0, 0, 1)); };
     }
     {num == 36} {
         scaled = val.linlin(0, 127, 0.1, 0.8);   // matches OSC/GUI ceiling of 0.8
         ~buses[\resonantBody].set(scaled);
         "Resonant Body: %".format(scaled.round(0.01)).postln;
+        if(~visualsDest.notNil) { ~visualsDest.sendMsg("/soneth/resonantbody", scaled.linlin(0.1, 0.8, 0, 1)); };
     };
 }, nil, nil);  // Listen on all channels
 
