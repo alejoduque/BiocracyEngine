@@ -291,22 +291,6 @@
             ~knobViews = ~knobViews ?? ();
             ~knobViews[paramName] = knob;
 
-            // Monitor bus changes (from MIDI) and update knob visual + label
-            // Defer the watcher creation until the bus exists
-            AppClock.sched(0.5, {
-                if(~buses.notNil and: {~buses[paramName].notNil}) {
-                    ~buses[paramName].addDependant({
-                        {
-                            knob.value = spec.unmap(~buses[paramName].getSynchronous);
-                            valueLabel.string = displayStr ++ ": " ++ ~buses[paramName].getSynchronous.round(0.001);
-                        }.defer;
-                    });
-                    nil;  // remove the scheduled function
-                } {
-                    0.1;  // retry in 0.1s
-                };
-            });
-
             container;
         };
 
@@ -360,6 +344,29 @@
             );
             controlViewRow4.layout.add(~knobs[key]);
         };
+
+        // ─── MIDI → GUI Feedback: Poll bus values and update knob displays ───
+        // This keeps the GUI knobs synchronized when MIDI faders move
+        // Uses stored references (~knobViews, ~controlLabels) to update displays
+        // Running on AppClock ensures thread-safe GUI updates
+        AppClock.sched(0.0, {
+            ~knobParameters.flatten.do { |paramName|
+                if(~knobs[paramName].notNil and: {~buses[paramName].notNil}) {
+                    var spec = ~controlSpecs[paramName];
+                    var busVal = ~buses[paramName].getSynchronous;
+                    var knob = ~knobViews[paramName];
+                    var label = ~controlLabels[paramName];
+
+                    if(knob.notNil and: {label.notNil}) {
+                        {
+                            knob.value = spec.unmap(busVal);
+                            label.string = paramName.asString.capitalize ++ ": " ++ busVal.round(0.001);
+                        }.defer;
+                    };
+                };
+            };
+            0.05;  // poll every 50ms (imperceptible latency, low CPU)
+        });
 
         // Create sample trigger buttons
         ~sampleNames = [
