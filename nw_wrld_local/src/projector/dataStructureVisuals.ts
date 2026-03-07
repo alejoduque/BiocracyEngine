@@ -59,7 +59,9 @@ export function mountTimeTravel(stageEl: HTMLElement, getLatestState: () => Parl
             const resBody = sp4.resonantbody ?? 0.4;
             const pitchSh = sp4.pitchshift ?? 0.5;
             const atmMix = sp4.atmospheremix ?? 0.5;
-            const txInf = sp4.txinfluence ?? 0.5;
+            const txInf  = sp4.txinfluence  ?? 0.5;
+            const droneD = sp4.dronedepth   ?? 0.4;   // → reticule ring density
+            const dronFd = sp4.dronefade    ?? 0.5;   // → trace color warmth
 
             // Amber/Phosphor dim background wipe — atmospheremix deepens ghosting
             p.background(0, 8, 4, Math.floor(15 + (1 - memFeed) * 60 + (1 - atmMix) * 20));
@@ -107,11 +109,11 @@ export function mountTimeTravel(stageEl: HTMLElement, getLatestState: () => Parl
                 const pitchWave = p.sin(p.frameCount * (0.02 + pitchSh * 0.06) + i * 2) * (pitchSh * 30);
                 b.history.push({ x: p.width, y: b.y + pitchWave });
 
-                // Phosphor trace — spectralShift bends color from phosphor-white toward amber-cyan
+                // Phosphor trace — spectralShift bends color, droneFade adds warmth toward deep amber
                 p.strokeWeight(1.5 + activity * 2);
-                const trR = p.lerp(200, 100, specS);
-                const trG = p.lerp(255, 255, specS);
-                const trB = p.lerp(230, 255, specS);
+                const trR = p.lerp(p.lerp(200, 255, dronFd), 100, specS);
+                const trG = p.lerp(p.lerp(255, 180, dronFd), 255, specS);
+                const trB = p.lerp(p.lerp(230, 60,  dronFd), 255, specS);
                 p.stroke(trR, trG, trB, Math.floor(255 * volAlpha));
                 p.beginShape();
                 b.history.forEach(pt => p.vertex(pt.x, pt.y));
@@ -156,9 +158,13 @@ export function mountTimeTravel(stageEl: HTMLElement, getLatestState: () => Parl
                 p.text(`[${activeRoster[i][0]}] A:${activity.toFixed(2)}`, p.width - 20, b.y - 15);
             });
 
-            // Rotating Radar Reticule — resonantbody controls size, timeDilation controls spin
+            // Rotating Radar Reticule — resonantbody controls outer size, droneDepth controls
+            // inner ring density (sub-bass = more depth layers), droneFade colors warmth
             radarAngle += (0.01 + (1 - consensus) * 0.05) * (0.5 + timeDil);
             const reticuleSize = p.height * (0.6 + resBody * 0.4);
+            const ringCount = Math.floor(2 + droneD * 6);   // 2 (shallow) → 8 (deep)
+            const rWarmR = p.lerp(102, 220, dronFd);
+            const rWarmG = p.lerp(51,  130, dronFd);
             p.push();
             p.translate(p.width / 2, p.height / 2);
             p.rotate(radarAngle);
@@ -168,10 +174,12 @@ export function mountTimeTravel(stageEl: HTMLElement, getLatestState: () => Parl
             p.circle(0, 0, reticuleSize);
             p.line(-reticuleSize / 2, 0, reticuleSize / 2, 0);
             p.line(0, -reticuleSize / 2, 0, reticuleSize / 2);
-            // Inner concentric rings driven by textureDepth
-            for (let r = 1; r <= Math.floor(1 + texDep * 4); r++) {
-                p.stroke(102, 51, 0, 30 + texDep * 20);
-                p.circle(0, 0, reticuleSize * (r / (2 + texDep * 4)));
+            // Inner concentric rings — droneDepth sets ring count, droneFade shifts color
+            for (let r = 1; r <= ringCount; r++) {
+                const frac = r / (ringCount + 1);
+                p.stroke(rWarmR, rWarmG, 0, 20 + droneD * 35 * (1 - frac));
+                p.strokeWeight(0.3 + droneD * 0.5 * (1 - frac));
+                p.circle(0, 0, reticuleSize * frac);
             }
             p.pop();
         };
@@ -212,21 +220,24 @@ export function mountDynamicGraphs(stageEl: HTMLElement, getLatestState: () => P
             const st = getLatestState();
             const sp5 = (window as any).__slot5Soneth ?? {};
             const consensus = st?.consensus ?? 0.5;
-            const spatSp = sp5.spatialspread ?? 0.5;
-            const txInf = sp5.txinfluence ?? 0.5;
-            const memFeed = sp5.memoryfeed ?? 0.4;
-            const texDep = sp5.texturedepth ?? 0.5;
-            const harmR = sp5.harmonicrich ?? 0.5;
-            const specS = sp5.spectralshift ?? 0.5;
-            const tDil = sp5.timedilation ?? 0.5;
-            const vol = sp5.volume ?? 0.5;
-            const resBody = sp5.resonantbody ?? 0.4;
-            const pitchSh = sp5.pitchshift ?? 0.5;
-            const atmMix = sp5.atmospheremix ?? 0.5;
+            const spatSp  = sp5.spatialspread  ?? 0.5;
+            const txInf   = sp5.txinfluence    ?? 0.5;
+            const memFeed = sp5.memoryfeed     ?? 0.4;
+            const texDep  = sp5.texturedepth   ?? 0.5;
+            const harmR   = sp5.harmonicrich   ?? 0.5;
+            const specS   = sp5.spectralshift  ?? 0.5;
+            const tDil    = sp5.timedilation   ?? 0.5;
+            const vol     = sp5.volume         ?? 0.5;
+            const resBody = sp5.resonantbody   ?? 0.4;
+            const pitchSh = sp5.pitchshift     ?? 0.5;
+            const atmMix  = sp5.atmospheremix  ?? 0.5;
+            const masterA = sp5.masteramp      ?? 0.7;  // → brightness + force multiplier
+            const filtC   = sp5.filtercutoff   ?? 0.5;  // → connection distance cutoff
 
             p.background(0, 8, 4, Math.floor(25 + (1 - memFeed) * 50 + (1 - atmMix) * 30));
 
-            const restLength = 50 + spatSp * 200 + (st?.eco?.mycoPulse ?? 0) * 100;
+            // filtercutoff narrows/widens which nodes can connect (low = only close, high = far)
+            const restLength = 50 + filtC * 280 + (st?.eco?.mycoPulse ?? 0) * 100;
             const connectionProb = consensus;
             const cx = p.width / 2, cy = p.height / 2;
             // pitchShift biases vertical gravity center
@@ -302,23 +313,24 @@ export function mountDynamicGraphs(stageEl: HTMLElement, getLatestState: () => P
                 const rad = 5 + pres * 15 + texDep * 10;
 
                 p.noFill();
-                // harmonicRich bleeds white into bright amber, volume controls alpha
+                // harmonicRich bleeds white→amber; masterAmp scales overall brightness
                 p.stroke(
                     p.lerp(200, 255, harmR),
                     p.lerp(255, 170, harmR),
                     p.lerp(230, 0, harmR),
-                    (150 + vol * 105)
+                    (150 + vol * 105) * (0.5 + masterA)
                 );
-                p.strokeWeight(1 + texDep * 1.0);
+                p.strokeWeight(1 + texDep * 1.0 + masterA * 0.5);
                 p.rectMode(p.CENTER);
-                // Draw nodes as glowing wireframe boxes
-                p.rect(n.x, n.y, rad, rad);
+                // Draw nodes — spatialSpread scales the canvas spread around center
+                const spreadR = rad * (0.6 + spatSp * 0.8);
+                p.rect(n.x, n.y, spreadR, spreadR);
 
-                // Resonant body outer glow ring
+                // Resonant body outer glow ring — masterAmp boosts glow radius
                 if (resBody > 0.2) {
-                    p.stroke(255, 170, 0, resBody * 80 * (0.5 + act * 0.5));
+                    p.stroke(255, 170, 0, resBody * 80 * (0.5 + act * 0.5) * (0.5 + masterA));
                     p.strokeWeight(0.3 + resBody * 0.8);
-                    p.circle(n.x, n.y, rad * (1.8 + resBody * 1.5));
+                    p.circle(n.x, n.y, spreadR * (1.8 + resBody * 1.5));
                 }
 
                 p.fill(200, 255, 230, 120 + vol * 135);
@@ -366,11 +378,13 @@ export function mountDynamicOptimality(stageEl: HTMLElement, getLatestState: () 
             const texDep = sp6.texturedepth ?? 0.5;
             const spatSp = sp6.spatialspread ?? 0.5;
             const specS = sp6.spectralshift ?? 0.5;
-            const tDil = sp6.timedilation ?? 0.5;
-            const txInf = sp6.txinfluence ?? 0.5;
-            const vol = sp6.volume ?? 0.5;
-            const harmR = sp6.harmonicrich ?? 0.5;
-            const atmMix = sp6.atmospheremix ?? 0.5;
+            const tDil      = sp6.timedilation  ?? 0.5;
+            const txInf     = sp6.txinfluence   ?? 0.5;
+            const vol       = sp6.volume        ?? 0.5;
+            const harmR     = sp6.harmonicrich  ?? 0.5;
+            const atmMix    = sp6.atmospheremix ?? 0.5;
+            const droneSpace = sp6.dronespace   ?? 0.5;  // → vertical layer depth offset
+            const droneMix   = sp6.dronemix     ?? 0.4;  // → scan column count + brightness
 
             p.background(0, 8, 4, Math.floor(25 + (1 - memFeed) * 50 + (1 - atmMix) * 30));
 
@@ -381,11 +395,13 @@ export function mountDynamicOptimality(stageEl: HTMLElement, getLatestState: () 
             const scrollSpd = 20 * (0.5 + tDil);
             for (let y = (p.frameCount * scrollSpd % 40); y < p.height; y += 40) p.line(0, y, p.width, y);
 
-            // atmospheremix: vertical scan columns sweeping across — like sonar depth layers
-            if (atmMix > 0.15) {
-                p.stroke(102, 51, 0, atmMix * 60);
-                p.strokeWeight(0.5 + atmMix);
-                const scanCount = Math.floor(2 + atmMix * 6);
+            // dronemix controls scan column density and brightness (replaces plain atmMix)
+            const scanActive = droneMix > 0.1 || atmMix > 0.15;
+            if (scanActive) {
+                const scanOpacity = (droneMix * 80 + atmMix * 30);
+                p.stroke(102, 51, 0, scanOpacity);
+                p.strokeWeight(0.5 + droneMix * 1.5);
+                const scanCount = Math.floor(2 + droneMix * 8 + atmMix * 3);
                 for (let s = 0; s < scanCount; s++) {
                     const sx = (p.frameCount * (1 + tDil) * (s + 1) * 0.7) % p.width;
                     p.line(sx, 0, sx, p.height);
@@ -398,7 +414,8 @@ export function mountDynamicOptimality(stageEl: HTMLElement, getLatestState: () 
                 if (act > maxAct) { maxAct = act; maxIdx = i; }
             });
 
-            const rootX = p.width / 2, rootY = 50 + pitchSh * 100;
+            // droneSpace shifts the whole tree vertically (0=top, 1=pushed down)
+            const rootX = p.width / 2, rootY = 30 + pitchSh * 80 + droneSpace * p.height * 0.18;
             const layerSpacing = 50 + pitchSh * 150;
 
             let childIdx = 0;
@@ -541,16 +558,20 @@ export function mountGeometry(stageEl: HTMLElement, getLatestState: () => Parlia
             const texDep = sp7.texturedepth ?? 0.5;
             const harmR = sp7.harmonicrich ?? 0.5;
             const resBody = sp7.resonantbody ?? 0.4;
-            const txInf = sp7.txinfluence ?? 0.5;
-            const memFeed = sp7.memoryfeed ?? 0.4;
+            const txInf    = sp7.txinfluence  ?? 0.5;
+            const memFeed  = sp7.memoryfeed   ?? 0.4;
+            const noiseL   = sp7.noiselevel   ?? 0.2;  // → grid warp amplitude
+            const noiseF   = sp7.noisefilt    ?? 0.5;  // → number of eco sweep lines shown
 
             p.background(0, 8, 4, Math.floor(25 + (1 - atmGhost) * 50 + (1 - memFeed) * 30));
 
             const co2 = (st?.eco?.co2 ?? 400) / 800;
             const ecoVals = [co2, (st?.eco?.mycoPulse ?? 0), st?.eco?.phosphorus ?? 0.5, st?.eco?.nitrogen ?? 0.5];
-            const sweepLines = ecoVals.map(v => p.map(v % 1.0, 0, 1, 0.1, 0.9));
+            // noiseFilt gates how many eco sweep lines are visible (low = only dominant one)
+            const maxSweeps = Math.max(1, Math.round(1 + noiseF * 3));
+            const sweepLines = ecoVals.slice(0, maxSweeps).map(v => p.map(v % 1.0, 0, 1, 0.1, 0.9));
 
-            // Distorting background grid — textureDepth controls density & weight
+            // Distorting background grid — textureDepth density, noiseLevel warp amplitude
             const gridStep = Math.floor(p.lerp(50, 15, texDep));
             p.stroke(102, 51, 0, 40 + texDep * 60);
             p.strokeWeight(0.5 + texDep * 1.5);
@@ -558,7 +579,9 @@ export function mountGeometry(stageEl: HTMLElement, getLatestState: () => Parlia
             for (let x = 0; x < p.width; x += gridStep) {
                 p.beginShape();
                 for (let y = 0; y < p.height; y += gridStep) {
-                    const xoff = p.noise(x * 0.01, y * 0.01, p.frameCount * (0.005 + tDil * 0.02)) * (co2 * 50);
+                    // noiseLevel amplifies the warp (0=straight, 1=heavily distorted)
+                    const warpAmp = co2 * 30 + noiseL * 80;
+                    const xoff = p.noise(x * 0.01, y * 0.01, p.frameCount * (0.005 + tDil * 0.02)) * warpAmp;
                     p.vertex(x + xoff, y);
                 }
                 p.endShape();
@@ -702,19 +725,23 @@ export function mountMemoryHierarchy(stageEl: HTMLElement, getLatestState: () =>
             const texDep = sp8.texturedepth ?? 0.5;
             const harmR = sp8.harmonicrich ?? 0.5;
             const atmMix = sp8.atmospheremix ?? 0.5;
-            const txInf = sp8.txinfluence ?? 0.5;
+            const txInf    = sp8.txinfluence   ?? 0.5;
+            const delayFb  = sp8.delayfeedback ?? 0.3;  // → ghost persistence (background fade)
+            const beatT    = sp8.beatTempo     ?? 0.5;  // → hex noise refresh speed
 
-            p.background(0, 8, 4, Math.floor(25 + (1 - memFeed) * 50 + (1 - atmMix) * 30));
+            // delayFeedback reduces background wipe alpha → more ghost trails linger
+            const ghostAlpha = Math.floor(15 + (1 - memFeed) * 50 + (1 - atmMix) * 30 - delayFb * 18);
+            p.background(0, 8, 4, Math.max(5, ghostAlpha));
 
             const aiOpt = st?.ai?.optimization ?? 10;
-            const conscious = st?.ai?.consciousness ?? 0.5;
 
-            // Hex Noise Matrix Background — timedilation controls refresh rate, textureDepth controls density
+            // Hex Noise Matrix Background — beatTempo + timeDilation control refresh rate
             const hexCount = Math.floor(20 + texDep * 40);
             p.fill(102, 51, 0, 30 + texDep * 30);
             p.noStroke();
             p.textSize(7 + texDep * 3);
-            const hexRefresh = Math.max(1, Math.floor(8 - tDil * 7));
+            // beatTempo speeds up the churn (high BPM = rapid hex mutations)
+            const hexRefresh = Math.max(1, Math.floor(8 - tDil * 5 - beatT * 6));
             for (let i = 0; i < hexCount; i++) {
                 if (p.frameCount % hexRefresh === 0) hexNoiseArray[i % hexNoiseArray.length] = Math.floor(p.random(65535)).toString(16).padStart(4, "0").toUpperCase();
                 p.text(hexNoiseArray[i % hexNoiseArray.length], p.random(p.width), p.random(p.height));
@@ -868,13 +895,15 @@ export function mountHashing(stageEl: HTMLElement, getLatestState: () => Parliam
             const tDepth = sp9.texturedepth ?? 0.5;
             const spatSp = sp9.spatialspread ?? 0.5;
             const atmMix = sp9.atmospheremix ?? 0.5;
-            const txInf = sp9.txinfluence ?? 0.5;
+            const txInf   = sp9.txinfluence ?? 0.5;
+            const beatT   = sp9.beatTempo   ?? 0.5;  // → hash mutation tempo
+            const masterA = sp9.masteramp   ?? 0.7;  // → global brightness multiplier
 
             p.background(0, 8, 4, Math.floor(25 + (1 - memFeed) * 50 + (1 - atmMix) * 30));
 
-            // Flashing scanlines mapped to volume and textureDepth
-            p.stroke(200, 255, 230, p.random(10, 30) * vol + tDepth * 40);
-            p.strokeWeight(0.5 + p.random(1.5) * vol + tDepth * 1); // Thinner
+            // Flashing scanlines — masterAmp scales brightness
+            p.stroke(200, 255, 230, (p.random(10, 30) * vol + tDepth * 40) * (0.4 + masterA * 0.8));
+            p.strokeWeight(0.5 + p.random(1.5) * vol + tDepth * 1);
             for (let y = 0; y < p.height; y += p.random(4, 10)) { p.line(0, y, p.width, y); }
 
             // Global screen tearing glitches if spectralShift is high
@@ -894,9 +923,9 @@ export function mountHashing(stageEl: HTMLElement, getLatestState: () => Parliam
             let bucketHits = new Array(numBuckets).fill(0);
             let mapTargets = new Array(numKeys).fill(0);
 
-            // calc hashes first to identify collisions, timeDilation speeds up mutation
+            // calc hashes — beatTempo drives mutation clock (faster BPM = faster reassignments)
             for (let i = 0; i < numKeys; i++) {
-                const hash = Math.floor(p.noise(i, p.frameCount * 0.005 * (1.1 - consensus) * (1 + tDil * 2)) * numBuckets);
+                const hash = Math.floor(p.noise(i, p.frameCount * 0.005 * (1.1 - consensus) * (1 + tDil * 2 + beatT * 3)) * numBuckets);
                 const mapped = p.constrain(hash, 0, numBuckets - 1);
                 mapTargets[i] = mapped;
                 bucketHits[mapped]++;
@@ -913,10 +942,10 @@ export function mountHashing(stageEl: HTMLElement, getLatestState: () => Parliam
 
                 p.noFill();
 
-                // Mapped Line
+                // Mapped Line — masterAmp scales path brightness
                 if (isCollision) {
                     // Jagged collision noise paths, thickened by harmonicRich + txinfluence
-                    p.stroke(255, 170, 0, 150 + spAct * 100);
+                    p.stroke(255, 170, 0, (150 + spAct * 100) * (0.5 + masterA * 0.8));
                     p.strokeWeight(1 + spAct + p.random(1) + hRich * 1.5 + txInf * 0.5);
                     p.beginShape();
                     p.vertex(colA_X + 20, yA);

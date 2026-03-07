@@ -264,21 +264,34 @@ class ParliamentStage extends BaseThreeJsModule {
     }
   }
 
-  // ─── RADAR GRID ────────────────────────────────────────────────────────────
+  // ─── RADAR GRID (reactive) ─────────────────────────────────────────────────
+  // Rings rotate slowly and pulse in opacity/scale driven by consensus, OSC, and ETH.
   buildRadarGrid() {
+    this._radarGroup = new THREE.Group();
+    this._radarRings = [];
+    this._radarBaseOpacities = [];
+
     RINGS.forEach((r, i) => {
-      const opacity = i === RINGS.length - 1 ? 0.3 : 0.08;
-      this.scene.add(makeCircle(r, 128, AMBER, opacity));
+      const baseOp = i === RINGS.length - 1 ? 0.28 : 0.06;
+      const ring = makeCircle(r, 128, AMBER, baseOp);
+      this._radarGroup.add(ring);
+      this._radarRings.push(ring);
+      this._radarBaseOpacities.push(baseOp);
     });
+
+    // Coordinate axes — stored for opacity modulation
     const axLen = RINGS[RINGS.length - 1] + 0.3;
     const axPts = [
       new THREE.Vector3(-axLen, 0, 0), new THREE.Vector3(axLen, 0, 0),
       new THREE.Vector3(0, -axLen, 0), new THREE.Vector3(0, axLen, 0),
     ];
-    this.scene.add(new THREE.LineSegments(
+    this._radarAxes = new THREE.LineSegments(
       new THREE.BufferGeometry().setFromPoints(axPts),
-      new THREE.LineBasicMaterial({ color: AMBER, transparent: true, opacity: 0.06 })
-    ));
+      new THREE.LineBasicMaterial({ color: AMBER, transparent: true, opacity: 0.05 })
+    );
+    this._radarGroup.add(this._radarAxes);
+
+    // Tick marks at 30° intervals
     const tickPts = [];
     for (let deg = 0; deg < 360; deg += 30) {
       const a  = (deg * Math.PI) / 180;
@@ -288,10 +301,13 @@ class ParliamentStage extends BaseThreeJsModule {
         new THREE.Vector3(Math.cos(a) * (r0 + 0.3), Math.sin(a) * (r0 + 0.3), 0)
       );
     }
-    this.scene.add(new THREE.LineSegments(
+    this._radarTicks = new THREE.LineSegments(
       new THREE.BufferGeometry().setFromPoints(tickPts),
-      new THREE.LineBasicMaterial({ color: AMBER, transparent: true, opacity: 0.35 })
-    ));
+      new THREE.LineBasicMaterial({ color: AMBER, transparent: true, opacity: 0.30 })
+    );
+    this._radarGroup.add(this._radarTicks);
+
+    this.scene.add(this._radarGroup);
   }
 
   // ─── 5 SPECIES OBJECTS ─────────────────────────────────────────────────────
@@ -724,6 +740,38 @@ class ParliamentStage extends BaseThreeJsModule {
     this._lissajousLine.geometry.attributes.position.needsUpdate = true;
     this._lissajousLine.material.opacity = 0.5 + ai.consciousness * 0.4;
     this._lissajousLine.rotation.y       = elapsed * 0.1;
+
+    // ── Reactive radar grid ───────────────────────────────────────────────
+    if (this._radarGroup && this._radarRings) {
+      const txInf   = this._sonethTxInfluence ?? 0.0;
+      const droneD  = this._sonethDroneDepth  ?? 0.4;
+      const timeScl = this._sonethTimeScale   ?? 0.3;
+
+      // Slow counter-clockwise drift — timeDilation controls speed, txInfluence adds bursts
+      this._radarGroup.rotation.z -= 0.00025 + timeScl * 0.0006 + txInf * 0.0012;
+
+      // Breath scale: consensus wave + drone depth subtly expand/contract rings
+      const breath = 1.0 + Math.sin(elapsed * 0.6) * 0.025 * (0.5 + consensusW)
+                   + (droneD - 0.4) * 0.08;
+      this._radarGroup.scale.setScalar(breath);
+
+      // Per-ring opacity: outermost pulses with txInfluence, inner rings echo consensus
+      this._radarRings.forEach((ring, i) => {
+        const base   = this._radarBaseOpacities[i];
+        const phase  = elapsed * (1.2 + i * 0.4);
+        const cons   = this._smoothConsensus;
+        const txBeat = txInf * 0.18 * Math.max(0, Math.sin(phase));
+        // outer ring much brighter at high consensus, inner rings shimmer
+        const targetOp = base
+          + cons * (i === RINGS.length - 1 ? 0.25 : 0.05)
+          + txBeat;
+        ring.material.opacity = Math.min(0.75, Math.max(0, targetOp));
+      });
+
+      // Tick marks flash with ETH activity (co2-driven)
+      this._radarTicks.material.opacity = 0.18 + this._smoothConsensus * 0.25 + this._smoothCo2 * 0.20;
+      this._radarAxes.material.opacity  = 0.03 + this._smoothConsensus * 0.06;
+    }
 
     // ── Vote event: flash ────────────────────────────────────────────────
     if (state && state.events.voteResult) {

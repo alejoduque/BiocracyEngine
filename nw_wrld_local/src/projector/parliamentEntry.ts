@@ -807,7 +807,8 @@ async function init() {
           if (s._filmPass?.uniforms?.sCount) s._filmPass.uniforms.sCount.value = Math.round(64 + v * 192);
           break;
         case "dronedepth":
-          // Drone depth → point light reach (sub-bass presence in scene)
+          // Drone depth → radar grid breath scale + point light reach
+          s._sonethDroneDepth = v;
           if (s._ptLight) s._ptLight.distance = 10 + v * 40;
           break;
 
