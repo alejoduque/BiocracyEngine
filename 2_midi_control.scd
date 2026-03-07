@@ -205,7 +205,7 @@ MIDIdef.cc(\ambientRow4, { |val, num, chan, src|
         scaled = val.linlin(0, 127, 0.0, 1.0);
         ~buses[\txInfluence].set(scaled);
         "TX Influence: %".format(scaled.round(0.001)).postln;
-        if(~visualsDest.notNil) { ~visualsDest.sendMsg("/soneth/txinfluence", scaled); };
+        if(~visualsDest.notNil) { ~visualsDest.sendMsg("/soneth/txInfluence", scaled); };
     };
 }, nil, nil);  // Listen on all channels
 

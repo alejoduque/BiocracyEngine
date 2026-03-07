@@ -46,11 +46,10 @@ const SC_TO_CH = {
   "/soneth/dronespace": "setDroneSpace",
   "/soneth/dronemix": "setDroneMix",
   "/soneth/delayfeedback": "setDelayFeedback",
-  "/soneth/txinfluence": "setTxInfluence",
+  "/soneth/txInfluence": "setTxInfluence",
 
   // ── Beat Engine ────────────────────────────────────────────────────
   "/soneth/beatTempo": "setBeatTempo",
-  "/soneth/txInfluence": "setTxInfluence",
 
   // Legacy mappings (kept for compatibility)
   "/eco/co2": "triggerCO2",

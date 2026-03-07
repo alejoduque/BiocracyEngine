@@ -173,7 +173,7 @@ s.doWhenBooted({
         "/soneth/dronespace", \droneSpace,
         "/soneth/dronemix", \droneMix,
         "/soneth/delayfeedback", \delayFeedback,
-        "/soneth/txinfluence", \transactionInfluence,
+        "/soneth/txInfluence", \transactionInfluence,
         // ── FX Chain backups/alternates ───────────────────────────────────
         "/parliament/fx/reverb", \atmosphereMix,
         "/parliament/fx/room", \droneSpace,
@@ -242,6 +242,8 @@ s.doWhenBooted({
         // HTML slider sends 0–1; map to 0.5–2.0 tempo
         var tempo = val.linexp(0.001, 1, 0.5, 2.0);
         if(~beatParams.notNil) { ~beatParams.beatTempo = tempo };
+        // Echo back to browser so slider stays in sync when SC changes beatTempo
+        if(~visualsDest.notNil) { ~visualsDest.sendMsg("/soneth/beatTempo", val) };
         "Beat Tempo set to % (raw %)".format(tempo.round(0.01), val.round(0.01)).postln;
     }, "/soneth/beatTempo");
 
@@ -252,6 +254,8 @@ s.doWhenBooted({
         if(~buses.notNil and: { ~buses[\transactionInfluence].notNil }) {
             ~buses[\transactionInfluence].set(val);
         };
+        // Echo back to browser to keep slider in sync with MIDI and SC changes
+        if(~visualsDest.notNil) { ~visualsDest.sendMsg("/soneth/txInfluence", val) };
     }, "/soneth/txInfluence");
 
     // ── Parliament Vote / Emergency / Start / Stop handlers ────────────

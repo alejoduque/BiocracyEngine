@@ -668,9 +668,8 @@ async function init() {
     dronespace: 0.5,
     dronemix: 0.4,
     delayfeedback: 0.3,
-    txinfluence: 0.5,
-    beatTempo: 0.5,
     txInfluence: 0.5,
+    beatTempo: 0.5,
   };
   // Expose so visualizationSwitcher.ts can reach it at runtime via window
   (window as any).__sonethParams = sonethParams;
@@ -691,8 +690,8 @@ async function init() {
       const key = addr.slice("/soneth/".length);
       sonethParams[key] = v;
       applySonethToViz(key, v);
-      // Notify slot 2 ZKP interval scheduler about txinfluence/harmonicrich changes
-      if (key === "txinfluence" || key === "harmonicrich") {
+      // Notify slot 2 ZKP interval scheduler about txInfluence/harmonicrich changes
+      if (key === "txInfluence" || key === "harmonicrich") {
         window.dispatchEvent(new Event("soneth-param-change"));
       }
       // SC is notified via sendOSC() in wireSlider — no store notify needed here
@@ -788,6 +787,51 @@ async function init() {
           // Resonant → chromatic aberration (filter Q = RGB split)
           if (s._chromaPass?.uniforms?.amount) s._chromaPass.uniforms.amount.value = v * 0.012;
           break;
+
+        // ── Row 3: Drone/Noise — visual bindings for Slot 0 ──────────────────
+        case "masteramp":
+          // Master amp → bloom strength (overall glow intensity)
+          if (s._bloom) s._bloom.strength = Math.min(2.5, 0.2 + v * 1.5);
+          break;
+        case "filtercutoff":
+          // Filter cutoff → bloom radius (tight = sharp halo, wide = diffuse)
+          if (s._bloom) s._bloom.radius = 0.1 + v * 0.9;
+          break;
+        case "noiselevel":
+          // Noise level → film grain noise intensity
+          if (s._filmPass?.uniforms?.nIntensity) s._filmPass.uniforms.nIntensity.value = v * 0.8;
+          break;
+        case "noisefilt":
+          // Noise filter → film scanline density (texture grain size)
+          if (s._filmPass?.uniforms?.sCount) s._filmPass.uniforms.sCount.value = Math.round(64 + v * 192);
+          break;
+        case "dronedepth":
+          // Drone depth → point light reach (sub-bass presence in scene)
+          if (s._ptLight) s._ptLight.distance = 10 + v * 40;
+          break;
+
+        // ── Row 4: Additional Controls — visual bindings for Slot 0 ──────────
+        case "dronefade":
+          // Drone fade → point light color warmth (slow = warm amber, fast = cool white)
+          if (s._ptLight) s._ptLight.color.setRGB(1.0, 0.6 + v * 0.4, 0.2 + v * 0.3);
+          break;
+        case "dronespace":
+          // Drone space → camera look-at elevation (vertical scene reframing)
+          if (s.controls?.target) s.controls.target.y = (v - 0.5) * 6;
+          break;
+        case "dronemix":
+          // Drone mix → scanline intensity (analog warmth blend)
+          if (s._filmPass?.uniforms?.sIntensity) s._filmPass.uniforms.sIntensity.value = v * 0.4;
+          break;
+        case "delayfeedback":
+          // Delay feedback → afterimage trail persistence (echo = visual repetition)
+          if (s._afterimage?.uniforms?.damp) s._afterimage.uniforms.damp.value = 0.79 + v * 0.18;
+          break;
+        case "txInfluence":
+        case "txinfluence":
+          // TX influence → stored ETH activity intensity (modulates bloom bursts on ETH events)
+          s._sonethTxInfluence = v;
+          break;
       }
       // ETH-derived event params (kept for beat engine broadcasts)
       if (key === "ethActivity") {
@@ -828,7 +872,7 @@ async function init() {
         case "timedilation":
           // Time dilation → rotation damping (high = slow, inverted)
           if (activeViz.cameraSettings) {
-            const base = (window as any).__slot2Soneth?.txinfluence ?? 0.5;
+            const base = (window as any).__slot2Soneth?.txInfluence ?? 0.5;
             activeViz.cameraSettings.cameraSpeed = (0.1 + base * 7.9) * (1.1 - v * 0.9);
           }
           break;
@@ -913,7 +957,7 @@ async function init() {
     ];
     const EXTRA_PARAMS = [
       "masteramp", "filtercutoff", "noiselevel", "noisefilt", "dronedepth",
-      "dronefade", "dronespace", "dronemix", "delayfeedback", "txinfluence",
+      "dronefade", "dronespace", "dronemix", "delayfeedback",
       "beatTempo", "txInfluence",
     ];
     const ALL_PARAMS = [...CORE_PARAMS, ...EXTRA_PARAMS];
