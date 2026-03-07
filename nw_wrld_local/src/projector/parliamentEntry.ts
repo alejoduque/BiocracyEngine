@@ -689,7 +689,8 @@ async function init() {
       // sonETH ambient param — update live object, then apply to active viz
       const key = addr.slice("/soneth/".length);
       sonethParams[key] = v;
-      applySonethToViz(key, v);
+      // Use window.__applySonethToViz so DIAG trackedApply wrapper records the timestamp
+      ((window as any).__applySonethToViz ?? applySonethToViz)(key, v);
       // Notify slot 2 ZKP interval scheduler about txInfluence/harmonicrich changes
       if (key === "txInfluence" || key === "harmonicrich") {
         window.dispatchEvent(new Event("soneth-param-change"));
@@ -1023,7 +1024,7 @@ async function init() {
     }
     (window as any).__applySonethToViz = trackedApply;
 
-    // Also track in patchStoreFromSlider path (re-wrap not needed — it calls applySonethToViz internally)
+    // patchStoreFromSlider now routes through window.__applySonethToViz so DIAG tracks HTML slider moves too
 
     let msgCount = 0;
     // Intercept WS messages for counting
