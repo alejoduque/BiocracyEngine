@@ -55,8 +55,12 @@
             border-right: 1px solid var(--border);
             display: flex;
             flex-direction: column;
-            overflow: hidden;
+            overflow-y: scroll;
+            overflow-x: hidden;
+            font-size: 12px;
         }
+        #left-panel::-webkit-scrollbar { display: none; }
+        #left-panel { scrollbar-width: none; -ms-overflow-style: none; }
         /* Center: 3D canvas + spectrogram pinned at bottom */
         #center-col {
             flex: 1;
@@ -348,6 +352,16 @@
         /* ─── FOOTER ─── */
         #footer .phase-clock { color: var(--text-bright); letter-spacing: 1px; font-size: 14px; }
         #footer .sep { color: var(--amber-dim); }
+
+        /* ─── LEFT PANEL: -2pt font overrides ─── */
+        #left-panel .tele-section-title { font-size: 11px; }
+        #left-panel .tele-row .lbl     { font-size: 12px; }
+        #left-panel .tele-row .val     { font-size: 12px; }
+        #left-panel .ctrl-row label    { font-size: 11px; }
+        #left-panel .ctrl-row .ctrl-val { font-size: 12px; }
+        #left-panel .vote-btn          { font-size: 12px; }
+        #left-panel #vote-result-txt   { font-size: 12px; }
+        #left-panel .label             { font-size: 12px; }
     </style>
 </head>
 <body>
