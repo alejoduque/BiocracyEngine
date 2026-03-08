@@ -110,17 +110,31 @@ function sendOSCArgs(address: string, args: number[]) {
     // Visual burst: slam brightness down, red shift across all slots
     triggerVoteVisualBurst("emergency", args[0]);
   } else if (address === "/parliament/vote") {
-    // Vote: trigger a synthetic vote result event for visual flash
-    const passed = st.consensus > 0.5;
+    // Vote: manual trigger always passes — performer tool, not a quorum check.
+    // Boost consensus briefly to reflect the affirmative intent.
+    const prevConsensus = st.consensus;
+    st.consensus = Math.min(1.0, Math.max(st.consensus, 0.5) + 0.15);
     st.events.voteResult = {
       consensus: st.consensus,
-      passed,
+      passed: true,
       yes: Math.round(st.votes * st.consensus),
       total: st.votes,
     };
     parliamentStore.notifyListeners();
     // Visual burst: bloom flash + color surge across all slots
-    triggerVoteVisualBurst(passed ? "passed" : "failed", st.consensus);
+    triggerVoteVisualBurst("passed", st.consensus);
+    // Decay consensus back over 4 s
+    const decayStart = st.consensus;
+    const decayTarget = prevConsensus;
+    const decaySteps = 40;
+    let step = 0;
+    const decayTimer = setInterval(() => {
+      step++;
+      const t = step / decaySteps;
+      st.consensus = decayStart + (decayTarget - decayStart) * t;
+      parliamentStore.notifyListeners();
+      if (step >= decaySteps) { st.consensus = decayTarget; clearInterval(decayTimer); }
+    }, 100);
   } else if (address === "/parliament/stop") {
     // Stop: silence all species activity
     st.species.forEach((sp) => { sp.activity = 0.0; sp.presence = 0.1; });
