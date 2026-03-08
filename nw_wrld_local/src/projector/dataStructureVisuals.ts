@@ -1433,10 +1433,9 @@ export function mountMemoryHierarchy(stageEl: HTMLElement, getLatestState: () =>
                     const dropX = bx + Math.random() * bw;
                     const gx1 = (Math.random() - 0.5) * 30 * txInf;
                     const gx2 = (Math.random() - 0.5) * 30 * txInf;
-                    dropPositions[dIdx * 6]     = dropX;       dropPositions[dIdx * 6 + 1] = cy + baseH;        dropPositions[dIdx * 6 + 2] = 2;
+                    dropPositions[dIdx * 6]     = dropX + gx1; dropPositions[dIdx * 6 + 1] = cy + baseH;        dropPositions[dIdx * 6 + 2] = 2;
                     dropPositions[dIdx * 6 + 3] = dropX + gx2; dropPositions[dIdx * 6 + 4] = cy + baseH + layerGap - 2; dropPositions[dIdx * 6 + 5] = 2;
                     dIdx++;
-                    _ = gx1;
                 }
             }
 
@@ -1782,5 +1781,3 @@ export function mountHashing(stageEl: HTMLElement, getLatestState: () => Parliam
     };
 }
 
-// suppress unused-variable lint for intentionally-unused sink
-declare let _: unknown;
