@@ -16,7 +16,15 @@
 
 ## Overview
 
-A live audiovisual instrument that transforms Ethereum blockchain transactions into evolving ambient soundscapes and reactive visualizations. Every control parameter simultaneously drives SuperCollider audio synthesis and 10 visual modules via a bidirectional OSC/WebSocket bridge.
+A live audiovisual instrument that transforms Ethereum blockchain transactions into evolving ambient soundscapes and reactive visualizations. Every control parameter simultaneously drives SuperCollider audio synthesis and **11 visual modules** (slots 0–9 + slot P) via a bidirectional OSC/WebSocket bridge.
+
+The instrument couples three nominally-distinct domains into a single feedback loop:
+
+- **Blockchain** — live Ethereum transaction flow (`eth_sonify.py`) drives beat density, CO₂/myco/nutrient overlays, and consensus modulation.
+- **Parliament** — voting events (pass / fail / emergency / trigger) pulse the visuals and modulate consensus brightness across all slots.
+- **Ecology** — the Phenological Calendar (slot P) reads the IUCN Red List and a 572-species inventory from Reserva Manakai (Planeta Rica, Córdoba, Colombia); its current day-of-year and active-species fraction feed `harmonicrich` and `texturedepth` back into the SuperCollider audio engine.
+
+Sound, code, and species become parts of the same instrument — read and played simultaneously.
 
 ---
 
@@ -380,6 +388,12 @@ BiocracyEngine/
 - Electron 39+
 - Faderfox LC2 MIDI Controller (optional)
 - MOTU 828x Gen5 audio interface (optional — falls back to Core Audio stereo)
+
+## See Also
+
+- [ABOUT.md](ABOUT.md) — project premise, aesthetic statement, the Parliament of All Things framing.
+- [CHANGELOG.md](CHANGELOG.md) — versioned change history (current `[Unreleased]` includes Slot P + 1-bit phenology).
+- [nw_wrld_local/README.md](nw_wrld_local/README.md) — nw-wrld framework (visualizer host environment).
 
 ## License
 
