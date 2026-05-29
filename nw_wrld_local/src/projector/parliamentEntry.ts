@@ -4,6 +4,7 @@
 // Visualization switcher: keys 0–9 swap center stage
 
 import parliamentStore, { ParliamentState } from "./parliament/parliamentStore";
+import { notifyBeatTempo as notifyPhenoBeatTempo } from "./phenology/breath";
 import { initSwitcher, getActiveThreeStage, updateSpeciesRoster } from "./visualizationSwitcher";
 import { fetchSpeciesRoster, computeIUCNMults } from "./speciesFetcher";
 import * as THREE from "three";
@@ -85,6 +86,10 @@ function sendOSC(address: string, value: number) {
     controlWS.send(JSON.stringify({ direction: "toSC", address, args: [value] }));
   }
 }
+
+// Expose for phenology breath bridge (reverse coupling: calendar day →
+// harmonic/texture into SC audio).
+(window as any).__sendOscToSC = sendOSC;
 
 // Multi-arg OSC (agent id + value)
 function sendOSCArgs(address: string, args: number[]) {
@@ -709,6 +714,9 @@ async function init() {
       if (key === "txInfluence" || key === "harmonicrich") {
         window.dispatchEvent(new Event("soneth-param-change"));
       }
+      // Phenology calendar: lock its year-sweep tempo to the beat engine.
+      // No-op when the calendar slot isn't mounted.
+      if (key === "beatTempo") notifyPhenoBeatTempo(v);
       // SC is notified via sendOSC() in wireSlider — no store notify needed here
       return;
     }

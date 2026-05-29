@@ -100,6 +100,7 @@ module.exports = (env, argv) => {
       static: [
         path.join(__dirname, "dist"),
         { directory: path.join(__dirname, "src/projector/views"), publicPath: "/" },
+        { directory: path.join(__dirname, "ecosystems"), publicPath: "/ecosystems/" },
       ],
       compress: true,
       port: 9001,

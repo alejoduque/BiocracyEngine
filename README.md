@@ -167,6 +167,29 @@ The Parliament Stage concentric rings are no longer static. They live in a `_rad
 - **Tick marks** flash intensity with ETH CO₂ activity
 - **Axes** darken at low consensus, open at high consensus
 
+### Slot P — Phenological Calendar (Reserva Manakai)
+
+Key `p` mounts the **PhenologicalCalendar** module — a 365-day species ring built from `manakai_species.json` (572 species across flora, amphibians, reptiles, mammals, birds for Planeta Rica, Córdoba, Colombia).
+
+**Aesthetic — 1-bit wireframe / 8-bit:**
+
+- Pure black background (`#000000`), all geometry pure white (`#ffffff`)
+- Flat `AmbientLight` only — no directional lights or emissive materials
+- All rings → `LineLoop` (no torus volume)
+- Species nodes → `OctahedronGeometry` wireframe diamonds
+- Cursor → `Line` spear + wireframe octahedron head
+- Biogeochem overlays → wireframe crosses (CO₂), expanding line circles (myco pulses), wireframe diamonds (P/N nutrient flows)
+- Backdrop → two wireframe icosahedra (parallax) — no radial gradient
+- HUD typography → `Courier New` monospace, uppercase, antialiasing disabled (`-webkit-font-smoothing: none`), pixel-shadow on canvas month labels, `steps()` transitions for progress bars
+- Active-species labels → black background with `1px solid` outline (CRT terminal look)
+
+**Bidirectional breath bridge (`phenology/breath.ts`):**
+
+- Parliament votes → `calendar.pulse(intensity)` — bloom on consensus
+- `parliament.rotation` slider (0.1–2.0) → `daysPerSecond = rotation * 1.5`
+- ETH biogeochem (`eco.co2`, `mycoPulse`, `phosphorus`, `nitrogen`) → `triggerCO2/Myco/Phosphorus/Nitrogen` (anchored to currently-active flora positions, not fixed screen coords)
+- **Reverse:** calendar day → seasonal weight + active-species fraction → `harmonicrich` + `texturedepth` OSC into SuperCollider
+
 ### Beat Engine — Data-Driven Melodic Pool
 
 The beat engine reads live from SC buses each cycle:
@@ -326,18 +349,25 @@ BiocracyEngine/
     ├── webpack.config.js            # Webpack (DefinePlugin injects .env tokens)
     ├── src/projector/
     │   ├── parliamentEntry.ts      # Hub: applySonethToViz (all 10 slots), DIAG monitor, WS bridge
-    │   ├── visualizationSwitcher.ts # Slots 0–3 mount/unmount, species roster, IUCN helpers
+    │   ├── visualizationSwitcher.ts # Slots 0–3 + slot P (phenology) mount/unmount
     │   ├── dataStructureVisuals.ts  # Slots 4–9 (TimeTravel/DynGraph/Splay/Geometry/MemHier/Hashing)
     │   ├── speciesFetcher.ts        # IUCN Red List API integration (3-tier fallback)
+    │   ├── phenology/
+    │   │   └── breath.ts           # Bidirectional bridge for slot P (votes ↔ calendar ↔ SC audio)
     │   ├── parliament/
     │   │   └── parliamentStore.ts  # Reactive state store (consensus, species, eDNA, eco)
     │   └── views/
     │       └── parliament.html     # HTML GUI: 34 sliders (Rows 1–4 + Beat Engine) + vote panel
-    └── src/main/starter_modules/
-        ├── ParliamentStage.js      # Slot 0: Three.js 3D scene + reactive radar grid
-        ├── LowEarthPointModule.js  # Slot 2: Three.js point cloud (consensus brightness)
-        ├── PerlinBlob.js           # Slot 3: p5.js Perlin noise blob
-        └── ZKProofVisualizer.js    # ZK proof overlay
+    ├── src/main/starter_modules/
+    │   ├── ParliamentStage.js      # Slot 0: Three.js 3D scene + reactive radar grid
+    │   ├── LowEarthPointModule.js  # Slot 2: Three.js point cloud (consensus brightness)
+    │   ├── PerlinBlob.js           # Slot 3: p5.js Perlin noise blob
+    │   └── ZKProofVisualizer.js    # ZK proof overlay
+    └── ecosystems/default_ecosystem/
+        ├── modules/
+        │   ├── PhenologicalCalendar.js  # Slot P: 1-bit wireframe species ring (572 spp)
+        │   └── manakai_species.json     # Reserva Manakai species inventory
+        └── assets/json/                  # Static JSON assets served at /ecosystems/...
 ```
 
 ---

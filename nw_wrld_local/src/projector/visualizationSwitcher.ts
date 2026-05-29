@@ -20,6 +20,10 @@ import {
   mountMemoryHierarchy,
   mountHashing
 } from "./dataStructureVisuals";
+import {
+  mountPhenologyCalendar,
+  destroyPhenologyCalendar,
+} from "./phenology/breath";
 
 // ─── Species roster for parliament consensus display ─────────────────────────
 // Populated at runtime from IUCN Red List API (Colombian species).
@@ -1367,6 +1371,77 @@ function mountPerlinBlob(): Viz {
   };
 }
 
+// ─── Mount: slot "p" — PhenologicalCalendar (Finca Manakai species ring) ───
+// Loads the artist-authored ecosystems/.../PhenologicalCalendar.js at runtime,
+// wires bidirectional breath via phenology/breath.ts:
+//   parliament votes → calendar.pulse
+//   beatTempo        → calendar.daysPerSecond
+//   current day      → harmonicrich + texturedepth (visual + SC audio)
+async function mountPhenologyCalendarSlot(): Promise<Viz> {
+  const container = stageEl!;
+  showStage(stageEl);
+
+  const host = document.createElement("div");
+  host.style.cssText = "position:absolute;inset:0;width:100%;height:100%;";
+  container.appendChild(host);
+  void host.offsetWidth; // sync reflow before ModuleBase reads dims
+
+  const w = window as unknown as {
+    __applySonethToViz?: (key: string, val: number) => void;
+    __sendOscToSC?: (address: string, value: number) => void;
+  };
+  const applyViz = w.__applySonethToViz ?? (() => { /* not ready */ });
+  const sendOSC = w.__sendOscToSC ?? (() => { /* WS not ready */ });
+
+  let instance: unknown = null;
+  try {
+    instance = await mountPhenologyCalendar(host, { applyViz, sendOSC });
+  } catch (e) {
+    console.error("[switcher] PhenologicalCalendar mount failed:", e);
+  }
+
+  // ModuleBase constructor sets elem.style.visibility = "hidden". The module's
+  // own init() calls show() — but only once we hand control back. Force-restore
+  // here to cover the race where data still loads asynchronously.
+  host.style.visibility = "visible";
+  void host.offsetWidth;
+
+  // One RAF tick: let the browser paint, then fix renderer size — the calendar
+  // was constructed with offsetWidth=0 if the stage was just made visible.
+  await new Promise<void>((resolve) => requestAnimationFrame(() => {
+    const inst = instance as { renderer?: { setSize: (w: number, h: number) => void }; camera?: { aspect: number; updateProjectionMatrix: () => void } } | null;
+    if (inst && inst.renderer && inst.camera) {
+      const wpx = host.offsetWidth || 800;
+      const hpx = host.offsetHeight || 600;
+      inst.renderer.setSize(wpx, hpx);
+      inst.camera.aspect = wpx / hpx;
+      inst.camera.updateProjectionMatrix();
+    }
+    resolve();
+  }));
+
+  const ro = new ResizeObserver(() => {
+    const inst = instance as { renderer?: { setSize: (w: number, h: number) => void }; camera?: { aspect: number; updateProjectionMatrix: () => void } } | null;
+    if (!inst || !inst.renderer || !inst.camera) return;
+    const wpx = host.offsetWidth || 800;
+    const hpx = host.offsetHeight || 600;
+    inst.renderer.setSize(wpx, hpx);
+    inst.camera.aspect = wpx / hpx;
+    inst.camera.updateProjectionMatrix();
+  });
+  ro.observe(container);
+
+  return {
+    name: "Phenological Calendar",
+    key: "p",
+    destroy: () => {
+      ro.disconnect();
+      destroyPhenologyCalendar();
+      if (host.parentNode) host.parentNode.removeChild(host);
+    },
+  };
+}
+
 // ─── Mount: slots 4–9 — placeholder ─────────────────────────────────────────
 function mountPlaceholder(key: string): Viz {
   const container = stageEl!;
@@ -1423,6 +1498,7 @@ async function switchTo(key: string) {
     else if (key === "7") viz = mountGeometry(stageEl!, getLatestState);
     else if (key === "8") viz = mountMemoryHierarchy(stageEl!, getLatestState);
     else if (key === "9") viz = mountHashing(stageEl!, getLatestState);
+    else if (key === "p") viz = await mountPhenologyCalendarSlot();
     else viz = mountPlaceholder(key);
   } catch (e) {
     console.error("[switcher] mount failed:", e);
@@ -1448,14 +1524,17 @@ async function switchTo(key: string) {
 // ─── Keyboard ────────────────────────────────────────────────────────────────
 function onKeyDown(e: KeyboardEvent) {
   if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
-  if (!/^[0-9]$/.test(e.key)) return;
+  if (!/^[0-9p]$/.test(e.key)) return;
   e.preventDefault();
   switchTo(e.key);
 
-  // Send mode switch OSC message to SuperCollider
-  const modeVal = parseInt(e.key, 10);
-  if (typeof (window as any).sendParliamentAction === "function") {
-    (window as any).sendParliamentAction("/parliament/mode", [modeVal]);
+  // Send mode switch OSC message to SuperCollider (numeric slots only —
+  // 'p' is a parliament-side overlay slot not yet known to SC).
+  if (/^[0-9]$/.test(e.key)) {
+    const modeVal = parseInt(e.key, 10);
+    if (typeof (window as any).sendParliamentAction === "function") {
+      (window as any).sendParliamentAction("/parliament/mode", [modeVal]);
+    }
   }
 }
 
