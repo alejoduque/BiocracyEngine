@@ -362,6 +362,90 @@
         #left-panel .vote-btn          { font-size: 12px; }
         #left-panel #vote-result-txt   { font-size: 12px; }
         #left-panel .label             { font-size: 12px; }
+
+        /* ─── CÁMARA FENOLÓGICA (Capítulo VI): 1-bit aesthetic ─────── */
+        /* Cita visual del slot P — fondo negro, blanco puro, monoespaciado,
+           antialiasing apagado. Marca que estos controles pertenecen al
+           "escaño del tiempo" y no a la performance sonETH (amber). */
+        .tele-section--pheno {
+            background: #000;
+            border-top: 1px solid #fff;
+            border-bottom: 1px solid #fff;
+            font-family: 'Courier New', 'Lucida Console', 'Consolas', monospace;
+            text-transform: uppercase;
+            letter-spacing: 0.06em;
+            -webkit-font-smoothing: none;
+            -moz-osx-font-smoothing: unset;
+            padding: 6px 4px;
+            margin-top: 8px;
+        }
+        .tele-section--pheno .tele-section-title {
+            color: #fff;
+            border-bottom: 1px dashed rgba(255,255,255,0.4);
+            padding-bottom: 2px;
+        }
+        .tele-section--pheno .ctrl-row label { color: rgba(255,255,255,0.85); }
+        .tele-section--pheno .ctrl-row .ctrl-val { color: #fff; }
+        .tele-section--pheno input[type="range"] {
+            background: rgba(255,255,255,0.18);
+        }
+        .tele-section--pheno input[type="range"]::-webkit-slider-thumb {
+            background: #fff;
+            border-radius: 0;       /* pixel-square, no rounding */
+        }
+        .tele-section--pheno input[type="range"]::-webkit-slider-thumb:hover {
+            background: #fff;
+            outline: 1px solid #fff;
+        }
+        .pheno-art {
+            color: rgba(255,255,255,0.45);
+            font-size: 10px;
+            letter-spacing: 0.04em;
+            margin-left: auto;
+        }
+        .pheno-btn-row {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 4px;
+            margin-top: 6px;
+        }
+        .pheno-btn {
+            background: #000;
+            color: #fff;
+            border: 1px solid #fff;
+            font-family: 'Courier New', 'Lucida Console', 'Consolas', monospace;
+            text-transform: uppercase;
+            font-size: 10px;
+            letter-spacing: 0.05em;
+            padding: 4px 2px;
+            cursor: pointer;
+            transition: none;
+        }
+        .pheno-btn:hover { background: rgba(255,255,255,0.18); }
+        .pheno-btn:active,
+        .pheno-btn.active { background: #fff; color: #000; }
+        .pheno-bancada-row {
+            display: grid;
+            grid-template-columns: repeat(5, 1fr);
+            gap: 2px;
+            margin-top: 4px;
+        }
+        .pheno-bancada-btn {
+            background: #000;
+            color: rgba(255,255,255,0.7);
+            border: 1px solid rgba(255,255,255,0.45);
+            font-family: 'Courier New', monospace;
+            text-transform: uppercase;
+            font-size: 9px;
+            letter-spacing: 0.04em;
+            padding: 3px 1px;
+            cursor: pointer;
+        }
+        .pheno-bancada-btn.active {
+            background: #fff;
+            color: #000;
+            border-color: #fff;
+        }
     </style>
 </head>
 <body>
@@ -416,49 +500,86 @@
                 <div id="species-presence-ctrl"></div>
             </div>
 
-            <!-- eDNA + Fungi controls -->
+            <!-- eDNA biodiversity controls (dynamic from IUCN feed) -->
             <div class="tele-section">
                 <div class="tele-section-title">eDNA Biodiversity → SC</div>
                 <div id="edna-ctrl-rows"></div><!-- injected by JS -->
             </div>
 
-            <!-- Fungi Controls -->
-            <div class="tele-section">
-                <div class="tele-section-title">Fungi Chemical → SC</div>
-                <div class="ctrl-row">
-                    <label>N.Mycorrhizal</label>
-                    <input type="range" min="0" max="1" step="0.01" value="0.7"
-                        data-osc="/agents/fungi/chemical" data-agent-id="0">
-                    <span class="ctrl-val" id="disp-fg-chem-0">0.70</span>
+            <!-- ─── Cámara Fenológica · Bosque (Capítulo VI, Arts. 42–47) ─── -->
+            <!-- Replaces the previously-dead "Fungi Chemical" section.
+                 Five controls that change how the calendar reads the year. -->
+            <div class="tele-section tele-section--pheno">
+                <div class="tele-section-title">
+                    Cámara Fenológica · Bosque
+                    <span class="pheno-art">CC 10–13, 15 · 1-bit</span>
                 </div>
                 <div class="ctrl-row">
-                    <label>C.Spore Net</label>
-                    <input type="range" min="0" max="1" step="0.01" value="0.6"
-                        data-osc="/agents/fungi/chemical" data-agent-id="1">
-                    <span class="ctrl-val" id="disp-fg-chem-1">0.60</span>
+                    <label>Activity Thr</label>
+                    <input type="range" min="0" max="1" step="0.01" value="0.46"
+                        data-osc="/pheno/activityThreshold">
+                    <span class="ctrl-val" id="disp-pheno-activityThreshold">0.46</span>
                 </div>
                 <div class="ctrl-row">
-                    <label>S.Fungal Web</label>
-                    <input type="range" min="0" max="1" step="0.01" value="0.8"
-                        data-osc="/agents/fungi/chemical" data-agent-id="2">
-                    <span class="ctrl-val" id="disp-fg-chem-2">0.80</span>
+                    <label>Window Wdth</label>
+                    <input type="range" min="0" max="1" step="0.01" value="0.29"
+                        data-osc="/pheno/windowWidth">
+                    <span class="ctrl-val" id="disp-pheno-windowWidth">0.29</span>
                 </div>
                 <div class="ctrl-row">
-                    <label>Coastal Grid</label>
+                    <label>Season Bias</label>
                     <input type="range" min="0" max="1" step="0.01" value="0.5"
-                        data-osc="/agents/fungi/chemical" data-agent-id="3">
-                    <span class="ctrl-val" id="disp-fg-chem-3">0.50</span>
+                        data-osc="/pheno/seasonalBias">
+                    <span class="ctrl-val" id="disp-pheno-seasonalBias">0.50</span>
+                </div>
+                <div class="ctrl-row">
+                    <label>Absence Wt</label>
+                    <input type="range" min="0" max="1" step="0.01" value="0.3"
+                        data-osc="/pheno/absenceWeight">
+                    <span class="ctrl-val" id="disp-pheno-absenceWeight">0.30</span>
+                </div>
+                <div class="ctrl-row">
+                    <label>Opacity Flr</label>
+                    <input type="range" min="0" max="1" step="0.01" value="0.0"
+                        data-osc="/pheno/opacityFloor">
+                    <span class="ctrl-val" id="disp-pheno-opacityFloor">0.00</span>
                 </div>
             </div>
 
-            <!-- AI Core -->
-            <div class="tele-section">
-                <div class="tele-section-title">AI Gaia → SC</div>
+            <!-- ─── Cámara Fenológica · Quórum (Capítulo VI, Arts. 43, 45 §) ─── -->
+            <!-- Replaces the previously-dead "AI Gaia" section. Controls how
+                 the calendar enunciates outward toward the rest of the instrument. -->
+            <div class="tele-section tele-section--pheno">
+                <div class="tele-section-title">
+                    Cámara Fenológica · Quórum
+                    <span class="pheno-art">CC 14, 16 · trigger</span>
+                </div>
                 <div class="ctrl-row">
-                    <label>Consciousness</label>
-                    <input type="range" min="0" max="1" step="0.01" value="0.8"
-                        data-osc="/agents/ai/consciousness">
-                    <span class="ctrl-val" id="disp-ai-consciousness">0.80</span>
+                    <label>Pulse Gain</label>
+                    <input type="range" min="0" max="1" step="0.01" value="0.5"
+                        data-osc="/pheno/pulseGain">
+                    <span class="ctrl-val" id="disp-pheno-pulseGain">0.50</span>
+                </div>
+                <div class="ctrl-row">
+                    <label>Bancada</label>
+                    <input type="range" min="0" max="1" step="0.25" value="0"
+                        data-osc="/pheno/bancada">
+                    <span class="ctrl-val" id="disp-pheno-bancada">0.00</span>
+                </div>
+                <!-- Bancada radio (Art. 43 §1): 5 discrete season-taxon groupings -->
+                <div class="pheno-bancada-row" id="pheno-bancada-row">
+                    <button class="pheno-bancada-btn active" data-bancada="0">Todas</button>
+                    <button class="pheno-bancada-btn" data-bancada="1">Seca</button>
+                    <button class="pheno-bancada-btn" data-bancada="2">1as Lluv</button>
+                    <button class="pheno-bancada-btn" data-bancada="3">Med Seco</button>
+                    <button class="pheno-bancada-btn" data-bancada="4">2as Lluv</button>
+                </div>
+                <!-- Jump-to-season (Art. 42 §) -->
+                <div class="pheno-btn-row">
+                    <button class="pheno-btn" data-season="seca">Seca</button>
+                    <button class="pheno-btn" data-season="primeras_lluvias">1as Lluv</button>
+                    <button class="pheno-btn" data-season="medio_seco">Med Seco</button>
+                    <button class="pheno-btn" data-season="segundas_lluvias">2as Lluv</button>
                 </div>
             </div>
 

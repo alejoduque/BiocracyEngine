@@ -178,7 +178,15 @@ s.doWhenBooted({
         "/parliament/fx/reverb", \atmosphereMix,
         "/parliament/fx/room", \droneSpace,
         "/parliament/fx/delaytime", \timeDilation,
-        "/parliament/fx/decaytime", \delayFeedback
+        "/parliament/fx/decaytime", \delayFeedback,
+        // ── Cámara Fenológica (Phenology Chamber, CCs 10–16) ─────────────
+        "/pheno/activityThreshold", \activityThreshold,
+        "/pheno/windowWidth",       \windowWidth,
+        "/pheno/seasonalBias",      \seasonalBias,
+        "/pheno/absenceWeight",     \absenceWeight,
+        "/pheno/pulseGain",         \pulseGain,
+        "/pheno/opacityFloor",      \opacityFloor,
+        "/pheno/bancada",           \bancada
     ]);
 
     ~oscToParamMap.keysValuesDo { |oscPath, paramName|
@@ -203,6 +211,14 @@ s.doWhenBooted({
                 \memoryFeed,     { rawVal.linlin(0, 1, 0, 0.8) },          // delay feedback 0–0.8
                 \harmonicRich,   { rawVal.linexp(0.0001, 1, 0.1, 8) },    // FM ratio 0.1–8
                 \resonantBody,   { rawVal.linlin(0, 1, 0.1, 0.8) },       // filter Q 0.1–0.8
+                // ── Cámara Fenológica: HTML 0–1 → native ranges ──────────────────────
+                \activityThreshold, { rawVal.linlin(0, 1, 0.20, 0.85) },  // quórum sensible threshold
+                \windowWidth,       { rawVal.linlin(0, 1, 0.4, 2.5) },    // gaussian window scale 0.4x–2.5x
+                \seasonalBias,      { rawVal.linlin(0, 1, -1.0, 1.0) },   // bias to seasonalWeight ±1
+                \absenceWeight,     { rawVal.linlin(0, 1, 0, 1) },        // 0 silenced, 1 full
+                \pulseGain,         { rawVal.linlin(0, 1, 0.0, 2.0) },    // vote → calendar pulse gain
+                \opacityFloor,      { rawVal.linlin(0, 1, 0.0, 0.7) },    // fraction of labels hidden
+                \bancada,           { (rawVal * 4).round.asInteger },     // 0..4 discrete
                 // ── all others pass raw 0–1 natively ─────────────────────────────────
                 { rawVal }
             );
@@ -234,6 +250,22 @@ s.doWhenBooted({
 
         }, oscPath);
     };
+
+    // ── Phenology Chamber: season jump trigger (Art. 42 §) ─────────────
+    // Discrete trigger (string arg) — moves the calendar cursor to the
+    // first day of the named season. Echoes to browser so other UIs stay
+    // in sync, and triggers a beat-engine drop+fill pulse.
+    OSCdef(\phenoJumpSeason, { |msg|
+        var season = msg[1].asString;
+        ("Phenology jump: " ++ season).postln;
+        if(~visualsDest.notNil) {
+            ~visualsDest.sendMsg("/pheno/jumpSeason", season)
+        };
+        // Pulse the beat engine via existing txInfluence boost (smooth decay)
+        if(~beatParams.notNil) {
+            ~beatParams.transactionInfluence = (~beatParams.transactionInfluence ? 0.0) + 0.6;
+        };
+    }, "/pheno/jumpSeason");
 
     // ── Beat engine params (stored in ~beatParams, not ~buses) ─────────
     // These come from the HTML sonETH sliders but need special routing.

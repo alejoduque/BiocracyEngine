@@ -209,6 +209,58 @@ MIDIdef.cc(\ambientRow4, { |val, num, chan, src|
     };
 }, nil, nil);  // Listen on all channels
 
+// ── Phenology Chamber - Row 5 (Cámara Fenológica de lo Vivo, CCs 10-16) ──
+// These replace the previously-dead Fungi + AI Consciousness sliders.
+// Faderfox LC2 buttons/knobs reassigned to CC 10–16 for this row.
+// SC stores native units; OSC echo to browser is normalized 0–1.
+MIDIdef.cc(\phenoRow, { |val, num, chan, src|
+    var scaled, raw01 = val / 127;
+
+    case
+    {num == 10} {                                 // Activity Threshold 0.20–0.85
+        scaled = raw01.linlin(0, 1, 0.20, 0.85);
+        ~buses[\activityThreshold].set(scaled);
+        "Activity Threshold: %".format(scaled.round(0.001)).postln;
+        if(~visualsDest.notNil) { ~visualsDest.sendMsg("/pheno/activityThreshold", raw01); };
+    }
+    {num == 11} {                                 // Window Width 0.4–2.5x
+        scaled = raw01.linlin(0, 1, 0.4, 2.5);
+        ~buses[\windowWidth].set(scaled);
+        "Window Width: %x".format(scaled.round(0.01)).postln;
+        if(~visualsDest.notNil) { ~visualsDest.sendMsg("/pheno/windowWidth", raw01); };
+    }
+    {num == 12} {                                 // Seasonal Bias -1.0..+1.0
+        scaled = raw01.linlin(0, 1, -1.0, 1.0);
+        ~buses[\seasonalBias].set(scaled);
+        "Seasonal Bias: %".format(scaled.round(0.01)).postln;
+        if(~visualsDest.notNil) { ~visualsDest.sendMsg("/pheno/seasonalBias", raw01); };
+    }
+    {num == 13} {                                 // Absence Weight 0–1
+        scaled = raw01;
+        ~buses[\absenceWeight].set(scaled);
+        "Absence Weight: %".format(scaled.round(0.001)).postln;
+        if(~visualsDest.notNil) { ~visualsDest.sendMsg("/pheno/absenceWeight", raw01); };
+    }
+    {num == 14} {                                 // Pulse Gain 0.0–2.0
+        scaled = raw01.linlin(0, 1, 0.0, 2.0);
+        ~buses[\pulseGain].set(scaled);
+        "Pulse Gain: %".format(scaled.round(0.01)).postln;
+        if(~visualsDest.notNil) { ~visualsDest.sendMsg("/pheno/pulseGain", raw01); };
+    }
+    {num == 15} {                                 // Opacity Floor 0.0–0.7
+        scaled = raw01.linlin(0, 1, 0.0, 0.7);
+        ~buses[\opacityFloor].set(scaled);
+        "Opacity Floor: %".format(scaled.round(0.001)).postln;
+        if(~visualsDest.notNil) { ~visualsDest.sendMsg("/pheno/opacityFloor", raw01); };
+    }
+    {num == 16} {                                 // Bancada 0–4 (discrete)
+        var idx = (raw01 * 4).round.asInteger;
+        ~buses[\bancada].set(idx);
+        "Bancada: % (% )".format(idx, ["todas","seca","primeras_lluvias","medio_seco","segundas_lluvias"][idx]).postln;
+        if(~visualsDest.notNil) { ~visualsDest.sendMsg("/pheno/bancada", idx / 4); };
+    };
+}, nil, nil);  // Listen on all channels
+
 "MIDI Control System loaded - Lawrence English Ambient Style.".postln;
 "".postln;
 "AMBIENT CONTROL MAPPING:".postln;
@@ -239,3 +291,12 @@ MIDIdef.cc(\ambientRow4, { |val, num, chan, src|
 "  CC 39 -> Drone Mix (blend amount)".postln;
 "  CC 40 -> Delay Feedback (delay control)".postln;
 "  CC 41 -> TX Influence (transaction influence)".postln;
+"".postln;
+"Row 5 - Cámara Fenológica (Phenology Chamber):".postln;
+"  CC 10 -> Activity Threshold (quórum sensible, Art. 45)".postln;
+"  CC 11 -> Window Width (ventana de presencia, Art. 44)".postln;
+"  CC 12 -> Seasonal Bias (calendario bimodal, Art. 42)".postln;
+"  CC 13 -> Absence Weight (ausencia como voz, Art. 44 §)".postln;
+"  CC 14 -> Pulse Gain (modula no anula, Art. 45 §)".postln;
+"  CC 15 -> Opacity Floor (cláusula de opacidad, Art. 47 §)".postln;
+"  CC 16 -> Bancada (bancadas estacionales, Art. 43 §1)".postln;

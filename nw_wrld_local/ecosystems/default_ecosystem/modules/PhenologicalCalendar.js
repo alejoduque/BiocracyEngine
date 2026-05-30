@@ -128,6 +128,55 @@ class PhenologicalCalendar extends BaseThreeJsModule {
                 { name: "rotation", defaultVal: 1.0, type: "number", min: 0.1, max: 2.0 },
             ],
         },
+        // ── Cámara Fenológica de lo Vivo (Capítulo VI) ────────────────────
+        // Public methods invoked by phenology/breath.ts when /pheno/* OSC
+        // messages arrive from SuperCollider (or directly from HTML sliders).
+        {
+            name: "setActivityThreshold",         // Art. 45 — quórum sensible
+            executeOnLoad: false,
+            options: [{ name: "value", defaultVal: 0.5, type: "number", min: 0.20, max: 0.85 }],
+        },
+        {
+            name: "setWindowWidth",               // Art. 44 — ventana de presencia
+            executeOnLoad: false,
+            options: [{ name: "value", defaultVal: 1.0, type: "number", min: 0.4, max: 2.5 }],
+        },
+        {
+            name: "setSeasonalBias",              // Art. 42 — calendario bimodal
+            executeOnLoad: false,
+            options: [{ name: "value", defaultVal: 0.0, type: "number", min: -1.0, max: 1.0 }],
+        },
+        {
+            name: "setAbsenceWeight",             // Art. 44 § — ausencia como voz
+            executeOnLoad: false,
+            options: [{ name: "value", defaultVal: 0.3, type: "number", min: 0.0, max: 1.0 }],
+        },
+        {
+            name: "setPulseGain",                 // Art. 45 § — modula no anula
+            executeOnLoad: false,
+            options: [{ name: "value", defaultVal: 1.0, type: "number", min: 0.0, max: 2.0 }],
+        },
+        {
+            name: "setOpacityFloor",              // Art. 47 § — cláusula de opacidad
+            executeOnLoad: false,
+            options: [{ name: "value", defaultVal: 0.0, type: "number", min: 0.0, max: 0.7 }],
+        },
+        {
+            name: "setBancada",                   // Art. 43 §1 — bancadas estacionales
+            executeOnLoad: false,
+            options: [{
+                name: "value", defaultVal: "todas", type: "select",
+                values: ["todas", "seca", "primeras_lluvias", "medio_seco", "segundas_lluvias"],
+            }],
+        },
+        {
+            name: "jumpSeason",                   // Art. 42 § — sesiones de apertura
+            executeOnLoad: false,
+            options: [{
+                name: "season", defaultVal: "seca", type: "select",
+                values: ["seca", "primeras_lluvias", "medio_seco", "segundas_lluvias"],
+            }],
+        },
     ];
 
     // ---------- 1-bit wireframe palette ----------
@@ -156,6 +205,36 @@ class PhenologicalCalendar extends BaseThreeJsModule {
     static MONTHS_ES = ["Ene", "Feb", "Mar", "Abr", "May", "Jun", "Jul", "Ago", "Sep", "Oct", "Nov", "Dic"];
     static MONTH_STARTS = [0, 31, 59, 90, 120, 151, 181, 212, 243, 273, 304, 334]; // non-leap
 
+    // ── Cámara Fenológica: bancadas estacionales (Art. 43 §1) ─────────────
+    // Mapping season-name → Set of taxa whose escaño is active during that
+    // season. "todas" returns null (no override; honor focusedTaxon).
+    //
+    // Manakai/Córdoba bimodal phenology mapping:
+    //   Seca           → reptiles + birds (migratory boreal visitors)
+    //   1as Lluvias    → amphibians + birds (residents breeding)
+    //   Medio seco     → mammals
+    //   2as Lluvias    → flora (herbaceous + arboreal in second flowering)
+    static _bancadaTaxa(key) {
+        switch (key) {
+            case "seca":              return new Set(["reptiles", "birds"]);
+            case "primeras_lluvias":  return new Set(["amphibians", "birds"]);
+            case "medio_seco":        return new Set(["mammals"]);
+            case "segundas_lluvias":  return new Set(["flora"]);
+            default:                  return null;   // "todas" or unknown
+        }
+    }
+
+    // First day of each season (used by jumpSeason)
+    static _seasonFirstDay(key) {
+        switch (key) {
+            case "seca":              return 335;
+            case "primeras_lluvias":  return 91;
+            case "medio_seco":        return 152;
+            case "segundas_lluvias":  return 244;
+            default:                  return 1;
+        }
+    }
+
     constructor(container) {
         super(container);
 
@@ -178,6 +257,17 @@ class PhenologicalCalendar extends BaseThreeJsModule {
         this._pulseDecay = 0;
         this._highlightSpecies = null;
         this._t = 0;
+
+        // ── Cámara Fenológica state (Capítulo VI of proposed statutes) ────
+        // These are mutated by setActivityThreshold/setWindowWidth/etc.
+        // via the phenology breath bridge from SC OSC echoes.
+        this._activityThreshold = 0.50;   // Art. 45 — quórum sensible
+        this._windowWidth = 1.0;          // Art. 44 — ventana de presencia
+        this._seasonalBias = 0.0;         // Art. 42 — calendario bimodal
+        this._absenceWeight = 0.3;        // Art. 44 § — la ausencia es voz
+        this._pulseGain = 1.0;            // Art. 45 § — modula no anula
+        this._opacityFloor = 0.0;         // Art. 47 § — cláusula de opacidad
+        this._bancada = "todas";          // Art. 43 §1 — bancadas estacionales
 
         // ── Biogeochemical overlay (was BiocracyVisualizer) ─────────────────
         // CO₂ pulses, mycorrhizal expansion rings, P/N nutrient flows. All
@@ -1314,10 +1404,34 @@ class PhenologicalCalendar extends BaseThreeJsModule {
         const tmpV = new THREE.Vector3();
         const groupMatrix = this._calendarGroup ? this._calendarGroup.matrixWorld : null;
 
+        // Art. 47 § — cláusula de opacidad: a deterministic fraction of
+        // labels is hidden regardless of activity. The hash-per-sci keeps
+        // the same species hidden across frames (otherwise labels would
+        // flicker on/off as the random seed rolled). _opacityFloor=0.0 →
+        // nothing hidden; 0.7 → ~70% of would-be-labels stay invisible.
+        const opacityFloor = this._opacityFloor;
+        const windowScale = this._windowWidth;
+
         for (const s of this.species) {
+            // Opacity floor: skip this species' label entirely if its
+            // deterministic hash falls below the floor. Read this once
+            // per species so the cláusula is stable per frame.
+            if (opacityFloor > 0 && this._hash01(s.sci + "|opacity") < opacityFloor) {
+                // Also remove any previously-displayed label for this species
+                const prev = this._activeLabels.get(s.sci);
+                if (prev) {
+                    prev.el.style.opacity = "0";
+                    setTimeout(() => {
+                        if (prev.el.parentNode) prev.el.parentNode.removeChild(prev.el);
+                    }, 300);
+                    this._activeLabels.delete(s.sci);
+                }
+                continue;
+            }
             let d = Math.abs(s.peakDay - this.day);
             if (d > 182) d = 365 - d;
-            const act = Math.exp(-(d * d) / (2 * s.window * s.window * 0.6));
+            const w = s.window * windowScale;
+            const act = Math.exp(-(d * d) / (2 * w * w * 0.6));
             const existing = this._activeLabels.get(s.sci);
             const enter = act > 0.6;
             const stay = act > 0.3;
@@ -1479,9 +1593,20 @@ class PhenologicalCalendar extends BaseThreeJsModule {
 
     // Compute proximity of cursor (this.day) to each species' peak (cyclic)
     // and update vertex colors / sizes.
+    //
+    // Honors the Cámara Fenológica state (Capítulo VI):
+    //   _activityThreshold (Art. 45) replaces the hardcoded 0.5
+    //   _windowWidth       (Art. 44) scales the gaussian window per species
+    //   _absenceWeight     (Art. 44 §) — makes sub-threshold species visible
+    //                                    as dithered ghosts (the ausencia es voz)
+    //   _bancada           (Art. 43 §1) overrides focusedTaxon when active
     _updateSpeciesLuminance() {
         const cur = this.day;
         const pulse = this._pulseAmount;
+        const threshold = this._activityThreshold;
+        const windowScale = this._windowWidth;
+        const absW = this._absenceWeight;
+        const bancada = this._bancada;
 
         let activeCounts = { flora: 0, amphibians: 0, reptiles: 0, mammals: 0, birds: 0 };
         let topActivity = -1;
@@ -1490,24 +1615,44 @@ class PhenologicalCalendar extends BaseThreeJsModule {
         const _obj = (this._tmpObj3D ||= new THREE.Object3D());
         const _col = (this._tmpColor ||= new THREE.Color());
 
+        // Dither phase for absence shimmer (slow 2 Hz blink, deterministic per frame)
+        const ditherPhase = (Math.sin(this._t * 12.5) + 1) * 0.5;
+
+        // Bancada → set of taxon keys active for this season (Art. 43 §1)
+        const bancadaTaxa = PhenologicalCalendar._bancadaTaxa(bancada);
+
         for (const entry of this.speciesMeshes) {
             const inst = entry.mesh;
-            const focused = (this.focusedTaxon === "all" || this.focusedTaxon === entry.taxon);
+            // Bancada overrides focusedTaxon when set; else honor focusedTaxon
+            let focused;
+            if (bancadaTaxa) {
+                focused = bancadaTaxa.has(entry.taxon);
+            } else {
+                focused = (this.focusedTaxon === "all" || this.focusedTaxon === entry.taxon);
+            }
 
             for (const r of entry.records) {
                 const s = r.rec;
                 let d = Math.abs(s.peakDay - cur);
                 if (d > 182) d = 365 - d;
-                const w = s.window;
+                // Window width: scaled globally by Art. 44 control
+                const w = s.window * windowScale;
                 const activity = Math.exp(-(d * d) / (2 * w * w * 0.6));
                 const focusMult = focused ? 1 : 0.16;
 
                 // ── 1-bit scale: nodes snap between two sizes — off and on ──
-                // Pulse adds extra puff on vote events
                 const scale = (0.010 + 0.026 * activity + 0.022 * pulse * activity) * focusMult;
 
-                // 1-bit: fully white when active, dark when dormant
-                const lift = Math.min(1, (0.10 + 1.0 * activity + pulse * 0.6 * activity) * focusMult);
+                // Activity lift (1-bit white when active, dark when dormant)
+                let lift = Math.min(1, (0.10 + 1.0 * activity + pulse * 0.6 * activity) * focusMult);
+
+                // Absence shimmer (Art. 44 §): species *below* the quórum
+                // threshold blink faintly. The ausencia es voz: it's visible
+                // even though it doesn't count toward the quórum.
+                if (activity < threshold && absW > 0) {
+                    const ghost = 0.08 * absW * (0.5 + 0.5 * ditherPhase);
+                    lift = Math.max(lift, ghost);
+                }
                 _col.setRGB(lift, lift, lift);
 
                 _obj.position.set(r.x, r.y, r.z);
@@ -1516,7 +1661,8 @@ class PhenologicalCalendar extends BaseThreeJsModule {
                 inst.setMatrixAt(r.idx, _obj.matrix);
                 inst.setColorAt(r.idx, _col);
 
-                if (activity > 0.5) activeCounts[entry.taxon]++;
+                // Quórum sensible (Art. 45): respects the dynamic threshold
+                if (activity > threshold) activeCounts[entry.taxon]++;
                 if (focused && activity > topActivity) {
                     topActivity = activity;
                     topRecord = s;
@@ -1635,11 +1781,18 @@ ${focusBlock}
         if (!this._lastCensusUpdate || (tnow - this._lastCensusUpdate) > 300) {
             this._lastCensusUpdate = tnow;
             const censusEntries = [];
+            const winScale = this._windowWidth;
+            const censusThresh = this._activityThreshold;
+            const opacityFloor = this._opacityFloor;
             for (const sp of this.species) {
+                // Honor Art. 47 § opacity floor: hidden labels also drop
+                // from the census so what's published matches what's visible
+                if (opacityFloor > 0 && this._hash01(sp.sci + "|opacity") < opacityFloor) continue;
                 let d = Math.abs(sp.peakDay - this.day);
                 if (d > 182) d = 365 - d;
-                const act = Math.exp(-(d * d) / (2 * sp.window * sp.window * 0.6));
-                if (act > 0.5) censusEntries.push({ s: sp, act });
+                const w = sp.window * winScale;
+                const act = Math.exp(-(d * d) / (2 * w * w * 0.6));
+                if (act > censusThresh) censusEntries.push({ s: sp, act });
             }
             censusEntries.sort((u, v) => {
                 if (u.s.taxon !== v.s.taxon) {
@@ -1720,7 +1873,13 @@ ${focusBlock}
     }
 
     pulse({ intensity = 1.4 } = {}) {
-        this._pulseAmount = Math.max(this._pulseAmount, Math.max(0, Math.min(4, Number(intensity) || 1.4)));
+        // Art. 45 § — el voto modula, no anula. The Pulse Gain control
+        // (range 0..2) lets the human chamber dial down (0 = silenced) or
+        // up (2 = dominant) the modulation that votes apply to the
+        // phenological pulse. At pulseGain=0 the bosque keeps swimming
+        // but votes don't trigger the calendar bloom.
+        const gained = (Number(intensity) || 1.4) * this._pulseGain;
+        this._pulseAmount = Math.max(this._pulseAmount, Math.max(0, Math.min(4, gained)));
     }
 
     // ── Rotation slider control. Mirrors parliament rotation 0.1..2.0 →
@@ -1732,6 +1891,62 @@ ${focusBlock}
         this.autoplayEnabled = true;
     }
 
+    // ── Cámara Fenológica de lo Vivo — public setters (Capítulo VI) ──────
+    // Called by phenology/breath.ts when /pheno/* OSC messages echo from SC.
+    // All setters clamp to their declared ranges and persist state on the
+    // instance so per-frame loops in _updateSpeciesLuminance, etc. pick them
+    // up on the next tick.
+
+    setActivityThreshold({ value = 0.5 } = {}) {
+        const v = Math.max(0.20, Math.min(0.85, Number(value) || 0.5));
+        this._activityThreshold = v;
+    }
+
+    setWindowWidth({ value = 1.0 } = {}) {
+        const v = Math.max(0.4, Math.min(2.5, Number(value) || 1.0));
+        this._windowWidth = v;
+    }
+
+    setSeasonalBias({ value = 0.0 } = {}) {
+        const v = Math.max(-1.0, Math.min(1.0, Number(value) || 0.0));
+        this._seasonalBias = v;
+    }
+
+    setAbsenceWeight({ value = 0.3 } = {}) {
+        const v = Math.max(0.0, Math.min(1.0, Number(value) || 0.3));
+        this._absenceWeight = v;
+    }
+
+    setPulseGain({ value = 1.0 } = {}) {
+        const v = Math.max(0.0, Math.min(2.0, Number(value) || 1.0));
+        this._pulseGain = v;
+    }
+
+    setOpacityFloor({ value = 0.0 } = {}) {
+        const v = Math.max(0.0, Math.min(0.7, Number(value) || 0.0));
+        this._opacityFloor = v;
+    }
+
+    setBancada({ value = "todas" } = {}) {
+        const valid = ["todas", "seca", "primeras_lluvias", "medio_seco", "segundas_lluvias"];
+        this._bancada = valid.includes(value) ? value : "todas";
+    }
+
+    // Read-only accessor for breath.ts reverse-breath loop
+    getPulseGain() { return this._pulseGain; }
+    getSeasonalBias() { return this._seasonalBias; }
+    getActivityThreshold() { return this._activityThreshold; }
+    getWindowWidth() { return this._windowWidth; }
+
+    // Art. 42 § — sesiones de apertura de temporada.
+    // Sets the cursor day to the first day of the named season.
+    jumpSeason({ season = "seca" } = {}) {
+        const d = PhenologicalCalendar._seasonFirstDay(season);
+        this._setDayInternal(d, true);
+        // Mild pulse so the jump is audible in the HUD without being a vote
+        this._pulseAmount = Math.max(this._pulseAmount, 1.4);
+    }
+
     // ──────────────────────────────────────────────────────────────────
     // BIOGEOCHEMICAL TRIGGERS — absorbed from BiocracyVisualizer, but
     // anchored to current phenology. Each picks an active species (or the
@@ -1740,11 +1955,13 @@ ${focusBlock}
     _pickActiveSpecies(filter) {
         if (!this.species || this.species.length === 0) return null;
         const candidates = [];
+        const winScale = this._windowWidth;
         for (const s of this.species) {
             if (filter && !filter(s)) continue;
             let d = Math.abs(s.peakDay - this.day);
             if (d > 182) d = 365 - d;
-            const act = Math.exp(-(d * d) / (2 * s.window * s.window * 0.6));
+            const w = s.window * winScale;
+            const act = Math.exp(-(d * d) / (2 * w * w * 0.6));
             if (act > 0.4) candidates.push({ s, act });
         }
         if (candidates.length === 0) return null;

@@ -361,6 +361,24 @@ s.doWhenBooted({
     ~buses.roomSize.set(0.8);
     ~buses.distanceEffect = Bus.control(s, 1);
     ~buses.distanceEffect.set(0.5);
+
+    // ── Cámara Fenológica (Phenology Chamber, CCs 10–16) ─────────────────
+    // Repurposes the previously-dead Fungi + AI sliders into the Cámara
+    // Fenológica de lo Vivo (Capítulo VI of the proposed statutes).
+    ~buses.activityThreshold = Bus.control(s, 1);
+    ~buses.activityThreshold.set(0.50);     // Art. 45 quórum sensible
+    ~buses.windowWidth = Bus.control(s, 1);
+    ~buses.windowWidth.set(1.0);            // Art. 44 ventana de presencia
+    ~buses.seasonalBias = Bus.control(s, 1);
+    ~buses.seasonalBias.set(0.0);           // Art. 42 calendario bimodal
+    ~buses.absenceWeight = Bus.control(s, 1);
+    ~buses.absenceWeight.set(0.3);          // Art. 44 § ausencia como voz
+    ~buses.pulseGain = Bus.control(s, 1);
+    ~buses.pulseGain.set(1.0);              // Art. 45 § modula no anula
+    ~buses.opacityFloor = Bus.control(s, 1);
+    ~buses.opacityFloor.set(0.0);           // Art. 47 § cláusula de opacidad
+    ~buses.bancada = Bus.control(s, 1);
+    ~buses.bancada.set(0);                  // Art. 43 §1 bancadas estacionales
     
     // Wait for all bus .set() messages to be processed before readback
     s.sync;

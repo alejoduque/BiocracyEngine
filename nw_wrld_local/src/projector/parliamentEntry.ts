@@ -4,7 +4,11 @@
 // Visualization switcher: keys 0–9 swap center stage
 
 import parliamentStore, { ParliamentState } from "./parliament/parliamentStore";
-import { notifyBeatTempo as notifyPhenoBeatTempo } from "./phenology/breath";
+import {
+  notifyBeatTempo as notifyPhenoBeatTempo,
+  applyPhenoControl,
+  jumpToPhenoSeason,
+} from "./phenology/breath";
 import { initSwitcher, getActiveThreeStage, updateSpeciesRoster } from "./visualizationSwitcher";
 import { fetchSpeciesRoster, computeIUCNMults } from "./speciesFetcher";
 import * as THREE from "three";
@@ -75,6 +79,47 @@ function connectControlWS() {
         if (slider) slider.value = String(v);
         const dispEl = document.getElementById("disp-master-vol");
         if (dispEl) dispEl.textContent = v.toFixed(2);
+      }
+
+      // ── Cámara Fenológica (Capítulo VI) ─────────────────────────────
+      // SC echoes /pheno/<key> values back to the browser whenever a knob,
+      // MIDI CC, or HTML slider moves. Three things happen here:
+      //   1. The HTML slider/display syncs (bidirectional control surface)
+      //   2. The calendar instance is updated via applyPhenoControl()
+      //      (instance setters clamp + persist state)
+      //   3. The reverse-breath loop in breath.ts picks up the new state
+      //      on its next 320ms tick → harmonicrich/texturedepth follow
+      if (address.startsWith("/pheno/")) {
+        const key = address.slice("/pheno/".length);
+
+        // Special case: jumpSeason carries a string season name, not a number
+        if (key === "jumpSeason") {
+          const season = String((args as unknown as unknown[])[0] ?? "");
+          if (season) jumpToPhenoSeason(season);
+          return;
+        }
+
+        const v = args[0];
+        if (typeof v !== "number" || !isFinite(v)) return;
+
+        // 1. Sync HTML slider (bidirectional triple)
+        const slider = document.querySelector<HTMLInputElement>(
+          `input[type='range'][data-osc='${address}']`
+        );
+        if (slider) slider.value = String(v);
+        const dispEl = document.getElementById(`disp-pheno-${key}`);
+        if (dispEl) dispEl.textContent = v.toFixed(2);
+
+        // 1a. Special case: bancada — also light the matching radio button
+        if (key === "bancada") {
+          const idx = Math.max(0, Math.min(4, Math.round(v * 4)));
+          document.querySelectorAll<HTMLButtonElement>(".pheno-bancada-btn").forEach((b) => {
+            b.classList.toggle("active", parseInt(b.dataset.bancada ?? "0", 10) === idx);
+          });
+        }
+
+        // 2. Apply to the calendar instance (no-op if slot P not mounted)
+        applyPhenoControl(key, v);
       }
     } catch (_) { }
   };
@@ -1127,8 +1172,6 @@ async function init() {
     "/agents/species/activity": "disp-sp-act-",
     "/agents/species/presence": "disp-sp-pres-",
     "/agents/edna/biodiversity": "disp-edna-bio-",
-    "/agents/fungi/chemical": "disp-fg-chem-",
-    "/agents/ai/consciousness": "disp-ai-consciousness",
     "/parliament/consensus": "disp-consensus",
     "/parliament/rotation": "disp-rotation",
     "/parliament/fx/reverb": "disp-reverb",
@@ -1148,6 +1191,14 @@ async function init() {
     "/soneth/resonantbody": "disp-soneth-resonantbody",
     "/soneth/beatTempo": "disp-soneth-beatTempo",
     "/soneth/txInfluence": "disp-soneth-txInfluence",
+    // Cámara Fenológica (Capítulo VI) — id suffix is the param key (no agent-id)
+    "/pheno/activityThreshold": "disp-pheno-activityThreshold",
+    "/pheno/windowWidth":       "disp-pheno-windowWidth",
+    "/pheno/seasonalBias":      "disp-pheno-seasonalBias",
+    "/pheno/absenceWeight":     "disp-pheno-absenceWeight",
+    "/pheno/pulseGain":         "disp-pheno-pulseGain",
+    "/pheno/opacityFloor":      "disp-pheno-opacityFloor",
+    "/pheno/bancada":           "disp-pheno-bancada",
   };
 
   function wireSlider(slider: HTMLInputElement) {
@@ -1188,6 +1239,58 @@ async function init() {
   ["species-activity-ctrl", "species-presence-ctrl"].forEach(id => {
     const el = document.getElementById(id);
     if (el) el.querySelectorAll<HTMLInputElement>("input[type='range'][data-osc]").forEach(wireSlider);
+  });
+
+  // ─── Cámara Fenológica button wiring (Capítulo VI) ──────────────────────
+  // The bancada row + jump-season row are not range sliders, so they need
+  // their own click handlers. Both send OSC to SC, which echoes back so
+  // every other surface (MIDI knob, SC GUI, HTML slider) stays in sync.
+
+  // Bancada radio group: 5 buttons → CC 16 / OSC /pheno/bancada (0..4 → 0..1)
+  document.querySelectorAll<HTMLButtonElement>(".pheno-bancada-btn").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const idx = parseInt(btn.dataset.bancada ?? "0", 10);
+      const val = idx / 4; // 0..1 normalized
+
+      // Toggle visual active state
+      document.querySelectorAll<HTMLButtonElement>(".pheno-bancada-btn").forEach((b) => {
+        b.classList.toggle("active", b === btn);
+      });
+
+      // Sync the (now-hidden but functional) range slider
+      const slider = document.querySelector<HTMLInputElement>(
+        `input[type='range'][data-osc='/pheno/bancada']`
+      );
+      if (slider) slider.value = String(val);
+      const disp = document.getElementById("disp-pheno-bancada");
+      if (disp) disp.textContent = val.toFixed(2);
+
+      // 1. Send to SC (which echoes back via /pheno/bancada → applyPhenoControl)
+      sendOSC("/pheno/bancada", val);
+    });
+  });
+
+  // Season-jump buttons: 4 buttons → /pheno/jumpSeason (string arg)
+  document.querySelectorAll<HTMLButtonElement>(".pheno-btn[data-season]").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const season = btn.dataset.season ?? "seca";
+
+      // Brief visual pulse on the button
+      btn.classList.add("active");
+      setTimeout(() => btn.classList.remove("active"), 180);
+
+      // Send to SC with string arg (handled by OSCdef(\phenoJumpSeason))
+      if (controlWS && controlWsReady) {
+        controlWS.send(JSON.stringify({
+          direction: "toSC",
+          address: "/pheno/jumpSeason",
+          args: [season],
+        }));
+      }
+
+      // Also call the local breath bridge directly (in case SC echo is slow)
+      jumpToPhenoSeason(season);
+    });
   });
 
   // ─── State subscription ───

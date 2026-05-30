@@ -5,7 +5,7 @@
 (
 // Defer all GUI creation to AppClock to avoid Qt threading issues
 {
-    var statusView, counterView, controlView, controlViewRow2, controlViewRow3, controlViewRow4;
+    var statusView, counterView, controlView, controlViewRow2, controlViewRow3, controlViewRow4, controlViewRow5;
     var sampleView, sampleControlView, sampleHeader, sampleButtonView, stopButton;
     var container, recordingView;
     var mainTheme, accentColor, backgroundColor, textColor;
@@ -57,6 +57,12 @@
             .layout_(HLayout().margins_(15).spacing_(20));
         controlViewRow4 = View().background_(backgroundColor.blend(mainTheme.accent, 0.04))
             .layout_(HLayout().margins_(15).spacing_(20));
+        // Row 5: Cámara Fenológica — 1-bit aesthetic. Pure black background,
+        // white knobs (cite of slot P visual style). Marks these controls as
+        // belonging to the "escaño del tiempo" (phenological chamber), not to
+        // sonETH performance.
+        controlViewRow5 = View().background_(Color.black)
+            .layout_(HLayout().margins_(15).spacing_(20));
         
         // Create sample views
         sampleView = View().background_(backgroundColor.blend(mainTheme.accent, 0.04))
@@ -66,9 +72,10 @@
 
         // Set fixed heights for sections
         [statusView, counterView].do { |view| view.fixedHeight = 80; };
-        [controlView, controlViewRow2, controlViewRow3, controlViewRow4].do { |view| 
-            view.fixedHeight = 120; 
+        [controlView, controlViewRow2, controlViewRow3, controlViewRow4].do { |view|
+            view.fixedHeight = 120;
         };
+        controlViewRow5.fixedHeight = 120;
         sampleView.fixedHeight = 180;
         sampleControlView.fixedHeight = 120;
 
@@ -183,7 +190,16 @@
             droneSpace: ControlSpec(0, 1, \lin),
             droneMix: ControlSpec(0, 1, \lin),
             delayFeedback: ControlSpec(0, 0.95, \lin),
-            transactionInfluence: ControlSpec(0, 1, \lin)
+            transactionInfluence: ControlSpec(0, 1, \lin),
+
+            // ── Cámara Fenológica (Row 5, 1-bit white palette) ───────────────
+            activityThreshold: ControlSpec(0.20, 0.85, \lin),  // quórum sensible
+            windowWidth: ControlSpec(0.4, 2.5, \lin),          // ventana gaussiana
+            seasonalBias: ControlSpec(-1.0, 1.0, \lin),        // sesgo seca/lluvia
+            absenceWeight: ControlSpec(0, 1, \lin),            // peso de la ausencia
+            pulseGain: ControlSpec(0, 2, \lin),                // ganancia del pulso por voto
+            opacityFloor: ControlSpec(0, 0.7, \lin),           // cláusula de opacidad
+            bancada: ControlSpec(0, 4, \lin)                   // 0..4 discrete
         );
 
         // Initialize control values for MERGED ambient + drone/noise controls
@@ -210,19 +226,30 @@
             droneSpace: 0.5,
             droneMix: 0.5,
             delayFeedback: 0.3,
-            transactionInfluence: 0.3
+            transactionInfluence: 0.3,
+
+            // Cámara Fenológica defaults
+            activityThreshold: 0.50,
+            windowWidth: 1.0,
+            seasonalBias: 0.0,
+            absenceWeight: 0.3,
+            pulseGain: 1.0,
+            opacityFloor: 0.0,
+            bancada: 0
         );
 
         // Knob parameters layout - MERGED ambient + drone/noise controls
         ~knobParameters = [
             // Row 1: Core Performance Controls (Lawrence English Ambient)
             [\masterVolume, \pitchShift, \timeDilation, \spectralShift, \spatialSpread],
-            // Row 2: Ambient Processing  
+            // Row 2: Ambient Processing
             [\textureDepth, \atmosphereMix, \memoryFeed, \harmonicRich, \resonantBody],
             // Row 3: Drone/Noise Controls (Existing System)
             [\masterAmp, \filterCutoff, \noiseLevel, \noiseFilt, \droneDepth],
             // Row 4: Additional Drone Controls
-            [\droneFade, \droneSpace, \droneMix, \delayFeedback, \transactionInfluence]
+            [\droneFade, \droneSpace, \droneMix, \delayFeedback, \transactionInfluence],
+            // Row 5: Cámara Fenológica de lo Vivo (1-bit white palette)
+            [\activityThreshold, \windowWidth, \seasonalBias, \absenceWeight, \pulseGain, \opacityFloor, \bancada]
         ];
 
         // Enhanced knob function with oscilloscope aesthetics
@@ -343,6 +370,35 @@
                 ~controlSpecs[key].warp
             );
             controlViewRow4.layout.add(~knobs[key]);
+        };
+
+        // ─── Row 5: Cámara Fenológica — 1-bit white palette ───────────────
+        // The phenology chamber knobs cite the slot P visual style: black
+        // background, white knob, monospace label. Same ~makeKnob factory
+        // is used (it reads ~buses[paramName] and echoes via ~oscToParamMap
+        // — including the new /pheno/* paths). The visual distinction is
+        // applied here by overriding knob.color_ and label.stringColor_
+        // after construction.
+        ~knobParameters[4].do { |key|
+            var knobContainer;
+            ~knobs[key] = ~makeKnob.value(
+                key.asString,
+                ~controlSpecs[key].minval,
+                ~controlSpecs[key].maxval,
+                ~controlValues[key],
+                ~controlSpecs[key].warp
+            );
+            knobContainer = ~knobs[key];
+            knobContainer.background_(Color.black);
+            // Override the knob's color so its arc + ring read as white-on-black
+            if(~knobViews[key].notNil) {
+                ~knobViews[key].color_([Color.black, Color.white, Color.white, Color.gray(0.4)]);
+            };
+            if(~controlLabels[key].notNil) {
+                ~controlLabels[key].stringColor_(Color.white);
+                ~controlLabels[key].font_(Font("Courier New", 10, true));
+            };
+            controlViewRow5.layout.add(knobContainer);
         };
 
         // ─── MIDI → GUI Feedback: Poll bus values and update knob displays ───
@@ -596,7 +652,7 @@
         recordingView.layout.add(~quickRecButton);
         recordingView.layout.add(~spatialGuiButton);
         
-        // Add all views to main window (all 4 control rows + samples + recording)
+        // Add all views to main window (5 control rows + samples + recording)
         ~mainWindow.layout.add(~header);
         ~mainWindow.layout.add(statusView);
         ~mainWindow.layout.add(counterView);
@@ -604,6 +660,7 @@
         ~mainWindow.layout.add(controlViewRow2);
         ~mainWindow.layout.add(controlViewRow3);
         ~mainWindow.layout.add(controlViewRow4);
+        ~mainWindow.layout.add(controlViewRow5);
         ~mainWindow.layout.add(sampleView);
         ~mainWindow.layout.add(recordingView);
 

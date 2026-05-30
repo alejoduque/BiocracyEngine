@@ -102,6 +102,10 @@
         var harmRich, resBdy, atmMix, memFeed, texDep, dronFade, txInf;
         var voicingMode;
         var harmCount;
+        // ── Cámara Fenológica state (Capítulo VI) ──
+        // Read synchronously each beat: poolDensity scales with quórum sensible
+        // (Art. 45), bancada applies a soft LPF emphasis when active (Art. 43 §1).
+        var activityThr, bancadaIdx, phenoMult;
 
         loop {
             var now = SystemClock.seconds;
@@ -121,8 +125,22 @@
             dronFade = Select.kr(~bi.(\droneFade) >= 0, [0.5, In.kr(~bi.(\droneFade), 1)]);
             txInf    = Select.kr(~bi.(\txInfluence) >= 0, [0.5, In.kr(~bi.(\txInfluence), 1)]);
 
+            // ─── Phenology Chamber: read synchronously (~3 Hz beat rate) ──
+            // Falls back to defaults if buses don't exist yet (boot ordering).
+            activityThr = if(~buses.notNil and: { ~buses[\activityThreshold].notNil }) {
+                ~buses[\activityThreshold].getSynchronous
+            } { 0.50 };
+            bancadaIdx = if(~buses.notNil and: { ~buses[\bancada].notNil }) {
+                ~buses[\bancada].getSynchronous.asInteger
+            } { 0 };
+
+            // Quórum sensible → pool density multiplier (Art. 45):
+            //   threshold 0.20 → mult 1.5 (loose quórum → dense pool)
+            //   threshold 0.85 → mult 0.6 (strict quórum → sparse pool)
+            phenoMult = activityThr.linlin(0.20, 0.85, 1.5, 0.6);
+
             // ─── Compute melodic parameters from control matrix ───
-            pitchPool = ~computePitchPool.(harmRich, txInfluence, density);
+            pitchPool = ~computePitchPool.(harmRich, txInfluence, density * phenoMult);
             voicingMode = ~selectVoicing.(resBdy, texDep);
             harmCount = ~getHarmonicCount.(harmRich);
 

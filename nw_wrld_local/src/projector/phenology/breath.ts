@@ -17,6 +17,15 @@ type PhenoInstance = {
   triggerMycoPulse?: (opts?: PhenoMethodArg) => void;
   triggerPhosphorus?: (opts?: PhenoMethodArg) => void;
   triggerNitrogen?: (opts?: PhenoMethodArg) => void;
+  // ── Cámara Fenológica de lo Vivo (Capítulo VI) ──────────────────────
+  setActivityThreshold?: (opts?: PhenoMethodArg) => void;
+  setWindowWidth?: (opts?: PhenoMethodArg) => void;
+  setSeasonalBias?: (opts?: PhenoMethodArg) => void;
+  setAbsenceWeight?: (opts?: PhenoMethodArg) => void;
+  setPulseGain?: (opts?: PhenoMethodArg) => void;
+  setOpacityFloor?: (opts?: PhenoMethodArg) => void;
+  setBancada?: (opts?: PhenoMethodArg) => void;
+  jumpSeason?: (opts?: PhenoMethodArg) => void;
   destroy: () => void;
 };
 
@@ -195,25 +204,108 @@ export function notifyBeatTempo(beatTempo01: number) {
   try { _instance.pulse({ intensity }); } catch { /* ignore */ }
 }
 
+// ─── Cámara Fenológica dispatcher (Capítulo VI) ────────────────────────────
+// Called by parliamentEntry.ts when an OSC echo on /pheno/<key> arrives.
+// Each key routes to the corresponding setter on the calendar instance.
+// Values come in 0–1 normalized from SC (which already remapped from CC).
+// We pass them through native instance methods which clamp/remap.
+//
+// Special case: bancada arrives as 0..1 in steps of 0.25 (5 positions).
+// We resolve to the string name before calling setBancada.
+const BANCADA_NAMES = [
+  "todas",
+  "seca",
+  "primeras_lluvias",
+  "medio_seco",
+  "segundas_lluvias",
+] as const;
+
+export function applyPhenoControl(key: string, val: number): void {
+  if (!_instance) return;
+  try {
+    switch (key) {
+      case "activityThreshold":
+        // val 0..1 → 0.20..0.85 (matches SC remap)
+        _instance.setActivityThreshold?.({ value: 0.20 + val * 0.65 });
+        break;
+      case "windowWidth":
+        // val 0..1 → 0.4..2.5
+        _instance.setWindowWidth?.({ value: 0.4 + val * 2.1 });
+        break;
+      case "seasonalBias":
+        // val 0..1 → -1..+1
+        _instance.setSeasonalBias?.({ value: val * 2 - 1 });
+        break;
+      case "absenceWeight":
+        _instance.setAbsenceWeight?.({ value: val });
+        break;
+      case "pulseGain":
+        // val 0..1 → 0..2
+        _instance.setPulseGain?.({ value: val * 2 });
+        break;
+      case "opacityFloor":
+        // val 0..1 → 0..0.7
+        _instance.setOpacityFloor?.({ value: val * 0.7 });
+        break;
+      case "bancada": {
+        // val 0..1 in 0.25 steps → name from BANCADA_NAMES
+        const idx = Math.max(0, Math.min(4, Math.round(val * 4)));
+        _instance.setBancada?.({ value: BANCADA_NAMES[idx] });
+        break;
+      }
+      default:
+        // Unknown phenology key — ignore silently
+        break;
+    }
+  } catch { /* ignore */ }
+}
+
+// Called from parliamentEntry.ts when a /pheno/jumpSeason message arrives
+// (string arg, not numeric). Echoes from SC carry the season name verbatim.
+export function jumpToPhenoSeason(season: string): void {
+  if (!_instance) return;
+  try { _instance.jumpSeason?.({ season }); } catch { /* ignore */ }
+}
+
 // ─── Calendar → Parliament (reverse breath) ───────────────────────────────
 // Today's seasonal weight (rainy-vs-dry) and the fraction of species in peak
 // modulate the parliament's harmonic richness and textural density — both
 // visually (applyViz writes to __slotNSoneth) and audibly (sendOSC to SC).
 //
 // Córdoba bimodal rainfall, peaks ~ day 115 (late Apr) and day 270 (late Sep).
+//
+// Honors the Cámara Fenológica state when the instance is mounted:
+//   _seasonalBias (Art. 42) shifts the calendar's "wet-vs-dry" reading,
+//   so the human chamber can audition seasonal scenarios without moving day.
 export function seasonalWeight(day: number): number {
   const a = Math.cos((2 * Math.PI * (day - 115)) / 365);
   const b = Math.cos((2 * Math.PI * (day - 270)) / 365);
-  return ((a + b) / 2 + 1) / 2;
+  const base = ((a + b) / 2 + 1) / 2;
+  // Add bias from Art. 42 control (-1..+1 added then clamped to 0..1)
+  const bias = (_instance as unknown as { getSeasonalBias?: () => number })?.getSeasonalBias?.() ?? 0;
+  return Math.max(0, Math.min(1, base + bias * 0.5));
 }
 
+// Active-species fraction (the quórum sensible of Art. 45).
+// Uses the instance's current _activityThreshold + _windowWidth, so the
+// reverseBreath audio modulation tracks the human chamber's threshold knob.
 function activeSpeciesFraction(day: number): number {
   if (!_instance || !_instance.species?.length) return 0;
+  const inst = _instance as unknown as {
+    getActivityThreshold?: () => number;
+    getWindowWidth?: () => number;
+  };
+  const threshold = inst.getActivityThreshold?.() ?? 0.5;
+  const winScale = inst.getWindowWidth?.() ?? 1.0;
   let n = 0;
   for (const s of _instance.species) {
     let d = Math.abs(s.peakDay - day);
     if (d > 182) d = 365 - d;
-    if (d <= (s.window ?? 30)) n++;
+    const w = (s.window ?? 30) * winScale;
+    // Use the full gaussian activity so threshold maps directly to the
+    // same notion of "active" as the visual ring (Art. 45 quórum sensible).
+    const act = Math.exp(-(d * d) / (2 * w * w * 0.6));
+    if (act > threshold) n++;
   }
   return n / _instance.species.length;
 }
