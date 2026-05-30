@@ -331,15 +331,24 @@ class PhenologicalCalendar extends BaseThreeJsModule {
             this.controls.enabled = true;
             this.controls.enableDamping = true;
             this.controls.dampingFactor = 0.08;
-            this.controls.enablePan = false;
+            // Full 3D navigation: pan (right-click drag), rotate (left-click
+            // drag), zoom (wheel). Polar angle unlocked so the user can fly
+            // over the top of the ring or look up from beneath it.
+            this.controls.enablePan = true;
             this.controls.enableRotate = true;
             this.controls.enableZoom = true;
+            this.controls.panSpeed = 0.9;
+            this.controls.rotateSpeed = 0.9;
+            this.controls.zoomSpeed = 1.0;
+            this.controls.screenSpacePanning = true;
             // No zoom limits — fly all the way in to see species spheres
             // at scale, and pull all the way back beyond the wireframe shell.
             this.controls.minDistance = 0;
             this.controls.maxDistance = Infinity;
-            this.controls.minPolarAngle = Math.PI * 0.18;   // ~32°
-            this.controls.maxPolarAngle = Math.PI * 0.82;   // ~148°
+            // Full polar range — no top/bottom clamp. Allows looking
+            // straight down (god's-eye on the calendar) or up from below.
+            this.controls.minPolarAngle = 0;
+            this.controls.maxPolarAngle = Math.PI;
             this.controls.autoRotate = false;
             this.controls.target.set(0, 0, 0);
             this.controls.update();
@@ -370,6 +379,26 @@ class PhenologicalCalendar extends BaseThreeJsModule {
 
         // Load species data
         this._loadSpecies();
+
+        // ── Camera reset on `r` key ──────────────────────────────────────
+        // Now that the user can fly anywhere in 3D (pan/rotate/zoom), they
+        // need a way to come back home. `r` snaps the camera to the default
+        // view: position (0, 0.6, 4.6) looking at origin.
+        this._resetCameraHandler = (e) => {
+            // Only act when slot P is visible and no input is focused
+            if (!this.elem || this.elem.offsetParent === null) return;
+            const tag = document.activeElement?.tagName?.toLowerCase();
+            if (tag === "input" || tag === "textarea") return;
+            if (e.key === "r" || e.key === "R") {
+                this.camera.position.set(0, 0.6, 4.6);
+                this.camera.lookAt(0, 0, 0);
+                if (this.controls) {
+                    this.controls.target.set(0, 0, 0);
+                    this.controls.update();
+                }
+            }
+        };
+        window.addEventListener("keydown", this._resetCameraHandler);
 
         this.show();
         this._animate = this._animate.bind(this);
@@ -1465,8 +1494,12 @@ class PhenologicalCalendar extends BaseThreeJsModule {
             }
             let d = Math.abs(s.peakDay - this.day);
             if (d > 182) d = 365 - d;
-            const w = s.window * windowScale;
-            const act = Math.exp(-(d * d) / (2 * w * w * 0.6));
+            // sigma = gaussian window scaled by Art. 44 control.
+            // Renamed from `w` to avoid shadowing the canvas width `w` declared
+            // at the top of this method — that shadowing was collapsing every
+            // label's screen-x into the bottom-left corner of the viewport.
+            const sigma = s.window * windowScale;
+            const act = Math.exp(-(d * d) / (2 * sigma * sigma * 0.6));
             const existing = this._activeLabels.get(s.sci);
             const enter = act > 0.6;
             const stay = act > 0.3;
@@ -2110,6 +2143,13 @@ ${focusBlock}
     destroy() {
         if (this._animationId) cancelAnimationFrame(this._animationId);
         this._animationId = null;
+
+        // Unbind the camera-reset keydown handler so it doesn't leak between
+        // mounts (every mountPhenologyCalendar adds a new one).
+        if (this._resetCameraHandler) {
+            window.removeEventListener("keydown", this._resetCameraHandler);
+            this._resetCameraHandler = null;
+        }
 
         const disposeObj = (obj) => {
             if (!obj) return;
