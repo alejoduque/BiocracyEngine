@@ -1037,8 +1037,12 @@ class PhenologicalCalendar extends BaseThreeJsModule {
     top: 0; height: 100%;
     overflow-y: auto;
     overflow-x: hidden;
-    font-size: calc(2px + 0.75vmin);
-    line-height: 1.4;
+    /* Base font size bumped from calc(2px+0.75vmin) → calc(4px+1.05vmin)
+       so the right-info column reads comfortably on a projector. */
+    font-size: calc(4px + 1.05vmin);
+    /* Tighter line-height across the column so sections feel dense and
+       readable rather than airy and small (was 1.4 → now 1.1). */
+    line-height: 1.1;
     color: #ffffff;
     pointer-events: auto;
     white-space: pre-wrap;
@@ -1057,82 +1061,86 @@ class PhenologicalCalendar extends BaseThreeJsModule {
 .pheno-col::-webkit-scrollbar { width: 3px; }
 .pheno-col::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.3); }
 .pheno-col__census { left: 0; width: 28%; padding: 0.3vmin 0.6vmin 0.3vmin 0.6vmin; text-align: left; }
-.pheno-col__info   { right: 0; width: 22%; padding: 0.3vmin 0.6vmin 0.3vmin 0.6vmin; text-align: left;
+.pheno-col__info   { right: 0; width: 24%; padding: 0.3vmin 0.6vmin 0.3vmin 0.6vmin; text-align: left;
     border-left: 1px solid rgba(255,255,255,0.18); border-right: none; }
 
-.pheno-col .ph-section { margin: 0; padding: 0.15vmin 0; }
+.pheno-col .ph-section { margin: 0; padding: 0.25vmin 0; }
 .pheno-col .ph-section + .ph-section { border-top: 1px solid rgba(255,255,255,0.18); }
 .pheno-col .ph-label {
-    font-size: calc(1px + 0.55vmin);
+    /* Section labels (DIA, REGIMEN, SITIO, etc.) — readable at projector distance */
+    font-size: calc(2px + 0.75vmin);
     letter-spacing: 0.18em;
-    color: rgba(255,255,255,0.5);
+    color: rgba(255,255,255,0.6);
     text-transform: uppercase;
     margin: 0;
-    line-height: 1.2;
+    line-height: 1.0;
 }
 .pheno-col .ph-big {
-    font-size: calc(6px + 2.2vmin);
+    /* Day number, active count — keep big and tight */
+    font-size: calc(7px + 2.4vmin);
     font-weight: 700;
     color: #ffffff;
     letter-spacing: 0.1em;
-    line-height: 1.0;
+    line-height: 0.95;
     margin: 0;
     display: block;
 }
 .pheno-col .ph-mid {
-    font-size: calc(2px + 0.95vmin);
+    font-size: calc(3px + 1.15vmin);
     font-weight: 700;
     color: #ffffff;
     margin: 0;
     letter-spacing: 0.08em;
-    line-height: 1.2;
+    line-height: 1.05;
 }
 .pheno-col .ph-sub {
-    font-size: calc(1px + 0.65vmin);
-    color: rgba(255,255,255,0.6);
+    font-size: calc(2px + 0.85vmin);
+    color: rgba(255,255,255,0.7);
     letter-spacing: 0.08em;
-    line-height: 1.2;
+    line-height: 1.05;
     margin: 0;
 }
 .pheno-col .ph-rule { display: none; }
 .pheno-col .ph-quiet {
-    font-size: calc(2px + 1.1vmin);
-    color: rgba(255,255,255,0.3);
+    font-size: calc(3px + 1.2vmin);
+    color: rgba(255,255,255,0.4);
     margin: 0;
-    line-height: 1.2;
+    line-height: 1.05;
 }
 .pheno-col .ph-taxon {
-    font-size: calc(2px + 0.85vmin);
+    font-size: calc(3px + 1.0vmin);
     margin: 0;
     letter-spacing: 0.1em;
-    line-height: 1.2;
-    color: rgba(255,255,255,0.75);
+    line-height: 1.05;
+    color: rgba(255,255,255,0.8);
 }
 .pheno-col .ph-sci {
-    font-size: calc(3px + 1.4vmin);
+    font-size: calc(4px + 1.55vmin);
     font-weight: 700;
     color: #ffffff;
-    line-height: 1.15;
+    line-height: 1.05;
     margin: 0;
     word-break: break-word;
     letter-spacing: 0.04em;
 }
 .pheno-col .ph-common {
-    font-size: calc(2px + 1.0vmin);
-    color: rgba(255,255,255,0.7);
+    /* Vernacular name in focus block — promoted to readable size */
+    font-size: calc(3px + 1.15vmin);
+    color: rgba(255,255,255,0.85);
     margin: 0;
-    line-height: 1.15;
+    line-height: 1.05;
+    font-weight: 700;
 }
 .pheno-col .ph-fam {
-    font-size: calc(1px + 0.75vmin);
-    color: rgba(255,255,255,0.45);
+    font-size: calc(2px + 0.85vmin);
+    color: rgba(255,255,255,0.5);
     margin: 0;
-    line-height: 1.15;
+    line-height: 1.05;
 }
 .pheno-col .ph-extras {
-    font-size: calc(1px + 0.7vmin);
-    color: rgba(255,255,255,0.4);
-    line-height: 1.15;
+    font-size: calc(2px + 0.85vmin);
+    color: rgba(255,255,255,0.5);
+    line-height: 1.05;
     margin: 0;
 }
 .pheno-col .ph-progress {
@@ -1148,17 +1156,17 @@ class PhenologicalCalendar extends BaseThreeJsModule {
 .pheno-col .ph-bar-row {
     display: flex; align-items: center; gap: 0.5vmin;
     margin: 0;
-    font-size: calc(1px + 0.7vmin);
-    line-height: 1.3;
+    font-size: calc(2px + 0.85vmin);
+    line-height: 1.1;
 }
 .pheno-col .ph-bar-label {
     flex: 0 0 auto;
-    width: 7.5vmin;
-    color: rgba(255,255,255,0.7);
+    width: 9vmin;
+    color: rgba(255,255,255,0.75);
     letter-spacing: 0.08em;
 }
 .pheno-col .ph-bar-wrap {
-    flex: 1; height: 3px;
+    flex: 1; height: 4px;
     background: rgba(255,255,255,0.1);
     position: relative;
 }
@@ -1169,9 +1177,9 @@ class PhenologicalCalendar extends BaseThreeJsModule {
 }
 .pheno-col .ph-bar-val {
     flex: 0 0 auto;
-    width: 2.6vmin;
+    width: 3vmin;
     text-align: right;
-    color: rgba(255,255,255,0.85);
+    color: rgba(255,255,255,0.92);
 }
 .pheno-col .ph-census-header {
     display: flex; justify-content: space-between; align-items: baseline;
@@ -1182,39 +1190,66 @@ class PhenologicalCalendar extends BaseThreeJsModule {
 .pheno-col .ph-census-body {
     display: grid;
     grid-template-columns: 1fr 1fr;
-    gap: 0.05vmin 0.8vmin;
+    gap: 0.1vmin 0.8vmin;
 }
 .pheno-col .ph-c-row {
     display: flex; align-items: baseline; gap: 0.5vmin;
-    font-size: calc(1px + 0.72vmin);
-    line-height: 1.3;
+    font-size: calc(2px + 0.88vmin);
+    line-height: 1.1;
 }
-.pheno-col .ph-c-d { flex: 0 0 auto; width: 2vmin; font-size: calc(1px + 0.65vmin); color: #fff; }
-.pheno-col .ph-c-t { flex: 0 0 auto; width: 5.5vmin; opacity: 0.55; font-size: calc(1px + 0.62vmin); letter-spacing: 0.06em; }
+.pheno-col .ph-c-d { flex: 0 0 auto; width: 3vmin; font-size: calc(2px + 0.78vmin); color: #fff; }
+.pheno-col .ph-c-t { flex: 0 0 auto; width: 6vmin; opacity: 0.6; font-size: calc(1px + 0.75vmin); letter-spacing: 0.06em; }
 .pheno-col .ph-c-s { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: rgba(255,255,255,0.9); }
 .pheno-col .ph-c-c { color: rgba(255,255,255,0.55); }
 .pheno-col .ph-c-f { color: rgba(255,255,255,0.35); margin-left: 0.3vmin; }
 
 .pheno-label-layer { position: absolute; inset: 0; pointer-events: none;
     -webkit-font-smoothing: none; -moz-osx-font-smoothing: unset;
-    overflow: hidden; mix-blend-mode: screen;
+    overflow: hidden;
+    /* No mix-blend-mode here: would erase the dark plaque behind each label
+       and make the common-name text unreadable against the bright phosphor
+       ring. We want the plaque opaque so the vernacular name reads sharp. */
     font-family: 'Courier New', 'Lucida Console', 'Consolas', monospace;
     text-transform: uppercase;
     z-index: 4;
 }
 .pheno-active-label {
     position: absolute; transform: translate(-50%, -50%);
-    white-space: nowrap; font-size: calc(2px + 0.88vmin);
+    white-space: nowrap;
     letter-spacing: 0.08em;
-    text-shadow: 1px 1px 0 #000, -1px -1px 0 #000;
+    text-shadow: 1px 1px 0 #000, -1px -1px 0 #000, 2px 2px 0 #000;
     transition: opacity 0.3s steps(3, end);
     opacity: 0; pointer-events: none;
-    background: rgba(0,0,0,0.75);
-    padding: 1px 3px;
-    outline: 1px solid rgba(255,255,255,0.5);
+    background: rgba(0,0,0,0.85);
+    padding: 2px 5px;
+    outline: 1px solid rgba(255,255,255,0.7);
+    text-align: center;
 }
-.pheno-active-label .ph-l-sci { font-weight: 700; font-size: calc(2px + 0.92vmin); line-height: 1.2; color: #fff; }
-.pheno-active-label .ph-l-com { font-size: calc(1px + 0.7vmin); opacity: 0.65; letter-spacing: 0.06em; margin-top: 1px; }
+/* Common (vernacular) name is the primary line — big, white, 1-bit feel.
+   Scientific name is secondary, smaller and dim, beneath it. */
+.pheno-active-label .ph-l-com {
+    font-weight: 700;
+    font-size: calc(5px + 1.6vmin);
+    line-height: 1.0;
+    color: #fff;
+    letter-spacing: 0.10em;
+    image-rendering: pixelated;
+}
+.pheno-active-label .ph-l-sci {
+    font-size: calc(2px + 0.78vmin);
+    line-height: 1.1;
+    color: rgba(255,255,255,0.55);
+    font-style: normal;
+    letter-spacing: 0.04em;
+    margin-top: 2px;
+}
+/* When a species has NO common name, the scientific name acts as primary */
+.pheno-active-label.no-common .ph-l-sci {
+    font-weight: 700;
+    font-size: calc(4px + 1.3vmin);
+    color: #fff;
+    margin-top: 0;
+}
             `;
             document.head.appendChild(style);
         }
@@ -1455,18 +1490,22 @@ class PhenologicalCalendar extends BaseThreeJsModule {
 
             if (!existing) {
                 const el = document.createElement("div");
-                el.className = "pheno-active-label";
+                el.className = "pheno-active-label" + (s.common ? "" : " no-common");
                 el.style.color = "rgba(255,255,255,0.95)";
+                // ── Common (vernacular) name FIRST and prominent ──
+                // The Cámara Fenológica grants voice to species; the everyday
+                // name is how a community recognizes them, so it leads.
+                // Scientific name follows, smaller and dim, for taxonomic clarity.
+                if (s.common) {
+                    const com = document.createElement("div");
+                    com.className = "ph-l-com";
+                    com.textContent = s.common.toUpperCase();
+                    el.appendChild(com);
+                }
                 const sci = document.createElement("div");
                 sci.className = "ph-l-sci";
                 sci.textContent = s.sci;
                 el.appendChild(sci);
-                if (s.common) {
-                    const com = document.createElement("div");
-                    com.className = "ph-l-com";
-                    com.textContent = s.common;
-                    el.appendChild(com);
-                }
                 this._labelLayer.appendChild(el);
                 void el.offsetWidth;
                 el.style.opacity = "0.95";
@@ -1732,12 +1771,14 @@ class PhenologicalCalendar extends BaseThreeJsModule {
 </div>`;
         } else {
             const extras = [s.habit, s.origin, s.succession].filter(Boolean).join(" // ");
+            // Vernacular (common) name leads, scientific dimmer underneath —
+            // matches the floating species labels for consistency.
             focusBlock = `
 <div class="ph-section">
   <div class="ph-label">EN PICO // FOCUS</div>
   <div class="ph-taxon">&gt; ${s.taxon.toUpperCase()} // D${s.peakDay}</div>
-  <div class="ph-sci">${s.sci.toUpperCase()}</div>
   ${s.common ? `<div class="ph-common">${s.common.toUpperCase()}</div>` : ""}
+  <div class="ph-sci">${s.sci.toUpperCase()}</div>
   ${s.family ? `<div class="ph-fam">FAM. ${s.family.toUpperCase()}</div>` : ""}
   ${extras ? `<div class="ph-extras">${extras.toUpperCase()}</div>` : ""}
 </div>`;
@@ -1806,9 +1847,17 @@ ${focusBlock}
                 const filled = Math.max(1, Math.round(act * 5));
                 const dots = "#".repeat(filled) + ".".repeat(5 - filled);
                 const tag = (PhenologicalCalendar.TAXA.find(t => t.key === sp.taxon) || { label: sp.taxon.toUpperCase() }).label;
-                const common = sp.common ? `<span class="ph-c-c"> ${sp.common.toUpperCase()}</span>` : "";
+                // Vernacular name leads (white, primary). Scientific name follows
+                // dimmer in parens. Family at the end. If no common name exists,
+                // scientific takes the primary slot so the row never reads blank.
+                const primary = sp.common
+                    ? sp.common.toUpperCase()
+                    : sp.sci.toUpperCase();
+                const secondary = sp.common
+                    ? `<span class="ph-c-c"> (${sp.sci.toUpperCase()})</span>`
+                    : "";
                 const fam = sp.family ? `<span class="ph-c-f"> ${sp.family.toUpperCase()}</span>` : "";
-                return `<div class="ph-c-row"><span class="ph-c-d">${dots}</span><span class="ph-c-t">${tag}</span><span class="ph-c-s">${sp.sci.toUpperCase()}${common}${fam}</span></div>`;
+                return `<div class="ph-c-row"><span class="ph-c-d">${dots}</span><span class="ph-c-t">${tag}</span><span class="ph-c-s">${primary}${secondary}${fam}</span></div>`;
             }).join("");
             census.innerHTML = `
 <div class="ph-section ph-census-header">
