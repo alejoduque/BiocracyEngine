@@ -48,13 +48,30 @@
         ~spatialBuses.distanceEffect = ~buses.distanceEffect;
     };
     
-    // Create sample spatial buses if not already available
+    // Create sample spatial buses if not already available.
+    //
+    // Two pitfalls fixed here:
+    //
+    // 1. In SC 3.13, Bus.control(s,1).set(0.0) returns nil — the .set()
+    //    method returns nil, not the bus. Doing `~x = Bus.control(s,1).set(0)`
+    //    therefore stores nil in ~x. We alloc and set on separate lines
+    //    (matching the idiom already used in 3_synthdefs.scd).
+    //
+    // 2. ~triggerSample iterates ~sampleBuses and builds Synth args as
+    //    `paramName.asString ++ "Bus"`. The samplePlayerMono/Stereo SynthDef
+    //    expects args named `sampleSpatialXBus` and `sampleSpatialYBus`, so
+    //    the keys must be `sampleSpatialX` and `sampleSpatialY` (NOT just
+    //    spatialX / spatialY — those produce wrong arg names that the
+    //    SynthDef silently ignores, which is why moving the SMP node had
+    //    no audible effect before).
     if(~sampleBuses.notNil) {
         if(~sampleBuses.sampleSpatialX.isNil) {
-            ~sampleBuses.sampleSpatialX = Bus.control(s, 1).set(0.0);
+            ~sampleBuses.sampleSpatialX = Bus.control(s, 1);
+            ~sampleBuses.sampleSpatialX.set(0.0);
         };
         if(~sampleBuses.sampleSpatialY.isNil) {
-            ~sampleBuses.sampleSpatialY = Bus.control(s, 1).set(0.0);
+            ~sampleBuses.sampleSpatialY = Bus.control(s, 1);
+            ~sampleBuses.sampleSpatialY.set(0.0);
         };
         ~spatialBuses.sampleX = ~sampleBuses.sampleSpatialX;
         ~spatialBuses.sampleY = ~sampleBuses.sampleSpatialY;

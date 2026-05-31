@@ -47,10 +47,17 @@ s.doWhenBooted({
         highPass: 20,           // High pass frequency (20-2000)
         filterRes: 0.1,         // Filter resonance (0.1-0.8)
         
-        // Spatial
+        // Spatial — key names MUST match SynthDef arg suffixes. The
+        // samplePlayerMono/Stereo SynthDefs expect samplePanBus,
+        // sampleSpatialXBus, sampleSpatialYBus. Since ~triggerSample
+        // builds arg names as `paramName ++ "Bus"`, the keys here must
+        // be samplePan, sampleSpatialX, sampleSpatialY (not spatialX /
+        // spatialY — those produced wrong arg names and the SynthDef
+        // ignored them, so the SMP node in the Spatial GUI had no
+        // audible effect).
         samplePan: 0.0,         // Stereo pan (-1 to +1)
-        spatialX: 0.0,          // Quad X position (-1 to +1)
-        spatialY: 0.0           // Quad Y position (-1 to +1)
+        sampleSpatialX: 0.0,    // Quad X position (-1 to +1)
+        sampleSpatialY: 0.0     // Quad Y position (-1 to +1)
     );
     
     // Create control buses for sample parameters — alloc and set must be separate (SC 3.13: .set returns nil)
