@@ -198,6 +198,35 @@ Key `p` mounts the **PhenologicalCalendar** module — a 365-day species ring bu
 - ETH biogeochem (`eco.co2`, `mycoPulse`, `phosphorus`, `nitrogen`) → `triggerCO2/Myco/Phosphorus/Nitrogen` (anchored to currently-active flora positions, not fixed screen coords)
 - **Reverse:** calendar day → seasonal weight + active-species fraction → `harmonicrich` + `texturedepth` OSC into SuperCollider
 
+**Species labels:** vernacular (common) name leads on each node, scientific name follows dim and small underneath. Falls back to scientific name when no common name exists. Labels render with opaque black plaque + 1px white outline for projector readability.
+
+**3D navigation (full freedom):**
+
+| Action | Gesture |
+|---|---|
+| Rotate calendar | Left-click + drag |
+| Pan view | Right-click + drag |
+| Zoom | Mouse wheel (no limits — zoom inside a species node or pull all the way out beyond the icosahedra) |
+| Reset camera | `R` key (default position `(0, 0.6, 4.6)` looking at origin) |
+| Switch slot | Keys `0`–`9` or `p` |
+
+#### Cámara Fenológica de lo Vivo — Capítulo VI
+
+Slot P is governed by **seven control parameters + four season-jump triggers** that materialize the proposed phenological chamber statutes (Articles 41–48). Each control is bidirectionally wired across **HTML slider ↔ SC bus/GUI knob ↔ Faderfox LC2 MIDI CC** — moving any one updates the other two and re-renders the calendar in real time.
+
+| Control | OSC path | CC | Article | Range | Effect |
+|---|---|---|---|---|---|
+| Activity Thresh | `/pheno/activityThreshold` | CC 10 | Art. 45 (quórum sensible) | 0.20–0.85 | Threshold for "active" species; modulates beat pool density (×0.6–1.5) |
+| Window Width | `/pheno/windowWidth` | CC 11 | Art. 44 (ventana de presencia) | 0.4–2.5× | Gaussian window per species; tighter halos vs longer overlaps |
+| Seasonal Bias | `/pheno/seasonalBias` | CC 12 | Art. 42 (calendario bimodal) | -1.0–+1.0 | Offsets `seasonalWeight()` → reverseBreath `harmonicrich` |
+| Absence Weight | `/pheno/absenceWeight` | CC 13 | Art. 44 § (la ausencia es voz) | 0.0–1.0 | Sub-threshold species shimmer as 1-bit dither; mutes `atmosphereMix` |
+| Pulse Gain | `/pheno/pulseGain` | CC 14 | Art. 45 § (modula no anula) | 0.0–2.0 | Multiplies vote→pulse intensity; 0 silences calendar response to votes |
+| Opacity Floor | `/pheno/opacityFloor` | CC 15 | Art. 47 § (cláusula de opacidad) | 0.0–0.7 | Deterministic fraction of labels hidden by principle (visual only — Art. 47 declares opacity intraducible to audio) |
+| Bancada (5 pos) | `/pheno/bancada` | CC 16 | Art. 43 §1 (bancadas estacionales) | Todas / Seca / 1as Lluvias / Medio Seco / 2as Lluvias | Focus specific seasonal taxa group; soft LPF on others |
+| Season jump (×4) | `/pheno/jumpSeason` | — | Art. 42 § (sesiones de apertura) | trigger | Sets cursor day to start of named season + bumps `txInfluence` for audible drop+fill |
+
+**Visual style — 1-bit citation:** The Cámara Fenológica section in `parliament.html` uses a black background + white 1px borders + `Courier New` monospace uppercase typography, distinct from the amber Lawrence English palette of the sonETH/Beat Engine controls. The matching SC GUI knobs (Row 5 of `4_gui.scd`) use a pure white-on-black palette for the same reason — these controls belong to the "escaño del tiempo," not to performance.
+
 ### Beat Engine — Data-Driven Melodic Pool
 
 The beat engine reads live from SC buses each cycle:
@@ -327,6 +356,18 @@ BiocracyEngine auto-detects audio hardware at boot:
 
 - **MOTU 828x (Gen5) present** → 4-channel quadraphonic output, 2 inputs
 - **No MOTU detected** → falls back to macOS Core Audio stereo (2 ch out / 2 ch in)
+
+### Recording & Spatial GUI
+
+The SC GUI bottom strip exposes three buttons:
+
+- **● START REC / ■ STOP REC** — multichannel session recording. Saves to the `recordings/` directory.
+- **▶ 30s SNAPSHOT** — starts recording and auto-stops after 30 seconds. Useful for sound checks, documentation snippets, sampler material.
+- **◇ SPATIAL 4ch** — opens a quadraphonic spatial control window with two draggable nodes: **AMB** (ambient drone/bell/kick position) and **SMP** (sample playback position). Both nodes pan their sources around the 4-channel quad field in real time. The window opens directly over the main sonETH GUI (overlapping, `alwaysOnTop`).
+
+### Cámara Fenológica row (SC GUI Row 5)
+
+Below the four amber Lawrence English rows, the SC GUI mounts a **Row 5 with a pure white-on-black palette** holding the seven phenology knobs (Activity Thresh, Window Width, Seasonal Bias, Absence Weight, Pulse Gain, Opacity Floor, Bancada). This visual citation matches the 1-bit aesthetic of slot P in the browser — marking these controls as belonging to the *escaño del tiempo* and not to sonETH performance.
 
 ---
 
