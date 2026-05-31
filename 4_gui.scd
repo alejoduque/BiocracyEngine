@@ -31,11 +31,17 @@
         textColor = mainTheme.foreground;
         accentColor = mainTheme.accent;
 
-        // Create and store window with enhanced styling (larger for merged controls + samples + recording)
-        ~mainWindow = Window("SøNETH — BiocracyEngine Control", Rect(100, 100, 1100, 1120))
+        // Create and store window with enhanced styling.
+        // Sized to fit ALL sections without scrolling: 5 control rows
+        // (Row 5 = Cámara Fenológica) + status/counter + samples + REC.
+        // Previous 1120px was for 4 rows; we grew to 5 and the REC strip
+        // dropped off-screen. 1380px restores it while keeping the rest.
+        ~mainWindow = Window("SøNETH — BiocracyEngine Control", Rect(100, 100, 1100, 1380))
             .background_(backgroundColor);
 
-        ~mainWindow.view.layout_(VLayout().margins_(15).spacing_(15));
+        // Compact the outer chrome so button/text sizes are preserved but
+        // dead air between rows shrinks: margins 15→10, spacing 15→8.
+        ~mainWindow.view.layout_(VLayout().margins_(10).spacing_(8));
 
         // Create header
         ~header = StaticText()
@@ -44,31 +50,36 @@
             .align_(\center)
             .stringColor_(mainTheme.yellow);
 
-        // Create main container views for merged controls + samples
+        // Create main container views for merged controls + samples.
+        // Inner margins reduced 15→6 (vertical padding inside each row was
+        // eating ~18px per section; with 8 sections that's ~144px of dead
+        // vertical air — which is exactly what was pushing the REC strip
+        // off-screen). Horizontal knob spacing kept at 20 so knobs don't
+        // touch each other.
         statusView = View().background_(backgroundColor.blend(mainTheme.accent, 0.03))
-            .layout_(HLayout().margins_(15).spacing_(20));
+            .layout_(HLayout().margins_(6).spacing_(20));
         counterView = View().background_(backgroundColor.blend(mainTheme.accent, 0.03))
-            .layout_(HLayout().margins_(15).spacing_(20));
+            .layout_(HLayout().margins_(6).spacing_(20));
         controlView = View().background_(backgroundColor.blend(mainTheme.accent, 0.05))
-            .layout_(HLayout().margins_(15).spacing_(20));
+            .layout_(HLayout().margins_(6).spacing_(20));
         controlViewRow2 = View().background_(backgroundColor.blend(mainTheme.accent, 0.05))
-            .layout_(HLayout().margins_(15).spacing_(20));
+            .layout_(HLayout().margins_(6).spacing_(20));
         controlViewRow3 = View().background_(backgroundColor.blend(mainTheme.accent, 0.04))
-            .layout_(HLayout().margins_(15).spacing_(20));
+            .layout_(HLayout().margins_(6).spacing_(20));
         controlViewRow4 = View().background_(backgroundColor.blend(mainTheme.accent, 0.04))
-            .layout_(HLayout().margins_(15).spacing_(20));
+            .layout_(HLayout().margins_(6).spacing_(20));
         // Row 5: Cámara Fenológica — 1-bit aesthetic. Pure black background,
         // white knobs (cite of slot P visual style). Marks these controls as
         // belonging to the "escaño del tiempo" (phenological chamber), not to
         // sonETH performance.
         controlViewRow5 = View().background_(Color.black)
-            .layout_(HLayout().margins_(15).spacing_(20));
-        
+            .layout_(HLayout().margins_(6).spacing_(20));
+
         // Create sample views
         sampleView = View().background_(backgroundColor.blend(mainTheme.accent, 0.04))
-            .layout_(VLayout().margins_(15).spacing_(10));
+            .layout_(VLayout().margins_(6).spacing_(6));
         sampleControlView = View().background_(backgroundColor.blend(Color.black, 0.1))
-            .layout_(HLayout().margins_(15).spacing_(15));
+            .layout_(HLayout().margins_(8).spacing_(15));
 
         // Set fixed heights for sections
         [statusView, counterView].do { |view| view.fixedHeight = 80; };
@@ -594,8 +605,10 @@
 
 
         // Create recording controls section
+        // Margins compacted 15→8 so REC strip is visually denser; height
+        // kept at 80 so the buttons retain their full target area.
         recordingView = View().background_(backgroundColor.blend(mainTheme.red, 0.06))
-            .layout_(HLayout().margins_(15).spacing_(15));
+            .layout_(HLayout().margins_(8).spacing_(12));
         recordingView.fixedHeight = 80;
         
         // Recording status indicator
