@@ -2,6 +2,16 @@
 // Current Date and Time (UTC): 2025-08-31 21:50:00
 // Current User's Login: alejoduque
 
+// Capture the path to this script's directory NOW, at file-load time.
+// thisProcess.nowExecutingPath returns nil inside a button action (no
+// file is being interpreted at click time), so reading it later inside
+// .action_ raises "Message 'dirname' not understood. RECEIVER: nil".
+// Storing it in a global makes it available to any closure that needs
+// to load a sibling .scd at runtime — currently used by the Spatial GUI
+// button below.
+~biocracyScriptDir = thisProcess.nowExecutingPath.dirname;
+("Biocracy script dir captured at load: " ++ ~biocracyScriptDir).postln;
+
 (
 // Defer all GUI creation to AppClock to avoid Qt threading issues
 {
@@ -669,7 +679,10 @@
             .states_([["◇ SPATIAL 4ch", mainTheme.foreground, backgroundColor.blend(mainTheme.accent, 0.15)]])
             .font_(Font("Helvetica", 10))
             .action_({
-                var spatialPath = thisProcess.nowExecutingPath.dirname +/+ "12_spatial_gui.scd";
+                // Use the path captured at file-load time (see top of script).
+                // thisProcess.nowExecutingPath is nil inside a button action,
+                // so we can't compute the path lazily here.
+                var spatialPath = ~biocracyScriptDir +/+ "12_spatial_gui.scd";
                 if(File.exists(spatialPath)) {
                     ("Loading spatial GUI from: " ++ spatialPath).postln;
                     spatialPath.load;
