@@ -640,24 +640,56 @@
                 };
             });
         
-        // Quick record button (30 seconds)
+        // ── Quick record button (30-second auto-stop) ─────────────────────
+        // Triggers ~startRecording then schedules ~stopRecording 30s later.
+        // Useful for quick captures (sound checks, documentation snippets,
+        // sampler material for a phrase) without having to remember to
+        // press STOP manually. Defined in 11_recording_system.scd:219.
         ~quickRecButton = Button()
-            .states_([["QUICK 30s", mainTheme.foreground, backgroundColor.blend(mainTheme.yellow, 0.2)]])
+            .states_([["▶ 30s SNAPSHOT", mainTheme.foreground, backgroundColor.blend(mainTheme.yellow, 0.2)]])
             .font_(Font("Helvetica", 10))
             .action_({
                 if(~quickRecord.notNil) {
+                    "Quick record: 30s auto-stop. Saves to recordings/ dir.".postln;
                     ~quickRecord.();
                     ~recordingStatus.string_("REC: 30s AUTO").stringColor_(mainTheme.yellow);
                 } { "Recording system not loaded!".warn; };
             });
         
-        // Spatial GUI button
+        // ── Spatial GUI button ────────────────────────────────────────────
+        // Opens the 4-channel quadraphonic spatial control window.
+        // Previously pointed at the *old* user-specific path inside the
+        // TADEO 2024 doctorate folder, which doesn't exist on every
+        // machine — silently no-op. Now resolved relative to the script
+        // directory (same idiom as start_sonification.scd).
+        // Also brings the window to front in case it opened off-screen
+        // (12_spatial_gui.scd default position is Rect(1200,100,600,650)
+        // which is invisible on displays narrower than ~1800px).
         ~spatialGuiButton = Button()
-            .states_([["SPATIAL GUI", mainTheme.foreground, backgroundColor.blend(mainTheme.accent, 0.15)]])
+            .states_([["◇ SPATIAL 4ch", mainTheme.foreground, backgroundColor.blend(mainTheme.accent, 0.15)]])
             .font_(Font("Helvetica", 10))
             .action_({
-                var spatialPath = "/Users/a/Documents/p r o y e c t o s/D O C T O R A D O - TADEO 2024/Sonificando ETH/eth_sonification/SøNeth/12_spatial_gui.scd";
-                spatialPath.load;
+                var spatialPath = thisProcess.nowExecutingPath.dirname +/+ "12_spatial_gui.scd";
+                if(File.exists(spatialPath)) {
+                    ("Loading spatial GUI from: " ++ spatialPath).postln;
+                    spatialPath.load;
+                    // Re-position spatial window on screen + bring to front.
+                    // Defer so the window has time to exist after .load.
+                    AppClock.sched(0.4, {
+                        if(~spatialWindow.notNil and: { ~spatialWindow.isClosed.not }) {
+                            // Anchor next to the main window if screen is wide,
+                            // otherwise overlap so it's always visible.
+                            var screenW = Window.screenBounds.width;
+                            var x = if(screenW >= 1750, { 1150 }, { 200 });
+                            ~spatialWindow.bounds_(Rect(x, 120, 600, 650));
+                            ~spatialWindow.front;
+                            "Spatial GUI brought to front.".postln;
+                        } { "Spatial GUI loaded but ~spatialWindow not registered.".warn; };
+                        nil
+                    });
+                } {
+                    ("Spatial GUI script not found at: " ++ spatialPath).error;
+                };
             });
         
         recordingView.layout.add(~recordingStatus);

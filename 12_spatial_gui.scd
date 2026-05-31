@@ -61,7 +61,15 @@
     };
     
     // Create spatial window
-    spatialWindow = Window("Spatial Control - Quadraphonic Field", Rect(1200, 100, 600, 650))
+    // Default position: anchored to the right of the main sonETH window
+    // (which is at x=100, width=1100, so it ends at x=1200). On displays
+    // narrower than ~1800px the spatial window would open off-screen, so
+    // we clamp to the available screen area. The 4_gui.scd button also
+    // re-positions on click, but this default keeps standalone loads sane.
+    spatialWindow = Window("Spatial Control - Quadraphonic Field",
+        if(Window.screenBounds.width >= 1750,
+            { Rect(1200, 100, 600, 650) },
+            { Rect(200, 100, 600, 650) }))
         .background_(mainTheme.background)
         .alwaysOnTop_(true);
     
