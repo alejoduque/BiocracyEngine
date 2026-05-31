@@ -673,17 +673,20 @@
                 if(File.exists(spatialPath)) {
                     ("Loading spatial GUI from: " ++ spatialPath).postln;
                     spatialPath.load;
-                    // Re-position spatial window on screen + bring to front.
-                    // Defer so the window has time to exist after .load.
+                    // Pin the spatial window directly on top of the main sonETH
+                    // window (same origin). User asked for overlap rather than
+                    // a side-by-side layout that could push it off-screen.
                     AppClock.sched(0.4, {
                         if(~spatialWindow.notNil and: { ~spatialWindow.isClosed.not }) {
-                            // Anchor next to the main window if screen is wide,
-                            // otherwise overlap so it's always visible.
-                            var screenW = Window.screenBounds.width;
-                            var x = if(screenW >= 1750, { 1150 }, { 200 });
-                            ~spatialWindow.bounds_(Rect(x, 120, 600, 650));
+                            var mainBounds = if(~mainWindow.notNil) {
+                                ~mainWindow.bounds
+                            } { Rect(100, 100, 1100, 1380) };
+                            ~spatialWindow.bounds_(Rect(
+                                mainBounds.left, mainBounds.top, 600, 650
+                            ));
                             ~spatialWindow.front;
-                            "Spatial GUI brought to front.".postln;
+                            ~spatialWindow.alwaysOnTop_(true);
+                            "Spatial GUI on top of main window.".postln;
                         } { "Spatial GUI loaded but ~spatialWindow not registered.".warn; };
                         nil
                     });
