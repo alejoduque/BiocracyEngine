@@ -24,6 +24,10 @@ import {
   mountPhenologyCalendar,
   destroyPhenologyCalendar,
 } from "./phenology/breath";
+import {
+  mountAssemblage,
+  destroyAssemblage,
+} from "./assemblage/assemblage";
 
 // ─── Species roster for parliament consensus display ─────────────────────────
 // Populated at runtime from IUCN Red List API (Colombian species).
@@ -1442,6 +1446,71 @@ async function mountPhenologyCalendarSlot(): Promise<Viz> {
   };
 }
 
+// ─── Mount: slot F — Sympoiesis (deep-ecological assemblage of affects) ──────
+async function mountAssemblageSlot(): Promise<Viz> {
+  const container = stageEl!;
+  showStage(stageEl);
+
+  const host = document.createElement("div");
+  host.style.cssText = "position:absolute;inset:0;width:100%;height:100%;";
+  container.appendChild(host);
+  void host.offsetWidth; // sync reflow before ModuleBase reads dims
+
+  const w = window as unknown as {
+    __applySonethToViz?: (key: string, val: number) => void;
+    __sendOscToSC?: (address: string, value: number) => void;
+  };
+  const applyViz = w.__applySonethToViz ?? (() => { /* not ready */ });
+  const sendOSC = w.__sendOscToSC ?? (() => { /* WS not ready */ });
+
+  let instance: unknown = null;
+  try {
+    instance = await mountAssemblage(host, { applyViz, sendOSC });
+  } catch (e) {
+    console.error("[switcher] Sympoiesis mount failed:", e);
+  }
+
+  // ModuleBase hides elem in its ctor; the module's init() calls show(). Force
+  // visibility here too, covering the race where data/shaders settle async.
+  host.style.visibility = "visible";
+  void host.offsetWidth;
+
+  // One RAF tick: paint, then fix renderer size (constructed at offsetWidth=0
+  // if the stage was just revealed).
+  await new Promise<void>((resolve) => requestAnimationFrame(() => {
+    const inst = instance as { renderer?: { setSize: (w: number, h: number) => void }; camera?: { aspect: number; updateProjectionMatrix: () => void } } | null;
+    if (inst && inst.renderer && inst.camera) {
+      const wpx = host.offsetWidth || 800;
+      const hpx = host.offsetHeight || 600;
+      inst.renderer.setSize(wpx, hpx);
+      inst.camera.aspect = wpx / hpx;
+      inst.camera.updateProjectionMatrix();
+    }
+    resolve();
+  }));
+
+  const ro = new ResizeObserver(() => {
+    const inst = instance as { renderer?: { setSize: (w: number, h: number) => void }; camera?: { aspect: number; updateProjectionMatrix: () => void } } | null;
+    if (!inst || !inst.renderer || !inst.camera) return;
+    const wpx = host.offsetWidth || 800;
+    const hpx = host.offsetHeight || 600;
+    inst.renderer.setSize(wpx, hpx);
+    inst.camera.aspect = wpx / hpx;
+    inst.camera.updateProjectionMatrix();
+  });
+  ro.observe(container);
+
+  return {
+    name: "Sympoiesis",
+    key: "f",
+    destroy: () => {
+      ro.disconnect();
+      destroyAssemblage();
+      if (host.parentNode) host.parentNode.removeChild(host);
+    },
+  };
+}
+
 // ─── Mount: slots 4–9 — placeholder ─────────────────────────────────────────
 function mountPlaceholder(key: string): Viz {
   const container = stageEl!;
@@ -1499,6 +1568,7 @@ async function switchTo(key: string) {
     else if (key === "8") viz = mountMemoryHierarchy(stageEl!, getLatestState);
     else if (key === "9") viz = mountHashing(stageEl!, getLatestState);
     else if (key === "p") viz = await mountPhenologyCalendarSlot();
+    else if (key === "f") viz = await mountAssemblageSlot();
     else viz = mountPlaceholder(key);
   } catch (e) {
     console.error("[switcher] mount failed:", e);
@@ -1524,12 +1594,13 @@ async function switchTo(key: string) {
 // ─── Keyboard ────────────────────────────────────────────────────────────────
 function onKeyDown(e: KeyboardEvent) {
   if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
-  if (!/^[0-9p]$/.test(e.key)) return;
+  if (!/^[0-9pf]$/.test(e.key)) return;
   e.preventDefault();
   switchTo(e.key);
 
   // Send mode switch OSC message to SuperCollider (numeric slots only —
-  // 'p' is a parliament-side overlay slot not yet known to SC).
+  // 'p' (phenology) and 'f' (sympoiesis) are parliament-side overlay slots
+  // not known to SC).
   if (/^[0-9]$/.test(e.key)) {
     const modeVal = parseInt(e.key, 10);
     if (typeof (window as any).sendParliamentAction === "function") {

@@ -16,13 +16,14 @@
 
 ## Overview
 
-A live audiovisual instrument that transforms Ethereum blockchain transactions into evolving ambient soundscapes and reactive visualizations. Every control parameter simultaneously drives SuperCollider audio synthesis and **11 visual modules** (slots 0–9 + slot P) via a bidirectional OSC/WebSocket bridge.
+A live audiovisual instrument that transforms Ethereum blockchain transactions into evolving ambient soundscapes and reactive visualizations. Every control parameter simultaneously drives SuperCollider audio synthesis and **12 visual modules** (slots 0–9 + slots P and F) via a bidirectional OSC/WebSocket bridge.
 
 The instrument couples three nominally-distinct domains into a single feedback loop:
 
 - **Blockchain** — live Ethereum transaction flow (`eth_sonify.py`) drives beat density, CO₂/myco/nutrient overlays, and consensus modulation.
 - **Parliament** — voting events (pass / fail / emergency / trigger) pulse the visuals and modulate consensus brightness across all slots.
 - **Ecology** — the Phenological Calendar (slot P) reads the IUCN Red List and a 572-species inventory from Reserva Manakai (Planeta Rica, Córdoba, Colombia); its current day-of-year and active-species fraction feed `harmonicrich` and `texturedepth` back into the SuperCollider audio engine.
+- **Assemblage** — *Sympoiesis* (slot **F**) is the poetic reverse of the calendar: a full-3D deep-ecological assemblage of concept-monads, living mycorrhizal filaments, and travelling affects (carbon, fósforo, nitrógeno) with poetic text that surfaces and fades. It reads the five performance controls (Master Vol, Pitch Shift, Time Dilat, Spectral Sh, Spatial Sprd) and live ETH inflow (`txInfluence`) directly each frame — the same numbers that grow the drone — so image and sound move as one. Its accumulated vitality feeds back into `dronedepth` / `dronemix` / `atmospheremix` / `harmonicrich`, deepening the basic drone as the network teems.
 
 Sound, code, and species become parts of the same instrument — read and played simultaneously.
 
@@ -77,7 +78,9 @@ nw_wrld Electron browser  (parliament.html)
        ├─ Slot 6  DynamicOptimality    (p5.js)  → __slot6Soneth          │
        ├─ Slot 7  Geometry             (p5.js)  → __slot7Soneth          │
        ├─ Slot 8  MemoryHierarchy      (p5.js)  → __slot8Soneth          │
-       └─ Slot 9  Hashing              (p5.js)  → __slot9Soneth ─────────┘
+       ├─ Slot 9  Hashing              (p5.js)  → __slot9Soneth          │
+       ├─ Slot P  PhenologicalCalendar (Three.js · fetched module)       │
+       └─ Slot F  Sympoiesis           (Three.js · fetched module) ──────┘
 
 MIDI (Faderfox LC2) ──► SC buses ──► OSC echo ──► bridge ──► browser
 ```
