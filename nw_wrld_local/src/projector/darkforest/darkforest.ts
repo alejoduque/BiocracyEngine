@@ -1,5 +1,5 @@
-// assemblage.ts
-// Loader + bidirectional bridge for the Sympoiesis artist module (switch [F]).
+// darkforest.ts
+// Loader + bidirectional bridge for the DarkForest artist module (switch [F]).
 //
 // Mirrors phenology/breath.ts: the artist authors a standalone ES-module .js
 // under ecosystems/…/modules/. We fetch it, strip its top-level import/export
@@ -7,33 +7,33 @@
 // loadJson injected, and bridge it to the parliament data flow.
 //
 // Synesthetic coupling (the whole point of slot F):
-//   forward  · ETH /eco/* + parliament consensus + vote events  → the assemblage
+//   forward  · ETH /eco/* + parliament consensus + vote events  → DarkForest
 //   surface  · the 5 index.html controls (Master Vol, Pitch Shift, Time Dilat,
 //              Spectral Sh, Spatial Sprd) are read by the module itself each
-//              frame from window.__sonethParams — the same values that drive the
-//              drone — so image and sound move as one.
-//   reverse  · the assemblage's accumulated vitality (ETH throughput) and
-//              coherence flow back into the drone (dronedepth / dronemix /
-//              atmospheremix / harmonicrich), deepening the basic drone sounds.
+//              frame from window.__sonethParams — the same values that drive
+//              the drone — so the dark stack and the sound move as one.
+//   reverse  · the assemblage's vitality (ETH throughput) + coherence flow back
+//              into the drone (dronedepth / dronemix / atmospheremix /
+//              harmonicrich), deepening the basic drone as the network teems.
 
 import * as THREE from "three";
 import { BaseThreeJsModule } from "../helpers/threeBase";
 import { parliamentStore } from "../parliament/parliamentStore";
 
-type AssemblageArg = Record<string, unknown> | undefined;
-type AssemblageInstance = {
-  setMasterVol?: (o?: AssemblageArg) => void;
-  setPitchShift?: (o?: AssemblageArg) => void;
-  setTimeDilation?: (o?: AssemblageArg) => void;
-  setSpectralShift?: (o?: AssemblageArg) => void;
-  setSpatialSpread?: (o?: AssemblageArg) => void;
-  setCoherence?: (o?: AssemblageArg) => void;
-  pulse?: (o?: AssemblageArg) => void;
-  whisper?: (o?: AssemblageArg) => void;
-  triggerCO2?: (o?: AssemblageArg) => void;
-  triggerMycoPulse?: (o?: AssemblageArg) => void;
-  triggerPhosphorus?: (o?: AssemblageArg) => void;
-  triggerNitrogen?: (o?: AssemblageArg) => void;
+type DFArg = Record<string, unknown> | undefined;
+type DarkForestInstance = {
+  setMasterVol?: (o?: DFArg) => void;
+  setPitchShift?: (o?: DFArg) => void;
+  setTimeDilation?: (o?: DFArg) => void;
+  setSpectralShift?: (o?: DFArg) => void;
+  setSpatialSpread?: (o?: DFArg) => void;
+  setCoherence?: (o?: DFArg) => void;
+  pulse?: (o?: DFArg) => void;
+  whisper?: (o?: DFArg) => void;
+  triggerCO2?: (o?: DFArg) => void;
+  triggerMycoPulse?: (o?: DFArg) => void;
+  triggerPhosphorus?: (o?: DFArg) => void;
+  triggerNitrogen?: (o?: DFArg) => void;
   getVitality?: () => number;
   getCoherence?: () => number;
   renderer?: { setSize: (w: number, h: number) => void; getPixelRatio?: () => number };
@@ -41,14 +41,14 @@ type AssemblageInstance = {
   destroy: () => void;
 };
 
-type AssemblageHooks = {
+type DarkForestHooks = {
   applyViz: (key: string, val: number) => void;
   sendOSC: (address: string, value: number) => void;
 };
 
-let _ctor: { new (container: HTMLElement): AssemblageInstance } | null = null;
-let _instance: AssemblageInstance | null = null;
-let _hooks: AssemblageHooks | null = null;
+let _ctor: { new (container: HTMLElement): DarkForestInstance } | null = null;
+let _instance: DarkForestInstance | null = null;
+let _hooks: DarkForestHooks | null = null;
 let _unsubscribeStore: (() => void) | null = null;
 let _ecoTimer: ReturnType<typeof setInterval> | null = null;
 let _voteTimer: ReturnType<typeof setInterval> | null = null;
@@ -59,10 +59,10 @@ let _lastDrone = { depth: -1, mix: -1, atmos: -1, harm: -1 };
 async function ensureConstructor() {
   if (_ctor) return _ctor;
   const res = await fetch(
-    "/ecosystems/default_ecosystem/modules/Sympoiesis.js",
+    "/ecosystems/default_ecosystem/modules/DarkForest.js",
     { cache: "no-cache" }
   );
-  if (!res.ok) throw new Error(`Sympoiesis fetch failed: ${res.status}`);
+  if (!res.ok) throw new Error(`DarkForest fetch failed: ${res.status}`);
   const rawSrc = await res.text();
   const src = rawSrc
     .replace(/^\s*export\s+default\s+\w+\s*;?\s*$/gm, "")
@@ -84,22 +84,22 @@ async function ensureConstructor() {
       "THREE",
       "BaseThreeJsModule",
       "loadJson",
-      `"use strict";\n${src}\n;return Sympoiesis;`
+      `"use strict";\n${src}\n;return DarkForest;`
     );
   } catch (e) {
-    console.error("[assemblage] SyntaxError in Sympoiesis.js:", e);
+    console.error("[darkforest] SyntaxError in DarkForest.js:", e);
     throw e;
   }
   _ctor = factory(THREE, BaseThreeJsModule, loadJsonAtRuntime);
-  if (!_ctor) throw new Error("[assemblage] Sympoiesis constructor came back undefined");
+  if (!_ctor) throw new Error("[darkforest] DarkForest constructor came back undefined");
   return _ctor!;
 }
 
-export async function mountAssemblage(
+export async function mountDarkForest(
   container: HTMLElement,
-  hooks: AssemblageHooks
-): Promise<AssemblageInstance> {
-  destroyAssemblage();
+  hooks: DarkForestHooks
+): Promise<DarkForestInstance> {
+  destroyDarkForest();
   const Ctor = await ensureConstructor();
   _instance = new Ctor(container);
   _hooks = hooks;
@@ -111,7 +111,7 @@ export async function mountAssemblage(
   return _instance;
 }
 
-export function destroyAssemblage() {
+export function destroyDarkForest() {
   if (_ecoTimer) { clearInterval(_ecoTimer); _ecoTimer = null; }
   if (_voteTimer) { clearInterval(_voteTimer); _voteTimer = null; }
   if (_reverseTimer) { clearInterval(_reverseTimer); _reverseTimer = null; }
@@ -124,11 +124,7 @@ export function destroyAssemblage() {
   _hooks = null;
 }
 
-// ─── ETH /eco/* → travelling affects (forward breath) ──────────────────────
-// The eth_sonify pipeline writes /eco/co2 /eco/mycoPulse /eco/phosphorus
-// /eco/nitrogen into parliamentStore — the very signals that grow the drone.
-// We fire the assemblage's affect methods on threshold crossings so every
-// transaction becomes a particle of nutrient/affect travelling the web.
+// ─── ETH /eco/* → data-flow vectors (forward breath) ───────────────────────
 function wireEcoFromStore() {
   let last = { co2: 0, mycoPulse: 0, phosphorus: 0, nitrogen: 0 };
   _ecoTimer = setInterval(() => {
@@ -157,9 +153,6 @@ function wireEcoFromStore() {
 }
 
 // ─── Parliament consensus → web coherence ──────────────────────────────────
-// High consensus draws the assemblage taut and synchronises its breath; low
-// consensus lets it scatter. Subscribing keeps it locked to the same chamber
-// state the audio already tracks.
 function wireConsensusFromStore() {
   let lastSent = -1;
   _unsubscribeStore = parliamentStore.subscribe((state) => {
@@ -171,8 +164,7 @@ function wireConsensusFromStore() {
   });
 }
 
-// ─── Vote events → assemblage pulse ────────────────────────────────────────
-// parliamentEntry publishes window.__voteEvent; we ripple it through the web.
+// ─── Vote events → pulse ───────────────────────────────────────────────────
 function wireForwardVotes() {
   _voteTimer = setInterval(() => {
     if (!_instance || !_instance.pulse) return;
@@ -191,27 +183,16 @@ function wireForwardVotes() {
   }, 90);
 }
 
-// ─── Assemblage vitality → drone depth (reverse breath) ────────────────────
-// The accumulated affect throughput (ETH inflow) and the web's coherence feed
-// back into the basic drone sounds — deepening dronedepth / dronemix /
-// atmospheremix and tilting harmonicrich. These are NOT among the five human
-// controls, so the chamber and the network co-author the drone without fighting
-// the knobs. Image and sound rise and settle together.
+// ─── Vitality → drone depth (reverse breath) ───────────────────────────────
 function startReverseBreath() {
   _reverseTimer = setInterval(() => {
     if (!_instance || !_hooks) return;
     const vit = clamp01(_instance.getVitality?.() ?? 0);
     const coh = clamp01(_instance.getCoherence?.() ?? 0.5);
-
-    const depth = 0.22 + vit * 0.63;        // 0.22 still → 0.85 teeming
-    const mix   = 0.30 + vit * 0.50;        // drone blends forward as life flows
-    const atmos = 0.35 + vit * 0.45;        // space opens with throughput
-    const harm  = 0.30 + coh * 0.45;        // coherence enriches the partials
-
-    pushDrone("dronedepth", depth, "depth");
-    pushDrone("dronemix", mix, "mix");
-    pushDrone("atmospheremix", atmos, "atmos");
-    pushDrone("harmonicrich", harm, "harm");
+    pushDrone("dronedepth", 0.22 + vit * 0.63, "depth");
+    pushDrone("dronemix", 0.30 + vit * 0.50, "mix");
+    pushDrone("atmospheremix", 0.35 + vit * 0.45, "atmos");
+    pushDrone("harmonicrich", 0.30 + coh * 0.45, "harm");
   }, 280);
 }
 

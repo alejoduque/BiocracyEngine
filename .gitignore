@@ -20,3 +20,6 @@ node_modules
 sclang_log.txt
 
 archive/
+
+# Audio captures (large, ephemeral)
+recordings/

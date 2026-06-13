@@ -237,6 +237,27 @@ class ParliamentStore {
       s.events.rotationComplete = true;
     }
 
+    // Live ETH-driven engine signal. SC actually emits /bio/* (see
+    // 5_beat_engine.scd / 6_osc_handlers.scd → ~visualsDest), NOT the /eco/*
+    // and /agent/* the handlers above expect (those have no emitter anywhere).
+    // Without this, Eco Signals telemetry and every ecosystem module's eco
+    // coupling stay starved while the engine is plainly running. Mapped here
+    // so the visuals breathe with real transaction throughput.
+    //   /bio/nutrient  ∝ transactionInfluence (ETH pressure)
+    //   /bio/density   ∝ transaction density
+    //   /bio/consensus ∝ density-derived activity wave
+    else if (address === "/bio/nutrient") {
+      const v = args[0] ?? 0;
+      s.eco.co2 = v * 127;
+      s.eco.mycoPulse = v * 4;
+    } else if (address === "/bio/density") {
+      const v = args[0] ?? 0;
+      s.eco.nitrogen = v * 127;
+      s.eco.phosphorus = v * 100;
+    } else if (address === "/bio/consensus") {
+      if (typeof args[0] === "number") s.consensusWave = args[0];
+    }
+
     this.notify();
   }
 

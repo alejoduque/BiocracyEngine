@@ -471,9 +471,11 @@
         <!-- LEFT PANEL: OSC controls mapped to SC synths -->
         <div id="left-panel">
 
-            <!-- Parliament Controls -->
+            <!-- Parliament Controls — VIZ-only: SC has no handler for
+                 /parliament/rotation or /parliament/consensus. These sliders
+                 move the visualization + browser store, NOT the synths. -->
             <div class="tele-section">
-                <div class="tele-section-title">Parliament → SC</div>
+                <div class="tele-section-title">Parliament → VIZ</div>
                 <div class="ctrl-row">
                     <label>Rotation Spd</label>
                     <input type="range" min="0.1" max="2.0" step="0.05" value="1.0"
@@ -488,21 +490,25 @@
                 </div>
             </div>
 
-            <!-- Acoustic Species Controls (injected by JS from live IUCN data) -->
+            <!-- Acoustic Species Controls (injected by JS from live IUCN data).
+                 VIZ-only: emit /agents/species/activity, which SC does not
+                 handle (SC species sound comes from MIDI /midi/note + ETH). -->
             <div class="tele-section">
-                <div class="tele-section-title">Species Activity → SC</div>
+                <div class="tele-section-title">Species Activity → VIZ</div>
                 <div id="species-activity-ctrl"></div>
             </div>
 
-            <!-- Species Presence (injected by JS from live IUCN data) -->
+            <!-- Species Presence (injected by JS). VIZ-only: /agents/species/presence
+                 has no SC handler. -->
             <div class="tele-section">
-                <div class="tele-section-title">Species Presence → SC</div>
+                <div class="tele-section-title">Species Presence → VIZ</div>
                 <div id="species-presence-ctrl"></div>
             </div>
 
-            <!-- eDNA biodiversity controls (dynamic from IUCN feed) -->
+            <!-- eDNA biodiversity controls (dynamic from IUCN feed). VIZ-only:
+                 /agents/edna/biodiversity has no SC handler. -->
             <div class="tele-section">
-                <div class="tele-section-title">eDNA Biodiversity → SC</div>
+                <div class="tele-section-title">eDNA Biodiversity → VIZ</div>
                 <div id="edna-ctrl-rows"></div><!-- injected by JS -->
             </div>
 
@@ -753,7 +759,7 @@
                 <div id="parliament-stage"></div>
                 <div id="canvas-overlay">
                     <!-- 3D-tracked species labels injected by JS -->
-                    <div id="viz-hint">0–9 · switch viz</div>
+                    <div id="viz-hint">0–9 · P · F · B · switch viz</div>
                     <div id="viz-hud">[0] Parliament of All Things</div>
                 </div>
             </div>
@@ -825,26 +831,14 @@
                 <div id="edna-tele"></div>
             </div>
 
-            <!-- Fungi Networks -->
-            <div class="tele-section">
-                <div class="tele-section-title">Fungi Networks</div>
-                <div id="fungi-tele"></div>
-            </div>
-
-            <!-- AI Core -->
-            <div class="tele-section">
-                <div class="tele-section-title">Gaia AI Core</div>
-                <div class="tele-row">
-                    <span class="lbl">consciousness</span>
-                    <div class="tele-bar-wrap"><div class="tele-bar" id="bar-ai-c" style="width:80%"></div></div>
-                    <span class="val" id="val-ai-c">0.800</span>
-                </div>
-                <div class="tele-row">
-                    <span class="lbl">optimization</span>
-                    <div class="tele-bar-wrap"><div class="tele-bar" id="bar-ai-o" style="width:50%"></div></div>
-                    <span class="val" id="val-ai-o">64</span>
-                </div>
-            </div>
+            <!-- REMOVED (dead — see SLOT_B_AND_INDEX_AUDIT.md):
+                 · "Fungi Networks"  (#fungi-tele, fg-bar-*)
+                 · "Gaia AI Core"    (bar/val-ai-c, bar/val-ai-o)
+                 Both had NO input path: their /agent/fungi/state and
+                 /agent/ai/state feeds have no emitter anywhere in the repo, and
+                 their control sliders were already replaced by the Cámara
+                 Fenológica panels. They only ever displayed frozen defaults.
+                 setBar/setVal null-guard, so the orphaned JS writes are no-ops. -->
 
             <!-- Eco Signals -->
             <div class="tele-section">
@@ -896,7 +890,7 @@
         <span class="phase-clock" id="footer-clock">120.0s / 0.0°</span>
         <span class="sep">│</span>
         <span class="label">SC BRIDGE</span>
-        <span class="label" id="footer-bridge">UDP:57120</span>
+        <span class="label" id="footer-bridge">WS:3334 · UDP:57120</span>
         <span class="sep">│</span>
         <span class="label" id="footer-event" style="color:var(--text-dim)">—</span>
     </div>

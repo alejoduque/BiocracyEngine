@@ -1191,6 +1191,18 @@ async function init() {
     "/soneth/resonantbody": "disp-soneth-resonantbody",
     "/soneth/beatTempo": "disp-soneth-beatTempo",
     "/soneth/txInfluence": "disp-soneth-txInfluence",
+    // Drone / Noise + delay — these reach SC (\opalDrone etc.) but were absent
+    // from this map, so their HTML readout never updated on drag (only on a SC
+    // echo). Mapped now so every sound-altering slider shows its live value.
+    "/soneth/masteramp": "disp-soneth-masteramp",
+    "/soneth/filtercutoff": "disp-soneth-filtercutoff",
+    "/soneth/noiselevel": "disp-soneth-noiselevel",
+    "/soneth/noisefilt": "disp-soneth-noisefilt",
+    "/soneth/dronedepth": "disp-soneth-dronedepth",
+    "/soneth/dronefade": "disp-soneth-dronefade",
+    "/soneth/dronespace": "disp-soneth-dronespace",
+    "/soneth/dronemix": "disp-soneth-dronemix",
+    "/soneth/delayfeedback": "disp-soneth-delayfeedback",
     // Cámara Fenológica (Capítulo VI) — id suffix is the param key (no agent-id)
     "/pheno/activityThreshold": "disp-pheno-activityThreshold",
     "/pheno/windowWidth":       "disp-pheno-windowWidth",
@@ -1199,6 +1211,42 @@ async function init() {
     "/pheno/pulseGain":         "disp-pheno-pulseGain",
     "/pheno/opacityFloor":      "disp-pheno-opacityFloor",
     "/pheno/bancada":           "disp-pheno-bancada",
+  };
+
+  // ─── Replica → instrument macros ───────────────────────────────────────────
+  // The Parliament/Species/eDNA sliders have NO direct SC handler (see
+  // SLOT_B_AND_INDEX_AUDIT.md). Rather than leave them VIZ-only, each one biases
+  // the SC instrument by *driving the conceptually-matching /soneth slider*,
+  // which already reaches SC through the proven browser→bridge→SC path. The
+  // fine-tune /soneth slider visibly moves too, so the macro stays legible — a
+  // parliament-level control sitting above the raw synth knobs.
+  function driveSonethSlider(key: string, v01: number) {
+    const v = Math.max(0, Math.min(1, v01));
+    const target = document.querySelector<HTMLInputElement>(
+      `input[type='range'][data-osc='/soneth/${key}']`
+    );
+    if (!target) return;
+    target.value = String(v);
+    // Reuse the target's own wired handler: sends OSC→SC, updates display,
+    // patches the store, applies to the active viz. No new code path.
+    target.dispatchEvent(new Event("input"));
+  }
+
+  const REPLICA_MACROS: Record<string, (v: number) => void> = {
+    // Rotation of the assembly = the cyclical cadence → beat tempo.
+    // (slider range is 0.1–2.0; normalise to 0–1 for the beatTempo fader)
+    "/parliament/rotation": (v) => driveSonethSlider("beatTempo", (v - 0.1) / 1.9),
+    // Consensus = harmonic resolution: fuller harmonics + a quieter noise floor.
+    "/parliament/consensus": (v) => {
+      driveSonethSlider("harmonicrich", 0.35 + v * 0.5);
+      driveSonethSlider("noiselevel", 0.45 * (1 - v));
+    },
+    // Species activity = liveliness → granular texture density.
+    "/agents/species/activity": (v) => driveSonethSlider("texturedepth", v),
+    // Species presence = being-there → enveloping atmosphere / spatial bloom.
+    "/agents/species/presence": (v) => driveSonethSlider("atmospheremix", 0.2 + v * 0.6),
+    // eDNA biodiversity = spectral richness → filter opens, brighter spectrum.
+    "/agents/edna/biodiversity": (v) => driveSonethSlider("spectralshift", 0.25 + v * 0.6),
   };
 
   function wireSlider(slider: HTMLInputElement) {
@@ -1224,6 +1272,11 @@ async function init() {
 
       // 2. Patch local store immediately for instant visual feedback
       patchStoreFromSlider(addr, id, v);
+
+      // 3. If this is a parliament/agent replica (no direct SC handler), bias
+      //    the instrument via its conceptually-matching /soneth slider.
+      const macro = REPLICA_MACROS[addr];
+      if (macro) macro(v);
     });
   }
 

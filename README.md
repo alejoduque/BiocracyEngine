@@ -23,7 +23,7 @@ The instrument couples three nominally-distinct domains into a single feedback l
 - **Blockchain** — live Ethereum transaction flow (`eth_sonify.py`) drives beat density, CO₂/myco/nutrient overlays, and consensus modulation.
 - **Parliament** — voting events (pass / fail / emergency / trigger) pulse the visuals and modulate consensus brightness across all slots.
 - **Ecology** — the Phenological Calendar (slot P) reads the IUCN Red List and a 572-species inventory from Reserva Manakai (Planeta Rica, Córdoba, Colombia); its current day-of-year and active-species fraction feed `harmonicrich` and `texturedepth` back into the SuperCollider audio engine.
-- **Assemblage** — *Sympoiesis* (slot **F**) is the poetic reverse of the calendar: a full-3D deep-ecological assemblage of concept-monads, living mycorrhizal filaments, and travelling affects (carbon, fósforo, nitrógeno) with poetic text that surfaces and fades. It reads the five performance controls (Master Vol, Pitch Shift, Time Dilat, Spectral Sh, Spatial Sprd) and live ETH inflow (`txInfluence`) directly each frame — the same numbers that grow the drone — so image and sound move as one. Its accumulated vitality feeds back into `dronedepth` / `dronemix` / `atmospheremix` / `harmonicrich`, deepening the basic drone as the network teems.
+- **DarkForest** (slot **F**) — a dark, technical *data-viz interface* to the carbon/bio/natural world, the counterpart to the calendar. The tropical dry forest is read as a legible vertical **stack of strata** (a Humboldt *Naturgemälde*: atmosphere → canopy → understory → litter → mycorrhizal net), over a topographic wire-terrain, with vectorized bs-T species glyphs (Ceiba, Saguinus oedipus, Crax alberti, Atta cephalotes, Glomus…). **Data-flow vectors** (photosynthesis, mycorrhiza C↔N·P, pollination, seed dispersal, decomposition, predation) draw on, arrow, and fade as time passes. Three monospace/8-bit text surfaces — a live-typing terminal log, a flickering NYT *Moveable Type* data grid that appears/disappears with the network pulse, and a bottom ticker crawl. The viewer can orbit/zoom freely (camera is theirs; data is the forest's). The five controls (Master Vol, Pitch Shift → stratum focus, Time Dilat → flow/typing speed, Spectral Sh → palette temperature, Spatial Sprd → stack spread) and live ETH `txInfluence` are read each frame — the same numbers that grow the drone — and accumulated vitality feeds back into `dronedepth` / `dronemix` / `atmospheremix` / `harmonicrich`.
 
 Sound, code, and species become parts of the same instrument — read and played simultaneously.
 
@@ -80,9 +80,11 @@ nw_wrld Electron browser  (parliament.html)
        ├─ Slot 8  MemoryHierarchy      (p5.js)  → __slot8Soneth          │
        ├─ Slot 9  Hashing              (p5.js)  → __slot9Soneth          │
        ├─ Slot P  PhenologicalCalendar (Three.js · fetched module)       │
-       └─ Slot F  Sympoiesis           (Three.js · fetched module) ──────┘
+       ├─ Slot F  DarkForest           (Three.js · fetched module)       │
+       └─ Slot B  Transito             (Three.js · fetched module) ──────┘
+                  └─ reverse: throughput → /soneth/drone* → bridge → SC
 
-MIDI (Faderfox LC2) ──► SC buses ──► OSC echo ──► bridge ──► browser
+MIDI (Faderfox Micromodul LC2) ──► SC buses ──► OSC echo ──► bridge ──► browser
 ```
 
 ### Bidirectional Feedback Loop
@@ -101,6 +103,51 @@ MIDI CC ────► SC bus ──► SC GUI knob (visual update)
 SC GUI knob ► SC bus ──► OSC echo ──► HTML slider (position sync)
                                  └──► applySonethToViz (10 slots)
 ```
+
+### Apps, ports & roles
+
+Four processes are launched by `start_ecosystem.sh`:
+
+| App | Process | Ports | Role |
+|---|---|---|---|
+| **Python ETH** | `eth_sonify.py` (venv) | → UDP **57120** | web3 scraper; maps each tx value→note/velocity |
+| **SuperCollider** | `sclang start_sonification.scd` | in **57120** (OSC) + **MIDI**; out **3333**; scsynth **57110** | audio engine, GUI, beat engine, drone |
+| **Bridge** | `parliament-bridge.js` (Node) | in UDP **3333**; WS **3334**; out UDP **57120**; HTTP **3335** `/diag` | OSC ↔ WebSocket, path translation |
+| **Browser** | webpack-dev-server + Electron | HTTP **9001**; WS **3334** | parliament.html, store, 12 viz slots |
+
+### The four data flows (verified against source)
+
+**1 · Python ETH → SuperCollider** (the base drone)
+`eth_sonify.py` → OSC `/eth/tx_info` then `/eth/note` → **SC:57120** → `~handleTransaction` (`6_osc_handlers.scd`) → notes + a `transactionInfluence` bump → `\opalDrone` + beat engine. *This ETH inflow is the shared drone every slot hears.*
+
+**2 · MIDI (Faderfox Micromodul LC2) → SuperCollider → Browser**
+Hardware CC `0–9, 32–41` → `MIDIdef.cc` handlers (`2_midi_control.scd`) → set `~buses[*]` / `~beatParams` (audio changes) **and** broadcast the normalised value as OSC `/soneth/<param>` → `~visualsDest` **UDP:3333** → bridge → **WS:3334** → browser (sliders + visuals follow the knobs).
+
+**3 · Browser → SuperCollider** (sliders, buttons, module reverse-push)
+HTML `input` → `sendOSC` → WS `{direction:"toSC"}` → bridge → OSC **UDP:57120** → SC handlers (`~oscToParamMap` + bespoke `beatTempo`/`txInfluence`/`vote`/`emergency`). Namespaces that reach SC: `/soneth/*`, `/pheno/*`, `/parliament/{start,stop,vote,emergency,fx/*}`. The Parliament/Species/eDNA "replica" sliders have no direct SC handler, so they bias the instrument through the matching `/soneth/*` fader (`REPLICA_MACROS`, `parliamentEntry.ts`). Slots F and B push `/soneth/drone{depth,mix,fade,space}` back from their throughput — modulating the same `\opalDrone`.
+
+**4 · SuperCollider → Browser** (telemetry + sync)
+`~visualsDest.sendMsg` (`= 127.0.0.1:3333`) → bridge → WS:3334 → browser. Addresses SC actually emits:
+- `/soneth/*` — MIDI/GUI echoes → HTML slider sync + `applySonethToViz`.
+- `/bio/{nutrient,consensus,density}` — **live ETH-driven engine signal**; the bridge also translates these to `/ch/update*` for SDK-sandbox modules, and `parliamentStore` maps them → `eco.*` + `consensusWave` (feeds Eco Signals + every module's eco-coupling, incl. Transito's voice bursts).
+- `/pheno/*`, `/parliament/{vote,emergency}/sonic` — calendar + event echoes.
+
+> Note: `parliamentStore` also listens for `/eco/*` and `/agent/*`, but **nothing emits those** — the live signal arrives as `/bio/*` (mapped in `parliamentStore.applyOSC`). Telemetry sections with no source were removed (see `SLOT_B_AND_INDEX_AUDIT.md`).
+
+### Remapping data flow — where to edit
+
+To remap a signal, edit the table that owns that hop:
+
+| Want to remap… | Edit | Structure |
+|---|---|---|
+| MIDI CC → SC param | `2_midi_control.scd` | `MIDIdef.cc` CC numbers |
+| OSC path → SC bus/param + range | `6_osc_handlers.scd` | `~oscToParamMap` + the `switch` ranges |
+| SC path → browser-module method | `parliament-bridge.js` | `SC_TO_CH` |
+| incoming OSC → browser state | `parliament/parliamentStore.ts` | `applyOSC` |
+| slider → display + macro target | `parliamentEntry.ts` | `SLIDER_DISP_PREFIX`, `REPLICA_MACROS` |
+| module forward/reverse coupling | `darkforest/darkforest.ts`, `btransito/btransito.ts` | `wireEco*`, `startReverseBreath` |
+
+All four processes are localhost-only; the OSC namespace (`/soneth`, `/pheno`, `/parliament`, `/bio`, `/agent`, `/eth`) is the contract between them.
 
 ---
 

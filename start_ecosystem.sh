@@ -69,7 +69,9 @@ pkill -9 -f "webpack-dev-server" 2>/dev/null
 pkill -9 -f "eth_sonify\.py" 2>/dev/null
 
 # Liberar puertos específicos del ecosistema por si quedaron huérfanos
-for PORT in 57110 57120 3333 3334 9001; do
+#   3335 = endpoint DIAG del bridge (http.createServer) — si un bridge colgado
+#   lo retiene, el nuevo bridge falla al re-bindear y los sliders no llegan a SC.
+for PORT in 57110 57120 3333 3334 3335 9001; do
     lsof -ti:"$PORT" | xargs kill -9 2>/dev/null
 done
 echo "   Listo. Esperando que los puertos se liberen..."
@@ -153,8 +155,24 @@ echo ">> Paso 1.5: Iniciando puente Parliament OSC→WebSocket..."
 BRIDGE_PID=$!
 echo "   Puente OSC (UDP:3333) → WebSocket (WS:3334) activo (PID: $BRIDGE_PID)"
 
-# Darle un instante al bridge para abrir sus puertos
-sleep 1
+# ── Health check del bridge: pollear el endpoint DIAG (puerto 3335) ─────────
+# Si el bridge no levanta (p.ej. puerto ocupado), TODO slider→SC y la telemetría
+# SC→browser se caen en silencio. Mejor detectarlo aquí que descubrir "los
+# sliders no suenan" más tarde.
+echo "   Esperando bridge (endpoint DIAG http://localhost:3335/diag)..."
+BRIDGE_OK=0
+for i in {1..20}; do
+    if curl -sf -o /dev/null http://localhost:3335/diag 2>/dev/null; then
+        BRIDGE_OK=1
+        echo "   ✓ bridge respondiendo (después de $((i * 5))00ms)."
+        break
+    fi
+    sleep 0.5
+done
+if [ "$BRIDGE_OK" -eq 0 ]; then
+    echo "   ⚠ bridge no respondió en :3335 — los sliders pueden no llegar a SC."
+    echo "     Revisa que el puerto 3334/3335 estén libres y mira la consola del bridge."
+fi
 
 # 2. Levantar Motor SuperCollider (Con GUI de Control)
 echo ""
