@@ -26,8 +26,15 @@ type PhenoInstance = {
   setOpacityFloor?: (opts?: PhenoMethodArg) => void;
   setBancada?: (opts?: PhenoMethodArg) => void;
   jumpSeason?: (opts?: PhenoMethodArg) => void;
+  getActiveSpecies?: () => {
+    sci: string; taxon: string; sensitive: boolean; peakDay: number;
+    ring?: { ang: number; r: number };
+  } | null;
   destroy: () => void;
 };
+
+// taxon → stable index for the numeric /bio/species/active signal
+const PHENO_TAXA = ["flora", "amphibians", "reptiles", "mammals", "birds"];
 
 type BreathHooks = {
   applyViz: (key: string, val: number) => void;
@@ -41,6 +48,7 @@ let _voteListenerWired = false;
 let _reverseTimer: ReturnType<typeof setInterval> | null = null;
 let _lastSentHarmonic = -1;
 let _lastSentTexture = -1;
+let _lastEmittedSpecies = "";
 
 async function ensureConstructor() {
   if (_ctor) return _ctor;
@@ -329,12 +337,26 @@ function startReverseBreath() {
     if (Math.abs(harmonic - _lastSentHarmonic) > 0.01) {
       _lastSentHarmonic = harmonic;
       _hooks.applyViz("harmonicrich", harmonic);
-      _hooks.sendOSC("/control/harmonicrich", harmonic);
+      _hooks.sendOSC("/soneth/harmonicrich", harmonic); // SC handles /soneth/*, not /control/*
     }
     if (Math.abs(texture - _lastSentTexture) > 0.01) {
       _lastSentTexture = texture;
       _hooks.applyViz("texturedepth", texture);
-      _hooks.sendOSC("/control/texturedepth", texture);
+      _hooks.sendOSC("/soneth/texturedepth", texture);
+    }
+
+    // Active-species output: the calendar names the being in deepest peak today.
+    // The module already opacified sensitive ones + published the rich object on
+    // window.__activeSpecies (the forest-projection / ILDA hook). Here we mirror
+    // a bridge-safe NUMERIC signal so SC / a future laser bridge can react:
+    //   /bio/species/active  = taxon index (0..4)
+    //   /bio/species/veiled  = 1 if the active species is opacity-shielded
+    const active = _instance.getActiveSpecies?.();
+    if (active && active.sci !== _lastEmittedSpecies) {
+      _lastEmittedSpecies = active.sci;
+      const taxonIdx = Math.max(0, PHENO_TAXA.indexOf(active.taxon));
+      _hooks.sendOSC("/bio/species/active", taxonIdx);
+      _hooks.sendOSC("/bio/species/veiled", active.sensitive ? 1 : 0);
     }
   }, 320);
 }
@@ -346,6 +368,7 @@ function stopReverseBreath() {
   }
   _lastSentHarmonic = -1;
   _lastSentTexture = -1;
+  _lastEmittedSpecies = "";
 }
 
 function dayOfYearToday(): number {

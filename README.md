@@ -114,6 +114,7 @@ Four processes are launched by `start_ecosystem.sh`:
 | **SuperCollider** | `sclang start_sonification.scd` | in **57120** (OSC) + **MIDI**; out **3333**; scsynth **57110** | audio engine, GUI, beat engine, drone |
 | **Bridge** | `parliament-bridge.js` (Node) | in UDP **3333**; WS **3334**; out UDP **57120**; HTTP **3335** `/diag` | OSC ↔ WebSocket, path translation |
 | **Browser** | webpack-dev-server + Electron | HTTP **9001**; WS **3334** | parliament.html, store, 12 viz slots |
+| **Laser** _(opt)_ | `laser-bridge.js` (Node, `LASER=1`) | WS **3337** in; USB → Helios DAC | vector frames → ILDA / laser onto the forest |
 
 ### The four data flows (verified against source)
 
@@ -147,7 +148,70 @@ To remap a signal, edit the table that owns that hop:
 | slider → display + macro target | `parliamentEntry.ts` | `SLIDER_DISP_PREFIX`, `REPLICA_MACROS` |
 | module forward/reverse coupling | `darkforest/darkforest.ts`, `btransito/btransito.ts` | `wireEco*`, `startReverseBreath` |
 
-All four processes are localhost-only; the OSC namespace (`/soneth`, `/pheno`, `/parliament`, `/bio`, `/agent`, `/eth`) is the contract between them.
+All processes are localhost-only; the OSC namespace (`/soneth`, `/pheno`, `/parliament`, `/bio`, `/agent`, `/eth`) is the contract between them.
+
+---
+
+## Laser projection (ILDA / Helios DAC)
+
+Projects the engine's **vector** geometry onto a real-world forest. Lasers draw
+sparse bright strokes (not rasterised images), so the browser sends a small
+laser-friendly scene — not the 3-D framebuffer.
+
+```
+browser laserTap ──WS:3337──► laser-bridge.js ──USB──► Helios DAC ──► laser
+                                     └──────────────► frames.ild (ILDA fmt 5)
+```
+
+**Enable:** `LASER=1 ./start_ecosystem.sh` (off by default). With no DAC and no
+native binding it runs **DRY** (logs only) — safe to start anywhere.
+
+**Frame contract** (browser → bridge): normalised, centre `(0,0)`, `x,y ∈ −1..1`.
+```json
+{ "type":"laserFrame", "pps":30000,
+  "points":[ {"x":-0.8,"y":0.0,"r":0,"g":200,"b":90,"blank":false}, … ] }
+```
+The bridge clamps every value, converts to the Helios 12-bit field (`0..4095`)
+and to ILDA signed-16, then streams.
+
+**Frame source** (`src/projector/laserTap.ts`, started by `parliamentEntry.init`):
+1. `window.__laserFrame` — any module may publish its own vector scene.
+2. **slot-P default** — the phenological **year-ring** + a marker at today's
+   active species (`window.__activeSpecies`). A **sensitive** species is *not*
+   drawn: the opacity clause (Glissant) extended into physical space — the
+   vulnerable being is never cast onto the real forest.
+
+**Backends** (`laser-bridge.js`, both optional & independent):
+- **Helios DAC** — the official SDK ([Grix/helios_dac](https://github.com/Grix/helios_dac))
+  is C/C++ with a flat C wrapper (`HeliosDacAPI`). The bridge calls it directly via
+  **koffi** FFI (no node-gyp), packing the real `HeliosPoint` layout
+  (`uint16 x,y; uint8 r,g,b,i`) and gating writes on `GetStatus()`. Setup (macOS):
+  ```bash
+  brew install libusb                       # Helios needs libusb-1.0
+  git clone https://github.com/Grix/helios_dac && cd helios_dac
+  # build the C API shared library → libHeliosDacAPI.dylib
+  #   (use the repo's build; or, roughly:)
+  clang++ -std=c++11 -shared -fPIC -o libHeliosDacAPI.dylib \
+      sdk/HeliosDac.cpp sdk/HeliosDacAPI.cpp \
+      -I"$(brew --prefix libusb)/include/libusb-1.0" \
+      -L"$(brew --prefix libusb)/lib" -lusb-1.0
+  cd ../BiocracyEngine/nw_wrld_local && npm install koffi
+  LASER=1 HELIOS_LIB=/abs/path/libHeliosDacAPI.dylib ./start_ecosystem.sh
+  ```
+  (Linux: `.so` + the repo's udev rules; Windows: `HeliosDacAPI.dll`.) Missing
+  koffi / lib / device → DRY RUN. The C-API binding is isolated in `initHelios()`.
+- **ILDA file** — `LASER_ILD_OUT=/path/frames.ild` captures frames as standard
+  ILDA Format-5 (2D true-colour), playable by any laser software.
+
+**Env:** `LASER_TEST=1` (test circle for hardware bring-up, no browser needed),
+`LASER_DRYRUN=1`, `LASER_PPS` (30000), `LASER_MAX_POINTS` (1200), `LASER_WS_PORT`
+(3337), `LASER_ILD_OUT`.
+
+**Safety:** dead-man blanking (no frame for 500 ms → laser goes dark, never parks
+a static bright dot), per-point clamping, and a blank frame on shutdown.
+
+Slot P also emits a bridge-safe numeric signal for SC / a future laser logic:
+`/bio/species/active` (taxon index) and `/bio/species/veiled` (1 = shielded).
 
 ---
 

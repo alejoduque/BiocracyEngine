@@ -1683,6 +1683,8 @@ class PhenologicalCalendar extends BaseThreeJsModule {
         let activeCounts = { flora: 0, amphibians: 0, reptiles: 0, mammals: 0, birds: 0 };
         let topActivity = -1;
         let topRecord = null;
+        let topActivityAll = -1;   // dominant active species today, ignoring focus
+        let topRecordAll = null;   // (used for the active-species emission)
 
         const _obj = (this._tmpObj3D ||= new THREE.Object3D());
         const _col = (this._tmpColor ||= new THREE.Color());
@@ -1725,9 +1727,21 @@ class PhenologicalCalendar extends BaseThreeJsModule {
                     const ghost = 0.08 * absW * (0.5 + 0.5 * ditherPhase);
                     lift = Math.max(lift, ghost);
                 }
+
+                // Cláusula de opacidad (Art. 47 §, Glissant): vulnerable species
+                // are VEILED — never fully bright, and they shimmer in place so
+                // their position reads as withheld rather than fixed/extractable.
+                let px = r.x, py = r.y, pz = r.z;
+                if (this._isSensitive(s)) {
+                    const ph = this._hash01(s.sci) * 10;
+                    const n = 0.02 * Math.sin(this._t * 3.2 + ph) * activity;
+                    px += Math.cos(ph) * n; py += Math.sin(ph) * n;
+                    pz += Math.sin(this._t * 2 + ph) * 0.012 * activity;
+                    lift *= 0.45 + 0.25 * ditherPhase; // veiled luminance
+                }
                 _col.setRGB(lift, lift, lift);
 
-                _obj.position.set(r.x, r.y, r.z);
+                _obj.position.set(px, py, pz);
                 _obj.scale.setScalar(scale);
                 _obj.updateMatrix();
                 inst.setMatrixAt(r.idx, _obj.matrix);
@@ -1739,13 +1753,62 @@ class PhenologicalCalendar extends BaseThreeJsModule {
                     topActivity = activity;
                     topRecord = s;
                 }
+                if (activity > topActivityAll) {
+                    topActivityAll = activity;
+                    topRecordAll = s;
+                }
             }
             inst.instanceMatrix.needsUpdate = true;
             if (inst.instanceColor) inst.instanceColor.needsUpdate = true;
         }
         this._activeCounts = activeCounts;
         this._highlightSpecies = topRecord;
+        this._activeSpeciesRec = topRecordAll;
+        this._emitActiveSpecies();
     }
+
+    // ── Opacity clause + active-species output (Cap. VI · Glissant) ──────────
+    // A vulnerable species is shielded from the registry: orchids/zamias (prized,
+    // poached), amphibians (locality-sensitive), plus a deterministic 15% reserve.
+    _isSensitive(s) {
+        if (!s) return false;
+        const fam = (s.family || "").toLowerCase();
+        const isOrchidOrZamia = fam === "orchidaceae" || fam === "zamiaceae";
+        const isAmphibian = s.taxon === "amphibians";
+        const isHashSensitive = this._hash01(s.sci + "|sensitive") < 0.15;
+        return isOrchidOrZamia || isAmphibian || isHashSensitive;
+    }
+
+    // Publish the species in deepest peak today as the calendar's OUTPUT —
+    // presence/absence as a fact with deliberative weight (the Cámara Fenológica
+    // inscribes, it does not ventriloquize). Sensitive species are opacified
+    // before they leave the module. window.__activeSpecies is the cross-module +
+    // forest-projection / ILDA hook (carries normalized ring coords); the loader
+    // (breath.ts) mirrors a bridge-safe numeric signal to /bio/species/active.
+    _emitActiveSpecies() {
+        const s = this._activeSpeciesRec;
+        if (!s) return;
+        if (this._lastEmittedSci === s.sci) return;
+        this._lastEmittedSci = s.sci;
+        const sensitive = this._isSensitive(s);
+        const pos = this._ringPosOf(s);
+        const obj = {
+            sci: sensitive ? "Sp. * (Vulnerable)" : s.sci,
+            common: sensitive ? "Protegida" : (s.common || null),
+            taxon: s.taxon,
+            family: sensitive ? null : (s.family || null),
+            peakDay: s.peakDay, day: this.day, sensitive,
+            // normalized ring coordinates — seed for the projection / ILDA consumer
+            ring: { ang: pos.ang, r: pos.r, x: pos.x, y: pos.y, z: pos.z },
+            t: Date.now() / 1000,
+        };
+        this._activeSpeciesOut = obj;
+        try { if (typeof window !== "undefined") window.__activeSpecies = obj; } catch (e) { /* ignore */ }
+    }
+
+    // Read by breath.ts (numeric OSC emission) and by other slots / future
+    // projection consumers. Returns the opacified active-species object or null.
+    getActiveSpecies() { return this._activeSpeciesOut || null; }
 
     // ──────────────────────────────────────────────────────────────────
     // HUD — HTML column layout (after CodeColumns).

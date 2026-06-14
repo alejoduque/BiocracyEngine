@@ -10,6 +10,7 @@ import {
   jumpToPhenoSeason,
 } from "./phenology/breath";
 import { initSwitcher, getActiveThreeStage, updateSpeciesRoster } from "./visualizationSwitcher";
+import { initLaserTap } from "./laserTap";
 import { fetchSpeciesRoster, computeIUCNMults } from "./speciesFetcher";
 import * as THREE from "three";
 
@@ -548,6 +549,12 @@ async function init() {
   // Keys 0–9 swap center stage. Left/right panels + spectrogram stay.
   // getActiveThreeStage() returns the live ParliamentStage when slot 0 is active.
   initSwitcher(container, hudEl!, () => currentState);
+
+  // ─── Laser projection feed (ILDA / Helios DAC via laser-bridge:3337) ──────
+  // Streams the active module's vector scene (default: slot-P year-ring +
+  // active-species marker) to the forest laser. No-op + quiet retry if the
+  // laser-bridge isn't running, so it's safe to always start.
+  initLaserTap();
 
   // ─── Build eDNA control rows ───
   const ednaCtrlRows = document.getElementById("edna-ctrl-rows");

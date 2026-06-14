@@ -43,6 +43,7 @@ type TransitoInstance = {
   getThroughput?: () => number;
   getVitality?: () => number;
   getCoherence?: () => number;
+  getOpacityLoad?: () => number;
   renderer?: { setSize: (w: number, h: number) => void; getPixelRatio?: () => number };
   camera?: { aspect: number; updateProjectionMatrix: () => void };
   destroy: () => void;
@@ -191,30 +192,56 @@ function wireForwardVotes() {
 }
 
 // ─── Throughput → drone family (reverse breath — THE PROOF) ────────────────
+// Routed through the Overlap-Buffer logic: simulate the proposed drone, apply
+// the opacity clause (the retained fraction must not fully inscribe to sound),
+// and HOLD a large change while consensus is low (simulate-before-execute). The
+// committed values + veil + held flag are mirrored to window.__transitoDrone so
+// the module HUD shows the gate working.
+let _lastProposed = { depth: 0, mix: 0, fade: 0, space: 0 };
 function startReverseBreath() {
   _reverseTimer = setInterval(() => {
     if (!_instance || !_hooks) return;
     const thr = clamp01(_instance.getThroughput?.() ?? _instance.getVitality?.() ?? 0);
     const coh = clamp01(_instance.getCoherence?.() ?? 0.5);
+    const opacityLoad = clamp01(_instance.getOpacityLoad?.() ?? 0);
     let spread = 0.5;
     try {
       const sp = (window as unknown as { __sonethParams?: { spatialspread?: number } }).__sonethParams;
       if (sp && typeof sp.spatialspread === "number") spread = clamp01(sp.spatialspread);
     } catch { /* ignore */ }
 
-    const depth = 0.22 + thr * 0.63;
-    const mix = 0.30 + thr * 0.50;
-    const fade = 0.30 + coh * 0.45;
-    const space = 0.30 + spread * 0.45;
+    // 1 · simulate the proposed drone from the machine's state
+    const proposed = {
+      depth: 0.22 + thr * 0.63,
+      mix: 0.30 + thr * 0.50,
+      fade: 0.30 + coh * 0.45,
+      space: 0.30 + spread * 0.45,
+    };
 
-    pushDrone("dronedepth", depth, "depth");
-    pushDrone("dronemix", mix, "mix");
-    pushDrone("dronefade", fade, "fade");
-    pushDrone("dronespace", space, "space");
+    // 2 · opacity clause on output — the veiled/retained fraction does not sound
+    const veil = 1 - opacityLoad * 0.6; // up to −60% when fully retained
 
-    // Mirror the pushed values so the module HUD can print the proof.
-    (window as unknown as { __transitoDrone?: Record<string, number> }).__transitoDrone =
-      { depth, mix, fade, space };
+    // 3 · deliberation gate — a large jump without consensus is held this tick
+    //     (the event waits in the buffer instead of being executed unilaterally)
+    const jump = Math.max(
+      Math.abs(proposed.depth - _lastProposed.depth),
+      Math.abs(proposed.mix - _lastProposed.mix),
+    );
+    const held = jump > 0.25 && coh < 0.30;
+    _lastProposed = proposed;
+
+    if (!held) {
+      pushDrone("dronedepth", proposed.depth * veil, "depth");
+      pushDrone("dronemix", proposed.mix * veil, "mix");
+      pushDrone("dronefade", proposed.fade, "fade");
+      pushDrone("dronespace", proposed.space, "space");
+    }
+
+    // Mirror committed values + gate state for the HUD proof.
+    (window as unknown as { __transitoDrone?: Record<string, number | boolean> }).__transitoDrone = {
+      depth: proposed.depth * veil, mix: proposed.mix * veil,
+      fade: proposed.fade, space: proposed.space, veil, held,
+    };
   }, 280);
 }
 

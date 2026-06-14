@@ -57,6 +57,7 @@ echo ">> Limpiando procesos anteriores del ecosistema..."
 pkill sclang 2>/dev/null
 pkill scsynth 2>/dev/null
 pkill -f "parliament-bridge\.js" 2>/dev/null
+pkill -f "laser-bridge\.js" 2>/dev/null
 pkill -f "webpack-dev-server" 2>/dev/null   # nw_wrld_local npm run serve
 pkill -f "eth_sonify\.py" 2>/dev/null
 sleep 0.5
@@ -65,13 +66,14 @@ sleep 0.5
 pkill -9 sclang 2>/dev/null
 pkill -9 scsynth 2>/dev/null
 pkill -9 -f "parliament-bridge\.js" 2>/dev/null
+pkill -9 -f "laser-bridge\.js" 2>/dev/null
 pkill -9 -f "webpack-dev-server" 2>/dev/null
 pkill -9 -f "eth_sonify\.py" 2>/dev/null
 
 # Liberar puertos específicos del ecosistema por si quedaron huérfanos
-#   3335 = endpoint DIAG del bridge (http.createServer) — si un bridge colgado
-#   lo retiene, el nuevo bridge falla al re-bindear y los sliders no llegan a SC.
-for PORT in 57110 57120 3333 3334 3335 9001; do
+#   3335 = endpoint DIAG del bridge; 3337 = laser-bridge WS in. Un proceso
+#   colgado que retenga el puerto impide re-bindear al relanzar.
+for PORT in 57110 57120 3333 3334 3335 3337 9001; do
     lsof -ti:"$PORT" | xargs kill -9 2>/dev/null
 done
 echo "   Listo. Esperando que los puertos se liberen..."
@@ -99,13 +101,14 @@ run_unbuffered() {
 NW_PID=""
 BRIDGE_PID=""
 SC_PID=""
+LASER_PID=""
 
 cleanup() {
     echo ""
     echo "=============================================="
     echo "    CERRANDO ECOSISTEMA TRES-PARTES..."
     echo "=============================================="
-    for pid in $NW_PID $BRIDGE_PID $SC_PID; do
+    for pid in $NW_PID $BRIDGE_PID $SC_PID $LASER_PID; do
         if [ -n "$pid" ] && kill -0 "$pid" 2>/dev/null; then
             kill "$pid" 2>/dev/null
         fi
@@ -115,6 +118,7 @@ cleanup() {
     pkill sclang 2>/dev/null
     pkill scsynth 2>/dev/null
     pkill -f "parliament-bridge\.js" 2>/dev/null
+    pkill -f "laser-bridge\.js" 2>/dev/null
     pkill -f "webpack-dev-server" 2>/dev/null
     pkill -f "eth_sonify\.py" 2>/dev/null
     rm -f "$LOCKFILE"
@@ -172,6 +176,20 @@ done
 if [ "$BRIDGE_OK" -eq 0 ]; then
     echo "   ⚠ bridge no respondió en :3335 — los sliders pueden no llegar a SC."
     echo "     Revisa que el puerto 3334/3335 estén libres y mira la consola del bridge."
+fi
+
+# 1.6 OPCIONAL: puente láser (ILDA / Helios DAC) — solo si LASER=1.
+# Sin DAC ni binding nativo corre en DRY RUN (sólo logs), así que es inofensivo;
+# por defecto NO se lanza para no abrir el WS:3337 si no hay láser en uso.
+#   LASER=1            → lanza el puente
+#   LASER_TEST=1       → emite un círculo de prueba (bring-up sin navegador)
+#   LASER_ILD_OUT=...  → captura frames a un archivo ILDA .ild
+if [ "$LASER" = "1" ]; then
+    echo ""
+    echo ">> Paso 1.6: Iniciando puente láser (ILDA / Helios DAC)..."
+    ( cd "$SCRIPT_DIR/nw_wrld_local" && node laser-bridge.js ) &
+    LASER_PID=$!
+    echo "   laser-bridge WS:3337 (PID: $LASER_PID). DAC: Helios si está presente, si no DRY RUN."
 fi
 
 # 2. Levantar Motor SuperCollider (Con GUI de Control)

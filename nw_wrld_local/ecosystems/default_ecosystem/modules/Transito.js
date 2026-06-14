@@ -118,6 +118,9 @@ class Transito extends BaseThreeJsModule {
     this.voices = [];
     this.inscribedCount = 0;
     this.opaqueCount = 0;
+    this._opaqueRate = 0;       // decaying counters of recent arrivals…
+    this._inscribeRate = 0;     // …their ratio = how much is being retained
+    this.opacityLoad = 0.0;     // 0..1 eased — fraction retained (veil pressure)
     this.throughput = 0.0;      // 0..1 eased — drives the drone push
     this._throughputPulse = 0;  // decays; bumped on each inscription
     this._spawnAccum = 0;
@@ -596,13 +599,21 @@ class Transito extends BaseThreeJsModule {
       `consenso  ${bar(this.coherence)} ${this.coherence.toFixed(2)}`,
       `en tránsito ${String(transit).padStart(2, "0")}  inscritas ${String(this.inscribedCount).padStart(3, "0")}`,
       `opacas    ${String(this.opaqueCount).padStart(3, "0")}  flujo ${this.throughput.toFixed(2)}`,
+      `opacidad  ${bar(this.opacityLoad)} ${this.opacityLoad.toFixed(2)}`,
       "—",
       "DRONE ← tránsito  →SC /soneth/*",
     ];
     if (d) {
-      lines.push(`depth ${bar(d.depth)} ${d.depth.toFixed(2)}`);
-      lines.push(`mix   ${bar(d.mix)} ${d.mix.toFixed(2)}`);
-      lines.push(`fade  ${bar(d.fade)} ${d.fade.toFixed(2)}`);
+      if (d.held) {
+        lines.push("⟂ retenido — deliberación (overlap buffer)");
+      } else {
+        lines.push(`depth ${bar(d.depth)} ${d.depth.toFixed(2)}`);
+        lines.push(`mix   ${bar(d.mix)} ${d.mix.toFixed(2)}`);
+        lines.push(`fade  ${bar(d.fade)} ${d.fade.toFixed(2)}`);
+      }
+      if (typeof d.veil === "number" && d.veil < 0.98) {
+        lines.push(`velo ×${d.veil.toFixed(2)} (resto no inscrito)`);
+      }
     } else {
       lines.push("(bridge fuera de línea)");
     }
@@ -659,8 +670,8 @@ class Transito extends BaseThreeJsModule {
         // arrived
         if (!v.done) {
           v.done = true;
-          if (v.branch === "inscribed") { this.inscribedCount++; this._throughputPulse = Math.min(1.6, this._throughputPulse + 0.5); this._flashInscribed(); }
-          else { this.opaqueCount++; this._flashOpaque(); }
+          if (v.branch === "inscribed") { this.inscribedCount++; this._inscribeRate += 1; this._throughputPulse = Math.min(1.6, this._throughputPulse + 0.5); this._flashInscribed(); }
+          else { this.opaqueCount++; this._opaqueRate += 1; this._flashOpaque(); }
         }
         this._disposeVoice(v);
         this.voices.splice(i, 1);
@@ -705,6 +716,9 @@ class Transito extends BaseThreeJsModule {
   getVitality() { return this._c01(this.throughput); }
   getThroughput() { return this._c01(this.throughput); }
   getCoherence() { return this._c01(this.coherence); }
+  // fraction of recent voices retained as OPAQUE rather than inscribed — the
+  // veil pressure the loader uses to hold back the drone (opacity clause on out).
+  getOpacityLoad() { return this._c01(this.opacityLoad); }
 
   // ───────────────────────────────────────────────────────────────────────
   // LOOP
@@ -730,6 +744,13 @@ class Transito extends BaseThreeJsModule {
     this._throughputPulse = Math.max(0, this._throughputPulse - dt * 0.5);
     const thrTgt = Math.min(1, this._throughputPulse * 0.6 + this.voices.length / 28 + this.ethPressure * 0.2);
     this.throughput += (thrTgt - this.throughput) * (1 - Math.pow(0.02, dt));
+
+    // opacity load: decay the arrival counters, ease toward opaque/(opaque+inscribed)
+    const decay = Math.pow(0.6, dt); // ~half-life a couple seconds
+    this._opaqueRate *= decay; this._inscribeRate *= decay;
+    const tot = this._opaqueRate + this._inscribeRate;
+    const loadTgt = tot > 0.05 ? this._opaqueRate / tot : 0;
+    this.opacityLoad += (loadTgt - this.opacityLoad) * (1 - Math.pow(0.05, dt));
 
     this._updateScene(dt);
     this._updateHUD();
