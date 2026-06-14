@@ -165,7 +165,9 @@ function wireConsensusFromStore() {
   let lastSent = -1;
   _unsubscribeStore = parliamentStore.subscribe((state) => {
     if (!_instance || !_instance.setCoherence) return;
-    const c = state.consensusWave ?? state.consensus;
+    // state.consensus is what the index.html slider + votes drive; consensusWave
+    // is only fed by SC /bio/consensus. Prefer consensus so the slider is live.
+    const c = state.consensus ?? state.consensusWave;
     if (typeof c !== "number" || Math.abs(c - lastSent) < 0.01) return;
     lastSent = c;
     try { _instance.setCoherence!({ value: c }); } catch { /* ignore */ }

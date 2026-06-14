@@ -81,8 +81,10 @@ nw_wrld Electron browser  (parliament.html)
        ├─ Slot 9  Hashing              (p5.js)  → __slot9Soneth          │
        ├─ Slot P  PhenologicalCalendar (Three.js · fetched module)       │
        ├─ Slot F  DarkForest           (Three.js · fetched module)       │
-       └─ Slot B  Transito             (Three.js · fetched module) ──────┘
-                  └─ reverse: throughput → /soneth/drone* → bridge → SC
+       ├─ Slot B  Transito             (Three.js · fetched module)       │
+       │          └─ reverse: throughput → /soneth/drone* → bridge → SC  │
+       └─ Slot R  Registro     (canvas · pretext ASCII field × slot 6) ──┘
+                  └─ reverse: buffer → /soneth/memoryfeed, consensus → atmospheremix
 
 MIDI (Faderfox Micromodul LC2) ──► SC buses ──► OSC echo ──► bridge ──► browser
 ```
