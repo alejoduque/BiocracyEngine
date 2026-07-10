@@ -33,6 +33,10 @@ import {
   destroyTransito,
 } from "./btransito/btransito";
 import {
+  mountEstratos,
+  destroyEstratos,
+} from "./estratos/estratos";
+import {
   mountRegistro,
   destroyRegistro,
 } from "./registro/registro";
@@ -1580,6 +1584,67 @@ async function mountTransitoSlot(): Promise<Viz> {
   };
 }
 
+// ─── Mount: slot E — Estratos (cartografía poética generativa, key [E]) ─────
+async function mountEstratosSlot(): Promise<Viz> {
+  const container = stageEl!;
+  showStage(stageEl);
+
+  const host = document.createElement("div");
+  host.style.cssText = "position:absolute;inset:0;width:100%;height:100%;";
+  container.appendChild(host);
+  void host.offsetWidth; // sync reflow before ModuleBase reads dims
+
+  const w = window as unknown as {
+    __applySonethToViz?: (key: string, val: number) => void;
+    __sendOscToSC?: (address: string, value: number) => void;
+  };
+  const applyViz = w.__applySonethToViz ?? (() => { /* not ready */ });
+  const sendOSC = w.__sendOscToSC ?? (() => { /* WS not ready */ });
+
+  let instance: unknown = null;
+  try {
+    instance = await mountEstratos(host, { applyViz, sendOSC });
+  } catch (e) {
+    console.error("[switcher] Estratos mount failed:", e);
+  }
+
+  host.style.visibility = "visible";
+  void host.offsetWidth;
+
+  await new Promise<void>((resolve) => requestAnimationFrame(() => {
+    const inst = instance as { renderer?: { setSize: (w: number, h: number) => void }; camera?: { aspect: number; updateProjectionMatrix: () => void } } | null;
+    if (inst && inst.renderer && inst.camera) {
+      const wpx = host.offsetWidth || 800;
+      const hpx = host.offsetHeight || 600;
+      inst.renderer.setSize(wpx, hpx);
+      inst.camera.aspect = wpx / hpx;
+      inst.camera.updateProjectionMatrix();
+    }
+    resolve();
+  }));
+
+  const ro = new ResizeObserver(() => {
+    const inst = instance as { renderer?: { setSize: (w: number, h: number) => void }; camera?: { aspect: number; updateProjectionMatrix: () => void } } | null;
+    if (!inst || !inst.renderer || !inst.camera) return;
+    const wpx = host.offsetWidth || 800;
+    const hpx = host.offsetHeight || 600;
+    inst.renderer.setSize(wpx, hpx);
+    inst.camera.aspect = wpx / hpx;
+    inst.camera.updateProjectionMatrix();
+  });
+  ro.observe(container);
+
+  return {
+    name: "Estratos",
+    key: "e",
+    destroy: () => {
+      ro.disconnect();
+      destroyEstratos();
+      if (host.parentNode) host.parentNode.removeChild(host);
+    },
+  };
+}
+
 // ─── Mount: slot R — Registro (the living record, pretext-style typesetter) ──
 async function mountRegistroSlot(): Promise<Viz> {
   const container = stageEl!;
@@ -1700,6 +1765,7 @@ async function switchTo(key: string) {
     else if (key === "p") viz = await mountPhenologyCalendarSlot();
     else if (key === "f") viz = await mountDarkForestSlot();
     else if (key === "b") viz = await mountTransitoSlot();
+    else if (key === "e") viz = await mountEstratosSlot();
     else if (key === "r") viz = await mountRegistroSlot();
     else viz = mountPlaceholder(key);
   } catch (e) {
@@ -1726,13 +1792,13 @@ async function switchTo(key: string) {
 // ─── Keyboard ────────────────────────────────────────────────────────────────
 function onKeyDown(e: KeyboardEvent) {
   if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
-  if (!/^[0-9pfbr]$/.test(e.key)) return;
+  if (!/^[0-9pfbre]$/.test(e.key)) return;
   e.preventDefault();
   switchTo(e.key);
 
   // Send mode switch OSC message to SuperCollider (numeric slots only —
-  // 'p' (phenology), 'f' (DarkForest), 'b' (Transito) and 'r' (Registro) are
-  // parliament-side overlay slots not known to SC).
+  // 'p' (phenology), 'f' (DarkForest), 'b' (Transito), 'e' (Estratos) and
+  // 'r' (Registro) are parliament-side overlay slots not known to SC).
   if (/^[0-9]$/.test(e.key)) {
     const modeVal = parseInt(e.key, 10);
     if (typeof (window as any).sendParliamentAction === "function") {
