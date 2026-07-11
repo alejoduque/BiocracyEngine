@@ -6,30 +6,97 @@
  |____/|_|\___/ \___|_|  \__,_|\___|\__, |_____|_| |_|\__, |_|_| |_|\___|
                                     |___/             |___/
 ```
-### SoNETH
+
+### SoNETH · BiocracyEngine
 ## Ethereum Blockchain Sonification + Visualization Instrument
 
-**Author:** alejoduque
-**Aesthetic:** Lawrence English Ambient / Elektron-style Performance + Parliament of All Things
+**Author:** alejoduque (Alejandro Duque Jaramillo)  
+**Aesthetic:** Lawrence English Ambient / Elektron-style Performance + Parliament of All Things  
+**Theoretical Horizon:** Technodiversity (Yuk Hui), Opacity (Edouard Glissant), Coming Community (Giorgio Agamben), Investigación-Acción Participativa (Orlando Fals Borda)
 
 ---
 
 ## Overview
 
-A live audiovisual instrument that transforms Ethereum blockchain transactions into evolving ambient soundscapes and reactive visualizations. Every control parameter simultaneously drives SuperCollider audio synthesis and **12 visual modules** (slots 0–9 + slots P and F) via a bidirectional OSC/WebSocket bridge.
+**BiocracyEngine** is a live audiovisual instrument and a deployable public artifact that couples three registers into a single feedback loop: a public blockchain, a deliberative assembly (the multispecies parliament), and the phenology of a tropical dry forest in Colombia. Every control parameter simultaneously drives SuperCollider audio synthesis and visual modules (slots 0–9, P, F, B, E, and R) via a bidirectional OSC/WebSocket bridge.
 
-The instrument couples three nominally-distinct domains into a single feedback loop:
-
-- **Blockchain** — live Ethereum transaction flow (`eth_sonify.py`) drives beat density, CO₂/myco/nutrient overlays, and consensus modulation.
-- **Parliament** — voting events (pass / fail / emergency / trigger) pulse the visuals and modulate consensus brightness across all slots.
-- **Ecology** — the Phenological Calendar (slot P) reads the IUCN Red List and a 572-species inventory from Reserva Manakai (Planeta Rica, Córdoba, Colombia); its current day-of-year and active-species fraction feed `harmonicrich` and `texturedepth` back into the SuperCollider audio engine.
-- **DarkForest** (slot **F**) — a dark, technical *data-viz interface* to the carbon/bio/natural world, the counterpart to the calendar. The tropical dry forest is read as a legible vertical **stack of strata** (a Humboldt *Naturgemälde*: atmosphere → canopy → understory → litter → mycorrhizal net), over a topographic wire-terrain, with vectorized bs-T species glyphs (Ceiba, Saguinus oedipus, Crax alberti, Atta cephalotes, Glomus…). **Data-flow vectors** (photosynthesis, mycorrhiza C↔N·P, pollination, seed dispersal, decomposition, predation) draw on, arrow, and fade as time passes. Three monospace/8-bit text surfaces — a live-typing terminal log, a flickering NYT *Moveable Type* data grid that appears/disappears with the network pulse, and a bottom ticker crawl. The viewer can orbit/zoom freely (camera is theirs; data is the forest's). The five controls (Master Vol, Pitch Shift → stratum focus, Time Dilat → flow/typing speed, Spectral Sh → palette temperature, Spatial Sprd → stack spread) and live ETH `txInfluence` are read each frame — the same numbers that grow the drone — and accumulated vitality feeds back into `dronedepth` / `dronemix` / `atmospheremix` / `harmonicrich`.
-
-Sound, code, and species become parts of the same instrument — read and played simultaneously.
+Rather than "visualizing data," the engine performs a cybernetic coupling where the forest, blockchain protocols, and human actions hold equal standing as political agents.
 
 ---
 
-## Architecture & Data Flow
+## 1. Theoretical Foundations & Research Contributions
+
+The core contribution of the BiocracyEngine lies in **translating critical, decolonial, and political theory into working technical constraints in software.** It stands as a concrete, deployable counter-model to Nature Fintech and "Ecological State Protocols" by compiling philosophy into executable rules rather than citing it as external authority.
+
+### A. Philosophy Compiled into Running Rules
+*   **Glissant's Right to Opacity:** Implemented as a software constraint. The *Opacity Clause* (visualized via the `opacityFloor` parameter) withholds a deterministic fraction of active species labels from the projection. This clause is declared *untranslatable to sound* (it does not alter the SuperCollider synthesis), honoring Glissant's assertion that the subaltern must have a right to remain opaque and unconsumed by the Western gaze.
+*   **Agamben's Coming Community:** Seated in the code as a parliament of *singularities, never identities*. The assembly does not classify species by their economic value or utility, but by their sheer presence.
+*   **"Absence is Voice":** In slot P (Phenological Calendar) and slot F (DarkForest), species that fall below the sensory detection threshold are not deleted or set to zero; instead, they persist in the background as 1-bit dither or visual shimmer. Their absence speaks as a low-level frequency, asserting that what is unmeasured still participates.
+*   **Seasonal Benches:** The membership and voting weight of the parliament's benches recompose dynamically following the seasonal cycles of the phenological calendar.
+
+### B. The Parliament/Surveillance Distinction as an Architectural Claim
+The pipeline used here is: **Acoustic Sensor → Vectorization → Smart Contract**.  
+An important architectural claim of this work is that *the same sensing pipeline constitutes either surveillance or a parliament depending only on the architecture of power surrounding it.* Vectorization and remote sensing are not inherently tools of extraction; they can be configured to establish local sovereignty, turning a surveillance mesh into a site of ecological representation.
+
+### C. Non-Tradable Inscription: The BioToken
+The BioToken inverts the "tokenize-the-planet" logic of carbon credits and biodiversity offsets. It is:
+*   A **unit of political inscription** (participation) rather than a tradable asset (commodity).
+*   A non-financialized protocol designed to register validated conservation actions and deep listening.
+*   A buildable counter-model to speculative "Ecological State Protocols" and Nature Fintech.
+
+### D. Disintermediation of the Extractive NGO Circuit
+The system routes conservation value and decision-making sovereignty directly to the local, marginal community (El Balzal, Córdoba, Colombia). Data sovereignty is kept local, and the honest limits of the system—such as the dependencies and boundaries of chain-level governance—are made visible in the interface rather than hidden behind greenwashed UI templates.
+
+### E. Phenology-Driven Governance
+Rather than using the standardized global taxonomies of the IUCN Red List as an absolute authority, the engine maps the forest's own local seasonal calendar using a 572-species inventory from the Reserva Manakai. Ecological time governs the synthesis: the seasonal weight and active-species fraction are fed back into SuperCollider to drive `harmonicrich` and `texturedepth`.
+
+### F. Situated Epistemology & Research-Creation
+Rooted in *SubAmérica* and technodiversity (Yuk Hui), this doctoral project fuses Investigación-Acción Participativa (IAP, after Orlando Fals Borda) with on-chain governance. The result is delivered as a **liminal research object** rather than a finished artwork, making it reproducible and adaptable by other territorial communities.
+
+---
+
+## 2. Deployable Public Artifacts
+
+The project is released across three software repositories and a community-facing field tool:
+*   **[BiocracyEngine](file:///Users/a/Documents/code/BiocracyEngine)**: The core audiovisual synthesis, WebGL/Three.js projection, and MIDI/OSC bridge engine.
+*   **bioacoustic-scripts**: The python-based web3 blockchain parser and audio-vector feature extraction tools.
+*   **dIAP (Decolonial IAP)**: Decentralized action research protocols and on-chain assembly tools.
+*   **Biomap SoundWalk App** (Priority Supplement): A participatory listening and conservation instrument. It turns guided soundwalks in Reserva Manakai into logged acts of ecological presence, fusing deep listening and passive acoustic monitoring (PAM) in one field tool. The app carries the incentive layer, distributing BioToken-registered rewards to the El Balzal community for validated conservation actions, closing the loop between listening, inscription, and economic sustainability.
+
+---
+
+## 3. Leonardo Submission Metadata
+*For peer-review submission under Leonardo / MIT Press.*
+
+### Abstract
+Bioacoustics tunes the ear to a polyphonic parliament resonating across species and kingdoms; biocracy is the wager that it could be seated — governance turned toward the living, not derived from biology. BiocracyEngine stages it as a live audiovisual instrument coupling three registers in one feedback loop: a public blockchain, a deliberative assembly, and a tropical dry forest's phenology. It sonifies the chains now tokenizing the planet as a documentary diagnosis of extractive finance, then inverts them: other species take part in that economy rather than furnish its raw material. Its politics turn on vectorization — the sensing that could surveil a territory instead constitutes its parliament, held open by Glissant's right to opacity and Agamben's coming community: singularities, never identities.
+
+### Keywords
+cybernetics; sonification; vectorization; blockchain governance; multispecies parliament; bioacoustics; opacity (Glissant)
+
+### Section Structure (As Realized)
+1.  **Listening to the Machine**
+2.  **A Cybernetic Substrate for a More-than-Human Parliament**
+    *   *Feedback, and the observer inside it*
+    *   *Autopoiesis and coupled knowledges*
+    *   *Three registers, one instrument*
+3.  **From Surveillance to Parliament: The Politics of Vectorization**
+4.  **BiocracyEngine: An Instrument That Listens to Infrastructure**
+5.  **A Liminal Object, Not a Finished Work**
+6.  **Opacity as Constitution: The Architecture Behind the Session**
+7.  **What Art Can Adjudicate**
+
+### Supplemental Materials (Allowed: 3 files)
+*   **File 1: Biomap SoundWalk App (New Supplement, 11 July):** Deployable mobile/mesh layer designed for participatory listening and species indexing in Reserva Manakai, carrying the BioToken incentive loop.
+*   **File 2: Parlamento de lo Vivo Audiovisual Documentation:** Video/audio excerpt of the live performance at the Festival de la Imagen, Manizales (2025).
+*   **File 3: Repository Archives:** Combined source archives for `BiocracyEngine`, `bioacoustic-scripts`, and `dIAP`.
+
+### Author Bio Note
+Alejandro Duque Jaramillo is a Swiss-Colombian sound artist and researcher working across bioacoustics, permacomputing, and experimental coding. He is a doctoral candidate in Diseño, Arte y Ciencia at Universidad Jorge Tadeo Lozano (Bogotá) and a professor in the Pregrado en Creación Digital at Universidad de Antioquia (Medellín), where his doctoral project Biocracy develops the BiocracyEngine and Parlamento de lo Vivo with the community of El Balzal and Reserva Manakai, Córdoba.
+
+---
+
+## 4. Technical Architecture & Data Flow
 
 ```
 ETH Blockchain
@@ -83,6 +150,7 @@ nw_wrld Electron browser  (parliament.html)
        ├─ Slot F  DarkForest           (Three.js · fetched module)       │
        ├─ Slot B  Transito             (Three.js · fetched module)       │
        │          └─ reverse: throughput → /soneth/drone* → bridge → SC  │
+       ├─ Slot E  Estratos             (Three.js · fetched module)       │
        └─ Slot R  Registro     (canvas · pretext ASCII field × slot 6) ──┘
                   └─ reverse: buffer → /soneth/memoryfeed, consensus → atmospheremix
 
@@ -90,145 +158,34 @@ MIDI (Faderfox Micromodul LC2) ──► SC buses ──► OSC echo ──► b
 ```
 
 ### Bidirectional Feedback Loop
-
 Every parameter change is reflected across all three control surfaces:
-
 ```
 HTML slider ──► SC bus ──► SC GUI knob (visual update)
                     └──► OSC echo ──► HTML slider (position sync)
-                                └──► applySonethToViz (10 slots)
+                                └──► applySonethToViz (12 slots)
 
 MIDI CC ────► SC bus ──► SC GUI knob (visual update)
                   └──► OSC echo ──► HTML slider (position sync)
-                              └──► applySonethToViz (10 slots)
+                              └──► applySonethToViz (12 slots)
 
 SC GUI knob ► SC bus ──► OSC echo ──► HTML slider (position sync)
-                                 └──► applySonethToViz (10 slots)
+                                 └──► applySonethToViz (12 slots)
 ```
 
-### Apps, ports & roles
-
-Four processes are launched by `start_ecosystem.sh`:
+### Process Ports & Roles
+Four processes are managed by `start_ecosystem.sh`:
 
 | App | Process | Ports | Role |
 |---|---|---|---|
 | **Python ETH** | `eth_sonify.py` (venv) | → UDP **57120** | web3 scraper; maps each tx value→note/velocity |
 | **SuperCollider** | `sclang start_sonification.scd` | in **57120** (OSC) + **MIDI**; out **3333**; scsynth **57110** | audio engine, GUI, beat engine, drone |
 | **Bridge** | `parliament-bridge.js` (Node) | in UDP **3333**; WS **3334**; out UDP **57120**; HTTP **3335** `/diag` | OSC ↔ WebSocket, path translation |
-| **Browser** | webpack-dev-server + Electron | HTTP **9001**; WS **3334** | parliament.html, store, 12 viz slots |
+| **Browser** | webpack-dev-server + Electron | HTTP **9001**; WS **3334** | `parliament.html` GUI, store, visual slots |
 | **Laser** _(opt)_ | `laser-bridge.js` (Node, `LASER=1`) | WS **3337** in; USB → Helios DAC | vector frames → ILDA / laser onto the forest |
 
-### The four data flows (verified against source)
-
-**1 · Python ETH → SuperCollider** (the base drone)
-`eth_sonify.py` → OSC `/eth/tx_info` then `/eth/note` → **SC:57120** → `~handleTransaction` (`6_osc_handlers.scd`) → notes + a `transactionInfluence` bump → `\opalDrone` + beat engine. *This ETH inflow is the shared drone every slot hears.*
-
-**2 · MIDI (Faderfox Micromodul LC2) → SuperCollider → Browser**
-Hardware CC `0–9, 32–41` → `MIDIdef.cc` handlers (`2_midi_control.scd`) → set `~buses[*]` / `~beatParams` (audio changes) **and** broadcast the normalised value as OSC `/soneth/<param>` → `~visualsDest` **UDP:3333** → bridge → **WS:3334** → browser (sliders + visuals follow the knobs).
-
-**3 · Browser → SuperCollider** (sliders, buttons, module reverse-push)
-HTML `input` → `sendOSC` → WS `{direction:"toSC"}` → bridge → OSC **UDP:57120** → SC handlers (`~oscToParamMap` + bespoke `beatTempo`/`txInfluence`/`vote`/`emergency`). Namespaces that reach SC: `/soneth/*`, `/pheno/*`, `/parliament/{start,stop,vote,emergency,fx/*}`. The Parliament/Species/eDNA "replica" sliders have no direct SC handler, so they bias the instrument through the matching `/soneth/*` fader (`REPLICA_MACROS`, `parliamentEntry.ts`). Slots F and B push `/soneth/drone{depth,mix,fade,space}` back from their throughput — modulating the same `\opalDrone`.
-
-**4 · SuperCollider → Browser** (telemetry + sync)
-`~visualsDest.sendMsg` (`= 127.0.0.1:3333`) → bridge → WS:3334 → browser. Addresses SC actually emits:
-- `/soneth/*` — MIDI/GUI echoes → HTML slider sync + `applySonethToViz`.
-- `/bio/{nutrient,consensus,density}` — **live ETH-driven engine signal**; the bridge also translates these to `/ch/update*` for SDK-sandbox modules, and `parliamentStore` maps them → `eco.*` + `consensusWave` (feeds Eco Signals + every module's eco-coupling, incl. Transito's voice bursts).
-- `/pheno/*`, `/parliament/{vote,emergency}/sonic` — calendar + event echoes.
-
-> Note: `parliamentStore` also listens for `/eco/*` and `/agent/*`, but **nothing emits those** — the live signal arrives as `/bio/*` (mapped in `parliamentStore.applyOSC`). Telemetry sections with no source were removed (see `SLOT_B_AND_INDEX_AUDIT.md`).
-
-### Remapping data flow — where to edit
-
-To remap a signal, edit the table that owns that hop:
-
-| Want to remap… | Edit | Structure |
-|---|---|---|
-| MIDI CC → SC param | `2_midi_control.scd` | `MIDIdef.cc` CC numbers |
-| OSC path → SC bus/param + range | `6_osc_handlers.scd` | `~oscToParamMap` + the `switch` ranges |
-| SC path → browser-module method | `parliament-bridge.js` | `SC_TO_CH` |
-| incoming OSC → browser state | `parliament/parliamentStore.ts` | `applyOSC` |
-| slider → display + macro target | `parliamentEntry.ts` | `SLIDER_DISP_PREFIX`, `REPLICA_MACROS` |
-| module forward/reverse coupling | `darkforest/darkforest.ts`, `btransito/btransito.ts` | `wireEco*`, `startReverseBreath` |
-
-All processes are localhost-only; the OSC namespace (`/soneth`, `/pheno`, `/parliament`, `/bio`, `/agent`, `/eth`) is the contract between them.
-
 ---
 
-## Laser projection (ILDA / Helios DAC)
-
-Projects the engine's **vector** geometry onto a real-world forest. Lasers draw
-sparse bright strokes (not rasterised images), so the browser sends a small
-laser-friendly scene — not the 3-D framebuffer.
-
-```
-browser laserTap ──WS:3337──► laser-bridge.js ──USB──► Helios DAC ──► laser
-                                     └──────────────► frames.ild (ILDA fmt 5)
-```
-
-**Enable:** `LASER=1 ./start_ecosystem.sh` (off by default). With no DAC and no
-native binding it runs **DRY** (logs only) — safe to start anywhere.
-
-**Frame contract** (browser → bridge): normalised, centre `(0,0)`, `x,y ∈ −1..1`.
-```json
-{ "type":"laserFrame", "pps":30000,
-  "points":[ {"x":-0.8,"y":0.0,"r":0,"g":200,"b":90,"blank":false}, … ] }
-```
-The bridge clamps every value, converts to the Helios 12-bit field (`0..4095`)
-and to ILDA signed-16, then streams.
-
-**Frame source** (`src/projector/laserTap.ts`, started by `parliamentEntry.init`):
-1. `window.__laserFrame` — any module may publish its own vector scene.
-2. **slot-P default** — the phenological **year-ring** + a marker at today's
-   active species (`window.__activeSpecies`). A **sensitive** species is *not*
-   drawn: the opacity clause (Glissant) extended into physical space — the
-   vulnerable being is never cast onto the real forest.
-
-**Backends** (`laser-bridge.js`, both optional & independent):
-- **Helios DAC** — the official SDK ([Grix/helios_dac](https://github.com/Grix/helios_dac))
-  is C/C++ with a flat C wrapper (`HeliosDacAPI`). The bridge calls it directly via
-  **koffi** FFI (no node-gyp), packing the real `HeliosPoint` layout
-  (`uint16 x,y; uint8 r,g,b,i`) and gating writes on `GetStatus()`. Setup (macOS):
-  ```bash
-  brew install libusb                       # Helios needs libusb-1.0
-  git clone https://github.com/Grix/helios_dac && cd helios_dac
-  # build the C API shared library → libHeliosDacAPI.dylib
-  #   (use the repo's build; or, roughly:)
-  clang++ -std=c++11 -shared -fPIC -o libHeliosDacAPI.dylib \
-      sdk/HeliosDac.cpp sdk/HeliosDacAPI.cpp \
-      -I"$(brew --prefix libusb)/include/libusb-1.0" \
-      -L"$(brew --prefix libusb)/lib" -lusb-1.0
-  cd ../BiocracyEngine/nw_wrld_local && npm install koffi
-  LASER=1 HELIOS_LIB=/abs/path/libHeliosDacAPI.dylib ./start_ecosystem.sh
-  ```
-  (Linux: `.so` + the repo's udev rules; Windows: `HeliosDacAPI.dll`.) Missing
-  koffi / lib / device → DRY RUN. The C-API binding is isolated in `initHelios()`.
-- **ILDA file** — `LASER_ILD_OUT=/path/frames.ild` captures frames as standard
-  ILDA Format-5 (2D true-colour), playable by any laser software.
-
-**Env:** `LASER_TEST=1` (test circle for hardware bring-up, no browser needed),
-`LASER_DRYRUN=1`, `LASER_PPS` (30000), `LASER_MAX_POINTS` (1200), `LASER_WS_PORT`
-(3337), `LASER_ILD_OUT`.
-
-**Safety:** dead-man blanking (no frame for 500 ms → laser goes dark, never parks
-a static bright dot), per-point clamping, and a blank frame on shutdown.
-
-Slot P also emits a bridge-safe numeric signal for SC / a future laser logic:
-`/bio/species/active` (taxon index) and `/bio/species/veiled` (1 = shielded).
-
----
-
-## Control Surfaces
-
-| Surface | File | Params | Notes |
-|---|---|---|---|
-| **SC GUI** | `4_gui.scd` | 20 knobs | Amber palette, sends echo to bridge on change |
-| **HTML GUI** | `parliament.html` | 34 sliders + vote buttons | 4 rows sonETH + Beat Engine + Parliament/Species/eDNA/Fungi |
-| **MIDI CC** | `2_midi_control.scd` | 20 CC (Faderfox LC2) | Rows 1–4, CCs 0–9 and 37–41 |
-| **ETH data** | `eth_sonify.py` | live blockchain | TX density, gas price, CO₂ proxy — drives beat + visuals autonomously |
-
----
-
-## Control Matrix
+## 5. Control Matrix
 
 10 core sonETH parameters × 10 visual slots = 100 bindings. Every slider/knob/CC drives both SC audio buses and all visualizations simultaneously.
 
@@ -247,315 +204,47 @@ Slot P also emits a bridge-safe numeric signal for SC / a future laser logic:
 | **harmonicRich** | CC 35 | FM ratio 0.1–8 | lissajous complexity | harmonic overlay | Bézier Z-scale | hue drift |
 | **resonantBody** | CC 36 | filter Q 0.1–0.8 | chroma aberration | peak dot glow | red cloud scale | inner weight |
 
-### Row 1–2: Core Performance (Slots 4–9)
+---
 
-| Param | Slot 4 TimeTravel | Slot 5 DynGraphs | Slot 6 Splay | Slot 7 Geometry | Slot 8 MemHier | Slot 9 Hashing |
-|---|---|---|---|---|---|---|
-| **volume** | trace + marker alpha | connection + node alpha | beam + node alpha | ray brightness | block/text visibility | scanline visibility |
-| **pitchShift** | sinusoidal trace modulation | vertical gravity center | root Y + layer spacing | ray angular amplitude | layer vertical spacing | bucket vertical offset |
-| **timeDilation** | scroll speed, radar spin | overdrive speed | root float, snap force | grid anim + drift speed | hex refresh rate | hash mutation speed |
-| **spectralShift** | trace color phosphor→cyan | center pull, glitch scale | breathing amplitude | sweep color amber→cyan | per-layer color shift | glitch tears + text rotation |
-| **spatialSpread** | vertical lane range | spring rest length | tree horizontal width | ray Y lane distribution | layer width distribution | key↔bucket column spread |
-| **textureDepth** | grid density, radar rings | radar arc opacity | grid weight, node rotation | grid density, radar sub-rings | inner grid density | scanline intensity |
-| **atmosphereMix** | ghosting depth | afterimage depth | scan column opacity | ghosting depth | afterimage depth | afterimage depth |
-| **memoryFeed** | background trail alpha | background trail alpha | background trail alpha | background trail alpha | background trail alpha | background trail alpha |
-| **harmonicRich** | echo traces, diagonal grid | node color white→amber | beam color intensity | harmonic echo rays | crosshatch density | collision line weight |
-| **resonantBody** | marker glow + resonance rings | outer glow rings | node wireframe size | target crosshair + outer rings | CRT border opacity | bucket border stroke |
-| **txInfluence** | glitch probability, chromatic tears | jitter + glitch lines | beam distortion tears | glitch distortion tears | block displacement glitches | collision amplitude + tears |
+## 6. Laser Projection (ILDA / Helios DAC)
 
-### Row 3–4: Drone/Noise + Additional Controls (varied per slot)
+Projects the engine's **vector** geometry onto a real-world forest. Lasers draw sparse bright strokes (not rasterised images), so the browser sends a small laser-friendly scene — not the 3-D framebuffer.
 
-Each Row 3–4 parameter is assigned a distinct "hero" role in a specific slot while still updating all slot globals:
+```
+browser laserTap ──WS:3337──► laser-bridge.js ──USB──► Helios DAC ──► laser
+                                     └──────────────► frames.ild (ILDA fmt 5)
+```
 
-| Param | MIDI CC | SC Audio | Hero Slot | Visual Effect |
-|---|---|---|---|---|
-| **masterAmp** | CC 5 | master amplitude | Slot 5 DynGraphs | node box size + glow brightness multiplier |
-| **filterCutoff** | CC 6 | filter cutoff | Slot 5 DynGraphs | connection distance range (low=only close nodes link) |
-| **noiseLevel** | CC 7 | noise amount | Slot 7 Geometry | background grid warp distortion amplitude |
-| **noiseFilt** | CC 8 | noise filter | Slot 7 Geometry | number of eco sweep lines visible (1→4) |
-| **droneDepth** | CC 9 | drone intensity | Slot 0 Parliament | radar grid breath scale; Slot 4: inner ring count (2→8) |
-| **droneFade** | CC 37 | drone envelope | Slot 4 TimeTravel | trace color warmth (cool phosphor → deep amber) |
-| **droneSpace** | CC 38 | drone spatial | Slot 6 Splay | vertical tree root offset (pushes tree down the frame) |
-| **droneMix** | CC 39 | drone blend | Slot 6 Splay | scan column density + brightness |
-| **delayFeedback** | CC 40 | delay feedback | Slot 8 MemHier | ghost trail persistence (reduces wipe → lingering layers) |
-| **beatTempo** | CC — | beat engine ×0.5–2 | Slot 8 MemHier | hex matrix mutation rate; Slot 9: hash reassignment speed |
-| **txInfluence** | CC 41 | TX→beat weight | All slots | ETH event glitch probability across all visualizations |
+**Enable:** `LASER=1 ./start_ecosystem.sh` (off by default). With no DAC and no native binding it runs **DRY** (logs only) — safe to start anywhere.
 
-### Slot 0 — Reactive Radar Grid
+**Frame contract** (browser → bridge): normalised, centre `(0,0)`, `x,y ∈ −1..1`.
+```json
+{ "type":"laserFrame", "pps":30000,
+  "points":[ {"x":-0.8,"y":0.0,"r":0,"g":200,"b":90,"blank":false}, … ] }
+```
 
-The Parliament Stage concentric rings are no longer static. They live in a `_radarGroup` that:
-
-- **Rotates** slowly counter-clockwise, speed driven by `timeDilation` + `txInfluence` bursts
-- **Breathes** in scale: `droneDepth` expands/contracts the ring plane
-- **Pulses opacity** per ring: outer ring brightens with consensus, inner rings shimmer with consensus wave phase
-- **Tick marks** flash intensity with ETH CO₂ activity
-- **Axes** darken at low consensus, open at high consensus
-
-### Slot P — Phenological Calendar (Reserva Manakai)
-
-Key `p` mounts the **PhenologicalCalendar** module — a 365-day species ring built from `manakai_species.json` (572 species across flora, amphibians, reptiles, mammals, birds for Planeta Rica, Córdoba, Colombia).
-
-**Aesthetic — 1-bit wireframe / 8-bit:**
-
-- Pure black background (`#000000`), all geometry pure white (`#ffffff`)
-- Flat `AmbientLight` only — no directional lights or emissive materials
-- All rings → `LineLoop` (no torus volume)
-- Species nodes → `OctahedronGeometry` wireframe diamonds
-- Cursor → `Line` spear + wireframe octahedron head
-- Biogeochem overlays → wireframe crosses (CO₂), expanding line circles (myco pulses), wireframe diamonds (P/N nutrient flows)
-- Backdrop → two wireframe icosahedra (parallax) — no radial gradient
-- HUD typography → `Courier New` monospace, uppercase, antialiasing disabled (`-webkit-font-smoothing: none`), pixel-shadow on canvas month labels, `steps()` transitions for progress bars
-- Active-species labels → black background with `1px solid` outline (CRT terminal look)
-
-**Bidirectional breath bridge (`phenology/breath.ts`):**
-
-- Parliament votes → `calendar.pulse(intensity)` — bloom on consensus
-- `parliament.rotation` slider (0.1–2.0) → `daysPerSecond = rotation * 1.5`
-- ETH biogeochem (`eco.co2`, `mycoPulse`, `phosphorus`, `nitrogen`) → `triggerCO2/Myco/Phosphorus/Nitrogen` (anchored to currently-active flora positions, not fixed screen coords)
-- **Reverse:** calendar day → seasonal weight + active-species fraction → `harmonicrich` + `texturedepth` OSC into SuperCollider
-
-**Species labels:** vernacular (common) name leads on each node, scientific name follows dim and small underneath. Falls back to scientific name when no common name exists. Labels render with opaque black plaque + 1px white outline for projector readability.
-
-**3D navigation (full freedom):**
-
-| Action | Gesture |
-|---|---|
-| Rotate calendar | Left-click + drag |
-| Pan view | Right-click + drag |
-| Zoom | Mouse wheel (no limits — zoom inside a species node or pull all the way out beyond the icosahedra) |
-| Reset camera | `R` key (default position `(0, 0.6, 4.6)` looking at origin) |
-| Switch slot | Keys `0`–`9` or `p` |
-
-#### Cámara Fenológica de lo Vivo — Capítulo VI
-
-Slot P is governed by **seven control parameters + four season-jump triggers** that materialize the proposed phenological chamber statutes (Articles 41–48). Each control is bidirectionally wired across **HTML slider ↔ SC bus/GUI knob ↔ Faderfox LC2 MIDI CC** — moving any one updates the other two and re-renders the calendar in real time.
-
-| Control | OSC path | CC | Article | Range | Effect |
-|---|---|---|---|---|---|
-| Activity Thresh | `/pheno/activityThreshold` | CC 10 | Art. 45 (quórum sensible) | 0.20–0.85 | Threshold for "active" species; modulates beat pool density (×0.6–1.5) |
-| Window Width | `/pheno/windowWidth` | CC 11 | Art. 44 (ventana de presencia) | 0.4–2.5× | Gaussian window per species; tighter halos vs longer overlaps |
-| Seasonal Bias | `/pheno/seasonalBias` | CC 12 | Art. 42 (calendario bimodal) | -1.0–+1.0 | Offsets `seasonalWeight()` → reverseBreath `harmonicrich` |
-| Absence Weight | `/pheno/absenceWeight` | CC 13 | Art. 44 § (la ausencia es voz) | 0.0–1.0 | Sub-threshold species shimmer as 1-bit dither; mutes `atmosphereMix` |
-| Pulse Gain | `/pheno/pulseGain` | CC 14 | Art. 45 § (modula no anula) | 0.0–2.0 | Multiplies vote→pulse intensity; 0 silences calendar response to votes |
-| Opacity Floor | `/pheno/opacityFloor` | CC 15 | Art. 47 § (cláusula de opacidad) | 0.0–0.7 | Deterministic fraction of labels hidden by principle (visual only — Art. 47 declares opacity intraducible to audio) |
-| Bancada (5 pos) | `/pheno/bancada` | CC 16 | Art. 43 §1 (bancadas estacionales) | Todas / Seca / 1as Lluvias / Medio Seco / 2as Lluvias | Focus specific seasonal taxa group; soft LPF on others |
-| Season jump (×4) | `/pheno/jumpSeason` | — | Art. 42 § (sesiones de apertura) | trigger | Sets cursor day to start of named season + bumps `txInfluence` for audible drop+fill |
-
-**Visual style — 1-bit citation:** The Cámara Fenológica section in `parliament.html` uses a black background + white 1px borders + `Courier New` monospace uppercase typography, distinct from the amber Lawrence English palette of the sonETH/Beat Engine controls. The matching SC GUI knobs (Row 5 of `4_gui.scd`) use a pure white-on-black palette for the same reason — these controls belong to the "escaño del tiempo," not to performance.
-
-### Beat Engine — Data-Driven Melodic Pool
-
-The beat engine reads live from SC buses each cycle:
-
-| SC Bus | Beat Engine Effect |
-|---|---|
-| `harmonicRich` | pitch pool size + spread (FM ratio → harmonic series) |
-| `resonantBody` | voicing mode: single / dyad / triad / 1–8 partials |
-| `textureDepth` | harmonic count (number of simultaneous percussion synths) |
-| `atmosphereMix` | pitch pool vertical spread |
-| `memoryFeed` | ghost hit probability (secondary echo percussions) |
-| `droneFade` | melodic envelope time |
-| `txInfluence` | ETH activity → pitch pool intensity (smooth exponential decay, no hard cuts) |
+**Frame source** (`src/projector/laserTap.ts`, started by `parliamentEntry.init`):
+1. `window.__laserFrame` — any module may publish its own vector scene.
+2. **slot-P default** — the phenological **year-ring** + a marker at today's active species (`window.__activeSpecies`). A **sensitive** species is *not* drawn: the opacity clause (Glissant) extended into physical space — the vulnerable being is never cast onto the real forest.
 
 ---
 
-## Unified Parameter Ranges
+## 7. Quick Start & Diagnostics
 
-All three control paths (HTML sliders, MIDI CC, SC GUI) agree on the same real-world units via `6_osc_handlers.scd` remapping:
-
-| Param | HTML 0–1 | OSC remap → bus | MIDI CC | SC GUI spec |
-|---|---|---|---|---|
-| masterVolume | 0–1 | linlin → 0.01–1 | CC 0 | ControlSpec(0.01, 1) |
-| pitchShift | 0–1 | linlin → −24,+24 | CC 1 | ControlSpec(−24, 24) |
-| timeDilation | 0–1 | linexp → 0.5–6 | CC 2 | ControlSpec(0.5, 6, exp) |
-| spectralShift | 0–1 | linexp → 80–3000 Hz | CC 3 | ControlSpec(80, 3000, exp) |
-| spatialSpread | 0–1 | linlin → −1,+1 | CC 4 | ControlSpec(−1, 1) |
-| textureDepth | 0–1 | linlin → 0–0.6 | CC 32 | ControlSpec(0, 0.6) |
-| atmosphereMix | 0–1 | linlin → 0–0.9 | CC 33 | ControlSpec(0, 0.9) |
-| memoryFeed | 0–1 | linlin → 0–0.8 | CC 34 | ControlSpec(0, 0.8) |
-| harmonicRich | 0–1 | linexp → 0.1–8 | CC 35 | ControlSpec(0.1, 8, exp) |
-| resonantBody | 0–1 | linlin → 0.1–0.8 | CC 36 | ControlSpec(0.1, 0.8) |
-| droneDepth | 0–1 | linlin → 0–1 | CC 9 | ControlSpec(0, 1) |
-| delayFeedback | 0–1 | linlin → 0–0.95 | CC 40 | ControlSpec(0, 0.95) |
-| txInfluence | 0–1 | linlin → 0–1 | CC 41 | ControlSpec(0, 1) |
-
-> **SpectralShift safety**: all SynthDefs use LPF (not BPF) so the filter at maximum is transparent, never silent. Ceiling hard-clamped at 3000 Hz.
-
----
-
-## Voting System
-
-Parliament vote actions trigger sonic events and visual bursts across all 10 slots.
-
-| Action | Sound | Visual |
-|---|---|---|
-| **Vote passed** | Tempo burst ×1.6 for 4s + bell chord (root+5th+oct) | Bloom flash, warm glow, atmosphere spike |
-| **Vote failed** | Same sonic burst | Red shift: spectral/resonant/texture spike, 3s decay |
-| **Emergency** | Drone drops to 35 Hz sub-bass, noise surge, 6s recovery | Spatial collapse, brightness drop, 6s recovery |
-| **Stop** | masterAmp → 0.05, drone → 0.02 | All visual params dimmed to 0.05 |
-| **Start** | masterAmp → 0.7, drone restored | All params restored to defaults |
-
----
-
-## Beat Engine
-
-The beat engine (`5_beat_engine.scd`) evolves continuously rather than repeating:
-
-- **Data-driven pitch pool**: reads `harmonicRich`, `txInfluence`, `textureDepth` from live buses each cycle
-- **Voicing modes**: `resonantBody` selects single / dyad / triad / 1–8 simultaneous partials
-- **Smooth ETH decay**: `exp(-timeSinceLastTx × 0.5)` envelope prevents hard cuts on quiet blocks
-- **Phrase mutation** every 4 bars: kick pattern shifts, ghost fills appear/disappear
-- **Shifting polyrhythm**: percussion divisor cycles 3-5-7-4-6
-- **Drone pitch drift**: cycles through harmonic series (55, 62, 73, 82, 49, 65, 41 Hz)
-- **Micro-swing**: odd steps delayed 0–12% for groove
-
----
-
-## Quick Start
-
+### Run the ecosystem
 ```bash
 ./start_ecosystem.sh
 ```
-
 Launches all services: nw_wrld, parliament-bridge, SuperCollider, Python ETH scraper.
 
-### Manual Start
-
-1. **SuperCollider**: Open SC IDE, run `start_sonification.scd`
-2. **Python ETH**: `cd eth_sonification && source venv/bin/activate && python eth_sonify.py`
-3. **Bridge**: `cd nw_wrld_local && node parliament-bridge.js`
-4. **nw_wrld**: `cd nw_wrld_local && npx electron .`
-
-### IUCN Red List API Setup
-
-Species data is fetched live from the IUCN Red List API v4 (Colombian endangered species including plants). The token is injected at build time via webpack DefinePlugin — never committed to the repo.
-
-```bash
-cp nw_wrld_local/.env.example nw_wrld_local/.env
-# Edit .env and add your IUCN API token (get one at https://api.iucnredlist.org/)
-```
-
-Data flow: **RLI local server** (localhost:3001, CORS-friendly) → **IUCN API direct** → **hardcoded fallback roster**.
-
----
-
-## Diagnostics
-
-### Bridge Diagnostic Endpoint
-
-```bash
-curl http://localhost:3335/diag
-```
-
-Shows message counts per path, direction, coverage report of all SC_TO_CH routes (35 paths registered).
-
-### Browser Debug Overlay
-
-Press **Shift+D** in parliament browser window. Shows:
-- Live param values for all 21 params (Row 1–4 + Beat Engine)
-- Per-slot status dots (10 slots, green = updated in last 2s, amber = stale, grey = never)
-- WebSocket connection state and message count
-
-### Sweep Test
-
+### Diagnostic Sweep Test
 ```bash
 cd nw_wrld_local && node diag-sweep.js
 ```
-
 Sends all 22 params through the bridge (0 → 1 → 0.5), then runs a continuous volume LFO.
 
 ---
 
-## Audio Hardware
-
-BiocracyEngine auto-detects audio hardware at boot:
-
-- **MOTU 828x (Gen5) present** → 4-channel quadraphonic output, 2 inputs
-- **No MOTU detected** → falls back to macOS Core Audio stereo (2 ch out / 2 ch in)
-
-### Recording & Spatial GUI
-
-The SC GUI bottom strip exposes three buttons:
-
-- **● START REC / ■ STOP REC** — multichannel session recording. Saves to the `recordings/` directory.
-- **▶ 30s SNAPSHOT** — starts recording and auto-stops after 30 seconds. Useful for sound checks, documentation snippets, sampler material.
-- **◇ SPATIAL 4ch** — opens a quadraphonic spatial control window with two draggable nodes: **AMB** (ambient drone/bell/kick position) and **SMP** (sample playback position). Both nodes pan their sources around the 4-channel quad field in real time. The window opens directly over the main sonETH GUI (overlapping, `alwaysOnTop`).
-
-### Cámara Fenológica row (SC GUI Row 5)
-
-Below the four amber Lawrence English rows, the SC GUI mounts a **Row 5 with a pure white-on-black palette** holding the seven phenology knobs (Activity Thresh, Window Width, Seasonal Bias, Absence Weight, Pulse Gain, Opacity Floor, Bancada). This visual citation matches the 1-bit aesthetic of slot P in the browser — marking these controls as belonging to the *escaño del tiempo* and not to sonETH performance.
-
----
-
-## File Structure
-
-```
-BiocracyEngine/
-├── start_ecosystem.sh              # Full system launcher (graceful kill + restart)
-├── start_sonification.scd          # SC-only launcher
-├── 1_server_config.scd             # Server config, MOTU/Core Audio auto-detect
-├── 2_midi_control.scd              # Faderfox LC2 MIDI mapping (20 CCs, 4 rows)
-├── 3_synthdefs.scd                 # SynthDefs (elektronBell, opalKick/Perc/Drone/Dust)
-├── 4_gui.scd                       # SC GUI (amber palette, 20 knobs, echo on change)
-├── 5_beat_engine.scd               # Evolving beat engine (data-driven pitch pool)
-├── 6_osc_handlers.scd              # OSC in + ~oscToParamMap + beatTempo/txInfluence echo
-├── 7_trend_analysis.scd            # Transaction trend analysis
-├── 8_transaction_buffer.scd        # Transaction management
-├── 9_spatial_headphone_sim.scd     # 4-channel spatial audio
-├── 10_sample_system.scd            # Sample playback (field recordings)
-├── 11_recording_system.scd         # Multichannel recording
-├── 12_spatial_gui.scd              # Spatial positioning GUI
-├── 13_diagnostic_sweep.scd         # SC-side diagnostic sweep
-├── eth_sonify.py                   # Python Ethereum connector (web3)
-└── nw_wrld_local/
-    ├── parliament-bridge.js        # OSC↔WebSocket bridge (UDP:3333↔WS:3334, /diag HTTP:3335)
-    ├── diag-sweep.js               # Node.js diagnostic sweep (22 params)
-    ├── .env.example                 # Template for IUCN API token
-    ├── webpack.config.js            # Webpack (DefinePlugin injects .env tokens)
-    ├── src/projector/
-    │   ├── parliamentEntry.ts      # Hub: applySonethToViz (all 10 slots), DIAG monitor, WS bridge
-    │   ├── visualizationSwitcher.ts # Slots 0–3 + slot P (phenology) mount/unmount
-    │   ├── dataStructureVisuals.ts  # Slots 4–9 (TimeTravel/DynGraph/Splay/Geometry/MemHier/Hashing)
-    │   ├── speciesFetcher.ts        # IUCN Red List API integration (3-tier fallback)
-    │   ├── phenology/
-    │   │   └── breath.ts           # Bidirectional bridge for slot P (votes ↔ calendar ↔ SC audio)
-    │   ├── parliament/
-    │   │   └── parliamentStore.ts  # Reactive state store (consensus, species, eDNA, eco)
-    │   └── views/
-    │       └── parliament.html     # HTML GUI: 34 sliders (Rows 1–4 + Beat Engine) + vote panel
-    ├── src/main/starter_modules/
-    │   ├── ParliamentStage.js      # Slot 0: Three.js 3D scene + reactive radar grid
-    │   ├── LowEarthPointModule.js  # Slot 2: Three.js point cloud (consensus brightness)
-    │   ├── PerlinBlob.js           # Slot 3: p5.js Perlin noise blob
-    │   └── ZKProofVisualizer.js    # ZK proof overlay
-    └── ecosystems/default_ecosystem/
-        ├── modules/
-        │   ├── PhenologicalCalendar.js  # Slot P: 1-bit wireframe species ring (572 spp)
-        │   └── manakai_species.json     # Reserva Manakai species inventory
-        └── assets/json/                  # Static JSON assets served at /ecosystems/...
-```
-
----
-
-## Dependencies
-
-- SuperCollider 3.13.0+
-- Node.js 20+ with npm
-- Python 3.8+ with web3, python-osc
-- Electron 39+
-- Faderfox LC2 MIDI Controller (optional)
-- MOTU 828x Gen5 audio interface (optional — falls back to Core Audio stereo)
-
-## See Also
-
-- [ABOUT.md](ABOUT.md) — project premise, aesthetic statement, the Parliament of All Things framing.
-- [CHANGELOG.md](CHANGELOG.md) — versioned change history (current `[Unreleased]` includes Slot P + 1-bit phenology).
-- [nw_wrld_local/README.md](nw_wrld_local/README.md) — nw-wrld framework (visualizer host environment).
-
 ## License
 
 MIT License
-
-## Contact
-
-- GitHub: [@alejoduque](https://github.com/alejoduque)
