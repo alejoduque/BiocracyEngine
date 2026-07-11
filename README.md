@@ -7,18 +7,9 @@
                                     |___/             |___/
 ```
 
-### SoNETH · BiocracyEngine
-## Ethereum Blockchain Sonification + Visualization Instrument
+# BiocracyEngine
 
-**Author:** alejoduque (Alejandro Duque Jaramillo)  
-**Aesthetic:** Lawrence English Ambient / Elektron-style Performance + Parliament of All Things  
-**Theoretical Horizon:** Technodiversity (Yuk Hui), Opacity (Edouard Glissant), Coming Community (Giorgio Agamben), Investigación-Acción Participativa (Orlando Fals Borda)
-
----
-
-## Overview
-
-**BiocracyEngine** is a live audiovisual instrument and a deployable public artifact that couples three registers into a single feedback loop: a public blockchain, a deliberative assembly (the multispecies parliament), and the phenology of a tropical dry forest in Colombia. Every control parameter simultaneously drives SuperCollider audio synthesis and visual modules (slots 0–9, P, F, B, E, and R) via a bidirectional OSC/WebSocket bridge.
+A live audiovisual instrument and a deployable public artifact that couples three registers into a single feedback loop: a public blockchain, a deliberative assembly (the multispecies parliament), and the phenology of a tropical dry forest. Every control parameter simultaneously drives SuperCollider audio synthesis and visual modules (slots 0–9, P, F, B, E, and R) via a bidirectional OSC/WebSocket bridge.
 
 Rather than "visualizing data," the engine performs a cybernetic coupling where the forest, blockchain protocols, and human actions hold equal standing as political agents.
 
@@ -28,75 +19,44 @@ Rather than "visualizing data," the engine performs a cybernetic coupling where 
 
 The core contribution of the BiocracyEngine lies in **translating critical, decolonial, and political theory into working technical constraints in software.** It stands as a concrete, deployable counter-model to Nature Fintech and "Ecological State Protocols" by compiling philosophy into executable rules rather than citing it as external authority.
 
-### A. Philosophy Compiled into Running Rules
+### Philosophy Compiled into Running Rules
 *   **Glissant's Right to Opacity:** Implemented as a software constraint. The *Opacity Clause* (visualized via the `opacityFloor` parameter) withholds a deterministic fraction of active species labels from the projection. This clause is declared *untranslatable to sound* (it does not alter the SuperCollider synthesis), honoring Glissant's assertion that the subaltern must have a right to remain opaque and unconsumed by the Western gaze.
 *   **Agamben's Coming Community:** Seated in the code as a parliament of *singularities, never identities*. The assembly does not classify species by their economic value or utility, but by their sheer presence.
 *   **"Absence is Voice":** In slot P (Phenological Calendar) and slot F (DarkForest), species that fall below the sensory detection threshold are not deleted or set to zero; instead, they persist in the background as 1-bit dither or visual shimmer. Their absence speaks as a low-level frequency, asserting that what is unmeasured still participates.
 *   **Seasonal Benches:** The membership and voting weight of the parliament's benches recompose dynamically following the seasonal cycles of the phenological calendar.
 
-### B. The Parliament/Surveillance Distinction as an Architectural Claim
+### The Parliament/Surveillance Distinction as an Architectural Claim
 The pipeline used here is: **Acoustic Sensor → Vectorization → Smart Contract**.  
-An important architectural claim of this work is that *the same sensing pipeline constitutes either surveillance or a parliament depending only on the architecture of power surrounding it.* Vectorization and remote sensing are not inherently tools of extraction; they can be configured to establish local sovereignty, turning a surveillance mesh into a site of ecological representation.
+An important architectural claim of this work is that *the same sensing pipeline constitutes either surveillance or a parliament depending only on the architecture of power surrounding it.* Vectorization and remote sensing are not inherently tools of extraction; they can be configured to establish local sovereignty, turning a surveillance mesh into a site of representation.
 
-### C. Non-Tradable Inscription: The BioToken
+### Non-Tradable Inscription: The BioToken
 The BioToken inverts the "tokenize-the-planet" logic of carbon credits and biodiversity offsets. It is:
 *   A **unit of political inscription** (participation) rather than a tradable asset (commodity).
 *   A non-financialized protocol designed to register validated conservation actions and deep listening.
 *   A buildable counter-model to speculative "Ecological State Protocols" and Nature Fintech.
 
-### D. Disintermediation of the Extractive NGO Circuit
+### Disintermediation of the Extractive NGO Circuit
 The system routes conservation value and decision-making sovereignty directly to the local, marginal community (El Balzal, Córdoba, Colombia). Data sovereignty is kept local, and the honest limits of the system—such as the dependencies and boundaries of chain-level governance—are made visible in the interface rather than hidden behind greenwashed UI templates.
 
-### E. Phenology-Driven Governance
+### Phenology-Driven Governance
 Rather than using the standardized global taxonomies of the IUCN Red List as an absolute authority, the engine maps the forest's own local seasonal calendar using a 572-species inventory from the Reserva Manakai. Ecological time governs the synthesis: the seasonal weight and active-species fraction are fed back into SuperCollider to drive `harmonicrich` and `texturedepth`.
 
-### F. Situated Epistemology & Research-Creation
-Rooted in *SubAmérica* and technodiversity (Yuk Hui), this doctoral project fuses Investigación-Acción Participativa (IAP, after Orlando Fals Borda) with on-chain governance. The result is delivered as a **liminal research object** rather than a finished artwork, making it reproducible and adaptable by other territorial communities.
+### Situated Epistemology & Research-Creation
+Rooted in *SubAmérica* and technodiversity (Yuk Hui), this project fuses Investigación-Acción Participativa (IAP, after Orlando Fals Borda) with on-chain governance. The result is delivered as a **liminal research object** rather than a finished artwork, making it reproducible and adaptable by other territorial communities.
 
 ---
 
 ## 2. Deployable Public Artifacts
 
 The project is released across three software repositories and a community-facing field tool:
-*   **[BiocracyEngine](file:///Users/a/Documents/code/BiocracyEngine)**: The core audiovisual synthesis, WebGL/Three.js projection, and MIDI/OSC bridge engine.
+*   **BiocracyEngine**: The core audiovisual synthesis, WebGL/Three.js projection, and MIDI/OSC bridge engine.
 *   **bioacoustic-scripts**: The python-based web3 blockchain parser and audio-vector feature extraction tools.
 *   **dIAP (Decolonial IAP)**: Decentralized action research protocols and on-chain assembly tools.
-*   **Biomap SoundWalk App** (Priority Supplement): A participatory listening and conservation instrument. It turns guided soundwalks in Reserva Manakai into logged acts of ecological presence, fusing deep listening and passive acoustic monitoring (PAM) in one field tool. The app carries the incentive layer, distributing BioToken-registered rewards to the El Balzal community for validated conservation actions, closing the loop between listening, inscription, and economic sustainability.
+*   **Biomap SoundWalk App**: A participatory listening and conservation instrument. It turns guided soundwalks in Reserva Manakai into logged acts of ecological presence, fusing deep listening and passive acoustic monitoring (PAM) in one field tool. The app carries the incentive layer, distributing BioToken-registered rewards to the El Balzal community for validated conservation actions, closing the loop between listening, inscription, and economic sustainability.
 
 ---
 
-## 3. Leonardo Submission Metadata
-*For peer-review submission under Leonardo / MIT Press.*
-
-### Abstract
-Bioacoustics tunes the ear to a polyphonic parliament resonating across species and kingdoms; biocracy is the wager that it could be seated — governance turned toward the living, not derived from biology. BiocracyEngine stages it as a live audiovisual instrument coupling three registers in one feedback loop: a public blockchain, a deliberative assembly, and a tropical dry forest's phenology. It sonifies the chains now tokenizing the planet as a documentary diagnosis of extractive finance, then inverts them: other species take part in that economy rather than furnish its raw material. Its politics turn on vectorization — the sensing that could surveil a territory instead constitutes its parliament, held open by Glissant's right to opacity and Agamben's coming community: singularities, never identities.
-
-### Keywords
-cybernetics; sonification; vectorization; blockchain governance; multispecies parliament; bioacoustics; opacity (Glissant)
-
-### Section Structure (As Realized)
-1.  **Listening to the Machine**
-2.  **A Cybernetic Substrate for a More-than-Human Parliament**
-    *   *Feedback, and the observer inside it*
-    *   *Autopoiesis and coupled knowledges*
-    *   *Three registers, one instrument*
-3.  **From Surveillance to Parliament: The Politics of Vectorization**
-4.  **BiocracyEngine: An Instrument That Listens to Infrastructure**
-5.  **A Liminal Object, Not a Finished Work**
-6.  **Opacity as Constitution: The Architecture Behind the Session**
-7.  **What Art Can Adjudicate**
-
-### Supplemental Materials (Allowed: 3 files)
-*   **File 1: Biomap SoundWalk App (New Supplement, 11 July):** Deployable mobile/mesh layer designed for participatory listening and species indexing in Reserva Manakai, carrying the BioToken incentive loop.
-*   **File 2: Parlamento de lo Vivo Audiovisual Documentation:** Video/audio excerpt of the live performance at the Festival de la Imagen, Manizales (2025).
-*   **File 3: Repository Archives:** Combined source archives for `BiocracyEngine`, `bioacoustic-scripts`, and `dIAP`.
-
-### Author Bio Note
-Alejandro Duque Jaramillo is a Swiss-Colombian sound artist and researcher working across bioacoustics, permacomputing, and experimental coding. He is a doctoral candidate in Diseño, Arte y Ciencia at Universidad Jorge Tadeo Lozano (Bogotá) and a professor in the Pregrado en Creación Digital at Universidad de Antioquia (Medellín), where his doctoral project Biocracy develops the BiocracyEngine and Parlamento de lo Vivo with the community of El Balzal and Reserva Manakai, Córdoba.
-
----
-
-## 4. Technical Architecture & Data Flow
+## 3. Technical Architecture & Data Flow
 
 ```
 ETH Blockchain
@@ -185,9 +145,9 @@ Four processes are managed by `start_ecosystem.sh`:
 
 ---
 
-## 5. Control Matrix
+## 4. Control Matrix
 
-10 core sonETH parameters × 10 visual slots = 100 bindings. Every slider/knob/CC drives both SC audio buses and all visualizations simultaneously.
+10 core parameters × 10 visual slots = 100 bindings. Every slider/knob/CC drives both SC audio buses and all visualizations simultaneously.
 
 ### Row 1–2: Core Performance + Ambient Processing (all slots)
 
@@ -206,7 +166,7 @@ Four processes are managed by `start_ecosystem.sh`:
 
 ---
 
-## 6. Laser Projection (ILDA / Helios DAC)
+## 5. Laser Projection (ILDA / Helios DAC)
 
 Projects the engine's **vector** geometry onto a real-world forest. Lasers draw sparse bright strokes (not rasterised images), so the browser sends a small laser-friendly scene — not the 3-D framebuffer.
 
@@ -229,7 +189,7 @@ browser laserTap ──WS:3337──► laser-bridge.js ──USB──► Helio
 
 ---
 
-## 7. Quick Start & Diagnostics
+## 6. Quick Start & Diagnostics
 
 ### Run the ecosystem
 ```bash
