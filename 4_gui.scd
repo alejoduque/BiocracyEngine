@@ -46,7 +46,7 @@
         // (Qt warned "outside any known screen" at boot). All content now
         // lives in a ScrollView canvas: small screens scroll vertically
         // instead of clipping the REC strip; knob/button sizes unchanged.
-        ~guiScreen = Window.availBounds;
+        ~guiScreen = Window.availableBounds;
         ~mainWindow = Window("SøNETH — BiocracyEngine Control", Rect(
             60, 40,
             min(1100, ~guiScreen.width - 80),
