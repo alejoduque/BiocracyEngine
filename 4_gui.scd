@@ -187,77 +187,14 @@
             counterView.layout.add(counter.parent);
         });
 
-        // Control specs for MERGED ambient + drone/noise controls - EXPANDED RANGES
-        ~controlSpecs = ~controlSpecs ?? (
-            // Lawrence English Ambient Controls (expanded for real-time performance)
-            masterVolume: ControlSpec(0.01, 1, \lin),   // Allow near-silence but not complete mute
-            pitchShift: ControlSpec(-24, 24, \lin),     // ±2 octaves for dramatic pitch blending
-            timeDilation: ControlSpec(0.5, 6, \exp),    // More dramatic time stretching
-            spectralShift: ControlSpec(80, 3000, \exp),   // Hz — safe range, never silence at either extreme
-            spatialSpread: ControlSpec(-1, 1, \lin),
-            textureDepth: ControlSpec(0, 0.6, \lin),    // More texture range for performance
-            atmosphereMix: ControlSpec(0, 0.9, \lin),   // More reverb range
-            memoryFeed: ControlSpec(0, 0.8, \lin),      // More delay feedback range
-            harmonicRich: ControlSpec(0.1, 8, \exp),    // Wider FM ratio range for performance
-            resonantBody: ControlSpec(0.1, 0.8, \lin),  // More filter resonance range
-            
-            // Existing Drone/Noise Controls
-            masterAmp: ControlSpec(0, 1, \lin),
-            filterCutoff: ControlSpec(0, 1, \lin),
-            noiseLevel: ControlSpec(0, 0.5, \lin),
-            noiseFilt: ControlSpec(0, 1, \lin),
-            droneDepth: ControlSpec(0, 1, \lin),
-            droneFade: ControlSpec(0.1, 5, \exp),
-            droneSpace: ControlSpec(0, 1, \lin),
-            droneMix: ControlSpec(0, 1, \lin),
-            delayFeedback: ControlSpec(0, 0.95, \lin),
-            transactionInfluence: ControlSpec(0, 1, \lin),
-
-            // ── Cámara Fenológica (Row 5, 1-bit white palette) ───────────────
-            activityThreshold: ControlSpec(0.20, 0.85, \lin),  // quórum sensible
-            windowWidth: ControlSpec(0.4, 2.5, \lin),          // ventana gaussiana
-            seasonalBias: ControlSpec(-1.0, 1.0, \lin),        // sesgo seca/lluvia
-            absenceWeight: ControlSpec(0, 1, \lin),            // peso de la ausencia
-            pulseGain: ControlSpec(0, 2, \lin),                // ganancia del pulso por voto
-            opacityFloor: ControlSpec(0, 0.7, \lin),           // cláusula de opacidad
-            bancada: ControlSpec(0, 4, \lin)                   // 0..4 discrete
-        );
-
-        // Initialize control values for MERGED ambient + drone/noise controls
-        ~controlValues = ~controlValues ?? (
-            // Lawrence English Ambient Controls
-            masterVolume: 0.3,
-            pitchShift: 0.0,     // Start at original pitch
-            timeDilation: 2.0,
-            spectralShift: 1000,
-            spatialSpread: 0.0,
-            textureDepth: 0.2,
-            atmosphereMix: 0.4,
-            memoryFeed: 0.3,
-            harmonicRich: 1.0,
-            resonantBody: 0.4,
-            
-            // Existing Drone/Noise Controls
-            masterAmp: 0.7,
-            filterCutoff: 0.6,
-            noiseLevel: 0.1,
-            noiseFilt: 0.5,
-            droneDepth: 0.3,
-            droneFade: 2.0,
-            droneSpace: 0.5,
-            droneMix: 0.5,
-            delayFeedback: 0.3,
-            transactionInfluence: 0.3,
-
-            // Cámara Fenológica defaults
-            activityThreshold: 0.50,
-            windowWidth: 1.0,
-            seasonalBias: 0.0,
-            absenceWeight: 0.3,
-            pulseGain: 1.0,
-            opacityFloor: 0.0,
-            bancada: 0
-        );
+        // Control specs and values come from the canonical registry
+        // (0_parameters.scd) — the duplicated literals that used to live here
+        // had drifted from the MIDI and OSC copies of the same ranges.
+        if(~controlSpecs.isNil or: { ~controlValues.isNil }) {
+            "0_parameters.scd not loaded — GUI knobs have no specs!".error;
+            ~controlSpecs = ~controlSpecs ?? ();
+            ~controlValues = ~controlValues ?? ();
+        };
 
         // Knob parameters layout - MERGED ambient + drone/noise controls
         ~knobParameters = [
@@ -307,29 +244,22 @@
             // Define parameter name for both action and storage
             paramName = label.asSymbol;  // Use exact parameter name (already camelCase)
             
-            // Knob action with bus updates
+            // Knob action — route through the single write path (0_parameters.scd).
+            // ~setParam sets the bus, caches the value, mirrors ~beatParams and
+            // echoes NORMALIZED 0–1 to the browser on the canonical path. The
+            // old inline echo sent native units (Hz, semitones) that garbled the
+            // HTML sliders, and findKeyForValue could pick an alias path the
+            // browser doesn't map. Label update comes back via ~setParam's defer.
             knob.action = { |k|
                 var mappedVal = spec.map(k.value);
-                "GUI Knob % moved: value=%, bus exists: %".format(
-                    paramName, mappedVal.round(0.001), 
-                    (~buses.notNil and: {~buses[paramName].notNil})
-                ).postln;
-                if(~buses.notNil and: {~buses[paramName].notNil}) {
-                    ~buses[paramName].set(mappedVal);
-                    ~controlValues[paramName] = mappedVal;
-                    valueLabel.string = displayStr ++ ": " ++ mappedVal.round(0.001);
-                    
-                    // Echo back to HTML GUI if bridge is connected
-                    if(~visualsDest.notNil and: { ~oscToParamMap.notNil }) {
-                        var oscPath = ~oscToParamMap.findKeyForValue(paramName);
-                        if(oscPath.notNil) {
-                            ~visualsDest.sendMsg(oscPath, mappedVal);
-                        };
-                    };
-                    
-                    "Bus % set to %".format(paramName, mappedVal.round(0.001)).postln;
+                if(~setParam.notNil) {
+                    ~setParam.(paramName, mappedVal, \gui);
                 } {
-                    "WARNING: Bus % not found!".format(paramName).warn;
+                    // Registry missing (standalone GUI use) — set the bus directly
+                    if(~buses.notNil and: {~buses[paramName].notNil}) {
+                        ~buses[paramName].set(mappedVal);
+                        valueLabel.string = displayStr ++ ": " ++ mappedVal.round(0.001);
+                    };
                 };
             };
 
