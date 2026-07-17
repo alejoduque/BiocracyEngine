@@ -41,17 +41,26 @@
         textColor = mainTheme.foreground;
         accentColor = mainTheme.accent;
 
-        // Create and store window with enhanced styling.
-        // Sized to fit ALL sections without scrolling: 5 control rows
-        // (Row 5 = Cámara Fenológica) + status/counter + samples + REC.
-        // Previous 1120px was for 4 rows; we grew to 5 and the REC strip
-        // dropped off-screen. 1380px restores it while keeping the rest.
-        ~mainWindow = Window("SøNETH — BiocracyEngine Control", Rect(100, 100, 1100, 1380))
-            .background_(backgroundColor);
+        // Create and store window sized to the ACTUAL screen. The previous
+        // fixed 1100x1380 rect landed partly off-screen on laptop displays
+        // (Qt warned "outside any known screen" at boot). All content now
+        // lives in a ScrollView canvas: small screens scroll vertically
+        // instead of clipping the REC strip; knob/button sizes unchanged.
+        ~guiScreen = Window.availBounds;
+        ~mainWindow = Window("SøNETH — BiocracyEngine Control", Rect(
+            60, 40,
+            min(1100, ~guiScreen.width - 80),
+            min(1380, ~guiScreen.height - 60)
+        )).background_(backgroundColor);
 
-        // Compact the outer chrome so button/text sizes are preserved but
-        // dead air between rows shrinks: margins 15→10, spacing 15→8.
-        ~mainWindow.view.layout_(VLayout().margins_(10).spacing_(8));
+        ~mainWindow.view.layout_(VLayout().margins_(0).spacing_(0));
+        ~scrollView = ScrollView().hasHorizontalScroller_(false)
+            .background_(backgroundColor);
+        ~scrollCanvas = View().background_(backgroundColor);
+        // Compact chrome: margins 10, spacing 8 (button/text sizes preserved).
+        ~scrollCanvas.layout_(VLayout().margins_(10).spacing_(8));
+        ~scrollView.canvas = ~scrollCanvas;
+        ~mainWindow.layout.add(~scrollView);
 
         // Create header
         ~header = StaticText()
@@ -134,12 +143,15 @@
             indicator;
         };
 
-        // Create status indicators
+        // Create status indicators. "Bridge RX" is green while browser-origin
+        // OSC (HTML sliders / parliament buttons) has arrived within the last
+        // 5 s — live confirmation that the HTML→bridge→SC path works.
         ~statusLights = (
             server: ~makeStatusLight.value("Server:"),
             beat: ~makeStatusLight.value("Beat Engine:"),
             osc: ~makeStatusLight.value("OSC:"),
-            midi: ~makeStatusLight.value("MIDI:")
+            midi: ~makeStatusLight.value("MIDI:"),
+            bridge: ~makeStatusLight.value("Bridge RX:")
         );
 
         // Add status lights
@@ -352,28 +364,11 @@
             controlViewRow5.layout.add(knobContainer);
         };
 
-        // ─── MIDI → GUI Feedback: Poll bus values and update knob displays ───
-        // This keeps the GUI knobs synchronized when MIDI faders move
-        // Uses stored references (~knobViews, ~controlLabels) to update displays
-        // Running on AppClock ensures thread-safe GUI updates
-        AppClock.sched(0.0, {
-            ~knobParameters.flatten.do { |paramName|
-                if(~knobs[paramName].notNil and: {~buses[paramName].notNil}) {
-                    var spec = ~controlSpecs[paramName];
-                    var busVal = ~buses[paramName].getSynchronous;
-                    var knob = ~knobViews[paramName];
-                    var label = ~controlLabels[paramName];
-
-                    if(knob.notNil and: {label.notNil}) {
-                        {
-                            knob.value = spec.unmap(busVal);
-                            label.string = paramName.asString.capitalize ++ ": " ++ busVal.round(0.001);
-                        }.defer;
-                    };
-                };
-            };
-            0.05;  // poll every 50ms (imperceptible latency, low CPU)
-        });
+        // MIDI/OSC → GUI sync is event-driven: every surface goes through
+        // ~setParam (0_parameters.scd), which defers the knob+label update.
+        // The old 50 ms polling loop here issued a blocking getSynchronous
+        // per knob per tick (~27 buses x 20 Hz ≈ 540 server queries/s) and
+        // could fight the knob mid-drag. Deleted — nothing to poll anymore.
 
         // Create sample trigger buttons
         ~sampleNames = [
@@ -509,16 +504,15 @@
             // Define parameter name for sample bus connection
             paramName = label.asSymbol;
             
-            // Sample knob action with sample bus updates
+            // Sample knob action with sample bus updates (no per-move postln —
+            // knob drags used to flood the log at two lines per pixel)
             knob.action = { |k|
                 var mappedVal = spec.map(k.value);
-                "Sample Knob % moved: value=%".format(paramName, mappedVal.round(0.001)).postln;
                 if(~sampleBuses.notNil and: {~sampleBuses[paramName].notNil}) {
                     ~sampleBuses[paramName].set(mappedVal);
                     ~sampleControlValues[paramName] = mappedVal;
                     valueLabel.string = displayStr ++ ": " ++ mappedVal.round(0.001);
                     valueLabel.stringColor = Color.white;  // Keep white on updates
-                    "Sample Bus % set to %".format(paramName, mappedVal.round(0.001)).postln;
                 } {
                     "WARNING: Sample Bus % not found!".format(paramName).warn;
                 };
@@ -643,17 +637,17 @@
         recordingView.layout.add(~quickRecButton);
         recordingView.layout.add(~spatialGuiButton);
         
-        // Add all views to main window (5 control rows + samples + recording)
-        ~mainWindow.layout.add(~header);
-        ~mainWindow.layout.add(statusView);
-        ~mainWindow.layout.add(counterView);
-        ~mainWindow.layout.add(controlView);
-        ~mainWindow.layout.add(controlViewRow2);
-        ~mainWindow.layout.add(controlViewRow3);
-        ~mainWindow.layout.add(controlViewRow4);
-        ~mainWindow.layout.add(controlViewRow5);
-        ~mainWindow.layout.add(sampleView);
-        ~mainWindow.layout.add(recordingView);
+        // Add all views to the scroll canvas (5 control rows + samples + REC)
+        ~scrollCanvas.layout.add(~header);
+        ~scrollCanvas.layout.add(statusView);
+        ~scrollCanvas.layout.add(counterView);
+        ~scrollCanvas.layout.add(controlView);
+        ~scrollCanvas.layout.add(controlViewRow2);
+        ~scrollCanvas.layout.add(controlViewRow3);
+        ~scrollCanvas.layout.add(controlViewRow4);
+        ~scrollCanvas.layout.add(controlViewRow5);
+        ~scrollCanvas.layout.add(sampleView);
+        ~scrollCanvas.layout.add(recordingView);
 
         // Add footer
         ~footer = StaticText()
@@ -661,17 +655,27 @@
             .font_(Font("Monaco", 8))
             .align_(\right)
             .stringColor_(mainTheme.dim.alpha_(0.6));
-        ~mainWindow.layout.add(~footer);
+        ~scrollCanvas.layout.add(~footer);
 
         // Create update routine
         ~guiRoutine = Routine({
             loop {
                 {
+                    var bridgeAlive = ~lastBrowserOscTime.notNil and: {
+                        (SystemClock.seconds - ~lastBrowserOscTime) < 5
+                    };
                     // Update status indicators
                     ~statusLights.server.setProperty(\status, Server.default.serverRunning.binaryValue);
-                    ~statusLights.beat.setProperty(\status, (~beatEngine.notNil).binaryValue);
+                    // \beatRoutine is the actually-running loop; ~beatEngine is
+                    // just the launcher function and is non-nil even when dead
+                    ~statusLights.beat.setProperty(\status, (~beatRoutine.notNil).binaryValue);
                     ~statusLights.osc.setProperty(\status, (OSCdef(\txHandler).notNil).binaryValue);
-                    ~statusLights.midi.setProperty(\status, MIDIClient.sources.notEmpty.binaryValue);
+                    // MIDIClient.sources is nil before the deferred MIDI init —
+                    // the old direct .notEmpty call threw at boot and could
+                    // kill this routine (seen as nil.notEmpty in sclang_log)
+                    ~statusLights.midi.setProperty(\status,
+                        (MIDIClient.initialized and: { (MIDIClient.sources ? []).notEmpty }).binaryValue);
+                    ~statusLights.bridge.setProperty(\status, bridgeAlive.binaryValue);
 
                     // Update counters
                     if(~globalState.notNil) {
@@ -681,7 +685,7 @@
                     // Refresh status lights
                     ~statusLights.do(_.refresh);
                 }.defer;
-                0.05.wait;  // 20Hz refresh rate
+                0.5.wait;  // 2 Hz — status lights don't need the old 20 Hz
             }
         }).play(AppClock);
 
@@ -691,6 +695,8 @@
             if(~guiRoutine.notNil) { ~guiRoutine.stop };
             ~guiRoutine = nil;
             ~mainWindow = nil;
+            ~scrollView = nil;
+            ~scrollCanvas = nil;
             ~statusLights = nil;
             ~counters = nil;
             ~knobs = nil;
