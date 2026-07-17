@@ -68,6 +68,13 @@
     // Start the continuous ambient drone immediately
     // Safe bus index helper: returns bus index or -1 if bus missing
     ~bi = { |name| if(~buses.notNil and: { ~buses[name].notNil }, { ~buses[name].index }, { -1 }) };
+    // Safe synchronous bus READ for routine (language-side) code.
+    // In.kr/Select.kr are server-side UGens: used in a Routine they return
+    // UGen objects, not numbers. getSynchronous is the language-side read.
+    ~busVal = { |name, default=0|
+        if(~buses.notNil and: { ~buses[name].notNil },
+            { ~buses[name].getSynchronous }, { default });
+    };
 
     ~opalDroneSynth = Synth(\opalDrone, [
         \freq, 55, // Low ambient anchor
@@ -116,14 +123,16 @@
             var bMVol, bPitch, bTime, bSpec, bSpat, bText, bAtmo, bMem, bHarm, bRes;
             var elapsed = now % 300; // 5-minute macro cycle
 
-            // ─── Read live GUI control values every beat ───
-            harmRich = Select.kr(~bi.(\harmonicRich) >= 0, [1.0, In.kr(~bi.(\harmonicRich), 1)]);
-            resBdy   = Select.kr(~bi.(\resonantBody) >= 0, [0.4, In.kr(~bi.(\resonantBody), 1)]);
-            atmMix   = Select.kr(~bi.(\atmosphereMix) >= 0, [0.4, In.kr(~bi.(\atmosphereMix), 1)]);
-            memFeed  = Select.kr(~bi.(\memoryFeed) >= 0, [0.3, In.kr(~bi.(\memoryFeed), 1)]);
-            texDep   = Select.kr(~bi.(\textureDepth) >= 0, [0.2, In.kr(~bi.(\textureDepth), 1)]);
-            dronFade = Select.kr(~bi.(\droneFade) >= 0, [0.5, In.kr(~bi.(\droneFade), 1)]);
-            txInf    = Select.kr(~bi.(\txInfluence) >= 0, [0.5, In.kr(~bi.(\txInfluence), 1)]);
+            // ─── Read live GUI control values every beat (synchronous reads) ───
+            // The bus is named \transactionInfluence (see ~globalParams) — the
+            // old \txInfluence lookup always missed and fell back to default.
+            harmRich = ~busVal.(\harmonicRich, 1.0);
+            resBdy   = ~busVal.(\resonantBody, 0.4);
+            atmMix   = ~busVal.(\atmosphereMix, 0.4);
+            memFeed  = ~busVal.(\memoryFeed, 0.3);
+            texDep   = ~busVal.(\textureDepth, 0.2);
+            dronFade = ~busVal.(\droneFade, 0.5);
+            txInf    = ~busVal.(\transactionInfluence, 0.5);
 
             // ─── Phenology Chamber: read synchronously (~3 Hz beat rate) ──
             // Falls back to defaults if buses don't exist yet (boot ordering).
@@ -139,16 +148,19 @@
             //   threshold 0.85 → mult 0.6 (strict quórum → sparse pool)
             phenoMult = activityThr.linlin(0.20, 0.85, 1.5, 0.6);
 
-            // ─── Compute melodic parameters from control matrix ───
-            pitchPool = ~computePitchPool.(harmRich, txInfluence, density * phenoMult);
-            voicingMode = ~selectVoicing.(resBdy, texDep);
-            harmCount = ~getHarmonicCount.(harmRich);
-
-            // Calculate transaction influence
+            // Calculate transaction influence + density FIRST — the melodic
+            // parameters below depend on both (density was read after use,
+            // and `txInfluence` was an undefined variable: parse error that
+            // killed this whole file at load).
             transactionInfluence = (~beatParams.transactionInfluence *
                 exp(timeSinceLastTx.neg * 0.5)).clip(0, 1);
 
             density = ~beatParams.transactionDensity ? 0;
+
+            // ─── Compute melodic parameters from control matrix ───
+            pitchPool = ~computePitchPool.(harmRich, txInf, density * phenoMult);
+            voicingMode = ~selectVoicing.(resBdy, texDep);
+            harmCount = ~getHarmonicCount.(harmRich);
 
             // Bus indices
             bMVol  = ~bi.(\masterVolume);
