@@ -33,6 +33,12 @@ s.doWhenBooted({
         if(txHash.notNil) {
             baseFreq = baseFreq * (1 + (txHash.hash.fold(-0.05, 0.05)));
         };
+        // Octave-fold into the drone register: Python maps TX value to MIDI
+        // 36–84 (fundamentals up to ~1 kHz). Folding anything above 320 Hz
+        // down by octaves keeps the pitch class (value still audible as
+        // pitch) but lets transactions thicken the drone bed instead of
+        // pinging on top of it.
+        while({ baseFreq > 320 }, { baseFreq = baseFreq * 0.5 });
 
         // Calculate abstract values for visuals
         nutrient = value.linlin(0.001, 10, 0, 1);
@@ -75,9 +81,9 @@ s.doWhenBooted({
         synthArgs = [
             \freq, baseFreq,
             \amp, velocity.linlin(30, 120, 0.12, 0.28),
-            \atk, value.linlin(0.001, 10, 2.5, 0.8),
-            \dec, gasPrice.linlin(1, 200, 1.5, 0.5),
-            \rel, value.linlin(0.001, 10, 1.2, 2.5),
+            \atk, value.linlin(0.001, 10, 3.0, 1.2),
+            \dec, gasPrice.linlin(1, 200, 1.8, 0.7),
+            \rel, value.linlin(0.001, 10, 2.5, 5.0),
             \pan, if(txHash.notNil, { txHash.hash.fold(-1.0, 1.0) }, { 0 })
         ];
 
@@ -149,106 +155,26 @@ s.doWhenBooted({
     }, '/tx');
 
     // --- Web GUI Bidirectional OSC Mappings ---
-    ~oscToParamMap = Dictionary.newFrom([
-        // ── Core Performance (Row 1) ─────────────────────────────────────
-        "/soneth/volume", \masterVolume,
-        "/soneth/pitchshift", \pitchShift,
-        "/soneth/timedilation", \timeDilation,
-        "/soneth/spectralshift", \spectralShift,
-        "/soneth/spatialspread", \spatialSpread,
-        // ── Ambient Processing (Row 2) ───────────────────────────────────
-        "/soneth/texturedepth", \textureDepth,
-        "/soneth/atmospheremix", \atmosphereMix,
-        "/soneth/memoryfeed", \memoryFeed,
-        "/soneth/harmonicrich", \harmonicRich,
-        "/soneth/resonantbody", \resonantBody,
-        // ── Drone/Noise Controls (Row 3) — echo to browser for visual sync
-        "/soneth/masteramp", \masterAmp,
-        "/soneth/filtercutoff", \filterCutoff,
-        "/soneth/noiselevel", \noiseLevel,
-        "/soneth/noisefilt", \noiseFilt,
-        "/soneth/dronedepth", \droneDepth,
-        // ── Additional Controls (Row 4) ──────────────────────────────────
-        "/soneth/dronefade", \droneFade,
-        "/soneth/dronespace", \droneSpace,
-        "/soneth/dronemix", \droneMix,
-        "/soneth/delayfeedback", \delayFeedback,
-        "/soneth/txInfluence", \transactionInfluence,
-        // ── FX Chain backups/alternates ───────────────────────────────────
-        "/parliament/fx/reverb", \atmosphereMix,
-        "/parliament/fx/room", \droneSpace,
-        "/parliament/fx/delaytime", \timeDilation,
-        "/parliament/fx/decaytime", \delayFeedback,
-        // ── Cámara Fenológica (Phenology Chamber, CCs 10–16) ─────────────
-        "/pheno/activityThreshold", \activityThreshold,
-        "/pheno/windowWidth",       \windowWidth,
-        "/pheno/seasonalBias",      \seasonalBias,
-        "/pheno/absenceWeight",     \absenceWeight,
-        "/pheno/pulseGain",         \pulseGain,
-        "/pheno/opacityFloor",      \opacityFloor,
-        "/pheno/bancada",           \bancada
-    ]);
-
-    ~oscToParamMap.keysValuesDo { |oscPath, paramName|
-        OSCdef(paramName, { |msg|
-            var rawVal = msg[1].asFloat;
-            var val;
-
-            // ── Remap normalized 0–1 HTML values to real parameter ranges ──
-            // These params are sent as 0–1 from the browser but SC buses
-            // expect their native units. Without this, e.g. spectralShift=0.01
-            // closes the filter completely and kills all sound.
-            val = switch(paramName,
-                // ── Row 1: Core Performance ──────────────────────────────────────────
-                \masterVolume,   { rawVal.linlin(0, 1, 0.01, 1) },         // amp — floor 0.01 (never fully mute)
-                \pitchShift,     { rawVal.linlin(0, 1, -24, 24) },         // semitones (0.5 = center, no shift)
-                \timeDilation,   { rawVal.linexp(0.0001, 1, 0.5, 6) },    // stretch ratio 0.5x–6x
-                \spectralShift,  { rawVal.linexp(0.0001, 1, 80, 3000) },  // Hz — floor 80Hz, ceiling 3000Hz
-                \spatialSpread,  { rawVal.linlin(0, 1, -1, 1) },           // pan -1(L) to +1(R), 0.5=center
-                // ── Row 2: Ambient Processing ────────────────────────────────────────
-                \textureDepth,   { rawVal.linlin(0, 1, 0, 0.6) },          // granular density 0–0.6
-                \atmosphereMix,  { rawVal.linlin(0, 1, 0, 0.9) },          // reverb 0–0.9
-                \memoryFeed,     { rawVal.linlin(0, 1, 0, 0.8) },          // delay feedback 0–0.8
-                \harmonicRich,   { rawVal.linexp(0.0001, 1, 0.1, 8) },    // FM ratio 0.1–8
-                \resonantBody,   { rawVal.linlin(0, 1, 0.1, 0.8) },       // filter Q 0.1–0.8
-                // ── Cámara Fenológica: HTML 0–1 → native ranges ──────────────────────
-                \activityThreshold, { rawVal.linlin(0, 1, 0.20, 0.85) },  // quórum sensible threshold
-                \windowWidth,       { rawVal.linlin(0, 1, 0.4, 2.5) },    // gaussian window scale 0.4x–2.5x
-                \seasonalBias,      { rawVal.linlin(0, 1, -1.0, 1.0) },   // bias to seasonalWeight ±1
-                \absenceWeight,     { rawVal.linlin(0, 1, 0, 1) },        // 0 silenced, 1 full
-                \pulseGain,         { rawVal.linlin(0, 1, 0.0, 2.0) },    // vote → calendar pulse gain
-                \opacityFloor,      { rawVal.linlin(0, 1, 0.0, 0.7) },    // fraction of labels hidden
-                \bancada,           { (rawVal * 4).round.asInteger },     // 0..4 discrete
-                // ── all others pass raw 0–1 natively ─────────────────────────────────
-                { rawVal }
-            );
-
-            // 1. Update the control bus
-            if(~buses.notNil and: { ~buses[paramName].notNil }) {
-                ~buses[paramName].set(val);
-            };
-
-            // 2. Update the internal state value
-            if(~controlValues.notNil) {
-                ~controlValues[paramName] = val;
-            };
-
-            // 3. Update the UI Knob visually (MUST be deferred to AppClock)
-            {
-                if(~knobViews.notNil and: { ~knobViews[paramName].notNil }) {
-                    var spec = ~controlSpecs[paramName];
-                    if(spec.notNil) {
-                        ~knobViews[paramName].value = spec.unmap(val);
-                    };
-                };
-                if(~controlLabels.notNil and: { ~controlLabels[paramName].notNil }) {
-                    var displayStr = paramName.asString;
-                    displayStr = displayStr[0].toUpper ++ displayStr[1..];
-                    ~controlLabels[paramName].string = displayStr ++ ": " ++ val.round(0.001);
-                };
-            }.defer;
-
-        }, oscPath);
+    // ~oscToParamMap (path -> param, canonical + aliases) comes from the
+    // canonical registry in 0_parameters.scd — the range table that used to
+    // live here (and had drifted from the GUI/MIDI copies) lives there too.
+    //
+    // One OSCdef per PATH, keyed by the path itself: the old code keyed each
+    // OSCdef by the param symbol, so alias paths (/parliament/fx/*) silently
+    // overwrote the canonical /soneth/* handler for the same parameter —
+    // whichever iterated last won and the other path went dead.
+    if(~oscToParamMap.notNil and: { ~setParamNorm.notNil }) {
+        ~oscToParamMap.keysValuesDo { |oscPath, paramName|
+            OSCdef(("param" ++ oscPath).asSymbol, { |msg|
+                // Browser sliders send normalized 0–1. ~setParamNorm maps to
+                // native units via the registry spec, sets the bus, mirrors
+                // ~beatParams (beatTempo/txInfluence), syncs the GUI knob and
+                // echoes 0–1 back on the canonical path.
+                ~setParamNorm.(paramName, msg[1].asFloat, \osc);
+            }, oscPath);
+        };
+    } {
+        "0_parameters.scd not loaded — no slider OSC handlers created!".error;
     };
 
     // ── Phenology Chamber: season jump trigger (Art. 42 §) ─────────────
@@ -257,6 +183,7 @@ s.doWhenBooted({
     // in sync, and triggers a beat-engine drop+fill pulse.
     OSCdef(\phenoJumpSeason, { |msg|
         var season = msg[1].asString;
+        ~lastBrowserOscTime = SystemClock.seconds;
         ("Phenology jump: " ++ season).postln;
         if(~visualsDest.notNil) {
             ~visualsDest.sendMsg("/pheno/jumpSeason", season)
@@ -267,28 +194,10 @@ s.doWhenBooted({
         };
     }, "/pheno/jumpSeason");
 
-    // ── Beat engine params (stored in ~beatParams, not ~buses) ─────────
-    // These come from the HTML sonETH sliders but need special routing.
-    OSCdef(\beatTempoOSC, { |msg|
-        var val = msg[1].asFloat;
-        // HTML slider sends 0–1; map to 0.5–2.0 tempo
-        var tempo = val.linexp(0.001, 1, 0.5, 2.0);
-        if(~beatParams.notNil) { ~beatParams.beatTempo = tempo };
-        // Echo back to browser so slider stays in sync when SC changes beatTempo
-        if(~visualsDest.notNil) { ~visualsDest.sendMsg("/soneth/beatTempo", val) };
-        "Beat Tempo set to % (raw %)".format(tempo.round(0.01), val.round(0.01)).postln;
-    }, "/soneth/beatTempo");
-
-    OSCdef(\txInfluenceOSC, { |msg|
-        var val = msg[1].asFloat;
-        if(~beatParams.notNil) { ~beatParams.transactionInfluence = val };
-        // Also update the control bus if it exists
-        if(~buses.notNil and: { ~buses[\transactionInfluence].notNil }) {
-            ~buses[\transactionInfluence].set(val);
-        };
-        // Echo back to browser to keep slider in sync with MIDI and SC changes
-        if(~visualsDest.notNil) { ~visualsDest.sendMsg("/soneth/txInfluence", val) };
-    }, "/soneth/txInfluence");
+    // NOTE: /soneth/beatTempo and /soneth/txInfluence are handled by the
+    // registry-generated OSCdefs above — their entries carry a beatParam
+    // mirror, so ~setParam writes ~beatParams AND (for txInfluence) the bus.
+    // The old dedicated OSCdefs here double-handled /soneth/txInfluence.
 
     // ── Parliament Vote / Emergency / Start / Stop handlers ────────────
     // These arrive from the browser buttons via the bridge.
@@ -297,6 +206,7 @@ s.doWhenBooted({
     OSCdef(\voteHandler, { |msg|
         var consensus, passed;
         // Vote triggers a sonic event: tempo burst + harmonic bell chord
+        ~lastBrowserOscTime = SystemClock.seconds;
         "VOTE triggered — consensus surge".postln;
 
         // Temporarily accelerate beat tempo for 4 seconds
@@ -340,6 +250,7 @@ s.doWhenBooted({
 
     OSCdef(\emergencyHandler, { |msg|
         var intensity = msg[1].asFloat;
+        ~lastBrowserOscTime = SystemClock.seconds;
         "EMERGENCY consensus override — intensity %".format(intensity.round(0.01)).postln;
 
         // Drop drone pitch to sub-bass, increase noise
@@ -368,6 +279,7 @@ s.doWhenBooted({
     }, "/parliament/emergency");
 
     OSCdef(\startHandler, { |msg|
+        ~lastBrowserOscTime = SystemClock.seconds;
         "Parliament START — restoring beat engine".postln;
         // Re-engage beat engine at normal tempo
         if(~beatParams.notNil) {
@@ -380,6 +292,7 @@ s.doWhenBooted({
     }, "/parliament/start");
 
     OSCdef(\stopHandler, { |msg|
+        ~lastBrowserOscTime = SystemClock.seconds;
         "Parliament STOP — fading out".postln;
         // Fade beat engine to near silence
         if(~beatParams.notNil) {
@@ -389,6 +302,24 @@ s.doWhenBooted({
             ~opalDroneSynth.set(\amp, 0.02);
         };
     }, "/parliament/stop");
+
+    // ── Config save/load from the browser (CONFIGS block in parliament.html)
+    // String argument — parliament-bridge passes string args as OSC type 's'.
+    OSCdef(\presetSave, { |msg|
+        ~lastBrowserOscTime = SystemClock.seconds;
+        ~saveConfig.(msg[1].asString);
+        { if(~refreshPresetMenu.notNil) { ~refreshPresetMenu.value } }.defer;
+    }, "/preset/save");
+
+    OSCdef(\presetLoad, { |msg|
+        ~lastBrowserOscTime = SystemClock.seconds;
+        ~loadConfig.(msg[1].asString);
+    }, "/preset/load");
+
+    OSCdef(\presetList, {
+        ~lastBrowserOscTime = SystemClock.seconds;
+        ~broadcastPresetList.value;
+    }, "/preset/list");
 
     "OSC Handlers initialized:".postln;
     "- Listening on port: %".format(NetAddr.langPort).postln;

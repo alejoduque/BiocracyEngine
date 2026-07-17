@@ -41,11 +41,13 @@
         speedOfSound: 343 // m/s at 20°C
     );
     
-    // Calculate ITD (Interaural Time Difference) for each speaker
+    // Calculate ITD (Interaural Time Difference) for each speaker.
+    // s.sampleRate stays nil until the server's first status reply — the
+    // bare multiply crashed this whole file at boot ("binary op '*' failed").
     ~calculateITD = { |azimuth|
         var azimuthRad = azimuth * pi / 180;
-        var itd = (~binauralParams.headWidth / ~binauralParams.speedOfSound) * 
-                  sin(azimuthRad) * s.sampleRate;
+        var itd = (~binauralParams.headWidth / ~binauralParams.speedOfSound) *
+                  sin(azimuthRad) * (s.sampleRate ? 48000);
         itd.clip(-20, 20); // Limit to reasonable sample delays
     };
     
@@ -234,6 +236,7 @@
     "Use ~testSpatial.value to test spatial positioning".postln;
 };
 
-// Initialize spatial system
-~spatialHeadphoneSetup.value;
+// Initialize spatial system once the server is confirmed up (audio buses +
+// SynthDef build both need a live server)
+s.doWhenBooted({ ~spatialHeadphoneSetup.value });
 )

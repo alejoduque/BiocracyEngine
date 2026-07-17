@@ -17,7 +17,7 @@
 {
     var statusView, counterView, controlView, controlViewRow2, controlViewRow3, controlViewRow4, controlViewRow5;
     var sampleView, sampleControlView, sampleHeader, sampleButtonView, stopButton;
-    var container, recordingView;
+    var container, recordingView, presetView;
     var mainTheme, accentColor, backgroundColor, textColor;
     
     "Creating enhanced GUI with oscilloscope styling...".postln;
@@ -41,17 +41,26 @@
         textColor = mainTheme.foreground;
         accentColor = mainTheme.accent;
 
-        // Create and store window with enhanced styling.
-        // Sized to fit ALL sections without scrolling: 5 control rows
-        // (Row 5 = Cámara Fenológica) + status/counter + samples + REC.
-        // Previous 1120px was for 4 rows; we grew to 5 and the REC strip
-        // dropped off-screen. 1380px restores it while keeping the rest.
-        ~mainWindow = Window("SøNETH — BiocracyEngine Control", Rect(100, 100, 1100, 1380))
-            .background_(backgroundColor);
+        // Create and store window sized to the ACTUAL screen. The previous
+        // fixed 1100x1380 rect landed partly off-screen on laptop displays
+        // (Qt warned "outside any known screen" at boot). All content now
+        // lives in a ScrollView canvas: small screens scroll vertically
+        // instead of clipping the REC strip; knob/button sizes unchanged.
+        ~guiScreen = Window.availableBounds;
+        ~mainWindow = Window("SøNETH — BiocracyEngine Control", Rect(
+            60, 40,
+            min(1100, ~guiScreen.width - 80),
+            min(1380, ~guiScreen.height - 60)
+        )).background_(backgroundColor);
 
-        // Compact the outer chrome so button/text sizes are preserved but
-        // dead air between rows shrinks: margins 15→10, spacing 15→8.
-        ~mainWindow.view.layout_(VLayout().margins_(10).spacing_(8));
+        ~mainWindow.view.layout_(VLayout().margins_(0).spacing_(0));
+        ~scrollView = ScrollView().hasHorizontalScroller_(false)
+            .background_(backgroundColor);
+        ~scrollCanvas = View().background_(backgroundColor);
+        // Compact chrome: margins 10, spacing 8 (button/text sizes preserved).
+        ~scrollCanvas.layout_(VLayout().margins_(10).spacing_(8));
+        ~scrollView.canvas = ~scrollCanvas;
+        ~mainWindow.layout.add(~scrollView);
 
         // Create header
         ~header = StaticText()
@@ -134,12 +143,15 @@
             indicator;
         };
 
-        // Create status indicators
+        // Create status indicators. "Bridge RX" is green while browser-origin
+        // OSC (HTML sliders / parliament buttons) has arrived within the last
+        // 5 s — live confirmation that the HTML→bridge→SC path works.
         ~statusLights = (
             server: ~makeStatusLight.value("Server:"),
             beat: ~makeStatusLight.value("Beat Engine:"),
             osc: ~makeStatusLight.value("OSC:"),
-            midi: ~makeStatusLight.value("MIDI:")
+            midi: ~makeStatusLight.value("MIDI:"),
+            bridge: ~makeStatusLight.value("Bridge RX:")
         );
 
         // Add status lights
@@ -187,77 +199,14 @@
             counterView.layout.add(counter.parent);
         });
 
-        // Control specs for MERGED ambient + drone/noise controls - EXPANDED RANGES
-        ~controlSpecs = ~controlSpecs ?? (
-            // Lawrence English Ambient Controls (expanded for real-time performance)
-            masterVolume: ControlSpec(0.01, 1, \lin),   // Allow near-silence but not complete mute
-            pitchShift: ControlSpec(-24, 24, \lin),     // ±2 octaves for dramatic pitch blending
-            timeDilation: ControlSpec(0.5, 6, \exp),    // More dramatic time stretching
-            spectralShift: ControlSpec(80, 3000, \exp),   // Hz — safe range, never silence at either extreme
-            spatialSpread: ControlSpec(-1, 1, \lin),
-            textureDepth: ControlSpec(0, 0.6, \lin),    // More texture range for performance
-            atmosphereMix: ControlSpec(0, 0.9, \lin),   // More reverb range
-            memoryFeed: ControlSpec(0, 0.8, \lin),      // More delay feedback range
-            harmonicRich: ControlSpec(0.1, 8, \exp),    // Wider FM ratio range for performance
-            resonantBody: ControlSpec(0.1, 0.8, \lin),  // More filter resonance range
-            
-            // Existing Drone/Noise Controls
-            masterAmp: ControlSpec(0, 1, \lin),
-            filterCutoff: ControlSpec(0, 1, \lin),
-            noiseLevel: ControlSpec(0, 0.5, \lin),
-            noiseFilt: ControlSpec(0, 1, \lin),
-            droneDepth: ControlSpec(0, 1, \lin),
-            droneFade: ControlSpec(0.1, 5, \exp),
-            droneSpace: ControlSpec(0, 1, \lin),
-            droneMix: ControlSpec(0, 1, \lin),
-            delayFeedback: ControlSpec(0, 0.95, \lin),
-            transactionInfluence: ControlSpec(0, 1, \lin),
-
-            // ── Cámara Fenológica (Row 5, 1-bit white palette) ───────────────
-            activityThreshold: ControlSpec(0.20, 0.85, \lin),  // quórum sensible
-            windowWidth: ControlSpec(0.4, 2.5, \lin),          // ventana gaussiana
-            seasonalBias: ControlSpec(-1.0, 1.0, \lin),        // sesgo seca/lluvia
-            absenceWeight: ControlSpec(0, 1, \lin),            // peso de la ausencia
-            pulseGain: ControlSpec(0, 2, \lin),                // ganancia del pulso por voto
-            opacityFloor: ControlSpec(0, 0.7, \lin),           // cláusula de opacidad
-            bancada: ControlSpec(0, 4, \lin)                   // 0..4 discrete
-        );
-
-        // Initialize control values for MERGED ambient + drone/noise controls
-        ~controlValues = ~controlValues ?? (
-            // Lawrence English Ambient Controls
-            masterVolume: 0.3,
-            pitchShift: 0.0,     // Start at original pitch
-            timeDilation: 2.0,
-            spectralShift: 1000,
-            spatialSpread: 0.0,
-            textureDepth: 0.2,
-            atmosphereMix: 0.4,
-            memoryFeed: 0.3,
-            harmonicRich: 1.0,
-            resonantBody: 0.4,
-            
-            // Existing Drone/Noise Controls
-            masterAmp: 0.7,
-            filterCutoff: 0.6,
-            noiseLevel: 0.1,
-            noiseFilt: 0.5,
-            droneDepth: 0.3,
-            droneFade: 2.0,
-            droneSpace: 0.5,
-            droneMix: 0.5,
-            delayFeedback: 0.3,
-            transactionInfluence: 0.3,
-
-            // Cámara Fenológica defaults
-            activityThreshold: 0.50,
-            windowWidth: 1.0,
-            seasonalBias: 0.0,
-            absenceWeight: 0.3,
-            pulseGain: 1.0,
-            opacityFloor: 0.0,
-            bancada: 0
-        );
+        // Control specs and values come from the canonical registry
+        // (0_parameters.scd) — the duplicated literals that used to live here
+        // had drifted from the MIDI and OSC copies of the same ranges.
+        if(~controlSpecs.isNil or: { ~controlValues.isNil }) {
+            "0_parameters.scd not loaded — GUI knobs have no specs!".error;
+            ~controlSpecs = ~controlSpecs ?? ();
+            ~controlValues = ~controlValues ?? ();
+        };
 
         // Knob parameters layout - MERGED ambient + drone/noise controls
         ~knobParameters = [
@@ -307,29 +256,22 @@
             // Define parameter name for both action and storage
             paramName = label.asSymbol;  // Use exact parameter name (already camelCase)
             
-            // Knob action with bus updates
+            // Knob action — route through the single write path (0_parameters.scd).
+            // ~setParam sets the bus, caches the value, mirrors ~beatParams and
+            // echoes NORMALIZED 0–1 to the browser on the canonical path. The
+            // old inline echo sent native units (Hz, semitones) that garbled the
+            // HTML sliders, and findKeyForValue could pick an alias path the
+            // browser doesn't map. Label update comes back via ~setParam's defer.
             knob.action = { |k|
                 var mappedVal = spec.map(k.value);
-                "GUI Knob % moved: value=%, bus exists: %".format(
-                    paramName, mappedVal.round(0.001), 
-                    (~buses.notNil and: {~buses[paramName].notNil})
-                ).postln;
-                if(~buses.notNil and: {~buses[paramName].notNil}) {
-                    ~buses[paramName].set(mappedVal);
-                    ~controlValues[paramName] = mappedVal;
-                    valueLabel.string = displayStr ++ ": " ++ mappedVal.round(0.001);
-                    
-                    // Echo back to HTML GUI if bridge is connected
-                    if(~visualsDest.notNil and: { ~oscToParamMap.notNil }) {
-                        var oscPath = ~oscToParamMap.findKeyForValue(paramName);
-                        if(oscPath.notNil) {
-                            ~visualsDest.sendMsg(oscPath, mappedVal);
-                        };
-                    };
-                    
-                    "Bus % set to %".format(paramName, mappedVal.round(0.001)).postln;
+                if(~setParam.notNil) {
+                    ~setParam.(paramName, mappedVal, \gui);
                 } {
-                    "WARNING: Bus % not found!".format(paramName).warn;
+                    // Registry missing (standalone GUI use) — set the bus directly
+                    if(~buses.notNil and: {~buses[paramName].notNil}) {
+                        ~buses[paramName].set(mappedVal);
+                        valueLabel.string = displayStr ++ ": " ++ mappedVal.round(0.001);
+                    };
                 };
             };
 
@@ -422,28 +364,11 @@
             controlViewRow5.layout.add(knobContainer);
         };
 
-        // ─── MIDI → GUI Feedback: Poll bus values and update knob displays ───
-        // This keeps the GUI knobs synchronized when MIDI faders move
-        // Uses stored references (~knobViews, ~controlLabels) to update displays
-        // Running on AppClock ensures thread-safe GUI updates
-        AppClock.sched(0.0, {
-            ~knobParameters.flatten.do { |paramName|
-                if(~knobs[paramName].notNil and: {~buses[paramName].notNil}) {
-                    var spec = ~controlSpecs[paramName];
-                    var busVal = ~buses[paramName].getSynchronous;
-                    var knob = ~knobViews[paramName];
-                    var label = ~controlLabels[paramName];
-
-                    if(knob.notNil and: {label.notNil}) {
-                        {
-                            knob.value = spec.unmap(busVal);
-                            label.string = paramName.asString.capitalize ++ ": " ++ busVal.round(0.001);
-                        }.defer;
-                    };
-                };
-            };
-            0.05;  // poll every 50ms (imperceptible latency, low CPU)
-        });
+        // MIDI/OSC → GUI sync is event-driven: every surface goes through
+        // ~setParam (0_parameters.scd), which defers the knob+label update.
+        // The old 50 ms polling loop here issued a blocking getSynchronous
+        // per knob per tick (~27 buses x 20 Hz ≈ 540 server queries/s) and
+        // could fight the knob mid-drag. Deleted — nothing to poll anymore.
 
         // Create sample trigger buttons
         ~sampleNames = [
@@ -578,17 +503,22 @@
 
             // Define parameter name for sample bus connection
             paramName = label.asSymbol;
-            
-            // Sample knob action with sample bus updates
+
+            // Register views so ~loadConfig can sync sample knobs from presets
+            ~sampleKnobViews = ~sampleKnobViews ?? ();
+            ~sampleKnobViews[paramName] = knob;
+            ~sampleControlLabels = ~sampleControlLabels ?? ();
+            ~sampleControlLabels[paramName] = valueLabel;
+
+            // Sample knob action with sample bus updates (no per-move postln —
+            // knob drags used to flood the log at two lines per pixel)
             knob.action = { |k|
                 var mappedVal = spec.map(k.value);
-                "Sample Knob % moved: value=%".format(paramName, mappedVal.round(0.001)).postln;
                 if(~sampleBuses.notNil and: {~sampleBuses[paramName].notNil}) {
                     ~sampleBuses[paramName].set(mappedVal);
                     ~sampleControlValues[paramName] = mappedVal;
                     valueLabel.string = displayStr ++ ": " ++ mappedVal.round(0.001);
                     valueLabel.stringColor = Color.white;  // Keep white on updates
-                    "Sample Bus % set to %".format(paramName, mappedVal.round(0.001)).postln;
                 } {
                     "WARNING: Sample Bus % not found!".format(paramName).warn;
                 };
@@ -712,18 +642,76 @@
         recordingView.layout.add(~recordButton);
         recordingView.layout.add(~quickRecButton);
         recordingView.layout.add(~spatialGuiButton);
+
+        // ─── CONFIGS: save/load the full control state (presets/*.json) ────
+        // Same files the browser CONFIGS block uses. Loading routes through
+        // ~setParam, so knobs here AND HTML sliders both follow.
+        presetView = View().background_(backgroundColor.blend(mainTheme.accent, 0.06))
+            .layout_(HLayout().margins_(8).spacing_(12));
+        presetView.fixedHeight = 60;
+
+        ~presetNameField = TextField()
+            .string_("")
+            .background_(backgroundColor.blend(mainTheme.accent, 0.10))
+            .stringColor_(mainTheme.yellow)
+            .font_(Font("Monaco", 11));
+
+        ~presetMenu = PopUpMenu()
+            .items_([])
+            .background_(backgroundColor.blend(mainTheme.accent, 0.10))
+            .stringColor_(mainTheme.yellow)
+            .font_(Font("Monaco", 11));
+
+        ~refreshPresetMenu = {
+            if(~listConfigs.notNil) {
+                { ~presetMenu.items = ~listConfigs.value }.defer;
+            };
+        };
+
+        ~presetSaveButton = Button()
+            .states_([["◈ SAVE CONFIG", mainTheme.foreground, backgroundColor.blend(mainTheme.accent, 0.15)]])
+            .font_(Font("Helvetica", 10, true))
+            .action_({
+                var name = ~presetNameField.string;
+                if(name.isEmpty) { name = "config_" ++ Date.getDate.format("%y%m%d_%H%M%S") };
+                if(~saveConfig.notNil) {
+                    ~saveConfig.(name);
+                    ~refreshPresetMenu.value;
+                } { "Config system not loaded (0_parameters.scd)!".warn };
+            });
+
+        ~presetLoadButton = Button()
+            .states_([["◈ LOAD", mainTheme.foreground, backgroundColor.blend(mainTheme.green, 0.15)]])
+            .font_(Font("Helvetica", 10, true))
+            .action_({
+                var sel = ~presetMenu.item;
+                if(sel.notNil and: { ~loadConfig.notNil }) {
+                    ~loadConfig.(sel);
+                } { "No config selected.".postln };
+            });
+
+        presetView.layout.add(
+            StaticText().string_("CONFIGS:").stringColor_(mainTheme.yellow)
+                .font_(Font("Helvetica", 11, true)).minWidth_(60)
+        );
+        presetView.layout.add(~presetNameField);
+        presetView.layout.add(~presetSaveButton);
+        presetView.layout.add(~presetMenu);
+        presetView.layout.add(~presetLoadButton);
+        ~refreshPresetMenu.value;
         
-        // Add all views to main window (5 control rows + samples + recording)
-        ~mainWindow.layout.add(~header);
-        ~mainWindow.layout.add(statusView);
-        ~mainWindow.layout.add(counterView);
-        ~mainWindow.layout.add(controlView);
-        ~mainWindow.layout.add(controlViewRow2);
-        ~mainWindow.layout.add(controlViewRow3);
-        ~mainWindow.layout.add(controlViewRow4);
-        ~mainWindow.layout.add(controlViewRow5);
-        ~mainWindow.layout.add(sampleView);
-        ~mainWindow.layout.add(recordingView);
+        // Add all views to the scroll canvas (5 control rows + samples + REC)
+        ~scrollCanvas.layout.add(~header);
+        ~scrollCanvas.layout.add(statusView);
+        ~scrollCanvas.layout.add(counterView);
+        ~scrollCanvas.layout.add(controlView);
+        ~scrollCanvas.layout.add(controlViewRow2);
+        ~scrollCanvas.layout.add(controlViewRow3);
+        ~scrollCanvas.layout.add(controlViewRow4);
+        ~scrollCanvas.layout.add(controlViewRow5);
+        ~scrollCanvas.layout.add(sampleView);
+        ~scrollCanvas.layout.add(recordingView);
+        ~scrollCanvas.layout.add(presetView);
 
         // Add footer
         ~footer = StaticText()
@@ -731,17 +719,27 @@
             .font_(Font("Monaco", 8))
             .align_(\right)
             .stringColor_(mainTheme.dim.alpha_(0.6));
-        ~mainWindow.layout.add(~footer);
+        ~scrollCanvas.layout.add(~footer);
 
         // Create update routine
         ~guiRoutine = Routine({
             loop {
                 {
+                    var bridgeAlive = ~lastBrowserOscTime.notNil and: {
+                        (SystemClock.seconds - ~lastBrowserOscTime) < 5
+                    };
                     // Update status indicators
                     ~statusLights.server.setProperty(\status, Server.default.serverRunning.binaryValue);
-                    ~statusLights.beat.setProperty(\status, (~beatEngine.notNil).binaryValue);
+                    // \beatRoutine is the actually-running loop; ~beatEngine is
+                    // just the launcher function and is non-nil even when dead
+                    ~statusLights.beat.setProperty(\status, (~beatRoutine.notNil).binaryValue);
                     ~statusLights.osc.setProperty(\status, (OSCdef(\txHandler).notNil).binaryValue);
-                    ~statusLights.midi.setProperty(\status, MIDIClient.sources.notEmpty.binaryValue);
+                    // MIDIClient.sources is nil before the deferred MIDI init —
+                    // the old direct .notEmpty call threw at boot and could
+                    // kill this routine (seen as nil.notEmpty in sclang_log)
+                    ~statusLights.midi.setProperty(\status,
+                        (MIDIClient.initialized and: { (MIDIClient.sources ? []).notEmpty }).binaryValue);
+                    ~statusLights.bridge.setProperty(\status, bridgeAlive.binaryValue);
 
                     // Update counters
                     if(~globalState.notNil) {
@@ -751,7 +749,7 @@
                     // Refresh status lights
                     ~statusLights.do(_.refresh);
                 }.defer;
-                0.05.wait;  // 20Hz refresh rate
+                0.5.wait;  // 2 Hz — status lights don't need the old 20 Hz
             }
         }).play(AppClock);
 
@@ -761,6 +759,8 @@
             if(~guiRoutine.notNil) { ~guiRoutine.stop };
             ~guiRoutine = nil;
             ~mainWindow = nil;
+            ~scrollView = nil;
+            ~scrollCanvas = nil;
             ~statusLights = nil;
             ~counters = nil;
             ~knobs = nil;
@@ -768,6 +768,13 @@
             ~knobViews = nil;
             ~sampleButtons = nil;
             ~sampleKnobs = nil;
+            ~sampleKnobViews = nil;
+            ~sampleControlLabels = nil;
+            ~presetNameField = nil;
+            ~presetMenu = nil;
+            ~presetSaveButton = nil;
+            ~presetLoadButton = nil;
+            ~refreshPresetMenu = nil;
         };
 
         ~mainWindow.front;

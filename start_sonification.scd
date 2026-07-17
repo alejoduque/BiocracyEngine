@@ -16,6 +16,7 @@
     
     // Load components in sequence
     [
+        "0_parameters.scd",         // Canonical parameter registry + ~setParam (must load first)
         "1_server_config.scd",      // Server config and buses
         "2_midi_control.scd",       // MIDI setup
         "3_synthdefs.scd",          // SynthDefs with real-time control
@@ -53,6 +54,13 @@
     2.wait;
     if(~checkServerStatus.notNil) {
         ~checkServerStatus.value;
+    };
+
+    // Restore the last session state (written by the 30s autosaver in
+    // 0_parameters.scd). Named configs load from the GUIs / OSC.
+    if(~loadConfig.notNil and: { File.exists(~presetDir +/+ "_autosave.json") }) {
+        "Restoring last session state (_autosave)...".postln;
+        ~loadConfig.(\_autosave);
     };
     
     if(~testTransaction.notNil) {

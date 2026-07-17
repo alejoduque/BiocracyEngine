@@ -28,7 +28,11 @@ let controlWsReady = false;
 
 function connectControlWS() {
   controlWS = new WebSocket("ws://localhost:3334");
-  controlWS.onopen = () => { controlWsReady = true; };
+  controlWS.onopen = () => {
+    controlWsReady = true;
+    // Populate the CONFIGS dropdown: SC answers with /preset/names
+    try { controlWS?.send(JSON.stringify({ direction: "toSC", address: "/preset/list", args: [] })); } catch { /* ignore */ }
+  };
   controlWS.onclose = () => {
     controlWsReady = false;
     controlWS = null;
@@ -45,6 +49,25 @@ function connectControlWS() {
     try {
       const { address, args } = JSON.parse(evt.data as string) as { address: string; args: number[] };
       if (!address || !Array.isArray(args)) return;
+
+      // CONFIGS dropdown: SC broadcasts the preset list (comma-separated
+      // string) after boot, saves, and /preset/list requests
+      if (address === "/preset/names") {
+        const names = String(args[0] ?? "").split(",").filter(Boolean);
+        const sel = document.getElementById("preset-select") as HTMLSelectElement | null;
+        if (sel) {
+          const cur = sel.value;
+          sel.innerHTML = "";
+          names.forEach((n) => {
+            const o = document.createElement("option");
+            o.value = n;
+            o.textContent = n;
+            sel.appendChild(o);
+          });
+          if (names.includes(cur)) sel.value = cur;
+        }
+        return;
+      }
 
       if (address.startsWith("/soneth/")) {
         const v = args[0];
@@ -141,6 +164,13 @@ function sendOSC(address: string, value: number) {
 function sendOSCArgs(address: string, args: number[]) {
   if (controlWS && controlWsReady) {
     controlWS.send(JSON.stringify({ direction: "toSC", address, args }));
+  }
+}
+
+// String-arg OSC (preset names — the bridge passes strings as OSC type 's')
+function sendOSCString(address: string, value: string) {
+  if (controlWS && controlWsReady) {
+    controlWS.send(JSON.stringify({ direction: "toSC", address, args: [value] }));
   }
 }
 
@@ -1289,6 +1319,21 @@ async function init() {
 
   // Wire all currently-present range sliders (includes static HTML ones)
   document.querySelectorAll<HTMLInputElement>("input[type='range'][data-osc]").forEach(wireSlider);
+
+  // ── CONFIGS: save/load the full control state ──────────────────────────
+  // SC owns the preset files (presets/*.json); loading routes every value
+  // through ~setParam so the SC GUI knobs AND these sliders follow via echo.
+  {
+    const nameInput = document.getElementById("preset-name") as HTMLInputElement | null;
+    const select = document.getElementById("preset-select") as HTMLSelectElement | null;
+    document.getElementById("preset-save-btn")?.addEventListener("click", () => {
+      const name = (nameInput?.value || "").trim() || `config_${new Date().toISOString().slice(0, 16).replace(/[-:T]/g, "")}`;
+      sendOSCString("/preset/save", name);
+    });
+    document.getElementById("preset-load-btn")?.addEventListener("click", () => {
+      if (select?.value) sendOSCString("/preset/load", select.value);
+    });
+  }
 
   // Wire eDNA sliders that were dynamically injected above (they're in the DOM now)
   if (ednaCtrlRows) {

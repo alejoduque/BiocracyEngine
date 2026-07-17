@@ -12,38 +12,8 @@ s.doWhenBooted({
     };
     s.sync;
 
-    // MERGED CONTROL PARAMETERS - Lawrence English ambient + existing drone/noise controls
-    ~globalParams = (
-        // === Lawrence English Ambient Controls (Row 1) ===
-        masterVolume: 0.3,    // CC 0  - ACTUAL master volume control
-        pitchShift: 0.0,      // CC 1  - Frequency shift in semitones (-24 to +24)
-        timeDilation: 2.0,    // CC 2  - Stretch/compress time (decay multiplier)
-        spectralShift: 1000,  // CC 3  - Filter frequency for spectral shaping (200–4500 Hz)
-        spatialSpread: 0.0,   // CC 4  - Spatial positioning (-1 to 1)
-
-        // === Ambient Processing (Row 2) ===
-        textureDepth: 0.2,    // CC 32 - Granular texture density
-        atmosphereMix: 0.4,   // CC 33 - Reverb amount (ambient space)
-        memoryFeed: 0.3,      // CC 34 - Delay feedback (memory/echo)
-        harmonicRich: 1.0,    // CC 35 - FM ratio (harmonic complexity)
-        resonantBody: 0.4,    // CC 36 - Filter resonance (body/formant)
-
-        // === Existing Drone/Noise Controls (Row 3) ===
-        masterAmp: 0.7,       // CC 64 - Legacy master amp
-        filterCutoff: 0.6,    // CC 65 - Legacy filter
-        noiseLevel: 0.1,      // CC 66 - Noise amount
-        noiseFilt: 0.5,       // CC 67 - Noise filtering
-        droneDepth: 0.3,      // CC 68 - Drone intensity
-        droneFade: 2.0,       // CC 69 - Drone envelope
-        droneSpace: 0.5,      // CC 70 - Drone spatial
-        droneMix: 0.5,        // CC 71 - Drone blend
-
-        // === Flow Controls ===
-        flowRate: 0.8,        // Transaction playback rate
-        sparsity: 0.2,        // Minimum gap between events
-        delayFeedback: 0.3,   // Additional delay control
-        transactionInfluence: 0.3  // How much transactions affect parameters
-    );
+    // Control parameters (name/spec/default) live in the canonical registry:
+    // see 0_parameters.scd (~paramDefs). Buses are created from it below.
 
     // Main transaction bell with MIDI control
     SynthDef(\elektronBell, {
@@ -214,24 +184,30 @@ s.doWhenBooted({
         var spatialX= Select.kr(spatialBus >= 0, [0.0, In.kr(spatialBus, 1)]);
 
         var exciter, sig, wet, quadSig;
-        
-        // Short burst of noise/fm as exciter
+
+        // Softened exciter: the old 1 ms attack read as a hard metallic "ping".
+        // 10 ms attacks + longer noise burst bow the resonator instead of
+        // striking it — same Ringz body, drone-compatible onset.
         exciter = Mix([
-            WhiteNoise.ar * EnvGen.ar(Env.perc(0.001, 0.05)),
-            SinOsc.ar(freq * (1 + fmD)) * EnvGen.ar(Env.perc(0.001, 0.02))
+            WhiteNoise.ar * EnvGen.ar(Env.perc(0.01, 0.08)),
+            SinOsc.ar(freq * (1 + fmD)) * EnvGen.ar(Env.perc(0.01, 0.04))
         ]);
 
-        // Resonator (Klank for metallic resonance)
+        // Resonator (Klank for metallic resonance) — upper partials darkened
+        // (were [1, 0.8, 0.5, 0.3, 0.1]) so the 4–9x partials shimmer instead
+        // of dominating
         sig = Ringz.ar(
-            exciter, 
-            freq * [1, 2.32, 4.25, 6.63, 9.38] * (1 + (res * 0.5)), 
-            [1, 0.8, 0.5, 0.3, 0.1] * (tStretch * 0.5)
+            exciter,
+            freq * [1, 2.32, 4.25, 6.63, 9.38] * (1 + (res * 0.5)),
+            [1, 0.55, 0.3, 0.15, 0.06] * (tStretch * 0.5)
         ).sum;
-        
+
         // Changed from BPF to LPF: BPF at high freq passes almost nothing (silence);
         // LPF at high freq is transparent — sound always passes through.
         sig = LPF.ar(sig, filt.clip(300, 3000));
-        sig = sig * EnvGen.ar(Env.perc(0.001, 1.5 * tStretch), doneAction: 2);
+        // 50 ms swell + longer tail (was 1 ms / 1.5x) — resonance blooms out
+        // of the drone bed rather than popping over it
+        sig = sig * EnvGen.ar(Env.perc(0.05, 2.5 * tStretch), doneAction: 2);
 
         // Ping-pong delay
         wet = CombC.ar(sig, 0.5, 0.1, 1.5) * dMix;
@@ -342,17 +318,27 @@ s.doWhenBooted({
     }).add;
     // -----------------------
 
-    // Create control buses for MIDI - ensure proper initialization order
+    // Create control buses from the canonical registry (0_parameters.scd).
+    // Covers all performance rows AND the Cámara Fenológica (CCs 10–16).
+    // Alloc and set must stay separate calls (SC 3.13: .set returns nil).
     ~buses = ();  // Reset buses to avoid conflicts
-    
+
     "Creating control buses...".postln;
-    ~globalParams.keysValuesDo { |param, val|
-        ~buses[param] = Bus.control(s, 1);
-        ~buses[param].set(val);
-        "Bus created: % = % (index: %)".format(param, val, ~buses[param].index).postln;
+    if(~paramDefs.isNil) {
+        "0_parameters.scd not loaded — no control buses created!".error;
+    } {
+        ~paramDefs.do { |def|
+            var name = def[\name];
+            if(def[\hasBus] ? true) {
+                ~buses[name] = Bus.control(s, 1);
+                ~buses[name].set(def[\default]);
+                "Bus created: % = % (index: %)".format(name, def[\default], ~buses[name].index).postln;
+            };
+        };
     };
-    
-    // Add spatial control buses for ambient sounds — alloc and set must be separate (SC 3.13: .set returns nil)
+
+    // Spatial control buses (driven by 12_spatial_gui.scd, not by the
+    // MIDI/OSC/HTML surfaces — deliberately outside the registry)
     ~buses.spatialX = Bus.control(s, 1);
     ~buses.spatialX.set(0.0);
     ~buses.spatialY = Bus.control(s, 1);
@@ -361,24 +347,6 @@ s.doWhenBooted({
     ~buses.roomSize.set(0.8);
     ~buses.distanceEffect = Bus.control(s, 1);
     ~buses.distanceEffect.set(0.5);
-
-    // ── Cámara Fenológica (Phenology Chamber, CCs 10–16) ─────────────────
-    // Repurposes the previously-dead Fungi + AI sliders into the Cámara
-    // Fenológica de lo Vivo (Capítulo VI of the proposed statutes).
-    ~buses.activityThreshold = Bus.control(s, 1);
-    ~buses.activityThreshold.set(0.50);     // Art. 45 quórum sensible
-    ~buses.windowWidth = Bus.control(s, 1);
-    ~buses.windowWidth.set(1.0);            // Art. 44 ventana de presencia
-    ~buses.seasonalBias = Bus.control(s, 1);
-    ~buses.seasonalBias.set(0.0);           // Art. 42 calendario bimodal
-    ~buses.absenceWeight = Bus.control(s, 1);
-    ~buses.absenceWeight.set(0.3);          // Art. 44 § ausencia como voz
-    ~buses.pulseGain = Bus.control(s, 1);
-    ~buses.pulseGain.set(1.0);              // Art. 45 § modula no anula
-    ~buses.opacityFloor = Bus.control(s, 1);
-    ~buses.opacityFloor.set(0.0);           // Art. 47 § cláusula de opacidad
-    ~buses.bancada = Bus.control(s, 1);
-    ~buses.bancada.set(0);                  // Art. 43 §1 bancadas estacionales
     
     // Wait for all bus .set() messages to be processed before readback
     s.sync;

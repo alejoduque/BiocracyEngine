@@ -23,3 +23,6 @@ archive/
 
 # Audio captures (large, ephemeral)
 recordings/
+
+# Session autosave state — machine-local, not a shareable preset
+presets/_autosave.json

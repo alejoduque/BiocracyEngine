@@ -1,15 +1,20 @@
 import asyncio
-import time
 import math
-from datetime import datetime
+import os
+from collections import deque
 from web3 import Web3
 from pythonosc import udp_client
 
 # Configuration
-# Using HTTP provider since we can't use the pending filter with Infura
-ETH_NODE_URL = "https://mainnet.infura.io/v3/76a669b9a1fe48f7b8a7e145d76bf95d"
-OSC_IP = "127.0.0.1"  # localhost - change if your audio software is on another machine
-OSC_PORT = 57120      # SuperCollider default port (change according to your software)
+# Using HTTP provider since we can't use the pending filter with Infura.
+# ETH_NODE_URL env var overrides (keeps the API key out of new deployments);
+# defaults preserve existing start_ecosystem.sh behaviour unchanged.
+ETH_NODE_URL = os.environ.get(
+    "ETH_NODE_URL",
+    "https://mainnet.infura.io/v3/76a669b9a1fe48f7b8a7e145d76bf95d",
+)
+OSC_IP = os.environ.get("ETH_OSC_IP", "127.0.0.1")  # audio machine
+OSC_PORT = int(os.environ.get("ETH_OSC_PORT", "57120"))  # SuperCollider port
 
 # Create Web3 connection with HTTP provider
 w3 = Web3(Web3.HTTPProvider(ETH_NODE_URL))
@@ -56,8 +61,13 @@ async def poll_transactions(poll_interval=3):
     last_block_num = w3.eth.block_number
     print(f"Current block: {last_block_num}")
 
-    # Track processed transaction hashes to avoid duplicates
+    # Track processed transaction hashes to avoid duplicates.
+    # deque evicts OLDEST first — the previous set-slicing kept an arbitrary
+    # half of the entries (set order is undefined), so recent hashes could be
+    # evicted and replayed while stale ones survived.
     processed_txs = set()
+    processed_order = deque()
+    MAX_PROCESSED = 1000
 
     # Define minimum value threshold (0.0001 ETH)
     min_value_threshold = w3.to_wei(0.0001, 'ether')
@@ -89,6 +99,9 @@ async def poll_transactions(poll_interval=3):
                                 continue
 
                             processed_txs.add(tx_hash)
+                            processed_order.append(tx_hash)
+                            while len(processed_order) > MAX_PROCESSED:
+                                processed_txs.discard(processed_order.popleft())
 
                             # Skip transactions with value less than threshold
                             if tx_dict['value'] < min_value_threshold:
@@ -133,10 +146,6 @@ async def poll_transactions(poll_interval=3):
 
                 # Update last processed block
                 last_block_num = current_block_num
-
-                # Keep the processed_txs set from growing too large
-                if len(processed_txs) > 1000:
-                    processed_txs = set(list(processed_txs)[-500:])
 
         except Exception as e:
             print(f"Error in main polling loop: {e}")
