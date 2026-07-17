@@ -16,6 +16,7 @@
     
     // Load components in sequence
     [
+        "0_parameters.scd",         // Canonical parameter registry + ~setParam (must load first)
         "1_server_config.scd",      // Server config and buses
         "2_midi_control.scd",       // MIDI setup
         "3_synthdefs.scd",          // SynthDefs with real-time control

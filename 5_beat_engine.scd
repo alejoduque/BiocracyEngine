@@ -124,8 +124,8 @@
             var elapsed = now % 300; // 5-minute macro cycle
 
             // ─── Read live GUI control values every beat (synchronous reads) ───
-            // The bus is named \transactionInfluence (see ~globalParams) — the
-            // old \txInfluence lookup always missed and fell back to default.
+            // The bus is named \transactionInfluence (see 0_parameters.scd) —
+            // the old \txInfluence lookup always missed and fell back to default.
             harmRich = ~busVal.(\harmonicRich, 1.0);
             resBdy   = ~busVal.(\resonantBody, 0.4);
             atmMix   = ~busVal.(\atmosphereMix, 0.4);
