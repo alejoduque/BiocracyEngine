@@ -20,19 +20,25 @@ type LaserPoint = { x: number; y: number; r?: number; g?: number; b?: number; bl
 
 const WS_URL = "ws://localhost:3337";
 const SEND_MS = 33; // ~30 fps frame feed
+// Re-send an UNCHANGED frame at most every KEEPALIVE_MS: static scenes (the
+// year ring idles most of the time) don't need 30 identical payloads/s, but
+// the bridge's dead-man blanking (500 ms) must keep seeing a heartbeat.
+const KEEPALIVE_MS = 250;
 
 let _ws: WebSocket | null = null;
 let _ready = false;
 let _timer: ReturnType<typeof setInterval> | null = null;
 let _retry: ReturnType<typeof setTimeout> | null = null;
 let _started = false;
+let _lastPayload = "";
+let _lastSentAt = 0;
 
 const clamp = (v: number, lo: number, hi: number) => (v < lo ? lo : v > hi ? hi : v);
 
 function connect() {
   try {
     _ws = new WebSocket(WS_URL);
-    _ws.onopen = () => { _ready = true; };
+    _ws.onopen = () => { _ready = true; _lastPayload = ""; };  // force fresh frame on (re)connect
     _ws.onclose = () => {
       _ready = false; _ws = null;
       if (!_retry) _retry = setTimeout(() => { _retry = null; connect(); }, 3000);
@@ -84,7 +90,14 @@ export function initLaserTap(): void {
   _timer = setInterval(() => {
     if (!_ws || !_ready || _ws.readyState !== WebSocket.OPEN) return;
     const { points, pps } = buildFrame();
-    try { _ws.send(JSON.stringify({ type: "laserFrame", pps, points })); } catch { /* ignore */ }
+    const payload = JSON.stringify({ type: "laserFrame", pps, points });
+    const now = Date.now();
+    if (payload === _lastPayload && now - _lastSentAt < KEEPALIVE_MS) return;
+    try {
+      _ws.send(payload);
+      _lastPayload = payload;
+      _lastSentAt = now;
+    } catch { /* ignore */ }
   }, SEND_MS);
 }
 

@@ -30,7 +30,7 @@
 //     standard ILDA Format-5 (2D true-colour) file, playable by any laser SW.
 //
 // Env: LASER_WS_PORT(3337) LASER_PPS(30000) LASER_MAX_POINTS(1200)
-//      LASER_DRYRUN(1) LASER_TEST(1) LASER_ILD_OUT=<path>
+//      LASER_MAX_STEP(0.25) LASER_DRYRUN(1) LASER_TEST(1) LASER_ILD_OUT=<path>
 // ===========================================================================
 
 const { WebSocketServer } = require("ws");
@@ -39,6 +39,10 @@ const fs = require("fs");
 const WS_PORT      = parseInt(process.env.LASER_WS_PORT || "3337", 10);
 const DEFAULT_PPS  = parseInt(process.env.LASER_PPS || "30000", 10);
 const MAX_POINTS   = parseInt(process.env.LASER_MAX_POINTS || "1200", 10);
+// Max galvo step between consecutive points (in the −1..1 field). Larger
+// jumps get blanked intermediate points inserted so the mirrors sweep
+// instead of slamming (overshoot draws visible streaks across the forest).
+const MAX_STEP     = parseFloat(process.env.LASER_MAX_STEP || "0.25");
 const DEADMAN_MS   = 500;
 const FRAME_HZ     = 45;                 // output cadence
 const ILD_OUT      = process.env.LASER_ILD_OUT || null;
@@ -46,12 +50,41 @@ const ILD_OUT      = process.env.LASER_ILD_OUT || null;
 // ─── internal point model ──────────────────────────────────────────────────
 // {x,y in −1..1, r,g,b in 0..255, blank}. Frames are arrays of these.
 let _frame = blankFrame();
+let _frameSeq = 0;        // bumped whenever the frame CONTENT changes
+let _deadman = false;
 let _pps = DEFAULT_PPS;
 let _lastFrameTime = 0;
+let _ppsWarnAt = 0;
 let _stats = { framesIn: 0, framesOut: 0, lastPoints: 0, startTime: Date.now() };
 
 function blankFrame() { return [{ x: 0, y: 0, r: 0, g: 0, b: 0, blank: true }]; }
 const clamp = (v, lo, hi) => (v < lo ? lo : v > hi ? hi : v);
+
+// Galvo safety: insert blanked intermediate points where consecutive points
+// jump farther than MAX_STEP, so the scanner travels the gap in bounded
+// steps. Capped at MAX_POINTS total (tail points drop before safety does).
+function interpolateJumps(points) {
+  if (!(MAX_STEP > 0) || points.length < 2) return points.slice(0, MAX_POINTS);
+  const out = [];
+  let prev = null;
+  for (const p of points) {
+    if (prev) {
+      const dx = p.x - prev.x, dy = p.y - prev.y;
+      const dist = Math.hypot(dx, dy);
+      if (dist > MAX_STEP) {
+        const steps = Math.min(Math.ceil(dist / MAX_STEP) - 1, 32);
+        for (let s = 1; s <= steps && out.length < MAX_POINTS; s++) {
+          const t = s / (steps + 1);
+          out.push({ x: prev.x + (dx * t), y: prev.y + (dy * t), r: 0, g: 0, b: 0, blank: true });
+        }
+      }
+    }
+    if (out.length >= MAX_POINTS) break;
+    out.push(p);
+    prev = p;
+  }
+  return out;
+}
 
 function sanitize(points) {
   if (!Array.isArray(points) || points.length === 0) return blankFrame();
@@ -69,7 +102,7 @@ function sanitize(points) {
       blank,
     });
   }
-  return out;
+  return interpolateJumps(out);
 }
 
 // ─── Helios DAC backend — Grix/helios_dac C API via koffi FFI ────────────────
@@ -220,18 +253,36 @@ function testFrame() {
 }
 
 // ─── output loop ─────────────────────────────────────────────────────────────
+let _ildLastSeq = -1;
 function outputLoop() {
   const now = Date.now();
   let frame;
   if (process.env.LASER_TEST === "1") {
     frame = sanitize(testFrame());
+    _frameSeq++;                           // test pattern animates every tick
   } else if (now - _lastFrameTime > DEADMAN_MS) {
+    if (!_deadman) { _deadman = true; _frameSeq++; }
     frame = blankFrame();                  // dead-man: nobody is driving → go dark
   } else {
+    _deadman = false;                      // fresh frames bump _frameSeq on arrival
     frame = _frame;
   }
+
+  // Scan budget: FRAME_HZ repaints/s x points must fit in the DAC point rate,
+  // or the scanner can't finish each frame (dim/flickery image). Throttled.
+  if (frame.length * FRAME_HZ > _pps && now - _ppsWarnAt > 5000) {
+    _ppsWarnAt = now;
+    console.warn(`[laser] ${frame.length} pts x ${FRAME_HZ}Hz needs ${frame.length * FRAME_HZ} pps > ${_pps} pps — reduce points or raise pps`);
+  }
+
   heliosWrite(frame, _pps);
-  ildWriteFrame(frame);
+  // The Helios needs the frame re-sent continuously, but the .ild capture
+  // only wants NEW content — the old unconditional write duplicated every
+  // frame at 45Hz for as long as it stayed on screen.
+  if (_frameSeq !== _ildLastSeq) {
+    ildWriteFrame(frame);
+    _ildLastSeq = _frameSeq;
+  }
   _stats.framesOut++;
   _stats.lastPoints = frame.length;
 }
@@ -245,6 +296,7 @@ wss.on("connection", (ws) => {
       const msg = JSON.parse(data);
       if (msg.type === "laserFrame") {
         _frame = sanitize(msg.points);
+        _frameSeq++;
         if (Number.isFinite(msg.pps)) _pps = clamp(msg.pps | 0, 1000, 65000);
         _lastFrameTime = Date.now();
         _stats.framesIn++;
