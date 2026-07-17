@@ -7,6 +7,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Refactor branch `refactor/control-bridges-ilda` (2026-07-17)
+
+#### Added
+- **Canonical parameter registry (`0_parameters.scd`)**: one entry per parameter (ControlSpec, default, canonical OSC path, aliases, MIDI CC, beat-param mirror) loaded before everything else. `~setParam`/`~setParamNorm` is now the single write path for **every** control surface: bus → `~beatParams` mirror → `~controlValues` → GUI knob/label (deferred) → normalized 0–1 echo to the browser on the canonical path. Control buses in `3_synthdefs.scd` are created from the registry.
+- **Bridge RX status light (SC GUI)**: green while browser-origin OSC (HTML sliders / parliament buttons) arrived within the last 5 s — live confirmation of the HTML→bridge→SC path.
+- **Laser galvo-jump interpolation** (`laser-bridge.js`): consecutive points farther apart than `LASER_MAX_STEP` (default 0.25 of the −1..1 field) get blanked intermediate points so the mirrors sweep instead of slamming. Plus a throttled warning when `points × 45 Hz` exceeds the DAC point rate.
+- **Env-overridable ETH listener config**: `ETH_NODE_URL`, `ETH_OSC_IP`, `ETH_OSC_PORT` (defaults unchanged).
+
+#### Fixed
+- **Beat engine never loaded**: `5_beat_engine.scd` had a fatal parse error (undefined `txInfluence` at line 143) — the whole file silently failed at every boot. Also replaced language-side `Select.kr`/`In.kr` misuse (returns UGens, not numbers, in Routine code) with synchronous bus reads, and fixed `density` being used before assignment.
+- **Dead MIDI CCs 39/41**: wrote to `\dronemix`/`\txInfluence` — buses that never existed (`\droneMix`/`\transactionInfluence`).
+- **OSC alias collision**: OSCdefs were keyed by param symbol, so `/parliament/fx/*` alias paths silently overwrote the canonical `/soneth/*` handler for the same parameter (one of the pair was always dead). Now keyed by path. `/soneth/txInfluence` was additionally double-handled.
+- **SC GUI echoed native units** (Hz, semitones) to HTML sliders that expect 0–1, desyncing the browser; `findKeyForValue` could also pick an alias path the browser doesn't map.
+- **Boot-time crashes visible at every launch**: `nil.notEmpty` in the GUI status loop (MIDIClient queried before deferred init), `nil.round` in `~checkServerStatus` (avgCPU before first status reply), and `9_spatial_headphone_sim.scd` failing entirely (`s.sampleRate` nil at load — setup now deferred to `doWhenBooted`).
+- **ILDA capture duplication**: the 45 Hz output loop wrote the same frame to the `.ild` file for as long as it stayed on screen; capture now writes only on new frame content.
+
+#### Changed
+- **SC GUI event-driven**: removed the 50 ms polling loop (~27 blocking `getSynchronous` × 20 Hz ≈ 540 server queries/s) — `~setParam` pushes knob/label updates. Status lights 20 Hz → 2 Hz.
+- **SC GUI fits the screen**: window sized from `Window.availBounds` with content in a ScrollView (the fixed 1100×1380 rect was partly off-screen on laptops); knob/button sizes unchanged.
+- **Range unification** (canonical = former GUI spec): spectralShift 80–3000 Hz, textureDepth 0–0.6, noiseLevel 0–0.5, droneFade 0.1–5 s exp, delayFeedback 0–0.95, masterVolume floor 0.01 — MIDI and HTML surfaces previously used drifted variants of these.
+- **`parliament-bridge.js` diagnostics folded** into the primary OSC/WS handlers (removed the listener remove/re-dispatch monkey-patch and the duplicate `wss` connection handler). Ports, route table, `/diag` format unchanged.
+- **`laserTap.ts` change-detection**: unchanged frames are re-sent at most every 250 ms (below the bridge's 500 ms dead-man) instead of 30×/s.
+- **`eth_sonify.py` dedupe eviction** is now oldest-first (deque) instead of slicing an unordered set. OSC contract byte-identical.
+
 ### Added
 - **Cámara Fenológica de lo Vivo (Capítulo VI)**: Seven new bidirectional controls + four season-jump triggers materializing the proposed phenological chamber statutes (Articles 41–48). Each control wired across **HTML slider ↔ SC bus/GUI knob ↔ Faderfox LC2 CC 10–16** with full visual + audio coupling. New OSC paths: `/pheno/activityThreshold`, `/pheno/windowWidth`, `/pheno/seasonalBias`, `/pheno/absenceWeight`, `/pheno/pulseGain`, `/pheno/opacityFloor`, `/pheno/bancada`, `/pheno/jumpSeason`. Replaces the previously-dead Fungi Chemical (4 sliders) + AI Consciousness sections that had no SC handlers.
 - **Slot P full 3D navigation**: OrbitControls now allow rotate (left-click drag), pan (right-click drag), zoom (wheel, no limits), and full polar range (0–180°). `R` key resets camera to default position.
