@@ -58,14 +58,20 @@ Server.default.options.numInputBusChannels = 2;
         beatVolume: 0.6
     );
     
-    // Create server status check function
+    // Create server status check function.
+    // avgCPU/peakCPU are nil until the server reports status — calling
+    // .round on them threw nil.round at the end of every boot.
     ~checkServerStatus = {
         (
             "\nServer Status:".postln;
             "- Running: %".format(Server.default.serverRunning).postln;
-            "- Average CPU: % %".format(Server.default.avgCPU.round(0.1), "%").postln;
-            "- Peak CPU: % %".format(Server.default.peakCPU.round(0.1), "%").postln;
-            "- Active Synths: %".format(Server.default.numSynths).postln;
+            if(Server.default.serverRunning and: { Server.default.avgCPU.notNil }) {
+                "- Average CPU: % %".format(Server.default.avgCPU.round(0.1), "%").postln;
+                "- Peak CPU: % %".format(Server.default.peakCPU.round(0.1), "%").postln;
+                "- Active Synths: %".format(Server.default.numSynths).postln;
+            } {
+                "- (CPU/synth stats unavailable — no status report yet)".postln;
+            };
         )
     };
     
