@@ -59,6 +59,22 @@ const SC_TO_CH = {
   "/soneth/ethEvent": "triggerMycoPulse",
 };
 
+// ─── Diagnostic Tracking ────────────────────────────────────────────────────
+// Tracks message counts per path and direction for the /diag HTTP endpoint.
+const diagStats = {
+  startTime: Date.now(),
+  scToBrowser: {},    // { "/soneth/volume": { count: 0, lastVal: 0, lastTime: 0 } }
+  browserToSc: {},
+};
+
+function trackMsg(dir, address, val) {
+  const bucket = dir === "sc2b" ? diagStats.scToBrowser : diagStats.browserToSc;
+  if (!bucket[address]) bucket[address] = { count: 0, lastVal: null, lastTime: 0 };
+  bucket[address].count++;
+  bucket[address].lastVal = val;
+  bucket[address].lastTime = Date.now();
+}
+
 // WebSocket server (nw_wrld connects here)
 const wss = new WebSocketServer({ port: WS_PORT });
 const clients = new Set();
@@ -84,6 +100,7 @@ wss.on("connection", (ws) => {
       if (msg.direction === "toSC" && msg.address) {
         const oscArgs = (msg.args || []).map((v) => ({ type: "f", value: Number(v) }));
         scPort.send({ address: msg.address, args: oscArgs });
+        trackMsg("b2sc", msg.address, msg.args?.[0] ?? null);
         console.log(`[bridge] browser→SC  ${msg.address}  ${JSON.stringify(msg.args)}`);
       }
     } catch (_) { }
@@ -113,6 +130,7 @@ const udpPort = new osc.UDPPort({
 udpPort.on("message", (oscMsg) => {
   const address = oscMsg.address;
   const args = (oscMsg.args || []).map((a) => a.value);
+  trackMsg("sc2b", address, args[0] ?? null);
 
   // ── Route 1: known SC paths → translate to /ch/methodName ────────────────
   const methodName = SC_TO_CH[address];
@@ -144,32 +162,9 @@ udpPort.on("message", (oscMsg) => {
   console.log(`[bridge] SC→browser (raw)  ${address}  args=${args}`);
 });
 
-// ─── Diagnostic Tracking ────────────────────────────────────────────────────
-// Tracks message counts per path and direction for the /diag HTTP endpoint.
-const diagStats = {
-  startTime: Date.now(),
-  scToBrowser: {},    // { "/soneth/volume": { count: 0, lastVal: 0, lastTime: 0 } }
-  browserToSc: {},
-};
-
-function trackMsg(dir, address, val) {
-  const bucket = dir === "sc2b" ? diagStats.scToBrowser : diagStats.browserToSc;
-  if (!bucket[address]) bucket[address] = { count: 0, lastVal: null, lastTime: 0 };
-  bucket[address].count++;
-  bucket[address].lastVal = val;
-  bucket[address].lastTime = Date.now();
-}
-
-// Patch into OSC message handler
-const origOscHandler = udpPort.listeners("message")[0];
-udpPort.removeListener("message", origOscHandler);
-udpPort.on("message", (oscMsg) => {
-  const address = oscMsg.address;
-  const args = (oscMsg.args || []).map((a) => a.value);
-  trackMsg("sc2b", address, args[0] ?? null);
-  // Re-emit to original handler by re-dispatching the same logic
-  origOscHandler(oscMsg);
-});
+// Diagnostics are folded directly into the OSC and WS handlers above — the
+// old version re-registered the OSC listener via removeListener/re-dispatch
+// and attached a second wss "connection" handler just to count messages.
 
 // HTTP diagnostic endpoint — curl http://localhost:3335/diag
 const http = require("http");
@@ -220,18 +215,6 @@ http.createServer((req, res) => {
     res.end("Not found. Try /diag\n");
   }
 }).listen(DIAG_PORT);
-
-// Also track browser→SC messages
-wss.on("connection", (ws) => {
-  ws.on("message", (data) => {
-    try {
-      const msg = JSON.parse(data);
-      if (msg.direction === "toSC" && msg.address) {
-        trackMsg("b2sc", msg.address, msg.args?.[0] ?? null);
-      }
-    } catch (_) {}
-  });
-});
 
 udpPort.on("ready", () => {
   console.log(`[bridge] OSC  listening UDP:${OSC_PORT}`);
