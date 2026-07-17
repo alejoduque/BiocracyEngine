@@ -33,6 +33,12 @@ s.doWhenBooted({
         if(txHash.notNil) {
             baseFreq = baseFreq * (1 + (txHash.hash.fold(-0.05, 0.05)));
         };
+        // Octave-fold into the drone register: Python maps TX value to MIDI
+        // 36–84 (fundamentals up to ~1 kHz). Folding anything above 320 Hz
+        // down by octaves keeps the pitch class (value still audible as
+        // pitch) but lets transactions thicken the drone bed instead of
+        // pinging on top of it.
+        while({ baseFreq > 320 }, { baseFreq = baseFreq * 0.5 });
 
         // Calculate abstract values for visuals
         nutrient = value.linlin(0.001, 10, 0, 1);
@@ -75,9 +81,9 @@ s.doWhenBooted({
         synthArgs = [
             \freq, baseFreq,
             \amp, velocity.linlin(30, 120, 0.12, 0.28),
-            \atk, value.linlin(0.001, 10, 2.5, 0.8),
-            \dec, gasPrice.linlin(1, 200, 1.5, 0.5),
-            \rel, value.linlin(0.001, 10, 1.2, 2.5),
+            \atk, value.linlin(0.001, 10, 3.0, 1.2),
+            \dec, gasPrice.linlin(1, 200, 1.8, 0.7),
+            \rel, value.linlin(0.001, 10, 2.5, 5.0),
             \pan, if(txHash.notNil, { txHash.hash.fold(-1.0, 1.0) }, { 0 })
         ];
 

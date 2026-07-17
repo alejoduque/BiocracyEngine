@@ -35,10 +35,14 @@
 ~controlBuses = ~controlBuses ?? ();
 
 // ─── Helper: Compute pitch pool from live control values ───
+// Drone register: fundamentals stay low (~35–740 Hz) so the Ringz percussion
+// reads as struck-metal resonance INSIDE the drone rather than high pinging
+// on top of it (basePitch was 200 with a 2.0 spread and a 200 Hz TX shift —
+// pools reached ~1 kHz fundamentals, ~9 kHz partials).
 ~computePitchPool = { |harmRich=1.0, txInfluence=0.0, density=0.5|
-    var basePitch = 200;
-    var pitchShift = txInfluence * 200;  // TX activity raises base pitch 0–200 Hz
-    var spread = harmRich.linexp(0.1, 8.0, 0.5, 2.0);  // narrow→wide spread
+    var basePitch = 70;
+    var pitchShift = txInfluence * 50;   // TX activity nudges pitch gently
+    var spread = harmRich.linexp(0.1, 8.0, 0.5, 1.4);  // narrow→moderate spread
     var numSteps = (4 + (density * 3)).round.clip(4, 7);  // 4–7 notes
 
     Array.fill(numSteps, { |i|
@@ -98,8 +102,8 @@
         var transactionInfluence;
         // Evolving pattern seeds — mutate every phrase
         var kickPattern   = #[1,0,0,0, 0,0,0,0, 1,0,0,0, 0,0,0,0];
-        var percDivisor   = 3;    // polyrhythmic divisor — shifts each phrase
-        var dustProb      = 0.3;  // base probability for dust hits
+        var percDivisor   = 8;    // polyrhythmic divisor — shifts each phrase
+        var dustProb      = 0.12; // base probability for dust hits
         var droneBaseFreq = 55;   // drone pitch — drifts over time
         // Pitch pool for percussion melodic variation
         var pitchPool     = #[200, 300, 400, 500, 600, 800];
@@ -190,10 +194,11 @@
                             })
                         })
                     });
-                    // Shift polyrhythmic divisor: 3→5→7→4→3...
-                    percDivisor = #[3, 5, 7, 4, 6].wrapAt(phrase);
-                    // Evolve dust probability with density
-                    dustProb = (0.15 + (density * 0.4) + (transactionInfluence * 0.2)).clip(0.05, 0.7);
+                    // Shift polyrhythmic divisor — sparse, drone-friendly cadence
+                    percDivisor = #[6, 8, 12, 7, 10].wrapAt(phrase);
+                    // Evolve dust probability with density (kept low: crackle
+                    // as occasional texture, not a constant rain)
+                    dustProb = (0.06 + (density * 0.2) + (transactionInfluence * 0.1)).clip(0.03, 0.35);
                     // Drift drone pitch: cycle through harmonically-related notes
                     droneBaseFreq = #[55, 62, 73, 82, 49, 65, 55, 41].wrapAt(phrase);
                     // Update drone pitch live
@@ -210,8 +215,8 @@
                 Synth(\opalKick, [
                     \out,         0,
                     \freq,        kickFreq,
-                    \amp,         ~beatParams.masterAmp * (0.7 + (density * 0.3)),
-                    \dec,         0.3 + (transactionInfluence * 0.3),
+                    \amp,         ~beatParams.masterAmp * (0.5 + (density * 0.2)),
+                    \dec,         0.9 + (transactionInfluence * 0.4),
                     \masterVolBus, bMVol,
                     \timeBus,      bTime,
                     \harmonicBus,  bHarm,
@@ -224,7 +229,7 @@
 
             // ── 2. PERC — shifting polyrhythm + melodic variation ────────────────
             if((step % percDivisor == 0) or: {
-                (step % 5 == 0) and: { transactionInfluence > 0.3 } and: { 0.6.coin }
+                (step % 10 == 0) and: { transactionInfluence > 0.6 } and: { 0.3.coin }
             }) {
                 var baseFreq = pitchPool.wrapAt(poolIdx);
                 poolIdx = (poolIdx + 1) % pitchPool.size;
@@ -237,7 +242,7 @@
                     Synth(\opalPerc, [
                         \out,          0,
                         \freq,         percFreq,
-                        \amp,          ~beatParams.masterAmp * (0.4 + (transactionInfluence * 0.35)),
+                        \amp,          ~beatParams.masterAmp * (0.2 + (transactionInfluence * 0.15)),
                         \masterVolBus, bMVol,
                         \harmonicBus,  bHarm,
                         \textureBus,   bText,
@@ -256,7 +261,7 @@
                         Synth(\opalPerc, [
                             \out,          0,
                             \freq,         harmFreq,
-                            \amp,          ~beatParams.masterAmp * (0.4 + (transactionInfluence * 0.35)) * [1.0, 0.6][voice],
+                            \amp,          ~beatParams.masterAmp * (0.2 + (transactionInfluence * 0.15)) * [1.0, 0.6][voice],
                             \masterVolBus, bMVol,
                             \harmonicBus,  bHarm,
                             \textureBus,   bText,
@@ -276,7 +281,7 @@
                         Synth(\opalPerc, [
                             \out,          0,
                             \freq,         harmFreq,
-                            \amp,          ~beatParams.masterAmp * (0.4 + (transactionInfluence * 0.35)) * (1.0 / (h + 1.5)),
+                            \amp,          ~beatParams.masterAmp * (0.2 + (transactionInfluence * 0.15)) * (1.0 / (h + 1.5)),
                             \masterVolBus, bMVol,
                             \harmonicBus,  bHarm,
                             \textureBus,   bText,
@@ -317,8 +322,11 @@
             // Step + interval
             step = (step + 1) % 16;
 
-            // Interval with micro-swing: odd steps slightly delayed for groove
-            interval = (1 / (~beatParams.beatTempo * 4)) *
+            // Interval with micro-swing: odd steps slightly delayed for groove.
+            // Half the old grid rate (was tempo*4): at tempo 1.0 a step is
+            // 0.5 s, a 16-step bar 8 s, a phrase 32 s — evolution you can
+            // hear as slow drift rather than beat-machine motion.
+            interval = (1 / (~beatParams.beatTempo * 2)) *
                        (1 - (transactionInfluence * 0.1));
             if(step.odd) { interval = interval * rrand(1.0, 1.12) }; // swing
             interval.max(0.05).wait;

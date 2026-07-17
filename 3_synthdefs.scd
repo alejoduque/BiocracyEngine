@@ -184,24 +184,30 @@ s.doWhenBooted({
         var spatialX= Select.kr(spatialBus >= 0, [0.0, In.kr(spatialBus, 1)]);
 
         var exciter, sig, wet, quadSig;
-        
-        // Short burst of noise/fm as exciter
+
+        // Softened exciter: the old 1 ms attack read as a hard metallic "ping".
+        // 10 ms attacks + longer noise burst bow the resonator instead of
+        // striking it — same Ringz body, drone-compatible onset.
         exciter = Mix([
-            WhiteNoise.ar * EnvGen.ar(Env.perc(0.001, 0.05)),
-            SinOsc.ar(freq * (1 + fmD)) * EnvGen.ar(Env.perc(0.001, 0.02))
+            WhiteNoise.ar * EnvGen.ar(Env.perc(0.01, 0.08)),
+            SinOsc.ar(freq * (1 + fmD)) * EnvGen.ar(Env.perc(0.01, 0.04))
         ]);
 
-        // Resonator (Klank for metallic resonance)
+        // Resonator (Klank for metallic resonance) — upper partials darkened
+        // (were [1, 0.8, 0.5, 0.3, 0.1]) so the 4–9x partials shimmer instead
+        // of dominating
         sig = Ringz.ar(
-            exciter, 
-            freq * [1, 2.32, 4.25, 6.63, 9.38] * (1 + (res * 0.5)), 
-            [1, 0.8, 0.5, 0.3, 0.1] * (tStretch * 0.5)
+            exciter,
+            freq * [1, 2.32, 4.25, 6.63, 9.38] * (1 + (res * 0.5)),
+            [1, 0.55, 0.3, 0.15, 0.06] * (tStretch * 0.5)
         ).sum;
-        
+
         // Changed from BPF to LPF: BPF at high freq passes almost nothing (silence);
         // LPF at high freq is transparent — sound always passes through.
         sig = LPF.ar(sig, filt.clip(300, 3000));
-        sig = sig * EnvGen.ar(Env.perc(0.001, 1.5 * tStretch), doneAction: 2);
+        // 50 ms swell + longer tail (was 1 ms / 1.5x) — resonance blooms out
+        // of the drone bed rather than popping over it
+        sig = sig * EnvGen.ar(Env.perc(0.05, 2.5 * tStretch), doneAction: 2);
 
         // Ping-pong delay
         wet = CombC.ar(sig, 0.5, 0.1, 1.5) * dMix;
