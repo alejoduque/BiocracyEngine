@@ -254,6 +254,22 @@
             flex-direction: column;
             gap: 4px;
         }
+        /* CONFIGS block: name input + preset dropdown share the terminal look */
+        #preset-panel input[type="text"],
+        #preset-panel select {
+            flex: 1;
+            min-width: 0;
+            background: rgba(255, 136, 0, 0.06);
+            border: 1px solid var(--border);
+            color: var(--text);
+            font-family: inherit;
+            font-size: 12px;
+            padding: 4px 6px;
+            outline: none;
+        }
+        #preset-panel input[type="text"]::placeholder { color: var(--amber-dim); }
+        #preset-panel .vote-btn { width: auto; flex: 0 0 auto; }
+
         .vote-btn {
             background: none;
             border: 1px solid var(--border);
@@ -727,6 +743,23 @@
                     <input type="range" min="0" max="1" step="0.01" value="0.5"
                         data-osc="/soneth/txInfluence">
                     <span class="ctrl-val" id="disp-soneth-txInfluence">0.50</span>
+                </div>
+            </div>
+
+            <!-- Configs: save/load the full control state. SC owns the JSON
+                 files (presets/); loading echoes every value back so these
+                 sliders and the SC GUI knobs follow automatically. -->
+            <div class="tele-section">
+                <div class="tele-section-title">Configs · Save / Load State</div>
+                <div id="preset-panel">
+                    <div class="ctrl-row">
+                        <input type="text" id="preset-name" placeholder="config name…" maxlength="40">
+                        <button class="vote-btn" id="preset-save-btn">◈ Save</button>
+                    </div>
+                    <div class="ctrl-row">
+                        <select id="preset-select"></select>
+                        <button class="vote-btn" id="preset-load-btn">◈ Load</button>
+                    </div>
                 </div>
             </div>
 

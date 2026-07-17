@@ -98,7 +98,11 @@ wss.on("connection", (ws) => {
     try {
       const msg = JSON.parse(data);
       if (msg.direction === "toSC" && msg.address) {
-        const oscArgs = (msg.args || []).map((v) => ({ type: "f", value: Number(v) }));
+        // Strings pass as OSC type 's' (preset names, /pheno/jumpSeason season
+        // names — the old float-only mapping turned them into NaN)
+        const oscArgs = (msg.args || []).map((v) =>
+          typeof v === "string" ? { type: "s", value: v } : { type: "f", value: Number(v) }
+        );
         scPort.send({ address: msg.address, args: oscArgs });
         trackMsg("b2sc", msg.address, msg.args?.[0] ?? null);
         console.log(`[bridge] browser→SC  ${msg.address}  ${JSON.stringify(msg.args)}`);

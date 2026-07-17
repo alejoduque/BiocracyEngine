@@ -147,6 +147,9 @@
         // 6 · bridge liveness (BRIDGE status light in the main GUI)
         if(source == \osc) { ~lastBrowserOscTime = SystemClock.seconds };
 
+        // 7 · mark state dirty for the 30 s autosaver
+        ~stateDirty = true;
+
         val
     };
 };
@@ -162,7 +165,135 @@
     };
 };
 
+// ─── Config persistence ─────────────────────────────────────────────────────
+// JSON files in presets/, written by SC (the state hub). Loading a config
+// routes every value through ~setParam, which restores the control buses AND
+// pushes the SC GUI knobs and the HTML sliders (normalized echo) in one pass.
+// presets/_autosave.json is written every 30 s when state changed and is
+// restored automatically at the next boot; named configs are saved/loaded
+// from the SC GUI CONFIGS row, the browser CONFIGS block, or OSC
+// (/preset/save, /preset/load, /preset/list — string argument).
+
+~presetDir = thisProcess.nowExecutingPath.dirname +/+ "presets";
+if(File.exists(~presetDir).not) { File.mkdir(~presetDir) };
+
+// File-name safety: keep letters/digits/-/_ — everything else becomes _
+~presetNameSafe = { |name|
+    name.asString.collect { |c|
+        if(c.isAlphaNum or: { "-_".includes(c) }, { c }, { $_ })
+    };
+};
+
+~listConfigs = {
+    (~presetDir +/+ "*.json").pathMatch.collect { |p|
+        PathName(p).fileNameWithoutExtension
+    }.reject { |n| n == "_autosave" }.sort;
+};
+
+~broadcastPresetList = {
+    if(~visualsDest.notNil) {
+        ~visualsDest.sendMsg("/preset/names", ~listConfigs.value.join(","));
+    };
+};
+
+~saveConfig = { |name, quiet=false|
+    var safe = ~presetNameSafe.(name ? "unnamed");
+    var path = ~presetDir +/+ safe ++ ".json";
+    var sections = List.new;
+    var jsonSection = { |label, event|
+        var body = event.asSortedArray.collect { |pair|
+            "    \"%\": %".format(pair[0], pair[1].asFloat)
+        }.join(",\n");
+        "  \"%\": {\n%\n  }".format(label, body)
+    };
+    var params = ();
+    ~paramDefs.do { |def| params[def[\name]] = ~controlValues[def[\name]] ? def[\default] };
+    sections.add(jsonSection.(\params, params));
+    if(~sampleControlValues.notNil) {
+        sections.add(jsonSection.(\sample, ~sampleControlValues));
+    };
+    if(~buses.notNil) {
+        var spatial = ();
+        #[\spatialX, \spatialY, \roomSize, \distanceEffect].do { |k|
+            if(~buses[k].notNil) { spatial[k] = ~buses[k].getSynchronous };
+        };
+        if(spatial.size > 0) { sections.add(jsonSection.(\spatial, spatial)) };
+    };
+    File.use(path, "w", { |f|
+        f.write("{\n  \"meta\": { \"engine\": \"BiocracyEngine\", \"version\": 1, \"saved\": \"%\" },\n%\n}\n"
+            .format(Date.getDate.format("%Y-%m-%d %H:%M:%S"), sections.join(",\n")));
+    });
+    if(quiet.not) {
+        ("Config saved: " ++ path).postln;
+        ~broadcastPresetList.value;
+    };
+    safe
+};
+
+~loadConfig = { |name, retried=false|
+    var safe = ~presetNameSafe.(name ? "_autosave");
+    var path = ~presetDir +/+ safe ++ ".json";
+    if(File.exists(path).not) {
+        ("Config not found: " ++ path).warn;
+    } {
+        // parseJSON THROWS on malformed JSON (it does not return nil) — a
+        // hand-edited or truncated preset file must not take the engine down
+        var dict = try {
+            File.use(path, "r", { |f| f.readAllString }).parseJSON
+        } { |err| nil };
+        if(dict.isNil) {
+            ("Config unreadable (bad JSON): " ++ path).warn;
+        } {
+            // Early-boot guard: buses may not exist yet — retry once in 2 s
+            if((~buses.isNil or: { ~buses.size == 0 }) and: { retried.not }) {
+                ("Config '%' deferred 2s (buses not ready)".format(safe)).postln;
+                AppClock.sched(2.0, { ~loadConfig.(safe, true); nil });
+            } {
+                (dict["params"] ?? ()).keysValuesDo { |k, v|
+                    ~setParam.(k.asSymbol, v.asFloat, \preset);
+                };
+                (dict["sample"] ?? ()).keysValuesDo { |k, v|
+                    var key = k.asSymbol, val = v.asFloat;
+                    if(~sampleBuses.notNil and: { ~sampleBuses[key].notNil }) {
+                        ~sampleBuses[key].set(val);
+                    };
+                    if(~sampleControlValues.notNil) { ~sampleControlValues[key] = val };
+                    {
+                        if(~sampleKnobViews.notNil and: { ~sampleKnobViews[key].notNil }
+                            and: { ~sampleControlSpecs.notNil } and: { ~sampleControlSpecs[key].notNil }) {
+                            ~sampleKnobViews[key].value = ~sampleControlSpecs[key].unmap(val);
+                        };
+                        if(~sampleControlLabels.notNil and: { ~sampleControlLabels[key].notNil }) {
+                            ~sampleControlLabels[key].string =
+                                key.asString.capitalize ++ ": " ++ val.round(0.001);
+                        };
+                    }.defer;
+                };
+                (dict["spatial"] ?? ()).keysValuesDo { |k, v|
+                    if(~buses.notNil and: { ~buses[k.asSymbol].notNil }) {
+                        ~buses[k.asSymbol].set(v.asFloat);
+                    };
+                };
+                ("Config loaded: " ++ safe).postln;
+            };
+        };
+    };
+};
+
+// Autosave: every 30 s persist to presets/_autosave.json if anything changed
+// since the last save (marked by ~setParam). Restored at next boot by
+// start_sonification.scd.
+~stateDirty = false;
+SystemClock.sched(30, {
+    if(~stateDirty == true) {
+        ~saveConfig.(\_autosave, quiet: true);
+        ~stateDirty = false;
+    };
+    30
+});
+
 "Parameter registry loaded: % parameters, % OSC routes, % MIDI CCs.".format(
     ~paramDefs.size, ~oscToParamMap.size, ~midiCCToParam.size
 ).postln;
+"Config persistence ready: % (%).".format(~presetDir, ~listConfigs.value.join(", ")).postln;
 )

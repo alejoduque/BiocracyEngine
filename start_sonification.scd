@@ -55,6 +55,13 @@
     if(~checkServerStatus.notNil) {
         ~checkServerStatus.value;
     };
+
+    // Restore the last session state (written by the 30s autosaver in
+    // 0_parameters.scd). Named configs load from the GUIs / OSC.
+    if(~loadConfig.notNil and: { File.exists(~presetDir +/+ "_autosave.json") }) {
+        "Restoring last session state (_autosave)...".postln;
+        ~loadConfig.(\_autosave);
+    };
     
     if(~testTransaction.notNil) {
         "Testing transaction system...".postln;

@@ -303,6 +303,24 @@ s.doWhenBooted({
         };
     }, "/parliament/stop");
 
+    // ── Config save/load from the browser (CONFIGS block in parliament.html)
+    // String argument — parliament-bridge passes string args as OSC type 's'.
+    OSCdef(\presetSave, { |msg|
+        ~lastBrowserOscTime = SystemClock.seconds;
+        ~saveConfig.(msg[1].asString);
+        { if(~refreshPresetMenu.notNil) { ~refreshPresetMenu.value } }.defer;
+    }, "/preset/save");
+
+    OSCdef(\presetLoad, { |msg|
+        ~lastBrowserOscTime = SystemClock.seconds;
+        ~loadConfig.(msg[1].asString);
+    }, "/preset/load");
+
+    OSCdef(\presetList, {
+        ~lastBrowserOscTime = SystemClock.seconds;
+        ~broadcastPresetList.value;
+    }, "/preset/list");
+
     "OSC Handlers initialized:".postln;
     "- Listening on port: %".format(NetAddr.langPort).postln;
     "- Transaction sonification & Front-End OSC mappings ready".postln;

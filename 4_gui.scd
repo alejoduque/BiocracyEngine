@@ -17,7 +17,7 @@
 {
     var statusView, counterView, controlView, controlViewRow2, controlViewRow3, controlViewRow4, controlViewRow5;
     var sampleView, sampleControlView, sampleHeader, sampleButtonView, stopButton;
-    var container, recordingView;
+    var container, recordingView, presetView;
     var mainTheme, accentColor, backgroundColor, textColor;
     
     "Creating enhanced GUI with oscilloscope styling...".postln;
@@ -503,7 +503,13 @@
 
             // Define parameter name for sample bus connection
             paramName = label.asSymbol;
-            
+
+            // Register views so ~loadConfig can sync sample knobs from presets
+            ~sampleKnobViews = ~sampleKnobViews ?? ();
+            ~sampleKnobViews[paramName] = knob;
+            ~sampleControlLabels = ~sampleControlLabels ?? ();
+            ~sampleControlLabels[paramName] = valueLabel;
+
             // Sample knob action with sample bus updates (no per-move postln —
             // knob drags used to flood the log at two lines per pixel)
             knob.action = { |k|
@@ -636,6 +642,63 @@
         recordingView.layout.add(~recordButton);
         recordingView.layout.add(~quickRecButton);
         recordingView.layout.add(~spatialGuiButton);
+
+        // ─── CONFIGS: save/load the full control state (presets/*.json) ────
+        // Same files the browser CONFIGS block uses. Loading routes through
+        // ~setParam, so knobs here AND HTML sliders both follow.
+        presetView = View().background_(backgroundColor.blend(mainTheme.accent, 0.06))
+            .layout_(HLayout().margins_(8).spacing_(12));
+        presetView.fixedHeight = 60;
+
+        ~presetNameField = TextField()
+            .string_("")
+            .background_(backgroundColor.blend(mainTheme.accent, 0.10))
+            .stringColor_(mainTheme.yellow)
+            .font_(Font("Monaco", 11));
+
+        ~presetMenu = PopUpMenu()
+            .items_([])
+            .background_(backgroundColor.blend(mainTheme.accent, 0.10))
+            .stringColor_(mainTheme.yellow)
+            .font_(Font("Monaco", 11));
+
+        ~refreshPresetMenu = {
+            if(~listConfigs.notNil) {
+                { ~presetMenu.items = ~listConfigs.value }.defer;
+            };
+        };
+
+        ~presetSaveButton = Button()
+            .states_([["◈ SAVE CONFIG", mainTheme.foreground, backgroundColor.blend(mainTheme.accent, 0.15)]])
+            .font_(Font("Helvetica", 10, true))
+            .action_({
+                var name = ~presetNameField.string;
+                if(name.isEmpty) { name = "config_" ++ Date.getDate.format("%y%m%d_%H%M%S") };
+                if(~saveConfig.notNil) {
+                    ~saveConfig.(name);
+                    ~refreshPresetMenu.value;
+                } { "Config system not loaded (0_parameters.scd)!".warn };
+            });
+
+        ~presetLoadButton = Button()
+            .states_([["◈ LOAD", mainTheme.foreground, backgroundColor.blend(mainTheme.green, 0.15)]])
+            .font_(Font("Helvetica", 10, true))
+            .action_({
+                var sel = ~presetMenu.item;
+                if(sel.notNil and: { ~loadConfig.notNil }) {
+                    ~loadConfig.(sel);
+                } { "No config selected.".postln };
+            });
+
+        presetView.layout.add(
+            StaticText().string_("CONFIGS:").stringColor_(mainTheme.yellow)
+                .font_(Font("Helvetica", 11, true)).minWidth_(60)
+        );
+        presetView.layout.add(~presetNameField);
+        presetView.layout.add(~presetSaveButton);
+        presetView.layout.add(~presetMenu);
+        presetView.layout.add(~presetLoadButton);
+        ~refreshPresetMenu.value;
         
         // Add all views to the scroll canvas (5 control rows + samples + REC)
         ~scrollCanvas.layout.add(~header);
@@ -648,6 +711,7 @@
         ~scrollCanvas.layout.add(controlViewRow5);
         ~scrollCanvas.layout.add(sampleView);
         ~scrollCanvas.layout.add(recordingView);
+        ~scrollCanvas.layout.add(presetView);
 
         // Add footer
         ~footer = StaticText()
@@ -704,6 +768,13 @@
             ~knobViews = nil;
             ~sampleButtons = nil;
             ~sampleKnobs = nil;
+            ~sampleKnobViews = nil;
+            ~sampleControlLabels = nil;
+            ~presetNameField = nil;
+            ~presetMenu = nil;
+            ~presetSaveButton = nil;
+            ~presetLoadButton = nil;
+            ~refreshPresetMenu = nil;
         };
 
         ~mainWindow.front;
