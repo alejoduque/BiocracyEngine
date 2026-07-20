@@ -35,6 +35,8 @@ type EstratosInstance = {
   setPalette?: (o?: EArg) => void;
   regenerate?: () => void;
   toggleAnim?: (o?: EArg) => void;
+  setNocturno?: (o?: EArg) => void;
+  applyControl?: (key: string, v: number) => void;
   renderer?: { setSize: (w: number, h: number) => void; getPixelRatio?: () => number };
   camera?: { aspect: number; updateProjectionMatrix: () => void };
   destroy: () => void;
@@ -51,7 +53,18 @@ let _hooks: EstratosHooks | null = null;
 let _unsubscribeStore: (() => void) | null = null;
 let _ecoTimer: ReturnType<typeof setInterval> | null = null;
 let _voteTimer: ReturnType<typeof setInterval> | null = null;
+let _sonethTimer: ReturnType<typeof setInterval> | null = null;
 let _lastVoteTime = 0;
+
+// sonETH keys routed live into the module (see Estratos.applyControl):
+// color (spectralshift), rotation (spatialspread + harmonicrich), and
+// movement (timedilation, texturedepth, memoryfeed, noiselevel, dronedepth,
+// atmospheremix). Values arrive normalized 0–1 from window.__sonethParams,
+// which is fed by HTML sliders, MIDI CCs, SC GUI knobs AND preset loads.
+const SONETH_CONTROL_KEYS = [
+  "spectralshift", "spatialspread", "harmonicrich", "timedilation",
+  "texturedepth", "memoryfeed", "noiselevel", "dronedepth", "atmospheremix",
+];
 
 // ─── Mode-biome mapping: eco signals bias which zone-mode the strata show ──
 const ECO_MODE_MAP: Record<string, string> = {
@@ -111,12 +124,14 @@ export async function mountEstratos(
   wireEcoFromStore();
   wireConsensusFromStore();
   wireForwardVotes();
+  wireSonethControls();
   return _instance;
 }
 
 export function destroyEstratos() {
   if (_ecoTimer) { clearInterval(_ecoTimer); _ecoTimer = null; }
   if (_voteTimer) { clearInterval(_voteTimer); _voteTimer = null; }
+  if (_sonethTimer) { clearInterval(_sonethTimer); _sonethTimer = null; }
   if (_unsubscribeStore) { _unsubscribeStore(); _unsubscribeStore = null; }
   if (_instance) {
     try { _instance.destroy(); } catch { /* ignore */ }
@@ -166,17 +181,45 @@ function wireEcoFromStore() {
 }
 
 // ─── Parliament consensus → palette mood (VIZ coupling) ────────────────────
+// Min-dwell: the consensus wave oscillates across the palette thresholds
+// several times a minute — without a dwell every crossing forced a full
+// scene rebuild (visible hitch + the old light-paper palettes made the
+// background flash to white; palettes are now nocturno-inverted in the
+// module, and rebuilds are limited to one per dwell window here).
+const PALETTE_DWELL_MS = 12000;
 function wireConsensusFromStore() {
   let lastPalette = "";
+  let lastChange = 0;
   _unsubscribeStore = parliamentStore.subscribe((state) => {
     if (!_instance || !_instance.setPalette) return;
     const c = state.consensus ?? state.consensusWave;
     if (typeof c !== "number") return;
     const pal = consensusToPalette(c);
     if (pal === lastPalette) return;
+    if (Date.now() - lastChange < PALETTE_DWELL_MS) return;
     lastPalette = pal;
+    lastChange = Date.now();
     try { _instance!.setPalette!({ palette: pal }); } catch { /* ignore */ }
   });
+}
+
+// ─── sonETH sliders → live module controls (color/rotation/movement) ───────
+// Polls window.__sonethParams (~7 Hz) and pushes CHANGED values into
+// Estratos.applyControl — no scene rebuild, everything animates in place.
+function wireSonethControls() {
+  const lastSent: Record<string, number> = {};
+  _sonethTimer = setInterval(() => {
+    if (!_instance || !_instance.applyControl) return;
+    const sp = (window as unknown as { __sonethParams?: Record<string, number> }).__sonethParams;
+    if (!sp) return;
+    for (const key of SONETH_CONTROL_KEYS) {
+      const v = sp[key];
+      if (typeof v !== "number" || !isFinite(v)) continue;
+      if (lastSent[key] !== undefined && Math.abs(lastSent[key] - v) < 0.002) continue;
+      lastSent[key] = v;
+      try { _instance!.applyControl!(key, v); } catch { /* ignore */ }
+    }
+  }, 140);
 }
 
 // ─── Vote events → regenerate with new seed (forward) ──────────────────────
