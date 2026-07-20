@@ -56,12 +56,12 @@ function mulberry32(seed) {
     };
 }
 
-function makeRandomProxy(paper, rngFn) {
+function makeRandomProxy(paper, ink, rngFn) {
     const accents = ["#1038ff", "#ff1616", "#04be36", "#ffd400"];
     return new Proxy({}, {
         get(_t, prop) {
             if (prop === "paper") return paper;
-            if (prop === "ink") return "#0b0b0b";
+            if (prop === "ink") return ink;
             if (prop === "name") return "aleatoria";
             const r = rngFn();
             if (r < 0.42) return "#ffffff";
@@ -418,6 +418,7 @@ class Estratos extends BaseThreeJsModule {
         { name: "setPalette", executeOnLoad: true, options: [{ name: "palette", defaultVal: "auto", type: "select", values: ["auto", "riso", "tierra", "mineral", "abismo", "neon", "mono", "aleatoria"] }] },
         { name: "regenerate", executeOnLoad: false, options: [] },
         { name: "toggleAnim", executeOnLoad: false, options: [{ name: "on", defaultVal: true, type: "boolean" }] },
+        { name: "setNocturno", executeOnLoad: false, options: [{ name: "on", defaultVal: true, type: "boolean" }] },
     ];
 
     constructor(container) {
@@ -428,6 +429,28 @@ class Estratos extends BaseThreeJsModule {
         this.mode = "total";
         this.currentPalette = "auto";
         this.animEnabled = true;
+        // Modo nocturno: en el parlamento la pieza vive sobre proyección
+        // oscura — las paletas de papel claro (riso/tierra/mineral/mono)
+        // invierten papel↔tinta para que el fondo NUNCA salte a blanco.
+        this.nocturno = true;
+
+        // Estado de control en vivo (sliders sonETH → applyControl):
+        // se aplica cada frame, sin reconstruir la escena.
+        this._ctrl = {
+            speed: 1,        // timedilation → velocidad global de animación
+            driftAmp: 1,     // texturedepth → amplitud de deriva de especies
+            waveAmp: 1,      // memoryfeed → amplitud de olas
+            jitter: 0,       // noiselevel → temblor nervioso de especies
+            hue: 0.5,        // spectralshift → tinte de color (0.5 = neutro)
+            rotY: 0,         // spatialspread → ángulo del mundo
+            rotSpeed: 0.05,  // harmonicrich → giro lento continuo
+            partSize: 0.08,  // dronedepth → tamaño de partículas
+            partOp: 0.75,    // dronedepth → opacidad de partículas
+            fogNear: 24,     // atmospheremix → densidad de niebla
+            fogFar: 70,
+        };
+        this._rotAuto = 0;
+        this._bgTarget = null;
 
         this.world = new THREE.Group();
         this.scene.add(this.world);
@@ -479,8 +502,21 @@ class Estratos extends BaseThreeJsModule {
 
     _resolvePalette() {
         const key = this.currentPalette === "auto" ? this._weightedPalette() : this.currentPalette;
-        if (key === "aleatoria") return makeRandomProxy("#ffffff", () => this.rng());
-        return PALETTES[key] || PALETTES.riso;
+        if (key === "aleatoria") {
+            return this.nocturno
+                ? makeRandomProxy("#0d0d10", "#f2f2ea", () => this.rng())
+                : makeRandomProxy("#ffffff", "#0b0b0b", () => this.rng());
+        }
+        const C = PALETTES[key] || PALETTES.riso;
+        if (this.nocturno) {
+            // Papel claro → fondo oscuro: invierte papel↔tinta preservando los
+            // acentos riso. Así "riso"/"tierra"/"mono" ya no lanzan la escena
+            // a blanco cuando el consenso del parlamento cruza un umbral.
+            const p = new THREE.Color(C.paper);
+            const lum = p.r * 0.299 + p.g * 0.587 + p.b * 0.114;
+            if (lum > 0.45) return Object.assign({}, C, { paper: C.ink, ink: C.paper });
+        }
+        return C;
     }
 
     _weightedPalette() {
@@ -498,14 +534,20 @@ class Estratos extends BaseThreeJsModule {
         this.rng = mulberry32(hashString(this.seed + "|" + this.mode));
         this.C = this._resolvePalette();
 
-        this.scene.background = new THREE.Color(this.C.paper);
-        this.scene.fog = new THREE.Fog(new THREE.Color(this.C.paper), 24, 70);
+        // Fondo con transición suave: _animate lo interpola hacia _bgTarget,
+        // así un cambio de paleta se desliza en vez de FLASHEAR de golpe.
+        this._bgTarget = new THREE.Color(this.C.paper);
+        if (!(this.scene.background instanceof THREE.Color)) {
+            this.scene.background = this._bgTarget.clone();
+        }
+        this.scene.fog = new THREE.Fog(this.scene.background.clone(), this._ctrl.fogNear, this._ctrl.fogFar);
 
         const zones = MODE_ZONES[this.mode] || MODE_ZONES.total;
         this._buildStrataFrames(zones);
         zones.forEach((zone) => this._populateZone(zone));
         this._buildParticles();
         this._buildText(zones);
+        this._reapplyControls();
     }
 
     _clearWorld() {
@@ -609,7 +651,7 @@ class Estratos extends BaseThreeJsModule {
         const line = new THREE.Line(geo, mat);
         this.world.add(line);
         this._disposables.push({ geometry: geo, material: mat });
-        this._waves.push({ line, baseY: y, amp: this.rand(0.08, 0.22), phase: this.rng() * Math.PI * 2, n });
+        this._waves.push({ line, baseY: y, amp: this.rand(0.08, 0.22), phase: this.rng() * Math.PI * 2, n, base: new THREE.Color(color) });
     }
 
     _buildParticles() {
@@ -632,7 +674,7 @@ class Estratos extends BaseThreeJsModule {
         const points = new THREE.Points(geo, mat);
         this.world.add(points);
         this._disposables.push({ geometry: geo, material: mat });
-        this._particles = { points, speeds, phases, kind, count };
+        this._particles = { points, speeds, phases, kind, count, base: new THREE.Color(color) };
     }
 
     _buildText(zones) {
@@ -665,13 +707,18 @@ class Estratos extends BaseThreeJsModule {
     }
 
     _makeTextSprite(text, colorHex, opts = {}) {
-        const w = opts.w || 256, h = opts.h || 40;
+        // El lienzo se dimensiona MIDIENDO el texto (antes era un ancho fijo
+        // que recortaba las frases largas del lexicón a mitad de oración).
+        const font = opts.font || "14px 'Courier New',monospace";
+        const h = opts.h || 40;
         const canvas = document.createElement("canvas");
+        const g = canvas.getContext("2d");
+        g.font = font;
+        const w = Math.ceil(g.measureText(text).width) + 10;
         canvas.width = w;
         canvas.height = h;
-        const g = canvas.getContext("2d");
+        g.font = font; // el resize del canvas resetea el estado del contexto
         g.clearRect(0, 0, w, h);
-        g.font = opts.font || "14px 'Courier New',monospace";
         g.fillStyle = colorHex;
         g.textBaseline = "middle";
         g.fillText(text, 4, h / 2);
@@ -693,21 +740,45 @@ class Estratos extends BaseThreeJsModule {
         const now = performance.now();
         const dt = Math.min(0.05, (now - this._last) / 1000);
         this._last = now;
-        if (this.animEnabled) this._t += dt;
+        // timedilation → el tiempo interno de la pieza se estira o comprime
+        if (this.animEnabled) this._t += dt * this._ctrl.speed;
+
+        // Fondo/niebla en transición suave (sin flash al cambiar paleta)
+        if (this._bgTarget && this.scene.background instanceof THREE.Color) {
+            this.scene.background.lerp(this._bgTarget, 0.045);
+            if (this.scene.fog) this.scene.fog.color.copy(this.scene.background);
+        }
+
+        // spatialspread (ángulo) + harmonicrich (giro continuo) → rotación
+        if (this.animEnabled) this._rotAuto += dt * this._ctrl.rotSpeed;
+        if (this.world) {
+            const targetRot = this._ctrl.rotY + this._rotAuto;
+            this.world.rotation.y += (targetRot - this.world.rotation.y) * 0.06;
+        }
 
         if (this.animEnabled) {
             const t = this._t;
+            const amp = this._ctrl.driftAmp;
+            const jit = this._ctrl.jitter;
             this._sprites.forEach((s) => {
-                if (s.kind === "driftX") s.obj.position.x = s.anchor.x + Math.sin(t * 0.6 + s.phase) * 0.6;
-                else if (s.kind === "bobY") s.obj.position.y = s.anchor.y + Math.sin(t * 1.1 + s.phase) * 0.25;
+                let px = s.anchor.x, py = s.anchor.y;
+                if (s.kind === "driftX") px += Math.sin(t * 0.6 + s.phase) * 0.6 * amp;
+                else if (s.kind === "bobY") py += Math.sin(t * 1.1 + s.phase) * 0.25 * amp;
                 else if (s.kind === "blink") s.obj.material.opacity = 0.4 + 0.6 * Math.abs(Math.sin(t * 1.4 + s.phase));
+                if (jit > 0) {
+                    // noiselevel → temblor nervioso de alta frecuencia
+                    px += Math.sin(t * 13 + s.phase * 7) * jit;
+                    py += Math.cos(t * 17 + s.phase * 5) * jit * 0.6;
+                }
+                s.obj.position.x = px;
+                s.obj.position.y = py;
             });
 
             this._waves.forEach((w) => {
                 const pos = w.line.geometry.attributes.position;
                 for (let i = 0; i <= w.n; i++) {
                     const x = pos.getX(i);
-                    pos.setY(i, w.baseY + Math.sin(x * 0.5 + t * 1.6 + w.phase) * w.amp);
+                    pos.setY(i, w.baseY + Math.sin(x * 0.5 + t * 1.6 + w.phase) * w.amp * this._ctrl.waveAmp);
                 }
                 pos.needsUpdate = true;
             });
@@ -755,6 +826,91 @@ class Estratos extends BaseThreeJsModule {
 
     toggleAnim({ on = true } = {}) {
         this.animEnabled = !!on;
+    }
+
+    setNocturno({ on = true } = {}) {
+        this.nocturno = !!on;
+        this._buildScene();
+    }
+
+    // ── sliders sonETH → parámetros vivos (sin reconstruir la escena) ──────
+    // Recibe valores normalizados 0–1 desde el puente (estratos.ts pollea
+    // window.__sonethParams). El mismo gesto que mueve el dron sonoro mueve
+    // la cartografía: color, rotación, deriva, niebla, temblor.
+    applyControl(key, v) {
+        const c = this._ctrl;
+        switch (key) {
+            case "spectralshift":
+                c.hue = v;                                    // color / tinte
+                this._applyTint();
+                break;
+            case "spatialspread":
+                c.rotY = (v - 0.5) * Math.PI;                 // ángulo del mundo
+                break;
+            case "harmonicrich":
+                c.rotSpeed = v * 0.12;                        // giro continuo
+                break;
+            case "timedilation":
+                c.speed = 0.25 + v * 2.75;                    // velocidad del tiempo
+                break;
+            case "texturedepth":
+                c.driftAmp = 0.3 + v * 2.4;                   // amplitud de deriva
+                break;
+            case "memoryfeed":
+                c.waveAmp = 0.3 + v * 2.7;                    // amplitud de olas
+                break;
+            case "noiselevel":
+                c.jitter = v * 0.18;                          // temblor nervioso
+                break;
+            case "dronedepth":
+                c.partSize = 0.03 + v * 0.22;                 // presencia de partículas
+                c.partOp = 0.25 + v * 0.65;
+                if (this._particles) {
+                    this._particles.points.material.size = c.partSize;
+                    this._particles.points.material.opacity = c.partOp;
+                }
+                break;
+            case "atmospheremix":
+                c.fogNear = 30 - v * 22;                      // densidad de niebla
+                c.fogFar = 90 - v * 55;
+                if (this.scene && this.scene.fog) {
+                    this.scene.fog.near = c.fogNear;
+                    this.scene.fog.far = c.fogFar;
+                }
+                break;
+        }
+    }
+
+    // Reaplica el estado de control tras cada _buildScene (los materiales
+    // recién creados no conocen los valores actuales de los sliders).
+    _reapplyControls() {
+        this._applyTint();
+        if (this._particles) {
+            this._particles.points.material.size = this._ctrl.partSize;
+            this._particles.points.material.opacity = this._ctrl.partOp;
+        }
+        if (this.scene && this.scene.fog) {
+            this.scene.fog.near = this._ctrl.fogNear;
+            this.scene.fog.far = this._ctrl.fogFar;
+        }
+    }
+
+    // spectralshift → tinte: 0.5 es neutro (blanco = colores horneados tal
+    // cual); alejarse del centro rota el matiz de especies, olas y partículas.
+    // El texto queda sin teñir para preservar legibilidad del poema.
+    _applyTint() {
+        const v = this._ctrl.hue;
+        const sat = Math.min(1, Math.abs(v - 0.5) * 2.2);
+        const tint = new THREE.Color();
+        if (sat < 0.03) tint.set("#ffffff"); else tint.setHSL(v, sat, 0.72);
+        this._sprites.forEach((s) => s.obj.material.color.copy(tint));
+        const hueShift = (v - 0.5) * 1.0;
+        this._waves.forEach((w) => {
+            w.line.material.color.copy(w.base).offsetHSL(hueShift, sat * 0.3, 0);
+        });
+        if (this._particles) {
+            this._particles.points.material.color.copy(this._particles.base).offsetHSL(hueShift, sat * 0.3, 0);
+        }
     }
 
     destroy() {
