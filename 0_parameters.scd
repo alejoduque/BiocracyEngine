@@ -78,34 +78,7 @@
 
     // ── Beat engine (no control bus — lives in ~beatParams) ─────────────
     (name: \beatTempo, spec: ControlSpec(0.5, 2.0, \exp), default: 1.0, path: "/soneth/beatTempo",
-        hasBus: false, beatParam: \beatTempo),
-
-    // ── Ritmo · escucha profunda (toggles 0/1) ──────────────────────────
-    // Seven independent generative schemes for deriving rhythm FROM the chain
-    // instead of decorating a fixed 16-step grid with it. Each is a boolean:
-    // stepped ControlSpec(0,1,\lin,1), no control bus (the Routine reads them
-    // from ~beatParams in sclang), so they inherit OSC, MIDI CC, the SC GUI
-    // knob, the browser echo and preset persistence from this registry alone.
-    //
-    // ALL OFF = the engine's previous behaviour, exactly. Ship-dark by design.
-    //
-    // Several need the enriched payload from eth_sonify.py (/eth/block plus the
-    // extra /eth/tx_info fields); each scheme falls back to the plain grid when
-    // the data it wants has not arrived, so a stale Python is never fatal.
-    (name: \rhythmBlockBar,  spec: ControlSpec(0, 1, \lin, 1), default: 0, path: "/rhythm/blockbar",
-        hasBus: false, beatParam: \rhythmBlockBar,  cc: 17),
-    (name: \rhythmGasAccent, spec: ControlSpec(0, 1, \lin, 1), default: 0, path: "/rhythm/gasaccent",
-        hasBus: false, beatParam: \rhythmGasAccent, cc: 18),
-    (name: \rhythmEntropy,   spec: ControlSpec(0, 1, \lin, 1), default: 0, path: "/rhythm/entropy",
-        hasBus: false, beatParam: \rhythmEntropy,   cc: 19),
-    (name: \rhythmVoices,    spec: ControlSpec(0, 1, \lin, 1), default: 0, path: "/rhythm/voices",
-        hasBus: false, beatParam: \rhythmVoices,    cc: 20),
-    (name: \rhythmHashSeed,  spec: ControlSpec(0, 1, \lin, 1), default: 0, path: "/rhythm/hashseed",
-        hasBus: false, beatParam: \rhythmHashSeed,  cc: 21),
-    (name: \rhythmPolyclock, spec: ControlSpec(0, 1, \lin, 1), default: 0, path: "/rhythm/polyclock",
-        hasBus: false, beatParam: \rhythmPolyclock, cc: 22),
-    (name: \rhythmSilence,   spec: ControlSpec(0, 1, \lin, 1), default: 0, path: "/rhythm/silence",
-        hasBus: false, beatParam: \rhythmSilence,   cc: 23)
+        hasBus: false, beatParam: \beatTempo)
 ];
 
 // ─── Derived lookup tables ──────────────────────────────────────────────────

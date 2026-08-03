@@ -128,33 +128,6 @@ function connectControlWS() {
         if (dispEl) dispEl.textContent = v.toFixed(2);
       }
 
-      // ── Ritmo · escucha profunda (/rhythm/*) ────────────────────────
-      // SC echoes the normalized value on the canonical path after ANY
-      // origin changes it — MIDI CC 17–23, the SC GUI knob, or a preset
-      // load. Ticking the box here is what keeps those three surfaces and
-      // this panel showing the same truth. Setting .checked fires no change
-      // event, so a browser-origin toggle echoes back harmlessly.
-      // Real master-bus spectrum from SC (16 log-spaced band amplitudes).
-      // Arrives ~20 Hz; the animation loop reads it via __onScSpectrum.
-      if (address === "/spectrum") {
-        const w = window as unknown as { __onScSpectrum?: (v: number[]) => void };
-        if (w.__onScSpectrum && Array.isArray(args)) {
-          w.__onScSpectrum((args as unknown[]).map((v) => Number(v) || 0));
-        }
-        return;
-      }
-
-      if (address.startsWith("/rhythm/")) {
-        const v = args[0];
-        if (typeof v === "number" && isFinite(v)) {
-          const box = document.querySelector<HTMLInputElement>(
-            `input[type='checkbox'][data-osc='${address}']`
-          );
-          if (box) box.checked = v >= 0.5;
-        }
-        return;
-      }
-
       // ── Cámara Fenológica (Capítulo VI) ─────────────────────────────
       // SC echoes /pheno/<key> values back to the browser whenever a knob,
       // MIDI CC, or HTML slider moves. Three things happen here:
@@ -1371,21 +1344,8 @@ async function init() {
     });
   }
 
-  // ── Ritmo · escucha profunda: scheme toggles (/rhythm/*) ────────────────
-  // Same contract as wireSlider, but the value is 0/1. SC's registry entries
-  // use a stepped ControlSpec(0,1,\lin,1), so ~setParamNorm snaps whatever it
-  // receives — MIDI CC, preset load or this checkbox — to one of two states.
-  function wireToggle(el: HTMLInputElement) {
-    const addr = el.dataset.osc;
-    if (!addr) return;
-    el.addEventListener("change", () => {
-      sendOSC(addr, el.checked ? 1 : 0);
-    });
-  }
-
   // Wire all currently-present range sliders (includes static HTML ones)
   document.querySelectorAll<HTMLInputElement>("input[type='range'][data-osc]").forEach(wireSlider);
-  document.querySelectorAll<HTMLInputElement>("input[type='checkbox'][data-osc]").forEach(wireToggle);
 
   // ── CONFIGS: save/load the full control state ──────────────────────────
   // SC owns the preset files (presets/*.json); loading routes every value

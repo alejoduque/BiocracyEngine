@@ -202,44 +202,6 @@ Four processes are managed by `start_ecosystem.sh`:
 > **no UGen read** — `\opalDrone` did not declare them and `\elektronBell` read
 > them into variables it discarded. They now shape the drone.
 
-### Ritmo · Escucha Profunda
-
-Seven independent schemes for deriving rhythm **from** the chain's own temporal
-structure, rather than decorating a fixed 16-step grid with it. Each is a
-checkbox in the control panel, a MIDI CC, and a preset-persisted registry entry.
-**All off reproduces the previous engine exactly** — they are additive.
-
-| Toggle | OSC | CC | Reads |
-|---|---|---|---|
-| **Bloque = Compás** | `/rhythm/blockbar` | 17 | the real ~12 s block period as the bar; tx index as phase |
-| **Acento por Gas** | `/rhythm/gasaccent` | 18 | priority-over-base-fee ratio → accent and dynamics |
-| **Entropía** | `/rhythm/entropy` | 19 | dispersion of inter-arrival times → swing, subdivision |
-| **Dirección = Voz** | `/rhythm/voices` | 20 | counterparty address → register; a returning actor returns audibly |
-| **Semilla de Hash** | `/rhythm/hashseed` | 21 | block hash seeds that bar's cell — different, yet reproducible |
-| **Tres Relojes** | `/rhythm/polyclock` | 22 | block, arrival and decay on clocks with no integer relation |
-| **Silencio** | `/rhythm/silence` | 23 | chain quiet relative to its own rate → real rests |
-
-**Entropía is rate-invariant by construction.** It is the standard deviation of
-*log* intervals, so `sd(log(k·x)) = sd(log x)`: scaling every arrival by 2×, 5×
-or 10× leaves the reading unchanged. It measures *la forma de las llegadas, no
-cuántas*. Measured on a linear coefficient of variation it clipped to 1.0
-permanently, because a window mixing 0.05 s intra-block arrivals with ~12 s
-block gaps always has a CV above 2.
-
-**Performance safety.** Silence can never strand a set: the rest threshold is
-clipped to 0.5–4 s, and above a 20 s gap the grid *resumes* — a dead feed must
-read as failure, not as a musical rest. A starvation guard forces a pad through
-if a transaction arrived but nothing sounded for 6 s, so no combination of the
-128 possible toggle states can mute a layer indefinitely.
-
-**Master limiter.** Nothing previously protected the output — every synth wrote
-straight to `Out.ar(0, …)` and they summed unbounded (16 concurrent pads reached
-1.34 full-scale before the drone and beat layers were added). A `LeakDC →
-Limiter` at 0.92 sits at the tail of the root node. Its failure mode is benign:
-if the node is missing or mis-ordered it reads silence and `ReplaceOut` writes
-zeros *before* the sources add theirs, so the worst case is no limiting, never
-no sound.
-
 ---
 
 ## 5. Laser Projection (ILDA / Helios DAC)
@@ -294,8 +256,10 @@ tail -f sclang_log.txt | grep MON
 
 | Field | Answers |
 |---|---|
-| `flags` | `B G E V H P S` — uppercase means that toggle **reached SC**. Settles "is the control even connected?" without guessing. |
-| `bells` | pads spawned, and skipped *by which gate*: `gate` time-gate, `cap` synth ceiling, `bar` block-phase quantization |
+| `bells` | pads spawned, and skipped *by which gate*: `gate` time-gate, `cap` synth ceiling, `drop` queue overflow; `q:` shows pending/total queued |
+| `kick` `perc` `err` | beat-engine spawns, and any errors the guarded loop caught and recovered from |
+| `tg` `amp` | transport gain (`0.05` = Stop Parliament latched) and the performer's master level |
+| `outPk` `gr` | peak level reaching the limiter, and how hard it is pulling back |
 | `env` | atk/dec/amp of the last pad — if these stop being identical, the envelope is responding to the transaction |
 | `prio` `ent` `dens` | live chain-derived values; a constant here means a mapping has saturated |
 | `blk` `txN` `idx` `base` | whether the enriched `eth_sonify.py` payload is arriving at all |

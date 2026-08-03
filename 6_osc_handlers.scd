@@ -25,11 +25,11 @@ s.doWhenBooted({
     OSCdef(\ethTxInfoHandler).free;
     OSCdef(\ethBlockHandler).free;
 
-    // ── Ritmo · escucha profunda: the chain's own temporal structure ─────
-    // State the seven rhythm schemes read (see ~paramDefs \rhythm* toggles).
-    // Populated unconditionally from the enriched eth_sonify.py payload; the
-    // beat engine only CONSULTS it when the matching flag is on, and every
-    // field carries a sane default so a stale Python is never fatal.
+    // ── Chain temporal state ────────────────────────────────────────────
+    // Populated from the enriched eth_sonify.py payload. Drives the pad
+    // scheduler (block period), the gas accent (priorityRatio) and the
+    // monitor. Every field carries a sane default, so a stale or absent
+    // Python is never fatal — the engine simply runs on its own clock.
     ~rhythmState = ~rhythmState ?? {
         (
             blockNum: 0, blockHash: "", blockSeed: 0,
@@ -48,18 +48,17 @@ s.doWhenBooted({
     // ── Live monitor: what SC is ACTUALLY receiving and doing ────────────
     // `tail -f sclang_log.txt | grep MON` gives one line every 2 s answering,
     // without guesswork, the questions that are otherwise invisible:
-    //   · did a /rhythm/* toggle ever REACH SuperCollider?  (flags field)
     //   · are pads sounding, or being gated — and by which gate? (bells field)
+    //   · is the beat engine alive and firing?                (kick/perc/err)
     //   · is the enriched eth_sonify payload arriving?        (blk/prio fields)
     //   · is the engine getting live values or frozen ones?   (prio/ent/dens)
-    // Flags read B G E V H P S (blockbar gasaccent entropy voices hashseed
-    // polyclock silence); UPPERCASE = on, "-" = off.
+    //   · is the output being squashed by the limiter?        (outPk/gr)
     ~bellStats = ~bellStats ?? {
         (spawned: 0, skipGate: 0, skipCap: 0, skipBar: 0, queued: 0,
          lastAtk: 0, lastDec: 0, lastAmp: 0)
     };
 
-    // ── Pad scheduler (Bloque = Compás) ─────────────────────────────────
+    // ── Pad scheduler ───────────────────────────────────────────────────
     // eth_sonify fetches a block and then transmits its qualifying
     // transactions ~0.05 s apart, so a whole block arrives as a ~2 s burst
     // inside a ~12 s period. FILTERING on arrival time therefore can only ever
@@ -80,21 +79,11 @@ s.doWhenBooted({
     if(~padDrainRoutine.notNil) { ~padDrainRoutine.stop };
     ~padDrainRoutine = Routine({
         loop {
-            var wait = 0.75, args, rest;
+            var wait = 0.75, args;
             if(~rhythmState.notNil) {
                 wait = (~rhythmState[\blockPeriod] / 16).clip(0.15, 2.0);
             };
-            // Honour Silencio's rest here too. The rest is only audible if BOTH
-            // layers observe it — draining pads through a beat-engine rest just
-            // moves the sound around instead of opening space.
-            rest = (~beatParams !? { ~beatParams.rhythmSilence } ? 0) > 0.5
-                and: { ~rhythmState.notNil }
-                and: { ~rhythmState[\blockAt] > 0 }
-                and: {
-                    ((SystemClock.seconds - ~rhythmState[\blockAt])
-                        / ~rhythmState[\blockPeriod].max(1)) > 0.66
-                };
-            if(rest.not and: { ~padQueue.notNil } and: { ~padQueue.size > 0 }) {
+            if(~padQueue.notNil and: { ~padQueue.size > 0 }) {
                 args = ~padQueue.removeAt(0);
                 if(s.numSynths < ~padSynthMax) {
                     Synth(\elektronBell, args);
@@ -108,22 +97,9 @@ s.doWhenBooted({
     });
     ~padDrainRoutine.play(SystemClock);
 
-    ~monitorFlags = {
-        var names = [\rhythmBlockBar, \rhythmGasAccent, \rhythmEntropy, \rhythmVoices,
-                     \rhythmHashSeed, \rhythmPolyclock, \rhythmSilence];
-        var letters = ["B", "G", "E", "V", "H", "P", "S"];
-        var out = "";
-        names.do { |n, i|
-            var v = if(~beatParams.notNil) { ~beatParams[n] ? 0 } { 0 };
-            out = out ++ if(v > 0.5, { letters[i] }, { "-" });
-        };
-        out
-    };
-
     ~monitorLine = {
         var rs = ~rhythmState, b = ~bellStats;
-        ("[MON] flags:" ++ ~monitorFlags.value
-            ++ "  bells:" ++ b[\spawned] ++ "/gate:" ++ b[\skipGate]
+        ("[MON] bells:" ++ b[\spawned] ++ "/gate:" ++ b[\skipGate]
                 ++ "/cap:" ++ b[\skipCap] ++ "/drop:" ++ b[\skipBar]
                 ++ "  q:" ++ (~padQueue !? { ~padQueue.size } ? 0)
                 ++ "/" ++ (b[\queued] ? 0)
@@ -135,9 +111,6 @@ s.doWhenBooted({
             ++ "  blk:" ++ rs[\blockNum] ++ " txN:" ++ rs[\blockTxCount]
                 ++ " idx:" ++ rs[\txIndex] ++ " base:" ++ rs[\blockBaseFee].round(0.001)
             ++ "  synths:" ++ s.numSynths
-            // out = level hitting the limiter, gr = how hard it is pulling back.
-            // gr well below 1.0 with a high `out` means the drone is eating the
-            // headroom and squashing every transient on top of it.
             // Beat engine: was entirely absent from this line, so "the beats
             // are gone" could only be answered by guesswork. kick/perc are
             // cumulative spawns; tg is the transport gain (0.05 after
@@ -151,11 +124,6 @@ s.doWhenBooted({
             // an error killed the Routine outright and the only visible symptom
             // was kick:/perc: frozen at whatever they had reached.
             ++ " err:" ++ (~beatParams !? { ~beatParams.beatErrors } ? 0)
-            // rest:1 = Silencio is actively holding a rest right now. With S
-            // ticked this must alternate 0/1 with the block phase; if it never
-            // reads 1, the control is not firing and should be removed rather
-            // than tuned again.
-            ++ " rest:" ++ (~beatParams !? { ~beatParams.resting } ? 0)
             ++ "  outPk:" ++ (~limiterPeak ? 0).round(0.001)
             ++ " gr:" ++ (~limiterGR ? 1).round(0.01)).postln;
         // reset the hold window so each line describes the last 2 s only
@@ -178,7 +146,7 @@ s.doWhenBooted({
     // /diag/monitor 0|1  — silence or resume the monitor line
     // /diag/osctrace 0|1 — OSCFunc.trace: post EVERY inbound OSC message, the
     //                      definitive test of whether a control reaches SC
-    // /diag/reset        — zero the bell counters to measure a fresh window
+    // /diag/reset        — zero the pad counters to measure a fresh window
     // Limiter telemetry: msg is [\/limiterGR, nodeID, replyID, pre, post].
     // ~limiterGR is the ratio the limiter is holding the signal back by —
     // 1.0 = untouched, 0.5 = pulling 6 dB off everything.
@@ -286,14 +254,6 @@ s.doWhenBooted({
     ~handleTransaction = { |noteNum, velocity, value, gasPrice, txHash, time|
         var baseFreq, synthArgs, nutrient, consensus;
         var valLog, priorityRatio, accent, relScale, minGap, sounds, queued;
-        // ── the pad layer under the rhythm schemes ────────────────────────
-        // The seven toggles used to gate only ~beatRoutine (kick/perc/dust),
-        // so ticking every box left THIS layer — the one you actually hear
-        // most of the time — completely unchanged. They apply here too now.
-        var rBlockBar  = (~beatParams !? { ~beatParams.rhythmBlockBar }  ? 0) > 0.5;
-        var rGasAccent = (~beatParams !? { ~beatParams.rhythmGasAccent } ? 0) > 0.5;
-        var rVoices    = (~beatParams !? { ~beatParams.rhythmVoices }    ? 0) > 0.5;
-        var rSilence   = (~beatParams !? { ~beatParams.rhythmSilence }   ? 0) > 0.5;
 
         baseFreq = noteNum.midicps;
         // Add hash-based micro-variation
@@ -312,30 +272,14 @@ s.doWhenBooted({
         // overlapping pads read as harmonic thickening instead of bells.
         while({ baseFreq > 160 }, { baseFreq = baseFreq * 0.5 });
 
-        // ── (4) Dirección = Voz ──
-        // The counterparty picks the register, so a returning address returns
-        // recognisably — the same actor at the same height in the texture.
-        if(rVoices and: { ~rhythmState.notNil }) {
-            baseFreq = baseFreq * [0.5, 0.667, 0.75, 1.0, 1.0, 1.333, 1.5]
-                .wrapAt(~rhythmState[\addrSig] % 7);
-        };
 
-        // ── (2) Acento por Gas ──  (1.0 = neutral when the toggle is off)
-        // Baseline 0.85, not 0.55. The priority ratio is heavily skewed toward
-        // zero — most transactions bid at or near the base fee — so a 0.55
-        // floor meant enabling this control ATTENUATED almost everything to
-        // 55% and only occasionally rose. It read as "turning it on makes the
-        // piece quieter", the opposite of an accent. Now the common case sits
-        // near unity and a genuine high bid punches to 1.75.
-        accent = if(rGasAccent and: { ~rhythmState.notNil }) {
+        // Gas deviation -> accent. priorityRatio is skewed toward zero (most
+        // transactions bid at or near base fee), so the baseline sits near
+        // unity and a genuine high bid punches above it.
+        accent = if(~rhythmState.notNil) {
             0.85 + (~rhythmState[\priorityRatio] * 0.9)
         } { 1.0 };
-
-        // ── (7) Silencio ──
-        // Shorter tails so gaps between bursts become real silence instead of
-        // the pads fusing. Without this the layer never stops sounding, so a
-        // quiet chain is inaudible as quiet.
-        relScale = if(rSilence) { 0.45 } { 1.0 };
+        relScale = 1.0;
 
         // Calculate abstract values for visuals.
         // consensus was gasPrice.linlin(1, 200, 0, 1) — at post-Dencun gas that
@@ -447,7 +391,6 @@ s.doWhenBooted({
         sounds = true;
         queued = false;
 
-        // ── (1) Bloque = Compás ──
         // Instead of firing on raw arrival, only transactions whose position in
         // the block lands on one of the bar's 16 divisions sound. Blocks are
         // ordered by priority fee, so the head of the bar is dense and urgent
@@ -464,11 +407,11 @@ s.doWhenBooted({
         //
         // Time slots give a real 16-onset bar however much upstream filtering
         // happens, and degrade gracefully: no block yet = no quantization.
-        // With Bloque = Compás the pad is QUEUED, not fired: ~padDrainRoutine
-        // releases one per 1/16 of the block period so the burst is spread
-        // across the bar it belongs to. `sounds = false` here suppresses the
-        // immediate spawn below — the queue owns this pad now.
-        if(rBlockBar and: { ~rhythmState.notNil } and: { ~rhythmState[\blockAt] > 0 }) {
+        // Pads are always QUEUED, never fired on arrival: ~padDrainRoutine
+        // releases one per 1/16 of the block period. eth_sonify transmits a
+        // whole block as a ~2 s burst inside a ~12 s period, so firing on
+        // arrival clumps the layer and then leaves ten seconds empty.
+        if(~rhythmState.notNil and: { ~rhythmState[\blockAt] > 0 }) {
             if(~padQueue.size >= ~padQueueMax) {
                 ~padQueue.removeAt(0);              // drop oldest, keep current
                 ~bellStats[\skipBar] = ~bellStats[\skipBar] + 1;
