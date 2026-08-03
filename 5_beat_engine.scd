@@ -21,6 +21,16 @@
     
     // Global parameters
     masterAmp: 0.7,
+    // Transport gain: 1.0 running, 0.05 after /parliament/stop, restored by
+    // /parliament/start. Kept SEPARATE from masterAmp so a transport action
+    // cannot silently overwrite the performer's level — see the note in the
+    // stop handler in 6_osc_handlers.scd.
+    transportGain: 1.0,
+    // Layer counters, read by the [MON] line. The monitor described the pad
+    // layer in detail while saying nothing at all about kick or percussion,
+    // so "the beats are gone" could only ever be answered by guesswork.
+    kickCount: 0,
+    percCount: 0,
     delayFeedback: 0.3,
     filterCutoff: 0.6,
     
@@ -82,7 +92,7 @@
 
     ~opalDroneSynth = Synth(\opalDrone, [
         \freq, 55, // Low ambient anchor
-        \amp, ~beatParams.masterAmp * 0.8,
+        \amp, ~beatParams.masterAmp * (~beatParams.transportGain ? 1) *0.8,
         \masterVolBus, ~bi.(\masterVolume),
         \pitchBus,     ~bi.(\pitchShift),
         \timeBus,      ~bi.(\timeDilation),
@@ -314,10 +324,11 @@
             if(quiet.not and: { kickPattern.wrapAt(step) == 1 }) {
                 // Subtle frequency drift: ±5Hz per bar for organic feel
                 var kickFreq = 50 + ((bar % 7) - 3 * 1.5);
+                ~beatParams.kickCount = (~beatParams.kickCount ? 0) + 1;
                 Synth(\opalKick, [
                     \out,         0,
                     \freq,        kickFreq,
-                    \amp,         ~beatParams.masterAmp * (0.5 + (density * 0.2)) * accent,
+                    \amp,         ~beatParams.masterAmp * (~beatParams.transportGain ? 1) *(0.5 + (density * 0.2)) * accent,
                     \dec,         0.9 + (transactionInfluence * 0.4),
                     \masterVolBus, bMVol,
                     \timeBus,      bTime,
@@ -342,6 +353,7 @@
                     pitchPool.wrapAt(poolIdx)
                 };
                 poolIdx = (poolIdx + 1) % pitchPool.size;
+                ~beatParams.percCount = (~beatParams.percCount ? 0) + 1;
 
                 // ─ Voicing: single note, dyad, or triad based on texture control ─
                 case
@@ -351,7 +363,7 @@
                     Synth(\opalPerc, [
                         \out,          0,
                         \freq,         percFreq,
-                        \amp,          ~beatParams.masterAmp * (0.2 + (transactionInfluence * 0.15)) * accent,
+                        \amp,          ~beatParams.masterAmp * (~beatParams.transportGain ? 1) *(0.2 + (transactionInfluence * 0.15)) * accent,
                         \masterVolBus, bMVol,
                         \harmonicBus,  bHarm,
                         \textureBus,   bText,
@@ -370,7 +382,7 @@
                         Synth(\opalPerc, [
                             \out,          0,
                             \freq,         harmFreq,
-                            \amp,          ~beatParams.masterAmp * (0.2 + (transactionInfluence * 0.15)) * accent * [1.0, 0.6][voice],
+                            \amp,          ~beatParams.masterAmp * (~beatParams.transportGain ? 1) *(0.2 + (transactionInfluence * 0.15)) * accent * [1.0, 0.6][voice],
                             \masterVolBus, bMVol,
                             \harmonicBus,  bHarm,
                             \textureBus,   bText,
@@ -390,7 +402,7 @@
                         Synth(\opalPerc, [
                             \out,          0,
                             \freq,         harmFreq,
-                            \amp,          ~beatParams.masterAmp * (0.2 + (transactionInfluence * 0.15)) * accent * (1.0 / (h + 1.5)),
+                            \amp,          ~beatParams.masterAmp * (~beatParams.transportGain ? 1) *(0.2 + (transactionInfluence * 0.15)) * accent * (1.0 / (h + 1.5)),
                             \masterVolBus, bMVol,
                             \harmonicBus,  bHarm,
                             \textureBus,   bText,
@@ -409,7 +421,7 @@
             if(quiet.not and: { dustProb.coin }) {
                 Synth(\opalDust, [
                     \out,         0,
-                    \amp,         ~beatParams.masterAmp * (0.3 + (density * 0.35)) * accent,
+                    \amp,         ~beatParams.masterAmp * (~beatParams.transportGain ? 1) *(0.3 + (density * 0.35)) * accent,
                     \masterVolBus, bMVol,
                     \textureBus,   bText,
                     \spectralBus,  bSpec,

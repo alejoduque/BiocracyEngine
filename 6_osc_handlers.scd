@@ -128,8 +128,20 @@ s.doWhenBooted({
             // out = level hitting the limiter, gr = how hard it is pulling back.
             // gr well below 1.0 with a high `out` means the drone is eating the
             // headroom and squashing every transient on top of it.
-            ++ "  out:" ++ (~limiterPre ? 0).round(0.001)
+            // Beat engine: was entirely absent from this line, so "the beats
+            // are gone" could only be answered by guesswork. kick/perc are
+            // cumulative spawns; tg is the transport gain (0.05 after
+            // /parliament/stop — the "▶ Stop Parliament" button — until
+            // /parliament/start restores it); amp is the performer's level.
+            ++ "  kick:" ++ (~beatParams !? { ~beatParams.kickCount } ? 0)
+            ++ " perc:" ++ (~beatParams !? { ~beatParams.percCount } ? 0)
+            ++ " tg:" ++ (~beatParams !? { ~beatParams.transportGain } ? 1)
+            ++ " amp:" ++ ((~beatParams !? { ~beatParams.masterAmp } ? 0)).round(0.01)
+            ++ "  outPk:" ++ (~limiterPeak ? 0).round(0.001)
             ++ " gr:" ++ (~limiterGR ? 1).round(0.01)).postln;
+        // reset the hold window so each line describes the last 2 s only
+        ~limiterPeak = 0;
+        ~limiterGR = 1;
     };
 
     if(~monitorRoutine.notNil) { ~monitorRoutine.stop };
@@ -151,11 +163,19 @@ s.doWhenBooted({
     // Limiter telemetry: msg is [\/limiterGR, nodeID, replyID, pre, post].
     // ~limiterGR is the ratio the limiter is holding the signal back by —
     // 1.0 = untouched, 0.5 = pulling 6 dB off everything.
-    ~limiterPre = 0; ~limiterGR = 1;
+    // Peak-HOLD between monitor prints. Reporting the instantaneous value was
+    // useless: SendReply fires at 4 Hz and the monitor samples every 2 s, so
+    // each line showed one arbitrary moment — readings swung from 0.0 to 1.057
+    // on a signal that was audibly steady. The monitor is only worth having if
+    // its numbers can be trusted.
+    ~limiterPeak = 0; ~limiterGR = 1;
     OSCdef(\limiterGR).free;
     OSCdef(\limiterGR, { |msg|
-        ~limiterPre = msg[3].asFloat;
-        ~limiterGR = if(~limiterPre > 0.001) { (msg[4].asFloat / ~limiterPre).clip(0, 1) } { 1 };
+        var pre = msg[3].asFloat;
+        ~limiterPeak = max(~limiterPeak ? 0, pre);
+        if(pre > 0.02) {   // ratios below this are measurement noise, not limiting
+            ~limiterGR = min(~limiterGR ? 1, (msg[4].asFloat / pre).clip(0, 1));
+        };
     }, '/limiterGR');
 
     // Real master-bus spectrum → bridge → browser spectrogram.
@@ -698,7 +718,8 @@ s.doWhenBooted({
         // Re-engage beat engine at normal tempo
         if(~beatParams.notNil) {
             ~beatParams.beatTempo = 1.0;
-            ~beatParams.masterAmp = 0.7;
+            // Restores the transport, leaving the performer's masterAmp alone.
+            ~beatParams.transportGain = 1.0;
         };
         if(~opalDroneSynth.notNil) {
             ~opalDroneSynth.set(\freq, 55, \amp, 0.4);
@@ -708,9 +729,17 @@ s.doWhenBooted({
     OSCdef(\stopHandler, { |msg|
         ~lastBrowserOscTime = SystemClock.seconds;
         "Parliament STOP — fading out".postln;
-        // Fade beat engine to near silence
+        // Transport gain, NOT masterAmp. This used to write
+        // ~beatParams.masterAmp = 0.05 directly, bypassing ~setParam — so the
+        // registry, the HTML slider, the SC GUI knob and the preset file all
+        // still read the performer's value (e.g. 0.62) while the engine ran at
+        // 0.05. Nothing but /parliament/start could restore it, and no slider
+        // showed anything wrong: the beats were simply gone and stayed gone.
+        // Exactly the four-way drift the canonical registry exists to prevent,
+        // made reachable by giving \masterAmp a beatParam mirror.
+        // A transport action must never clobber a performer's level control.
         if(~beatParams.notNil) {
-            ~beatParams.masterAmp = 0.05;
+            ~beatParams.transportGain = 0.05;
         };
         if(~opalDroneSynth.notNil) {
             ~opalDroneSynth.set(\amp, 0.02);
