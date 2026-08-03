@@ -340,6 +340,16 @@ s.doWhenBooted({
             minGap = 0.12;   // quantized already — the time gate can relax
         };
 
+        // ⚠ This nil-guard MUST stay above every arithmetic use of
+        // ~lastPadTime. It previously sat below the starvation guard, so the
+        // very first transaction evaluated `time - nil`, threw, and aborted
+        // ~handleTransaction before ~lastPadTime was ever assigned — which
+        // made every later transaction throw at the same point. The pad layer
+        // went permanently silent while /eth/tx_info kept updating the rhythm
+        // state, so the monitor showed live chain data next to bells:0 and all
+        // four skip counters at zero.
+        if(~lastPadTime.isNil) { ~lastPadTime = 0 };
+
         // Starvation guard. Any combination of the seven toggles must still
         // produce sound while the chain is flowing: if a transaction has been
         // received but nothing has sounded for 6 s, force this one through.
@@ -347,8 +357,6 @@ s.doWhenBooted({
         // layer for the rest of a set with no way to tell it apart from a
         // dead feed.
         if((time - ~lastPadTime) > 6.0) { sounds = true; minGap = 0 };
-
-        if(~lastPadTime.isNil) { ~lastPadTime = 0 };
         // Every branch is counted so the monitor can say WHY a pad did or did
         // not sound — "it seems random" is otherwise impossible to check.
         case
