@@ -137,6 +137,10 @@ s.doWhenBooted({
             ++ " perc:" ++ (~beatParams !? { ~beatParams.percCount } ? 0)
             ++ " tg:" ++ (~beatParams !? { ~beatParams.transportGain } ? 1)
             ++ " amp:" ++ ((~beatParams !? { ~beatParams.masterAmp } ? 0)).round(0.01)
+            // Non-zero means the beat loop threw and recovered. Previously such
+            // an error killed the Routine outright and the only visible symptom
+            // was kick:/perc: frozen at whatever they had reached.
+            ++ " err:" ++ (~beatParams !? { ~beatParams.beatErrors } ? 0)
             ++ "  outPk:" ++ (~limiterPeak ? 0).round(0.001)
             ++ " gr:" ++ (~limiterGR ? 1).round(0.01)).postln;
         // reset the hold window so each line describes the last 2 s only

@@ -153,6 +153,17 @@
             var rs, blockAge, blockPhase, chainEntropy, priorityRatio, accent, voiceIdx;
             var quiet = false;
 
+            // ⚠ An uncaught error inside a Routine STOPS IT, permanently and
+            // silently. That is how a single nil read killed the kick and
+            // percussion for the rest of a session while the pad layer — which
+            // lives in a different code path — carried on as if nothing were
+            // wrong. For a performance instrument that failure mode is
+            // unacceptable: one bad frame must cost one frame, not the set.
+            // The body is guarded and the wait is kept OUTSIDE the guard, so an
+            // error can never spin the loop either.
+            interval = 0.5;   // safe default: the wait below always has a value
+            try {
+
             // ─── Read live GUI control values every beat (synchronous reads) ───
             // The bus is named \transactionInfluence (see 0_parameters.scd) —
             // the old \txInfluence lookup always missed and fell back to default.
@@ -206,10 +217,8 @@
             //     drop, Infura outage, python crash) must not silence the piece
             //     for the rest of a set — long silence then means "the source
             //     is gone", which is a failure, not a musical rest.
-            if(rSilence) {
-                var restAfter = (0.6 / density.max(0.05)).clip(0.5, 4.0);
-                quiet = (timeSinceLastTx > restAfter) and: { timeSinceLastTx < 20.0 };
-            };
+            // (evaluated further down, once `density` has been assigned —
+            //  reading it here threw and killed the whole Routine)
 
             // NOTE: the two schemes that depend on `density` (hash seed, three
             // clocks) run further down, right after density is assigned — up
@@ -228,6 +237,24 @@
                 exp(timeSinceLastTx.neg * 0.5)).clip(0, 1);
 
             density = ~beatParams.transactionDensity ? 0;
+
+            // ── (7) Silence as material ──  [needs `density`, hence its place]
+            // Deep listening needs the floor to drop out. The rest is RELATIVE
+            // to the chain's own recent rate: an absolute "8 s with no
+            // transaction" never occurs at ~300 tx/block, so the control was
+            // inert on any busy chain.
+            //
+            // Performance safety — two deliberate bounds:
+            //   · restAfter clipped to 0.5–4 s, so a density spike can never
+            //     make the threshold so small that everything rests.
+            //   · above 20 s the grid RESUMES. A dead feed (network drop,
+            //     Infura outage, python crash) must not silence the piece for
+            //     the rest of a set — long silence means the source is gone,
+            //     which is a failure, not a musical rest.
+            if(rSilence) {
+                var restAfter = (0.6 / density.max(0.05)).clip(0.5, 4.0);
+                quiet = (timeSinceLastTx > restAfter) and: { timeSinceLastTx < 20.0 };
+            };
 
             // ── (5) Block hash as pattern seed ──
             // Each block deterministically reseeds this bar's cell: different
@@ -486,6 +513,10 @@
                 };
             } {
                 if(step.odd) { interval = interval * rrand(1.0, 1.12) }; // swing
+            };
+            } { |e|
+                ~beatParams.beatErrors = (~beatParams.beatErrors ? 0) + 1;
+                ("[BEAT] " ++ e.errorString ++ " — engine continues").postln;
             };
             interval.max(0.05).wait;
         };
