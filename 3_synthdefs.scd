@@ -36,7 +36,30 @@ s.doWhenBooted({
     ~limiterChans = s.options.numOutputBusChannels;
     SynthDef(\masterLimiter, { |ceiling = 0.92|
         var sig = In.ar(0, ~limiterChans);
-        ReplaceOut.ar(0, Limiter.ar(LeakDC.ar(sig), ceiling, 0.01));
+        var clean = LeakDC.ar(sig);
+        var lim = Limiter.ar(clean, ceiling, 0.01);
+        var mono = Mix(clean) / ~limiterChans.max(1);
+        // Report pre-limiter level and how much the limiter is pulling back.
+        // A sustained drone that sits near the ceiling makes the limiter squash
+        // every transient on top of it — kicks and pads lose their attack and
+        // the mix collapses to "just the drone". That is inaudible from the
+        // outside and invisible in a synth count, so it is measured here and
+        // surfaced on the [MON] line.
+        SendReply.kr(Impulse.kr(4), '/limiterGR',
+            [Amplitude.kr(mono), Amplitude.kr(Mix(lim) / ~limiterChans.max(1))]);
+        ReplaceOut.ar(0, lim);
+    }).add;
+
+    // Real spectrum of the master bus, in 16 log-spaced bands. The browser's
+    // spectrogram has always synthesised its bins from parliament state, so it
+    // could never disagree with the engine; and a microphone only works if the
+    // room can hear the speakers, which is false on headphones or an interface.
+    // Analysing the bus itself is the only source that is actually the sound.
+    SynthDef(\masterScope, {
+        var sig = Mix(In.ar(0, ~limiterChans)) / ~limiterChans.max(1);
+        var bands = Array.geom(16, 40, (10000 / 40) ** (1 / 15));
+        SendReply.kr(Impulse.kr(20), '/spectrum',
+            bands.collect { |f| Amplitude.kr(BPF.ar(sig, f, 0.4), 0.01, 0.12) });
     }).add;
 
     // Main transaction bell with MIDI control
@@ -426,6 +449,9 @@ s.doWhenBooted({
         ~masterLimiterSynth = nil;
     };
     ~masterLimiterSynth = Synth.tail(RootNode(s), \masterLimiter, [\ceiling, 0.92]);
+    // Scope sits AFTER the limiter so it reports what actually leaves the box.
+    if(~masterScopeSynth.notNil) { try { ~masterScopeSynth.free }; ~masterScopeSynth = nil };
+    ~masterScopeSynth = Synth.tail(RootNode(s), \masterScope);
     s.sync;
     "Master limiter active (% ch, ceiling 0.92) — output can no longer clip."
         .format(~limiterChans).postln;

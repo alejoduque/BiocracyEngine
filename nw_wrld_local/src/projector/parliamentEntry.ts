@@ -134,6 +134,16 @@ function connectControlWS() {
       // load. Ticking the box here is what keeps those three surfaces and
       // this panel showing the same truth. Setting .checked fires no change
       // event, so a browser-origin toggle echoes back harmlessly.
+      // Real master-bus spectrum from SC (16 log-spaced band amplitudes).
+      // Arrives ~20 Hz; the animation loop reads it via __onScSpectrum.
+      if (address === "/spectrum") {
+        const w = window as unknown as { __onScSpectrum?: (v: number[]) => void };
+        if (w.__onScSpectrum && Array.isArray(args)) {
+          w.__onScSpectrum((args as unknown[]).map((v) => Number(v) || 0));
+        }
+        return;
+      }
+
       if (address.startsWith("/rhythm/")) {
         const v = args[0];
         if (typeof v === "number" && isFinite(v)) {
@@ -1537,11 +1547,42 @@ async function init() {
     return out;
   }
 
+  // ── /spectrum from SuperCollider: the master bus itself ─────────────────
+  // The preferred source. A microphone only reflects the engine if the room
+  // can hear the speakers — on headphones or an audio interface it hears
+  // nothing, which is why the panel looked dead to itself. SC analyses its own
+  // output bus after the limiter and sends 16 log-spaced band amplitudes, so
+  // this is the sound that is actually leaving the machine.
+  let scSpectrum: number[] | null = null;
+  let scSpectrumAt = 0;
+  (window as unknown as { __onScSpectrum?: (v: number[]) => void }).__onScSpectrum = (v) => {
+    scSpectrum = v;
+    scSpectrumAt = performance.now();
+  };
+
+  // Interpolate 16 bands up to the renderer's bin count, in log-frequency
+  // space to match the axis labels. Goes stale after 1 s so a stopped engine
+  // falls back rather than freezing the last frame on screen.
+  function scBins(count: number): Float32Array | null {
+    if (!scSpectrum || performance.now() - scSpectrumAt > 1000) return null;
+    const src = scSpectrum;
+    const out = new Float32Array(count);
+    for (let i = 0; i < count; i++) {
+      const pos = (i / (count - 1)) * (src.length - 1);
+      const lo = Math.floor(pos), hi = Math.min(src.length - 1, lo + 1);
+      const v = src[lo] + (src[hi] - src[lo]) * (pos - lo);
+      // Amplitude.kr is linear; compress so quiet detail stays visible
+      out[i] = Math.min(1, Math.pow(v * 3.2, 0.6));
+    }
+    return out;
+  }
+
   // Animate loop: push spectrogram + update stage FFT exposure
   (function animLoop() {
     elapsed += 0.016;
-    // Same bin count as buildFftBins' default, so the renderer sees one shape
-    const bins = micBins(256) ?? buildFftBins(currentState, elapsed);
+    // Source priority: real engine output > microphone > synthetic fallback.
+    // Same bin count as buildFftBins' default, so the renderer sees one shape.
+    const bins = scBins(256) ?? micBins(256) ?? buildFftBins(currentState, elapsed);
     if (spectroRenderer) spectroRenderer.push(bins, performance.now());
     // Expose bins to active Three.js stage for FFT ring animation
     const s = getActiveThreeStage();

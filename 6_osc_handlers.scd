@@ -124,7 +124,12 @@ s.doWhenBooted({
             ++ " dens:" ++ (~currentDensity ? 0).round(0.001)
             ++ "  blk:" ++ rs[\blockNum] ++ " txN:" ++ rs[\blockTxCount]
                 ++ " idx:" ++ rs[\txIndex] ++ " base:" ++ rs[\blockBaseFee].round(0.001)
-            ++ "  synths:" ++ s.numSynths).postln;
+            ++ "  synths:" ++ s.numSynths
+            // out = level hitting the limiter, gr = how hard it is pulling back.
+            // gr well below 1.0 with a high `out` means the drone is eating the
+            // headroom and squashing every transient on top of it.
+            ++ "  out:" ++ (~limiterPre ? 0).round(0.001)
+            ++ " gr:" ++ (~limiterGR ? 1).round(0.01)).postln;
     };
 
     if(~monitorRoutine.notNil) { ~monitorRoutine.stop };
@@ -143,6 +148,24 @@ s.doWhenBooted({
     // /diag/osctrace 0|1 — OSCFunc.trace: post EVERY inbound OSC message, the
     //                      definitive test of whether a control reaches SC
     // /diag/reset        — zero the bell counters to measure a fresh window
+    // Limiter telemetry: msg is [\/limiterGR, nodeID, replyID, pre, post].
+    // ~limiterGR is the ratio the limiter is holding the signal back by —
+    // 1.0 = untouched, 0.5 = pulling 6 dB off everything.
+    ~limiterPre = 0; ~limiterGR = 1;
+    OSCdef(\limiterGR).free;
+    OSCdef(\limiterGR, { |msg|
+        ~limiterPre = msg[3].asFloat;
+        ~limiterGR = if(~limiterPre > 0.001) { (msg[4].asFloat / ~limiterPre).clip(0, 1) } { 1 };
+    }, '/limiterGR');
+
+    // Real master-bus spectrum → bridge → browser spectrogram.
+    OSCdef(\masterScope).free;
+    OSCdef(\masterScope, { |msg|
+        if(~visualsDest.notNil) {
+            ~visualsDest.sendMsg('/spectrum', *msg[3..].collect(_.asFloat));
+        };
+    }, '/spectrum');
+
     OSCdef(\diagMonitor).free;
     OSCdef(\diagMonitor, { |msg|
         var on = msg[1].asFloat > 0.5;
@@ -348,11 +371,16 @@ s.doWhenBooted({
 
         synthArgs = [
             \freq, baseFreq,
-            // 0.12–0.28 guaranteed clipping: 16 concurrent pads at 0.28 with
-            // masterVolume 0.3 sums to 1.34 full-scale before the drone and the
-            // beat layer are added, and nothing in this graph limits the master
-            // bus. Retuned for the concurrency the gate actually allows.
-            \amp, velocity.linlin(30, 120, 0.05, 0.12) * accent,
+            // Level history: originally 0.12–0.28, which clipped (16 pads at
+            // 0.28 with masterVolume 0.3 summed past full scale and NOTHING
+            // limited the master bus). I cut it to 0.05–0.12 to fix that — then
+            // added the master limiter in the next commit and never restored
+            // the level. The monitor showed amp pinned at 0.05, the floor of
+            // that range, on essentially every transaction: an octave lower
+            // than before, ~1 s attack, under a sustained drone. Inaudible,
+            // which is why only the drone was left. With the limiter now doing
+            // the protecting, the pads can sit where they belong.
+            \amp, velocity.linlin(30, 120, 0.10, 0.26) * accent,
             // small transfer = quick articulation, large = slow swell
             \atk, valLog.linlin(0, 1, 0.35, 2.2),
             // urgency settles fast; a patient bid rings on
@@ -409,7 +437,7 @@ s.doWhenBooted({
             ~padQueue.add(synthArgs);
             ~bellStats[\lastAtk] = valLog.linlin(0, 1, 0.35, 2.2);
             ~bellStats[\lastDec] = priorityRatio.linlin(0, 1, 1.3, 0.35);
-            ~bellStats[\lastAmp] = velocity.linlin(30, 120, 0.05, 0.12) * accent;
+            ~bellStats[\lastAmp] = velocity.linlin(30, 120, 0.10, 0.26) * accent;
             ~bellStats[\queued] = (~bellStats[\queued] ? 0) + 1;
             queued = true;   // the drain routine owns this pad now
         };
@@ -454,7 +482,7 @@ s.doWhenBooted({
             ~bellStats[\spawned] = ~bellStats[\spawned] + 1;
             ~bellStats[\lastAtk] = valLog.linlin(0, 1, 0.35, 2.2);
             ~bellStats[\lastDec] = priorityRatio.linlin(0, 1, 1.3, 0.35);
-            ~bellStats[\lastAmp] = velocity.linlin(30, 120, 0.05, 0.12) * accent;
+            ~bellStats[\lastAmp] = velocity.linlin(30, 120, 0.10, 0.26) * accent;
         };
 
         // Update GUI
