@@ -1473,10 +1473,75 @@ async function init() {
   let elapsed = 0;
   let currentState: ParliamentState | null = null;
 
+  // ── Live audio source for the spectrogram ───────────────────────────────
+  // buildFftBins synthesises its bins from parliament state — it has never
+  // touched real audio, so the display could not disagree with the engine even
+  // when the engine was silent. Routing the machine's microphone through an
+  // AnalyserNode makes it a genuine monitor: what you see is what is actually
+  // leaving the speakers, which is exactly what a performance needs.
+  //
+  // Opt-in by click: getUserMedia and AudioContext both require a user gesture,
+  // and a performance machine should not open its mic unasked. Any failure
+  // (denied, no device, insecure origin) falls back to the synthetic bins, so
+  // the panel never goes blank.
+  let micAnalyser: AnalyserNode | null = null;
+  // Explicit ArrayBuffer backing: getByteFrequencyData's lib.dom signature
+  // requires Uint8Array<ArrayBuffer>, not the ArrayBufferLike default.
+  let micBuf: Uint8Array<ArrayBuffer> | null = null;
+  {
+    const btn = document.getElementById("spectro-src-btn");
+    btn?.addEventListener("click", async () => {
+      if (micAnalyser) {   // already live — revert to the synthetic source
+        micAnalyser = null;
+        micBuf = null;
+        btn.textContent = "SPECTRUM ▸ MIC";
+        btn.className = "";
+        return;
+      }
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({
+          audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: false },
+        });
+        const AC = window.AudioContext ?? (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
+        const ctx = new AC();
+        if (ctx.state === "suspended") await ctx.resume();
+        const analyser = ctx.createAnalyser();
+        analyser.fftSize = 1024;
+        analyser.smoothingTimeConstant = 0.72;
+        ctx.createMediaStreamSource(stream).connect(analyser);
+        micAnalyser = analyser;
+        micBuf = new Uint8Array(new ArrayBuffer(analyser.frequencyBinCount));
+        btn.textContent = "SPECTRUM ◉ LIVE";
+        btn.className = "live";
+      } catch (e) {
+        console.warn("[spectrogram] mic unavailable, staying on synthetic bins:", e);
+        btn.textContent = "SPECTRUM ▸ MIC ✕";
+        btn.className = "denied";
+      }
+    });
+  }
+
+  // Resample the analyser's linear bins onto the renderer's bin count, on a
+  // LOG frequency axis so the display matches the 20Hz–8kHz labels underneath.
+  function micBins(count: number): Float32Array | null {
+    if (!micAnalyser || !micBuf) return null;
+    micAnalyser.getByteFrequencyData(micBuf);
+    const out = new Float32Array(count);
+    const nyquist = 22050;
+    const binHz = nyquist / micBuf.length;
+    for (let i = 0; i < count; i++) {
+      const f = 20 * Math.pow(8000 / 20, i / (count - 1));
+      const idx = Math.min(micBuf.length - 1, Math.max(0, Math.round(f / binHz)));
+      out[i] = micBuf[idx] / 255;
+    }
+    return out;
+  }
+
   // Animate loop: push spectrogram + update stage FFT exposure
   (function animLoop() {
     elapsed += 0.016;
-    const bins = buildFftBins(currentState, elapsed);
+    // Same bin count as buildFftBins' default, so the renderer sees one shape
+    const bins = micBins(256) ?? buildFftBins(currentState, elapsed);
     if (spectroRenderer) spectroRenderer.push(bins, performance.now());
     // Expose bins to active Three.js stage for FFT ring animation
     const s = getActiveThreeStage();

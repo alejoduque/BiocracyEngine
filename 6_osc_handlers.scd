@@ -55,9 +55,48 @@ s.doWhenBooted({
     // Flags read B G E V H P S (blockbar gasaccent entropy voices hashseed
     // polyclock silence); UPPERCASE = on, "-" = off.
     ~bellStats = ~bellStats ?? {
-        (spawned: 0, skipGate: 0, skipCap: 0, skipBar: 0,
+        (spawned: 0, skipGate: 0, skipCap: 0, skipBar: 0, queued: 0,
          lastAtk: 0, lastDec: 0, lastAmp: 0)
     };
+
+    // ── Pad scheduler (Bloque = Compás) ─────────────────────────────────
+    // eth_sonify fetches a block and then transmits its qualifying
+    // transactions ~0.05 s apart, so a whole block arrives as a ~2 s burst
+    // inside a ~12 s period. FILTERING on arrival time therefore can only ever
+    // reach the first two or three of sixteen slots, then nothing sounds for
+    // ten seconds — measured as 1–3 pads per block against hundreds of
+    // bar-skips. A burst cannot be spread by a filter; it has to be SCHEDULED.
+    //
+    // Transactions are queued on arrival and released one per 1/16 of the
+    // block period, so the block's own transactions fill the block's own bar.
+    // Bounded queue: a heavy block drops its OLDEST pending pads rather than
+    // growing without limit or lagging into the next bar.
+    ~padQueue = ~padQueue ?? { List.new };
+    ~padQueueMax = 24;
+    ~padSynthMax = 48;   // was 16 — the denser kick pattern pushed the total
+                         // synth count past it and the cap became the binding
+                         // constraint on the pad layer (measured cap:32 skips).
+
+    if(~padDrainRoutine.notNil) { ~padDrainRoutine.stop };
+    ~padDrainRoutine = Routine({
+        loop {
+            var wait = 0.75, args;
+            if(~rhythmState.notNil) {
+                wait = (~rhythmState[\blockPeriod] / 16).clip(0.15, 2.0);
+            };
+            if(~padQueue.notNil and: { ~padQueue.size > 0 }) {
+                args = ~padQueue.removeAt(0);
+                if(s.numSynths < ~padSynthMax) {
+                    Synth(\elektronBell, args);
+                    ~bellStats[\spawned] = ~bellStats[\spawned] + 1;
+                } {
+                    ~bellStats[\skipCap] = ~bellStats[\skipCap] + 1;
+                };
+            };
+            wait.wait;
+        };
+    });
+    ~padDrainRoutine.play(SystemClock);
 
     ~monitorFlags = {
         var names = [\rhythmBlockBar, \rhythmGasAccent, \rhythmEntropy, \rhythmVoices,
@@ -75,7 +114,9 @@ s.doWhenBooted({
         var rs = ~rhythmState, b = ~bellStats;
         ("[MON] flags:" ++ ~monitorFlags.value
             ++ "  bells:" ++ b[\spawned] ++ "/gate:" ++ b[\skipGate]
-                ++ "/cap:" ++ b[\skipCap] ++ "/bar:" ++ b[\skipBar]
+                ++ "/cap:" ++ b[\skipCap] ++ "/drop:" ++ b[\skipBar]
+                ++ "  q:" ++ (~padQueue !? { ~padQueue.size } ? 0)
+                ++ "/" ++ (b[\queued] ? 0)
             ++ "  env(atk/dec/amp):" ++ b[\lastAtk].round(0.01) ++ "/"
                 ++ b[\lastDec].round(0.01) ++ "/" ++ b[\lastAmp].round(0.001)
             ++ "  prio:" ++ rs[\priorityRatio].round(0.001)
@@ -182,7 +223,7 @@ s.doWhenBooted({
     // Shared function: sonify a transaction and broadcast to visuals
     ~handleTransaction = { |noteNum, velocity, value, gasPrice, txHash, time|
         var baseFreq, synthArgs, nutrient, consensus;
-        var valLog, priorityRatio, accent, relScale, minGap, sounds;
+        var valLog, priorityRatio, accent, relScale, minGap, sounds, queued;
         // ── the pad layer under the rhythm schemes ────────────────────────
         // The seven toggles used to gate only ~beatRoutine (kick/perc/dust),
         // so ticking every box left THIS layer — the one you actually hear
@@ -198,11 +239,16 @@ s.doWhenBooted({
             baseFreq = baseFreq * (1 + (txHash.hash.fold(-0.05, 0.05)));
         };
         // Octave-fold into the drone register: Python maps TX value to MIDI
-        // 36–84 (fundamentals up to ~1 kHz). Folding anything above 320 Hz
-        // down by octaves keeps the pitch class (value still audible as
-        // pitch) but lets transactions thicken the drone bed instead of
+        // 36–84 (fundamentals up to ~1 kHz). Folding anything above the
+        // ceiling down by octaves keeps the pitch class (value still audible
+        // as pitch) but lets transactions thicken the drone bed instead of
         // pinging on top of it.
-        while({ baseFreq > 320 }, { baseFreq = baseFreq * 0.5 });
+        //
+        // Ceiling dropped 320 → 160 Hz: a full octave lower, so the pads sit
+        // in the same register as the sub of \opalDrone and the kick. They
+        // beat against the drone rather than floating above it, and sustained
+        // overlapping pads read as harmonic thickening instead of bells.
+        while({ baseFreq > 160 }, { baseFreq = baseFreq * 0.5 });
 
         // ── (4) Dirección = Voz ──
         // The counterparty picks the register, so a returning address returns
@@ -332,6 +378,7 @@ s.doWhenBooted({
         // starving the beat engine.
         minGap = 0.45;
         sounds = true;
+        queued = false;
 
         // ── (1) Bloque = Compás ──
         // Instead of firing on raw arrival, only transactions whose position in
@@ -350,16 +397,21 @@ s.doWhenBooted({
         //
         // Time slots give a real 16-onset bar however much upstream filtering
         // happens, and degrade gracefully: no block yet = no quantization.
+        // With Bloque = Compás the pad is QUEUED, not fired: ~padDrainRoutine
+        // releases one per 1/16 of the block period so the burst is spread
+        // across the bar it belongs to. `sounds = false` here suppresses the
+        // immediate spawn below — the queue owns this pad now.
         if(rBlockBar and: { ~rhythmState.notNil } and: { ~rhythmState[\blockAt] > 0 }) {
-            var phase = ((SystemClock.seconds - ~rhythmState[\blockAt])
-                / ~rhythmState[\blockPeriod].max(1)).clip(0, 1);
-            var slot = (phase * 16).floor.asInteger;
-            if(slot == ~rhythmState[\lastBarSlot]) {
-                sounds = false
-            } {
-                ~rhythmState[\lastBarSlot] = slot
+            if(~padQueue.size >= ~padQueueMax) {
+                ~padQueue.removeAt(0);              // drop oldest, keep current
+                ~bellStats[\skipBar] = ~bellStats[\skipBar] + 1;
             };
-            minGap = 0.05;   // the slot IS the quantizer; the time gate steps aside
+            ~padQueue.add(synthArgs);
+            ~bellStats[\lastAtk] = valLog.linlin(0, 1, 0.35, 2.2);
+            ~bellStats[\lastDec] = priorityRatio.linlin(0, 1, 1.3, 0.35);
+            ~bellStats[\lastAmp] = velocity.linlin(30, 120, 0.05, 0.12) * accent;
+            ~bellStats[\queued] = (~bellStats[\queued] ? 0) + 1;
+            queued = true;   // the drain routine owns this pad now
         };
 
         // ⚠ This nil-guard MUST stay above every arithmetic use of
@@ -378,17 +430,22 @@ s.doWhenBooted({
         // Without it, a filter combination nobody tested could mute the pad
         // layer for the rest of a set with no way to tell it apart from a
         // dead feed.
-        if((time - ~lastPadTime) > 6.0) { sounds = true; minGap = 0 };
+        // (Skipped when the pad was queued — the drain routine will sound it,
+        // and forcing an immediate spawn as well would double it.)
+        if(queued.not and: { (time - ~lastPadTime) > 6.0 }) { sounds = true; minGap = 0 };
         // Every branch is counted so the monitor can say WHY a pad did or did
         // not sound — "it seems random" is otherwise impossible to check.
         case
+        { queued } {
+            // already handed to ~padDrainRoutine — not a skip, not a spawn
+        }
         { sounds.not } {
             ~bellStats[\skipBar] = ~bellStats[\skipBar] + 1;
         }
         { (time - ~lastPadTime) <= minGap } {
             ~bellStats[\skipGate] = ~bellStats[\skipGate] + 1;
         }
-        { s.numSynths >= 16 } {
+        { s.numSynths >= ~padSynthMax } {
             ~bellStats[\skipCap] = ~bellStats[\skipCap] + 1;
         }
         {

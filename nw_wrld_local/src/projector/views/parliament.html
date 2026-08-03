@@ -87,6 +87,14 @@
             background: #000402;
             overflow: hidden;
         }
+        #spectro-src-btn {
+            cursor: pointer;
+            user-select: none;
+            letter-spacing: 0.5px;
+        }
+        #spectro-src-btn:hover { color: var(--text-bright, #fff); }
+        #spectro-src-btn.live { color: #39d98a; }
+        #spectro-src-btn.denied { color: #ff5d73; }
         #spectrogram-canvas {
             width: 100%;
             height: 100%;
@@ -920,7 +928,11 @@
                     <span>1kHz</span>
                     <span>4kHz</span>
                     <span>8kHz</span>
-                    <span>SPECTRUM</span>
+                    <!-- Live input: analyses what is ACTUALLY coming out of the
+                         speakers via the machine's microphone, instead of the
+                         synthetic bins derived from parliament state. Needs a
+                         user gesture (browser policy), hence a button. -->
+                    <span id="spectro-src-btn" title="Analyse real audio from the microphone">SPECTRUM ▸ MIC</span>
                 </div>
             </div>
         </div><!-- /center-col -->
