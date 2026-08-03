@@ -35,7 +35,7 @@ s.doWhenBooted({
             blockNum: 0, blockHash: "", blockSeed: 0,
             blockTxCount: 0, blockBaseFee: 0.0, blockAt: 0.0,
             blockPeriod: 12.0,      // Ethereum's nominal cadence, refined live
-            txIndex: 0, txSinceBlock: 0,
+            txIndex: 0, txSinceBlock: 0, lastBarSlot: -1,
             priorityRatio: 0.5,     // 0–1: how far over base fee this TX bid
             addrSig: 0, nonce: 0, calldataLen: 0,
             txIntervals: [],        // ring of the last N inter-arrival gaps
@@ -213,8 +213,14 @@ s.doWhenBooted({
         };
 
         // ── (2) Acento por Gas ──  (1.0 = neutral when the toggle is off)
+        // Baseline 0.85, not 0.55. The priority ratio is heavily skewed toward
+        // zero — most transactions bid at or near the base fee — so a 0.55
+        // floor meant enabling this control ATTENUATED almost everything to
+        // 55% and only occasionally rose. It read as "turning it on makes the
+        // piece quieter", the opposite of an accent. Now the common case sits
+        // near unity and a genuine high bid punches to 1.75.
         accent = if(rGasAccent and: { ~rhythmState.notNil }) {
-            0.55 + (~rhythmState[\priorityRatio] * 1.2)
+            0.85 + (~rhythmState[\priorityRatio] * 0.9)
         } { 1.0 };
 
         // ── (7) Silencio ──
@@ -332,12 +338,28 @@ s.doWhenBooted({
         // the block lands on one of the bar's 16 divisions sound. Blocks are
         // ordered by priority fee, so the head of the bar is dense and urgent
         // and the tail thins — the bar's shape is read from the block.
-        if(rBlockBar and: { ~rhythmState.notNil } and: { ~rhythmState[\blockTxCount] > 16 }) {
-            // stride capped at 24: an unusually full block (5000+ tx) would
-            // otherwise thin the layer to near-nothing mid-performance.
-            var stride = (~rhythmState[\blockTxCount] / 16).max(1).round.asInteger.clip(1, 24);
-            if((~rhythmState[\txIndex] % stride) != 0) { sounds = false };
-            minGap = 0.12;   // quantized already — the time gate can relax
+        // Quantize by POSITION IN TIME inside the block, not by transaction
+        // index. eth_sonify enumerates every transaction in a block but only
+        // transmits those above min_value_threshold, so the indices that
+        // actually arrive are sparse and non-contiguous — (idx % stride) then
+        // landed far less often than 1-in-stride and the layer collapsed to a
+        // trickle (measured: 608 bar-skips against 55 pads). Worse, the old
+        // guard needed blockTxCount > 16, so before the first /eth/block the
+        // filter was inactive and pads flowed freely, then fell off a cliff
+        // the moment a block landed — the "loud for ten seconds, then silence".
+        //
+        // Time slots give a real 16-onset bar however much upstream filtering
+        // happens, and degrade gracefully: no block yet = no quantization.
+        if(rBlockBar and: { ~rhythmState.notNil } and: { ~rhythmState[\blockAt] > 0 }) {
+            var phase = ((SystemClock.seconds - ~rhythmState[\blockAt])
+                / ~rhythmState[\blockPeriod].max(1)).clip(0, 1);
+            var slot = (phase * 16).floor.asInteger;
+            if(slot == ~rhythmState[\lastBarSlot]) {
+                sounds = false
+            } {
+                ~rhythmState[\lastBarSlot] = slot
+            };
+            minGap = 0.05;   // the slot IS the quantizer; the time gate steps aside
         };
 
         // ⚠ This nil-guard MUST stay above every arithmetic use of

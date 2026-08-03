@@ -109,7 +109,11 @@
         var phrase = 0;        // phrase counter (every 4 bars)
         var transactionInfluence;
         // Evolving pattern seeds — mutate every phrase
-        var kickPattern   = #[1,0,0,0, 0,0,0,0, 1,0,0,0, 0,0,0,0];
+        // 4 per bar, not 2. With Bloque = Compás the bar IS the ~12 s block, so
+        // the old two-hit pattern fired the kick once every 6 seconds — audible
+        // as "no deep pulsation". Four gives a low pulse you can actually lean
+        // on while staying far from beat-machine motion.
+        var kickPattern   = #[1,0,0,0, 1,0,0,0, 1,0,0,0, 1,0,0,0];
         var percDivisor   = 8;    // polyrhythmic divisor — shifts each phrase
         var dustProb      = 0.12; // base probability for dust hits
         var droneBaseFreq = 55;   // drone pitch — drifts over time
@@ -295,7 +299,10 @@
             // Not the absolute gas price (which reads ~0 at modern fees and made
             // velocity a constant 30) but how far this actor bid OVER base fee:
             // the audible trace of urgency. 0.55x–1.75x on every layer's amp.
-            accent = if(rGasAccent) { 0.55 + (priorityRatio * 1.2) } { 1.0 };
+            // Baseline 0.85, not 0.55 — see the note in 6_osc_handlers.scd:
+            // priorityRatio is skewed to zero, so a 0.55 floor made this
+            // control an attenuator rather than an accent.
+            accent = if(rGasAccent) { 0.85 + (priorityRatio * 0.9) } { 1.0 };
 
             // ── (4) Address as voice ─────────────────────────────────────
             // The same counterparty returns as the same voice, so over a long
@@ -427,8 +434,12 @@
             // merely decorates. With rhythmBlockBar on, the step is READ from
             // where we are inside the real ~12 s block, so the bar is the
             // chain's own period and its 16 positions are a genuine phase.
+            // beatTempo still governs the pulse rate: it sets how many 16-step
+            // bars fit inside one block. At tempo 1.0 the bar IS the block; at
+            // 2.0 two bars pass per block. Without this the performer lost
+            // tempo control entirely whenever Bloque = Compás was engaged.
             if(rBlockBar and: { rs.notNil } and: { rs[\blockAt] > 0 }) {
-                step = (blockPhase * 16).floor.asInteger.clip(0, 15);
+                step = (blockPhase * 16 * ~beatParams.beatTempo).floor.asInteger % 16;
             } {
                 step = (step + 1) % 16;
             };
@@ -444,7 +455,8 @@
             // Denser blocks subdivide finer; the bar always closes with the
             // block rather than drifting against it.
             if(rBlockBar and: { rs.notNil } and: { rs[\blockAt] > 0 }) {
-                interval = (rs[\blockPeriod] / 16).clip(0.08, 2.0);
+                interval = (rs[\blockPeriod] / (16 * ~beatParams.beatTempo.max(0.25)))
+                    .clip(0.08, 2.0);
                 // Blocks ordered by priority fee put the urgent transactions
                 // first, so the head of the bar rushes and the tail thins —
                 // each block arrives with its own internal shape.
