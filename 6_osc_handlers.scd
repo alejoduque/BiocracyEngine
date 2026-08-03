@@ -80,11 +80,21 @@ s.doWhenBooted({
     if(~padDrainRoutine.notNil) { ~padDrainRoutine.stop };
     ~padDrainRoutine = Routine({
         loop {
-            var wait = 0.75, args;
+            var wait = 0.75, args, rest;
             if(~rhythmState.notNil) {
                 wait = (~rhythmState[\blockPeriod] / 16).clip(0.15, 2.0);
             };
-            if(~padQueue.notNil and: { ~padQueue.size > 0 }) {
+            // Honour Silencio's rest here too. The rest is only audible if BOTH
+            // layers observe it — draining pads through a beat-engine rest just
+            // moves the sound around instead of opening space.
+            rest = (~beatParams !? { ~beatParams.rhythmSilence } ? 0) > 0.5
+                and: { ~rhythmState.notNil }
+                and: { ~rhythmState[\blockAt] > 0 }
+                and: {
+                    ((SystemClock.seconds - ~rhythmState[\blockAt])
+                        / ~rhythmState[\blockPeriod].max(1)) > 0.66
+                };
+            if(rest.not and: { ~padQueue.notNil } and: { ~padQueue.size > 0 }) {
                 args = ~padQueue.removeAt(0);
                 if(s.numSynths < ~padSynthMax) {
                     Synth(\elektronBell, args);
@@ -141,6 +151,11 @@ s.doWhenBooted({
             // an error killed the Routine outright and the only visible symptom
             // was kick:/perc: frozen at whatever they had reached.
             ++ " err:" ++ (~beatParams !? { ~beatParams.beatErrors } ? 0)
+            // rest:1 = Silencio is actively holding a rest right now. With S
+            // ticked this must alternate 0/1 with the block phase; if it never
+            // reads 1, the control is not firing and should be removed rather
+            // than tuned again.
+            ++ " rest:" ++ (~beatParams !? { ~beatParams.resting } ? 0)
             ++ "  outPk:" ++ (~limiterPeak ? 0).round(0.001)
             ++ " gr:" ++ (~limiterGR ? 1).round(0.01)).postln;
         // reset the hold window so each line describes the last 2 s only

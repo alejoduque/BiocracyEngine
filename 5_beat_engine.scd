@@ -251,10 +251,23 @@
             //     Infura outage, python crash) must not silence the piece for
             //     the rest of a set — long silence means the source is gone,
             //     which is a failure, not a musical rest.
-            if(rSilence) {
-                var restAfter = (0.6 / density.max(0.05)).clip(0.5, 4.0);
-                quiet = (timeSinceLastTx > restAfter) and: { timeSinceLastTx < 20.0 };
+            // Silencio IMPOSES a rest; it does not wait for one. Measured on
+            // mainnet: at 300–728 tx per block and 0.05 s between sends,
+            // eth_sonify is permanently backlogged — it is still transmitting
+            // block N when block N+1 lands, so timeSinceLastTx never exceeds
+            // ~0.2 s. Every previous definition of this control was conditioned
+            // on the chain going quiet, and the chain is NEVER quiet, so the
+            // control could not fire however it was tuned. Silence on a
+            // continuous feed has to be composed.
+            //
+            // The last third of every bar is a rest. Tied to block phase, so
+            // the rest is the chain's own period rather than a wall clock, and
+            // it returns every bar — audible, periodic, and immediately
+            // reversible when the box is unticked.
+            if(rSilence and: { rs.notNil } and: { rs[\blockAt] > 0 }) {
+                quiet = blockPhase > 0.66;
             };
+            ~beatParams.resting = quiet.if(1, 0);
 
             // ── (5) Block hash as pattern seed ──
             // Each block deterministically reseeds this bar's cell: different
