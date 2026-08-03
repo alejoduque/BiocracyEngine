@@ -46,7 +46,12 @@
     (name: \resonantBody,  spec: ControlSpec(0.1, 0.8, \lin), default: 0.4,  path: "/soneth/resonantbody",  cc: 36),
 
     // ── Row 3: Drone/Noise Controls ──────────────────────────────────────
-    (name: \masterAmp,     spec: ControlSpec(0, 1, \lin),     default: 0.7,  path: "/soneth/masteramp",     cc: 5),
+    // beatParam mirror added: the beat engine already multiplies
+    // ~beatParams.masterAmp into every percussion \amp, but without this field
+    // ~setParam never wrote it, so the slider only moved a bus. Now the one
+    // control trims pad layer (\elektronBell), drone (\opalDrone) and beats.
+    (name: \masterAmp,     spec: ControlSpec(0, 1, \lin),     default: 0.7,  path: "/soneth/masteramp",     cc: 5,
+        beatParam: \masterAmp),
     (name: \filterCutoff,  spec: ControlSpec(0, 1, \lin),     default: 0.6,  path: "/soneth/filtercutoff",  cc: 6),
     (name: \noiseLevel,    spec: ControlSpec(0, 0.5, \lin),   default: 0.1,  path: "/soneth/noiselevel",    cc: 7),
     (name: \noiseFilt,     spec: ControlSpec(0, 1, \lin),     default: 0.5,  path: "/soneth/noisefilt",     cc: 8),
@@ -73,7 +78,34 @@
 
     // ── Beat engine (no control bus — lives in ~beatParams) ─────────────
     (name: \beatTempo, spec: ControlSpec(0.5, 2.0, \exp), default: 1.0, path: "/soneth/beatTempo",
-        hasBus: false, beatParam: \beatTempo)
+        hasBus: false, beatParam: \beatTempo),
+
+    // ── Ritmo · escucha profunda (toggles 0/1) ──────────────────────────
+    // Seven independent generative schemes for deriving rhythm FROM the chain
+    // instead of decorating a fixed 16-step grid with it. Each is a boolean:
+    // stepped ControlSpec(0,1,\lin,1), no control bus (the Routine reads them
+    // from ~beatParams in sclang), so they inherit OSC, MIDI CC, the SC GUI
+    // knob, the browser echo and preset persistence from this registry alone.
+    //
+    // ALL OFF = the engine's previous behaviour, exactly. Ship-dark by design.
+    //
+    // Several need the enriched payload from eth_sonify.py (/eth/block plus the
+    // extra /eth/tx_info fields); each scheme falls back to the plain grid when
+    // the data it wants has not arrived, so a stale Python is never fatal.
+    (name: \rhythmBlockBar,  spec: ControlSpec(0, 1, \lin, 1), default: 0, path: "/rhythm/blockbar",
+        hasBus: false, beatParam: \rhythmBlockBar,  cc: 17),
+    (name: \rhythmGasAccent, spec: ControlSpec(0, 1, \lin, 1), default: 0, path: "/rhythm/gasaccent",
+        hasBus: false, beatParam: \rhythmGasAccent, cc: 18),
+    (name: \rhythmEntropy,   spec: ControlSpec(0, 1, \lin, 1), default: 0, path: "/rhythm/entropy",
+        hasBus: false, beatParam: \rhythmEntropy,   cc: 19),
+    (name: \rhythmVoices,    spec: ControlSpec(0, 1, \lin, 1), default: 0, path: "/rhythm/voices",
+        hasBus: false, beatParam: \rhythmVoices,    cc: 20),
+    (name: \rhythmHashSeed,  spec: ControlSpec(0, 1, \lin, 1), default: 0, path: "/rhythm/hashseed",
+        hasBus: false, beatParam: \rhythmHashSeed,  cc: 21),
+    (name: \rhythmPolyclock, spec: ControlSpec(0, 1, \lin, 1), default: 0, path: "/rhythm/polyclock",
+        hasBus: false, beatParam: \rhythmPolyclock, cc: 22),
+    (name: \rhythmSilence,   spec: ControlSpec(0, 1, \lin, 1), default: 0, path: "/rhythm/silence",
+        hasBus: false, beatParam: \rhythmSilence,   cc: 23)
 ];
 
 // ─── Derived lookup tables ──────────────────────────────────────────────────
@@ -98,6 +130,13 @@
 ~paramDefs.do { |def|
     ~controlSpecs[def[\name]] = def[\spec];
     ~controlValues[def[\name]] = def[\default];
+};
+
+// Upper-cases the first letter for GUI labels. Replaces String:capitalize,
+// which SC 3.14 does not implement (it threw on every parameter write).
+~labelCase = { |name|
+    var s = name.asString;
+    if(s.size > 0) { s[0].toUpper.asString ++ s[1..] } { s };
 };
 
 // ─── The single write path ──────────────────────────────────────────────────
@@ -132,7 +171,11 @@
             var label = if(~controlLabels.notNil) { ~controlLabels[name] };
             if(knob.notNil) { knob.value = spec.unmap(val) };
             if(label.notNil) {
-                label.string = name.asString.capitalize ++ ": " ++ val.round(0.001);
+                // String:capitalize does not exist in SC 3.14 — this threw on
+                // EVERY ~setParam call (3419 times in one session log), so the
+                // knob labels never updated and the flood buried every real
+                // error in sclang_log.txt. ~labelCase does the same job.
+                label.string = ~labelCase.(name) ++ ": " ++ val.round(0.001);
             };
         }.defer;
 
@@ -265,7 +308,7 @@ if(File.exists(~presetDir).not) { File.mkdir(~presetDir) };
                         };
                         if(~sampleControlLabels.notNil and: { ~sampleControlLabels[key].notNil }) {
                             ~sampleControlLabels[key].string =
-                                key.asString.capitalize ++ ": " ++ val.round(0.001);
+                                ~labelCase.(key) ++ ": " ++ val.round(0.001);
                         };
                     }.defer;
                 };

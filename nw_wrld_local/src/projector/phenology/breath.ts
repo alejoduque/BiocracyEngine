@@ -328,6 +328,13 @@ function startReverseBreath() {
     const wet = seasonalWeight(day);
     const dense = activeSpeciesFraction(day);
 
+    // Republish the calendar's own reading of today into window.__phenoParams
+    // (declared in parliamentEntry.ts) so slot bridges can poll the season
+    // without re-deriving it. Neither value is a slider — they are what the
+    // calendar concludes from the day plus the human chamber's knobs.
+    const pp = (window as unknown as { __phenoParams?: Record<string, number> }).__phenoParams;
+    if (pp) { pp.seasonalWeight = wet; pp.activeFraction = dense; }
+
     // Map wet/dense → existing sonETH params. Bias toward the central 0.5 so
     // the season is a *modulation* on top of any human knob position rather
     // than a hard override.

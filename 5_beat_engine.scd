@@ -92,7 +92,15 @@
         \atmosphereBus,~bi.(\atmosphereMix),
         \memoryBus,    ~bi.(\memoryFeed),
         \harmonicBus,  ~bi.(\harmonicRich),
-        \resonantBus,  ~bi.(\resonantBody)
+        \resonantBus,  ~bi.(\resonantBody),
+        // Drone/level buses — \opalDrone now reads these (see 3_synthdefs.scd).
+        // Without them the six matching sliders moved a bus no UGen listened to.
+        \masterAmpBus,    ~bi.(\masterAmp),
+        \filterCutoffBus, ~bi.(\filterCutoff),
+        \droneDepthBus,   ~bi.(\droneDepth),
+        \droneFadeBus,    ~bi.(\droneFade),
+        \droneSpaceBus,   ~bi.(\droneSpace),
+        \droneMixBus,     ~bi.(\droneMix)
     ], target: if(~defaultGroup.notNil, { ~defaultGroup }, { s.defaultGroup }));
     
     ~beatRoutine = Routine({
@@ -126,6 +134,10 @@
             var density;
             var bMVol, bPitch, bTime, bSpec, bSpat, bText, bAtmo, bMem, bHarm, bRes;
             var elapsed = now % 300; // 5-minute macro cycle
+            // ── Ritmo · escucha profunda ──
+            var rBlockBar, rGasAccent, rEntropy, rVoices, rHashSeed, rPolyclock, rSilence;
+            var rs, blockAge, blockPhase, chainEntropy, priorityRatio, accent, voiceIdx;
+            var quiet = false;
 
             // ─── Read live GUI control values every beat (synchronous reads) ───
             // The bus is named \transactionInfluence (see 0_parameters.scd) —
@@ -147,6 +159,48 @@
                 ~buses[\bancada].getSynchronous.asInteger
             } { 0 };
 
+            // ─── Ritmo: read the seven scheme toggles (0/1) ───────────────
+            // ~beatParams mirrors are written by ~setParam via the registry.
+            // Every flag defaults to 0, and each branch below is additive, so
+            // all-off reproduces the previous engine behaviour exactly.
+            rBlockBar  = (~beatParams.rhythmBlockBar  ? 0) > 0.5;
+            rGasAccent = (~beatParams.rhythmGasAccent ? 0) > 0.5;
+            rEntropy   = (~beatParams.rhythmEntropy   ? 0) > 0.5;
+            rVoices    = (~beatParams.rhythmVoices    ? 0) > 0.5;
+            rHashSeed  = (~beatParams.rhythmHashSeed  ? 0) > 0.5;
+            rPolyclock = (~beatParams.rhythmPolyclock ? 0) > 0.5;
+            rSilence   = (~beatParams.rhythmSilence   ? 0) > 0.5;
+
+            rs = ~rhythmState;
+            blockAge      = if(rs.notNil and: { rs[\blockAt] > 0 }) { now - rs[\blockAt] } { 0 };
+            // 0–1 position within the current block: the bar phase, given by
+            // the chain rather than by a counter we increment ourselves.
+            blockPhase    = if(rs.notNil) { (blockAge / rs[\blockPeriod].max(1)).clip(0, 1) } { 0 };
+            chainEntropy  = if(rs.notNil) { rs[\entropy] } { 0 };
+            priorityRatio = if(rs.notNil) { rs[\priorityRatio] } { 0.5 };
+
+            // ── (7) Silence as material ──
+            // Deep listening needs the floor to drop out. The rest must be
+            // RELATIVE to the chain's own recent rate: the previous absolute
+            // "8 s with no transaction" never occurred at 290 tx/block, so the
+            // control was inert on any busy chain (confirmed on the monitor).
+            //
+            // Performance safety — two hard bounds, both deliberate:
+            //   · restAfter is clipped to 0.5–4 s, so a density spike can
+            //     never make the threshold so small that everything rests.
+            //   · above SILENCE_DEADLINE the grid RESUMES. A dead feed (network
+            //     drop, Infura outage, python crash) must not silence the piece
+            //     for the rest of a set — long silence then means "the source
+            //     is gone", which is a failure, not a musical rest.
+            if(rSilence) {
+                var restAfter = (0.6 / density.max(0.05)).clip(0.5, 4.0);
+                quiet = (timeSinceLastTx > restAfter) and: { timeSinceLastTx < 20.0 };
+            };
+
+            // NOTE: the two schemes that depend on `density` (hash seed, three
+            // clocks) run further down, right after density is assigned — up
+            // here it is still nil.
+
             // Quórum sensible → pool density multiplier (Art. 45):
             //   threshold 0.20 → mult 1.5 (loose quórum → dense pool)
             //   threshold 0.85 → mult 0.6 (strict quórum → sparse pool)
@@ -160,6 +214,35 @@
                 exp(timeSinceLastTx.neg * 0.5)).clip(0, 1);
 
             density = ~beatParams.transactionDensity ? 0;
+
+            // ── (5) Block hash as pattern seed ──
+            // Each block deterministically reseeds this bar's cell: different
+            // every block, reproducible for a recorded session. Must sit after
+            // `density` is assigned — it scales the kick fill probability.
+            // (~rhythmSeededRand lives in 6_osc_handlers.scd, which loads AFTER
+            // this file — guard so an early beat can never hit a nil function.)
+            if(rHashSeed and: { rs.notNil } and: { rs[\blockSeed] > 0 }
+                and: { ~rhythmSeededRand.notNil }) {
+                var sd = rs[\blockSeed];
+                kickPattern = Array.fill(16, { |i|
+                    if(~rhythmSeededRand.(sd, i) < (0.16 + (density * 0.22)), 1, 0)
+                });
+                // Guarantee a downbeat so the bar stays legible
+                kickPattern[0] = 1;
+                percDivisor = 3 + (~rhythmSeededRand.(sd, 101) * 6).floor;
+                dustProb    = 0.06 + (~rhythmSeededRand.(sd, 202) * 0.22);
+            };
+
+            // ── (6) Three clocks instead of one ──
+            // Block cadence (~12 s) moves the drone's harmonic centre while the
+            // percussion keeps its own irregular surface time. The two have no
+            // integer relationship, so the composite never closes a loop.
+            if(rPolyclock and: { rs.notNil } and: { rs[\blockNum] > 0 }) {
+                droneBaseFreq = 55 * (((rs[\blockNum] % 7) - 3) / 12).midiratio;
+                if(~opalDroneSynth.notNil) {
+                    ~opalDroneSynth.set(\freq, droneBaseFreq.clip(28, 90));
+                };
+            };
 
             // ─── Compute melodic parameters from control matrix ───
             pitchPool = ~computePitchPool.(harmRich, txInf, density * phenoMult);
@@ -208,14 +291,26 @@
                 };
             };
 
+            // ── (2) Gas deviation → accent ───────────────────────────────
+            // Not the absolute gas price (which reads ~0 at modern fees and made
+            // velocity a constant 30) but how far this actor bid OVER base fee:
+            // the audible trace of urgency. 0.55x–1.75x on every layer's amp.
+            accent = if(rGasAccent) { 0.55 + (priorityRatio * 1.2) } { 1.0 };
+
+            // ── (4) Address as voice ─────────────────────────────────────
+            // The same counterparty returns as the same voice, so over a long
+            // listen you begin to recognise recurring actors — an exchange, a
+            // bot loop, a whale — instead of undifferentiated events.
+            voiceIdx = if(rVoices and: { rs.notNil }) { rs[\addrSig] % 7 } { -1 };
+
             // ── 1. KICK — evolving pattern instead of fixed 0,8 ──────────────────
-            if(kickPattern.wrapAt(step) == 1) {
+            if(quiet.not and: { kickPattern.wrapAt(step) == 1 }) {
                 // Subtle frequency drift: ±5Hz per bar for organic feel
                 var kickFreq = 50 + ((bar % 7) - 3 * 1.5);
                 Synth(\opalKick, [
                     \out,         0,
                     \freq,        kickFreq,
-                    \amp,         ~beatParams.masterAmp * (0.5 + (density * 0.2)),
+                    \amp,         ~beatParams.masterAmp * (0.5 + (density * 0.2)) * accent,
                     \dec,         0.9 + (transactionInfluence * 0.4),
                     \masterVolBus, bMVol,
                     \timeBus,      bTime,
@@ -228,10 +323,17 @@
             };
 
             // ── 2. PERC — shifting polyrhythm + melodic variation ────────────────
-            if((step % percDivisor == 0) or: {
+            if(quiet.not and: { (step % percDivisor == 0) or: {
                 (step % 10 == 0) and: { transactionInfluence > 0.6 } and: { 0.3.coin }
-            }) {
-                var baseFreq = pitchPool.wrapAt(poolIdx);
+            } }) {
+                // With rhythmVoices on, the counterparty picks the degree
+                // instead of walking the pool in order — a returning address
+                // returns on its own pitch.
+                var baseFreq = if(voiceIdx >= 0) {
+                    pitchPool.wrapAt(voiceIdx)
+                } {
+                    pitchPool.wrapAt(poolIdx)
+                };
                 poolIdx = (poolIdx + 1) % pitchPool.size;
 
                 // ─ Voicing: single note, dyad, or triad based on texture control ─
@@ -242,7 +344,7 @@
                     Synth(\opalPerc, [
                         \out,          0,
                         \freq,         percFreq,
-                        \amp,          ~beatParams.masterAmp * (0.2 + (transactionInfluence * 0.15)),
+                        \amp,          ~beatParams.masterAmp * (0.2 + (transactionInfluence * 0.15)) * accent,
                         \masterVolBus, bMVol,
                         \harmonicBus,  bHarm,
                         \textureBus,   bText,
@@ -261,7 +363,7 @@
                         Synth(\opalPerc, [
                             \out,          0,
                             \freq,         harmFreq,
-                            \amp,          ~beatParams.masterAmp * (0.2 + (transactionInfluence * 0.15)) * [1.0, 0.6][voice],
+                            \amp,          ~beatParams.masterAmp * (0.2 + (transactionInfluence * 0.15)) * accent * [1.0, 0.6][voice],
                             \masterVolBus, bMVol,
                             \harmonicBus,  bHarm,
                             \textureBus,   bText,
@@ -281,7 +383,7 @@
                         Synth(\opalPerc, [
                             \out,          0,
                             \freq,         harmFreq,
-                            \amp,          ~beatParams.masterAmp * (0.2 + (transactionInfluence * 0.15)) * (1.0 / (h + 1.5)),
+                            \amp,          ~beatParams.masterAmp * (0.2 + (transactionInfluence * 0.15)) * accent * (1.0 / (h + 1.5)),
                             \masterVolBus, bMVol,
                             \harmonicBus,  bHarm,
                             \textureBus,   bText,
@@ -297,10 +399,10 @@
             };
 
             // ── 3. DUST — probability-based, not grid-locked ─────────────────────
-            if(dustProb.coin) {
+            if(quiet.not and: { dustProb.coin }) {
                 Synth(\opalDust, [
                     \out,         0,
-                    \amp,         ~beatParams.masterAmp * (0.3 + (density * 0.35)),
+                    \amp,         ~beatParams.masterAmp * (0.3 + (density * 0.35)) * accent,
                     \masterVolBus, bMVol,
                     \textureBus,   bText,
                     \spectralBus,  bSpec,
@@ -320,7 +422,16 @@
             };
 
             // Step + interval
-            step = (step + 1) % 16;
+            // ── (1) Block as the bar ─────────────────────────────────────
+            // Normally `step` is a counter we increment: a metronome the chain
+            // merely decorates. With rhythmBlockBar on, the step is READ from
+            // where we are inside the real ~12 s block, so the bar is the
+            // chain's own period and its 16 positions are a genuine phase.
+            if(rBlockBar and: { rs.notNil } and: { rs[\blockAt] > 0 }) {
+                step = (blockPhase * 16).floor.asInteger.clip(0, 15);
+            } {
+                step = (step + 1) % 16;
+            };
 
             // Interval with micro-swing: odd steps slightly delayed for groove.
             // Half the old grid rate (was tempo*4): at tempo 1.0 a step is
@@ -328,7 +439,30 @@
             // hear as slow drift rather than beat-machine motion.
             interval = (1 / (~beatParams.beatTempo * 2)) *
                        (1 - (transactionInfluence * 0.1));
-            if(step.odd) { interval = interval * rrand(1.0, 1.12) }; // swing
+
+            // ── (1 cont.) lay the bar's onsets across the real block period ──
+            // Denser blocks subdivide finer; the bar always closes with the
+            // block rather than drifting against it.
+            if(rBlockBar and: { rs.notNil } and: { rs[\blockAt] > 0 }) {
+                interval = (rs[\blockPeriod] / 16).clip(0.08, 2.0);
+                // Blocks ordered by priority fee put the urgent transactions
+                // first, so the head of the bar rushes and the tail thins —
+                // each block arrives with its own internal shape.
+                interval = interval * (0.72 + (blockPhase * 0.55));
+            };
+
+            // ── (3) Inter-arrival entropy → swing ────────────────────────
+            // Regular arrivals keep the old gentle groove; bursty, clustered
+            // ones push the offbeats further out. Shape, not amount.
+            if(rEntropy) {
+                if(step.odd) {
+                    interval = interval * rrand(1.0, 1.12 + (chainEntropy * 0.65));
+                } {
+                    interval = interval * (1 - (chainEntropy * 0.18));
+                };
+            } {
+                if(step.odd) { interval = interval * rrand(1.0, 1.12) }; // swing
+            };
             interval.max(0.05).wait;
         };
     });

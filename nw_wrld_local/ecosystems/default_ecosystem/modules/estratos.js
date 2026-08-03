@@ -56,19 +56,109 @@ function mulberry32(seed) {
     };
 }
 
-function makeRandomProxy(paper, ink, rngFn) {
-    const accents = ["#1038ff", "#ff1616", "#04be36", "#ffd400"];
+// ── aritmética de color en sRGB ────────────────────────────────────────
+// Los hex de paleta se consumen tal cual como fillStyle del canvas 2D, así
+// que las decisiones de paleta (¿es claro este papel?, ¿legible este acento?)
+// tienen que hacerse en sRGB. NO sirve THREE.Color: con ColorManagement
+// activo (por defecto en three r152+) sus canales son luz lineal, y ahí el
+// umbral 0.45 cae en realidad sobre un sRGB ≈ 0.70.
+function hexToRgb(hex) {
+    const h = String(hex).replace("#", "");
+    const full = h.length === 3 ? h.split("").map((c) => c + c).join("") : h;
+    const n = parseInt(full, 16) || 0;
+    return [((n >> 16) & 255) / 255, ((n >> 8) & 255) / 255, (n & 255) / 255];
+}
+function rgbToHex(r, g, b) {
+    const c = (x) => Math.round(Math.min(1, Math.max(0, x)) * 255).toString(16).padStart(2, "0");
+    return `#${c(r)}${c(g)}${c(b)}`;
+}
+function srgbLuminance(hex) {
+    const [r, g, b] = hexToRgb(hex);
+    return r * 0.299 + g * 0.587 + b * 0.114;
+}
+function rgbToHsl(r, g, b) {
+    const max = Math.max(r, g, b), min = Math.min(r, g, b), l = (max + min) / 2;
+    if (max === min) return [0, 0, l];
+    const d = max - min;
+    const s = l > 0.5 ? d / (2 - max - min) : d / (max + min);
+    let h;
+    if (max === r) h = ((g - b) / d + (g < b ? 6 : 0)) / 6;
+    else if (max === g) h = ((b - r) / d + 2) / 6;
+    else h = ((r - g) / d + 4) / 6;
+    return [h, s, l];
+}
+function hslToRgb(h, s, l) {
+    if (s === 0) return [l, l, l];
+    const q = l < 0.5 ? l * (1 + s) : l + s - l * s, p = 2 * l - q;
+    const ch = (t) => {
+        if (t < 0) t += 1; else if (t > 1) t -= 1;
+        if (t < 1 / 6) return p + (q - p) * 6 * t;
+        if (t < 1 / 2) return q;
+        if (t < 2 / 3) return p + (q - p) * (2 / 3 - t) * 6;
+        return p;
+    };
+    return [ch(h + 1 / 3), ch(h), ch(h - 1 / 3)];
+}
+function mixHex(a, b, t) {
+    const [r1, g1, b1] = hexToRgb(a), [r2, g2, b2] = hexToRgb(b);
+    return rgbToHex(r1 + (r2 - r1) * t, g1 + (g2 - g1) * t, b1 + (b2 - b1) * t);
+}
+
+// Sube un acento pensado para papel CLARO a la banda legible sobre papel
+// oscuro, conservando matiz, saturación y el orden relativo de luminosidad
+// (mono no colapsa a un solo gris, tierra conserva su gradiente térmico).
+const DARK_ACCENT_MIN = 0.55, DARK_ACCENT_SPAN = 0.35;
+function liftAccent(hex) {
+    const [h, s, l] = rgbToHsl(...hexToRgb(hex));
+    return rgbToHex(...hslToRgb(h, s, DARK_ACCENT_MIN + l * DARK_ACCENT_SPAN));
+}
+
+const ACCENT_KEYS = ["blue", "red", "green", "yellow"];
+const RISO_ACCENTS = ["#1038ff", "#ff1616", "#04be36", "#ffd400"];
+
+// Invierte una paleta de papel claro para proyección oscura. Intercambiar
+// sólo papel↔tinta dejaba los cinco acentos con su luminancia de papel
+// claro: en "mono" (#444/#222/#666 sobre #111111) eso son contrastes ~1.1:1
+// y ~4/5 de las especies desaparecían. Los acentos invierten con el fondo.
+function invertPalette(C) {
+    const out = Object.assign({}, C, {
+        paper: C.ink,
+        ink: C.paper,
+        name: `${C.name} (nocturno)`,
+    });
+    ACCENT_KEYS.forEach((k) => { out[k] = liftAccent(C[k]); });
+    return out;
+}
+
+function makeRandomProxy(paper, ink, nocturno, rngFn) {
+    // Los neutros se DERIVAN de la tinta en vez de ser blanco/negro fijos:
+    // antes ~42% de las lecturas devolvían blanco sobre papel blanco (y, tras
+    // el modo nocturno, ~10% devolvían negro sobre papel casi negro) — esas
+    // especies se horneaban invisibles.
+    const accents = nocturno ? RISO_ACCENTS.map(liftAccent) : RISO_ACCENTS;
+    const neutralMid = mixHex(ink, paper, 0.35);
     return new Proxy({}, {
         get(_t, prop) {
             if (prop === "paper") return paper;
             if (prop === "ink") return ink;
-            if (prop === "name") return "aleatoria";
+            if (prop === "name") return nocturno ? "aleatoria (nocturno)" : "aleatoria";
             const r = rngFn();
-            if (r < 0.42) return "#ffffff";
-            if (r < 0.52) return "#000000";
+            if (r < 0.42) return ink;
+            if (r < 0.52) return neutralMid;
             return accents[Math.floor(rngFn() * accents.length)];
         },
     });
+}
+
+// ── un solo canvas de medición, reutilizado ────────────────────────────
+// Pedir el contexto ANTES de fijar canvas.width obligaba a asignar el bitmap
+// por defecto (300x150) y a reasignarlo al redimensionar: dos allocations por
+// sprite de texto, ~30 por reconstrucción. Medir no necesita contexto propio.
+let _measureCtx = null;
+function measureTextWidth(text, font) {
+    if (!_measureCtx) _measureCtx = document.createElement("canvas").getContext("2d");
+    _measureCtx.font = font;
+    return Math.ceil(_measureCtx.measureText(text).width) + 10;
 }
 
 // ── primitivas de dibujo pixel-art (idénticas en espíritu al motor 2D) ──
@@ -106,6 +196,55 @@ const PALETTES = {
     mono: { name: "monocromo", paper: "#ffffff", ink: "#111111", blue: "#444444", red: "#222222", green: "#666666", yellow: "#999999" },
 };
 const PALETTE_WEIGHTS = [["riso", 56], ["abismo", 15], ["tierra", 7], ["neon", 6], ["mineral", 6], ["mono", 5], ["aleatoria", 5]];
+
+// ── reposo de los controles ────────────────────────────────────────────
+// Espejo de window.__sonethParams (parliamentEntry.ts): el puente empuja
+// estos valores ~140 ms después del montaje, así que el estado inicial del
+// módulo tiene que NACER en ellos. Antes _ctrl declaraba hue 0.5 "neutro"
+// mientras el sistema reposa en 0.4, y la escena se teñía de verde sola —
+// igual con noiselevel, que arrancaba un temblor que _ctrl declaraba en 0.
+const CONTROL_DEFAULTS = {
+    spectralshift: 0.4, spatialspread: 0.5, harmonicrich: 0.5, timedilation: 0.3,
+    texturedepth: 0.3, memoryfeed: 0.4, noiselevel: 0.2, dronedepth: 0.4,
+    atmospheremix: 0.5,
+};
+// El centro sin tinte ES el reposo del puente, no un 0.5 teórico.
+const HUE_NEUTRAL = CONTROL_DEFAULTS.spectralshift;
+
+// Suavizado expresado POR SEGUNDO (fracción que sobrevive tras 1 s): un
+// factor por frame corre al doble de velocidad en un proyector de 120 Hz que
+// en uno de 60, y pierde el paso si se cae un frame. Ver DarkForest.js.
+const BG_FADE_TAU = 0.064;    // ≈ 0.045 por frame @60fps
+const CTRL_SMOOTH_TAU = 0.02; // ≈ 0.060 por frame @60fps
+
+// ── orden de dibujo ────────────────────────────────────────────────────
+// TODO en esta pieza es transparente, así que three lo ordena por distancia
+// cada frame. Con la escena girando de continuo, dos objetos a profundidad
+// casi igual se intercambian de un frame a otro y su solape parpadea. Un
+// renderOrder explícito fija las CAPAS (three ordena primero por
+// renderOrder, luego por distancia) y deja el parpadeo sin dónde ocurrir.
+const RO = { frame: 0, wave: 1, particle: 2, species: 3, tether: 4, text: 5 };
+
+// ── Cámara Fenológica → cartografía ────────────────────────────────────
+// Reposo de window.__phenoParams (parliamentEntry.ts), por el mismo motivo
+// que CONTROL_DEFAULTS: el puente los empuja al montar.
+const PHENO_DEFAULTS = { activityThreshold: 0.46, opacityFloor: 0.0, seasonalWeight: 0.5 };
+
+// Humedad preferida de cada estrato (0 = seco, 1 = lluvioso). Cada especie
+// hereda la de su zona con una desviación propia: es su "floración". Cuanto
+// más se acerca la humedad del día a esa preferencia, más presente está la
+// especie; cuanto más lejos, más se desvanece hacia opacityFloor. El calendario
+// deja de ser una lectura aparte y pasa a decidir QUÉ se ve del bosque.
+const ZONE_BLOOM = {
+    sky: 0.55, mountain: 0.35, forest: 0.80, shore: 0.50, sea: 0.70,
+    abyss: 0.45, tectonic: 0.30, desierto: 0.05, pantano: 0.90, hielo: 0.15,
+};
+
+// activityThreshold → densidad de población. El umbral decide cuántas especies
+// cuentan como despiertas, así que aquí decide cuántas HAY: subirlo despuebla
+// el estrato, bajarlo lo llena. Requiere reconstruir (la población se siembra
+// en _buildScene), por eso el puente lo manda con debounce.
+function densityFromThreshold(t) { return 1.6 - t * 1.2; }  // 0→1.6, 0.46→1.05, 1→0.4
 
 // ── estratos: mismos rangos verticales (en px del lienzo original) ─────
 const ZONE_RANGE = {
@@ -434,22 +573,38 @@ class Estratos extends BaseThreeJsModule {
         // invierten papel↔tinta para que el fondo NUNCA salte a blanco.
         this.nocturno = true;
 
-        // Estado de control en vivo (sliders sonETH → applyControl):
-        // se aplica cada frame, sin reconstruir la escena.
+        // Estado de control en vivo (sliders sonETH → applyControl).
+        // _ctrl es el OBJETIVO; _view es el valor suavizado que realmente se
+        // escribe en los materiales cada frame. El puente pollea a ~7 Hz, así
+        // que empujar sus valores directos hacía escalonar niebla, partículas
+        // y tinte en ~7 saltos visibles por segundo.
         this._ctrl = {
             speed: 1,        // timedilation → velocidad global de animación
             driftAmp: 1,     // texturedepth → amplitud de deriva de especies
             waveAmp: 1,      // memoryfeed → amplitud de olas
             jitter: 0,       // noiselevel → temblor nervioso de especies
-            hue: 0.5,        // spectralshift → tinte de color (0.5 = neutro)
+            hue: HUE_NEUTRAL,// spectralshift → tinte de color
             rotY: 0,         // spatialspread → ángulo del mundo
             rotSpeed: 0.05,  // harmonicrich → giro lento continuo
             partSize: 0.08,  // dronedepth → tamaño de partículas
             partOp: 0.75,    // dronedepth → opacidad de partículas
-            fogNear: 24,     // atmospheremix → densidad de niebla
-            fogFar: 70,
+            fogNear: 40,     // atmospheremix → densidad de niebla
+            fogFar: 130,
+            opacityFloor: 0, // /pheno/opacityFloor → piso de opacidad
+            season: 0.5,     // seasonalWeight → humedad del día (0 seco, 1 lluvia)
         };
+        // Densidad de siembra (activityThreshold). No entra en _ctrl: no se
+        // suaviza por frame, se aplica al reconstruir.
+        this.density = densityFromThreshold(PHENO_DEFAULTS.activityThreshold);
+        // Nace ya en el reposo del puente: nada se mueve solo tras montar.
+        Object.entries(CONTROL_DEFAULTS).forEach(([k, v]) => this.applyControl(k, v));
+        this.applyControl("opacityFloor", PHENO_DEFAULTS.opacityFloor);
+        this.applyControl("seasonalWeight", PHENO_DEFAULTS.seasonalWeight);
+        this._view = Object.assign({}, this._ctrl);
+        this._tintApplied = null;
+
         this._rotAuto = 0;
+        this._waveScale = 1;   // multiplicador estacional, lo fija _pushView
         this._bgTarget = null;
 
         this.world = new THREE.Group();
@@ -460,6 +615,8 @@ class Estratos extends BaseThreeJsModule {
         this._animationId = null;
         this._disposables = [];
         this._sprites = [];
+        this._texts = [];      // sprites de texto re-horneables (recoloreo)
+        this._inkLines = [];   // materiales de línea que siguen a C.ink
         this._waves = [];
         this._particles = null;
 
@@ -484,6 +641,12 @@ class Estratos extends BaseThreeJsModule {
             this.controls.maxDistance = 70;
             this.controls.target.set(0, 0, 0);
             this.controls.update();
+            // BaseThreeJsModule engancha su render() al evento "change" de
+            // OrbitControls. Con damping activo ese evento salta en CADA
+            // controls.update(), o sea una vez por frame — y este módulo ya
+            // dibuja en su propio rAF, así que era un render completo de más
+            // por frame. Se desengancha: aquí manda _animate.
+            this.controls.removeEventListener("change", this.render);
         }
         this.scene.add(new THREE.AmbientLight(0xffffff, 0.9));
 
@@ -500,28 +663,28 @@ class Estratos extends BaseThreeJsModule {
     pick(arr) { return arr[Math.floor(this.rng() * arr.length)]; }
     chance(p) { return this.rng() < p; }
 
-    _resolvePalette() {
-        const key = this.currentPalette === "auto" ? this._weightedPalette() : this.currentPalette;
+    // rng inyectable: _buildScene consume del flujo que siembra el layout,
+    // pero _recolor necesita re-resolver la paleta SIN desincronizarlo.
+    _resolvePalette(rng = this.rng) {
+        const key = this.currentPalette === "auto" ? this._weightedPalette(rng) : this.currentPalette;
         if (key === "aleatoria") {
             return this.nocturno
-                ? makeRandomProxy("#0d0d10", "#f2f2ea", () => this.rng())
-                : makeRandomProxy("#ffffff", "#0b0b0b", () => this.rng());
+                ? makeRandomProxy("#0d0d10", "#f2f2ea", true, rng)
+                : makeRandomProxy("#fffdf6", "#0b0b0b", false, rng);
         }
         const C = PALETTES[key] || PALETTES.riso;
-        if (this.nocturno) {
-            // Papel claro → fondo oscuro: invierte papel↔tinta preservando los
-            // acentos riso. Así "riso"/"tierra"/"mono" ya no lanzan la escena
-            // a blanco cuando el consenso del parlamento cruza un umbral.
-            const p = new THREE.Color(C.paper);
-            const lum = p.r * 0.299 + p.g * 0.587 + p.b * 0.114;
-            if (lum > 0.45) return Object.assign({}, C, { paper: C.ink, ink: C.paper });
-        }
+        // Papel claro → fondo oscuro: invierte papel↔tinta Y sube los acentos
+        // a la banda legible. Así "riso"/"tierra"/"mineral"/"mono" ya no
+        // lanzan la escena a blanco cuando el consenso cruza un umbral, ni
+        // dejan las especies invisibles sobre el fondo invertido.
+        // Luminancia en sRGB, no en los canales lineales de THREE.Color.
+        if (this.nocturno && srgbLuminance(C.paper) > 0.45) return invertPalette(C);
         return C;
     }
 
-    _weightedPalette() {
+    _weightedPalette(rng = this.rng) {
         const total = PALETTE_WEIGHTS.reduce((s, [, w]) => s + w, 0);
-        let x = this.rng() * total, acc = 0;
+        let x = rng() * total, acc = 0;
         for (const [k, w] of PALETTE_WEIGHTS) { acc += w; if (x < acc) return k; }
         return "riso";
     }
@@ -540,7 +703,7 @@ class Estratos extends BaseThreeJsModule {
         if (!(this.scene.background instanceof THREE.Color)) {
             this.scene.background = this._bgTarget.clone();
         }
-        this.scene.fog = new THREE.Fog(this.scene.background.clone(), this._ctrl.fogNear, this._ctrl.fogFar);
+        this.scene.fog = new THREE.Fog(this.scene.background.clone(), this._view.fogNear, this._view.fogFar);
 
         const zones = MODE_ZONES[this.mode] || MODE_ZONES.total;
         this._buildStrataFrames(zones);
@@ -559,6 +722,8 @@ class Estratos extends BaseThreeJsModule {
         });
         this._disposables = [];
         this._sprites = [];
+        this._texts = [];
+        this._inkLines = [];
         this._waves = [];
         this._particles = null;
     }
@@ -575,12 +740,16 @@ class Estratos extends BaseThreeJsModule {
                 [halfX, yBot, z1], [-halfX, yBot, z1], [-halfX, yBot, z1], [-halfX, yBot, z0],
             ].map((p) => new THREE.Vector3(...p));
             const geo = new THREE.BufferGeometry().setFromPoints(pts);
-            const mat = new THREE.LineBasicMaterial({ color: new THREE.Color(this.C.ink), transparent: true, opacity: 0.12 });
+            // depthWrite:false — ver nota en _spawnWave: una línea transparente
+            // que escribe profundidad recorta las especies que hay detrás.
+            const mat = new THREE.LineBasicMaterial({ color: new THREE.Color(this.C.ink), transparent: true, opacity: 0.12, depthWrite: false });
             const seg = new THREE.LineSegments(geo, mat);
+            seg.renderOrder = RO.frame;
             this.world.add(seg);
             this._disposables.push({ geometry: geo, material: mat });
+            this._inkLines.push(mat);
 
-            const label = this._makeTextSprite(ZONE_LABEL[zone], this.C.ink, { w: 220, h: 44, font: "700 26px 'Courier New',monospace" });
+            const label = this._makeTextSprite(ZONE_LABEL[zone], this.C.ink, { h: 44, font: "700 26px 'Courier New',monospace" });
             label.position.set(-halfX - 0.4, yMid, z0 - 0.4);
             label.center.set(1, 0.5);
             this.world.add(label);
@@ -593,12 +762,15 @@ class Estratos extends BaseThreeJsModule {
         const [cmin, cmax] = ZONE_COUNT[zone] || [4, 7];
         const [p0, p1] = ZONE_RANGE[zone];
         keys.forEach((key) => {
-            const count = this.rint(cmin, cmax);
+            // Población escalada por el umbral de actividad fenológica.
+            const count = Math.max(1, Math.round(this.rint(cmin, cmax) * this.density));
             for (let i = 0; i < count; i++) {
                 const px_ = this.rand(30, 690), py_ = this.rand(p0, p1), pz_ = this.rand(-6, 6);
                 const scale = this.rand(0.8, 1.6);
-                const color = this.C[this.pick(["blue", "red", "green", "yellow", "ink"])];
-                this._spawnSpecies(key, toWorldX(px_), toWorldY(py_), pz_, scale, color, zone);
+                // Se guarda el SLOT de paleta, no el color resuelto: así el
+                // recoloreo puede re-hornear la especie con la paleta nueva.
+                const role = this.pick(["blue", "red", "green", "yellow", "ink"]);
+                this._spawnSpecies(key, toWorldX(px_), toWorldY(py_), pz_, scale, role, zone);
             }
         });
 
@@ -610,30 +782,69 @@ class Estratos extends BaseThreeJsModule {
         }
     }
 
-    _spawnSpecies(key, x, y, z, scale, color, zone) {
+    _spawnSpecies(key, x, y, z, scale, role, zone) {
         const spec = SPECIES[key];
         if (!spec) return;
         const canvas = document.createElement("canvas");
         canvas.width = spec.w;
         canvas.height = spec.h;
-        const g = canvas.getContext("2d");
-        g.imageSmoothingEnabled = false;
-        const rnd = { rand: (a, b) => this.rand(a, b), rint: (a, b) => this.rint(a, b), pick: (a) => this.pick(a), chance: (p) => this.chance(p) };
-        spec.draw(g, spec.w / 2, spec.h * 0.7, color, this.C.ink, rnd);
 
-        const tex = new THREE.CanvasTexture(canvas);
-        tex.minFilter = THREE.NearestFilter;
-        tex.magFilter = THREE.NearestFilter;
-        tex.generateMipmaps = false;
-        tex.needsUpdate = true;
+        const tex = this._pixelTexture(canvas);
         const mat = new THREE.SpriteMaterial({ map: tex, transparent: true, depthWrite: false, fog: true });
         const sprite = new THREE.Sprite(mat);
         sprite.scale.set(spec.w * PX2W * scale, spec.h * PX2W * scale, 1);
         sprite.position.set(x, y, z);
+        sprite.renderOrder = RO.species;
         this.world.add(sprite);
         this._disposables.push({ material: mat, texture: tex });
 
-        this._sprites.push({ obj: sprite, anchor: new THREE.Vector3(x, y, z), phase: this.rng() * Math.PI * 2, kind: this._driftKind(key), zone });
+        const rec = {
+            obj: sprite, anchor: new THREE.Vector3(x, y, z),
+            phase: this.rng() * Math.PI * 2, kind: this._driftKind(key), zone,
+            // Floración propia: la humedad preferida del estrato ± desviación.
+            bloom: Math.min(1, Math.max(0, (ZONE_BLOOM[zone] ?? 0.5) + this.rand(-0.14, 0.14))),
+            phenoOp: 1,
+            // Sub-semilla propia por especie: el recoloreo vuelve a hornear
+            // EXACTAMENTE el mismo dibujo sin consumir del flujo rng que
+            // define el layout (y que ya avanzó al sembrar el resto).
+            key, role, subSeed: Math.floor(this.rng() * 4294967296), canvas, tex,
+        };
+        this._sprites.push(rec);
+        this._paintSpecies(rec);
+    }
+
+    // Textura de un lienzo pixel-art. magFilter Nearest conserva el grano
+    // cuadrado de cerca; minFilter con mipmaps evita el CENTELLEO al alejarse:
+    // el arte son puntos y líneas de 1 px (ppx/pdotline/pdotellipse) y sin
+    // mipmap cada píxel de pantalla muestrea un solo téxel, así que los puntos
+    // aparecían y desaparecían al moverse el sprite fracciones de píxel.
+    _pixelTexture(canvas) {
+        const tex = new THREE.CanvasTexture(canvas);
+        tex.magFilter = THREE.NearestFilter;
+        tex.minFilter = THREE.LinearMipmapLinearFilter;
+        tex.generateMipmaps = true;
+        const maxAniso = this.renderer?.capabilities?.getMaxAnisotropy?.() ?? 1;
+        tex.anisotropy = Math.min(8, maxAniso);
+        tex.needsUpdate = true;
+        return tex;
+    }
+
+    // Hornea (o re-hornea) el pixel-art de una especie sobre su propio canvas.
+    _paintSpecies(rec) {
+        const spec = SPECIES[rec.key];
+        if (!spec) return;
+        const g = rec.canvas.getContext("2d");
+        g.imageSmoothingEnabled = false;
+        g.clearRect(0, 0, rec.canvas.width, rec.canvas.height);
+        const r = mulberry32(rec.subSeed);
+        const rnd = {
+            rand: (a, b) => a + r() * (b - a),
+            rint: (a, b) => Math.floor(a + r() * (b - a + 1)),
+            pick: (arr) => arr[Math.floor(r() * arr.length)],
+            chance: (p) => r() < p,
+        };
+        spec.draw(g, spec.w / 2, spec.h * 0.7, this.C[rec.role], this.C.ink, rnd);
+        rec.tex.needsUpdate = true;
     }
 
     _driftKind(key) {
@@ -647,8 +858,19 @@ class Estratos extends BaseThreeJsModule {
         const n = 48, points = [];
         for (let i = 0; i <= n; i++) points.push(new THREE.Vector3(-10 + (20 * i) / n, y, z));
         const geo = new THREE.BufferGeometry().setFromPoints(points);
-        const mat = new THREE.LineBasicMaterial({ color: new THREE.Color(color), transparent: true, opacity: 0.7 });
+        // ⚠ depthWrite:false es obligatorio en TODO material transparente aquí.
+        // LineBasicMaterial/PointsMaterial lo dejan en true por defecto, así que
+        // marcos, olas, ataduras y partículas escribían el buffer de
+        // profundidad mientras se dibujaban translúcidos: cualquier especie
+        // que quedara detrás era descartada por el test de profundidad si la
+        // línea se dibujaba antes. Como el orden de los transparentes se
+        // recalcula por distancia cada frame y el mundo gira, ese "antes"
+        // cambiaba constantemente y las especies PARPADEABAN al cruzarse con
+        // una línea. Sin escritura de profundidad, todo se mezcla y nada
+        // recorta a nadie.
+        const mat = new THREE.LineBasicMaterial({ color: new THREE.Color(color), transparent: true, opacity: 0.7, depthWrite: false });
         const line = new THREE.Line(geo, mat);
+        line.renderOrder = RO.wave;
         this.world.add(line);
         this._disposables.push({ geometry: geo, material: mat });
         this._waves.push({ line, baseY: y, amp: this.rand(0.08, 0.22), phase: this.rng() * Math.PI * 2, n, base: new THREE.Color(color) });
@@ -669,12 +891,13 @@ class Estratos extends BaseThreeJsModule {
         }
         const geo = new THREE.BufferGeometry();
         geo.setAttribute("position", new THREE.BufferAttribute(positions, 3));
-        const color = kind === "snow" ? this.C.blue : kind === "sand" ? this.C.yellow : kind === "bubble" ? this.C.blue : this.C.yellow;
-        const mat = new THREE.PointsMaterial({ color: new THREE.Color(color), size: 0.08, transparent: true, opacity: 0.75, sizeAttenuation: true });
+        const role = kind === "snow" || kind === "bubble" ? "blue" : "yellow";
+        const mat = new THREE.PointsMaterial({ color: new THREE.Color(this.C[role]), size: 0.08, transparent: true, opacity: 0.75, sizeAttenuation: true, depthWrite: false });
         const points = new THREE.Points(geo, mat);
+        points.renderOrder = RO.particle;
         this.world.add(points);
         this._disposables.push({ geometry: geo, material: mat });
-        this._particles = { points, speeds, phases, kind, count, base: new THREE.Color(color) };
+        this._particles = { points, speeds, phases, kind, count, role, base: new THREE.Color(this.C[role]) };
     }
 
     _buildText(zones) {
@@ -687,23 +910,38 @@ class Estratos extends BaseThreeJsModule {
                 const anchor = zoneSprites.length ? this.pick(zoneSprites).anchor : new THREE.Vector3(0, toWorldY((p0 + p1) / 2), 0);
                 const x = anchor.x + this.rand(-2.5, 2.5), y = anchor.y + this.rand(-1, 1), z = anchor.z + this.rand(-1.5, 1.5);
 
-                const sprite = this._makeTextSprite(phrase, this.C.ink, { w: 320, h: 40, font: "italic 15px 'Courier New',monospace" });
+                const sprite = this._makeTextSprite(phrase, this.C.ink, { h: 40, font: "italic 15px 'Courier New',monospace" });
                 sprite.position.set(x, y, z);
                 this.world.add(sprite);
                 this._disposables.push({ material: sprite.material, texture: sprite.material.map });
 
                 const geo = new THREE.BufferGeometry().setFromPoints([anchor.clone(), new THREE.Vector3(x, y, z)]);
-                const mat = new THREE.LineBasicMaterial({ color: new THREE.Color(this.C.ink), transparent: true, opacity: 0.3 });
+                const mat = new THREE.LineBasicMaterial({ color: new THREE.Color(this.C.ink), transparent: true, opacity: 0.3, depthWrite: false });
                 const tether = new THREE.Line(geo, mat);
+                tether.renderOrder = RO.tether;
                 this.world.add(tether);
                 this._disposables.push({ geometry: geo, material: mat });
+                this._inkLines.push(mat);
             });
         });
 
-        const sigil = this._makeTextSprite(`seed: ${this.seed.slice(0, 30)}`, this.C.ink, { w: 300, h: 28, font: "12px 'Courier New',monospace" });
+        const sigil = this._makeTextSprite(`seed: ${this.seed.slice(0, 30)}`, this.C.ink, { h: 28, font: "12px 'Courier New',monospace" });
         sigil.position.set(0, -9.4, 0);
         this.world.add(sigil);
         this._disposables.push({ material: sigil.material, texture: sigil.material.map });
+    }
+
+    // Pinta (o repinta) texto sobre un canvas ya dimensionado. El clearRect
+    // es necesario aquí porque el recoloreo reutiliza el mismo bitmap: sobre
+    // un canvas recién redimensionado sería un no-op, ya que asignar
+    // canvas.width lo deja transparente y resetea el contexto.
+    _paintText(canvas, text, colorHex, font, h) {
+        const g = canvas.getContext("2d");
+        g.font = font;
+        g.clearRect(0, 0, canvas.width, canvas.height);
+        g.fillStyle = colorHex;
+        g.textBaseline = "middle";
+        g.fillText(text, 4, h / 2);
     }
 
     _makeTextSprite(text, colorHex, opts = {}) {
@@ -711,25 +949,17 @@ class Estratos extends BaseThreeJsModule {
         // que recortaba las frases largas del lexicón a mitad de oración).
         const font = opts.font || "14px 'Courier New',monospace";
         const h = opts.h || 40;
+        const w = measureTextWidth(text, font);
         const canvas = document.createElement("canvas");
-        const g = canvas.getContext("2d");
-        g.font = font;
-        const w = Math.ceil(g.measureText(text).width) + 10;
         canvas.width = w;
         canvas.height = h;
-        g.font = font; // el resize del canvas resetea el estado del contexto
-        g.clearRect(0, 0, w, h);
-        g.fillStyle = colorHex;
-        g.textBaseline = "middle";
-        g.fillText(text, 4, h / 2);
-        const tex = new THREE.CanvasTexture(canvas);
-        tex.minFilter = THREE.NearestFilter;
-        tex.magFilter = THREE.NearestFilter;
-        tex.generateMipmaps = false;
-        tex.needsUpdate = true;
+        this._paintText(canvas, text, colorHex, font, h);
+        const tex = this._pixelTexture(canvas);
         const mat = new THREE.SpriteMaterial({ map: tex, transparent: true, depthWrite: false, fog: false });
         const sprite = new THREE.Sprite(mat);
         sprite.scale.set(w * 0.011, h * 0.011, 1);
+        sprite.renderOrder = RO.text;
+        this._texts.push({ canvas, tex, text, font, h });
         return sprite;
     }
 
@@ -740,31 +970,40 @@ class Estratos extends BaseThreeJsModule {
         const now = performance.now();
         const dt = Math.min(0.05, (now - this._last) / 1000);
         this._last = now;
+
+        // Los valores del puente llegan a saltos (~7 Hz): se persiguen con un
+        // filtro independiente del framerate antes de tocar ningún material.
+        const kCtrl = 1 - Math.pow(CTRL_SMOOTH_TAU, dt);
+        const view = this._view;
+        for (const key in this._ctrl) view[key] += (this._ctrl[key] - view[key]) * kCtrl;
+        this._pushView();
+
         // timedilation → el tiempo interno de la pieza se estira o comprime
-        if (this.animEnabled) this._t += dt * this._ctrl.speed;
+        const sdt = dt * view.speed;
+        if (this.animEnabled) this._t += sdt;
 
         // Fondo/niebla en transición suave (sin flash al cambiar paleta)
         if (this._bgTarget && this.scene.background instanceof THREE.Color) {
-            this.scene.background.lerp(this._bgTarget, 0.045);
+            this.scene.background.lerp(this._bgTarget, 1 - Math.pow(BG_FADE_TAU, dt));
             if (this.scene.fog) this.scene.fog.color.copy(this.scene.background);
         }
 
-        // spatialspread (ángulo) + harmonicrich (giro continuo) → rotación
-        if (this.animEnabled) this._rotAuto += dt * this._ctrl.rotSpeed;
-        if (this.world) {
-            const targetRot = this._ctrl.rotY + this._rotAuto;
-            this.world.rotation.y += (targetRot - this.world.rotation.y) * 0.06;
-        }
+        // spatialspread (ángulo) + harmonicrich (giro continuo) → rotación.
+        // view.rotY ya viene suavizado, así que no hace falta un segundo lerp.
+        if (this.animEnabled) this._rotAuto += dt * view.rotSpeed;
+        if (this.world) this.world.rotation.y = view.rotY + this._rotAuto;
 
         if (this.animEnabled) {
             const t = this._t;
-            const amp = this._ctrl.driftAmp;
-            const jit = this._ctrl.jitter;
+            const amp = view.driftAmp;
+            const jit = view.jitter;
             this._sprites.forEach((s) => {
                 let px = s.anchor.x, py = s.anchor.y;
                 if (s.kind === "driftX") px += Math.sin(t * 0.6 + s.phase) * 0.6 * amp;
                 else if (s.kind === "bobY") py += Math.sin(t * 1.1 + s.phase) * 0.25 * amp;
-                else if (s.kind === "blink") s.obj.material.opacity = 0.4 + 0.6 * Math.abs(Math.sin(t * 1.4 + s.phase));
+                // El parpadeo modula sobre la presencia fenológica ya escrita
+                // por _pushView, no la sobrescribe.
+                else if (s.kind === "blink") s.obj.material.opacity = s.phenoOp * (0.4 + 0.6 * Math.abs(Math.sin(t * 1.4 + s.phase)));
                 if (jit > 0) {
                     // noiselevel → temblor nervioso de alta frecuencia
                     px += Math.sin(t * 13 + s.phase * 7) * jit;
@@ -778,7 +1017,7 @@ class Estratos extends BaseThreeJsModule {
                 const pos = w.line.geometry.attributes.position;
                 for (let i = 0; i <= w.n; i++) {
                     const x = pos.getX(i);
-                    pos.setY(i, w.baseY + Math.sin(x * 0.5 + t * 1.6 + w.phase) * w.amp * this._ctrl.waveAmp);
+                    pos.setY(i, w.baseY + Math.sin(x * 0.5 + t * 1.6 + w.phase) * w.amp * view.waveAmp * this._waveScale);
                 }
                 pos.needsUpdate = true;
             });
@@ -786,12 +1025,15 @@ class Estratos extends BaseThreeJsModule {
             if (this._particles) {
                 const { points, speeds, phases, kind, count } = this._particles;
                 const pos = points.geometry.attributes.position;
+                // sdt (dt × timedilation), no dt: nieve, arena, burbujas y
+                // luciérnagas comparten el reloj estirado del resto de la
+                // pieza en vez de quedarse congeladas respecto a ella.
                 for (let i = 0; i < count; i++) {
                     let x = pos.getX(i), y = pos.getY(i);
-                    if (kind === "snow") { y -= speeds[i] * dt * 1.2; x += Math.sin(t * 0.5 + phases[i]) * dt * 0.4; if (y < -9) y = 9; }
-                    else if (kind === "sand") { x += speeds[i] * dt * 1.6; if (x > 10) x = -10; }
-                    else if (kind === "bubble") { y += speeds[i] * dt * 1.2; if (y > 9) y = -9; }
-                    else { x += Math.cos(t * 0.2 + phases[i]) * dt * 0.3; y += Math.sin(t * 0.15 + phases[i]) * dt * 0.3; }
+                    if (kind === "snow") { y -= speeds[i] * sdt * 1.2; x += Math.sin(t * 0.5 + phases[i]) * sdt * 0.4; if (y < -9) y = 9; }
+                    else if (kind === "sand") { x += speeds[i] * sdt * 1.6; if (x > 10) x = -10; }
+                    else if (kind === "bubble") { y += speeds[i] * sdt * 1.2; if (y > 9) y = -9; }
+                    else { x += Math.cos(t * 0.2 + phases[i]) * sdt * 0.3; y += Math.sin(t * 0.15 + phases[i]) * sdt * 0.3; }
                     pos.setX(i, x);
                     pos.setY(i, y);
                 }
@@ -821,7 +1063,7 @@ class Estratos extends BaseThreeJsModule {
 
     setPalette({ palette = "auto" } = {}) {
         this.currentPalette = palette;
-        this._buildScene();
+        this._recolor();
     }
 
     toggleAnim({ on = true } = {}) {
@@ -830,19 +1072,44 @@ class Estratos extends BaseThreeJsModule {
 
     setNocturno({ on = true } = {}) {
         this.nocturno = !!on;
-        this._buildScene();
+        this._recolor();
+    }
+
+    // ── recoloreo en sitio (sin reconstruir la escena) ─────────────────────
+    // Cambiar de paleta NO cambia el layout: la siembra es determinista y
+    // saldría idéntica. Antes setPalette/setNocturno lanzaban un _buildScene
+    // completo — descartar ~110 geometrías/materiales/texturas para volver a
+    // colocarlo todo en las mismas posiciones. Aquí sólo se repinta.
+    _recolor() {
+        if (!this.scene || this.destroyed) return;
+        // rng propio: re-resolver "auto"/"aleatoria" no debe desincronizar el
+        // flujo que sembró el layout. Determinista para la misma combinación.
+        const rng = mulberry32(hashString(`${this.seed}|${this.mode}|${this.currentPalette}|${this.nocturno}`));
+        this.C = this._resolvePalette(rng);
+
+        this._bgTarget = new THREE.Color(this.C.paper);
+        this._sprites.forEach((rec) => this._paintSpecies(rec));
+        this._texts.forEach((t) => {
+            this._paintText(t.canvas, t.text, this.C.ink, t.font, t.h);
+            t.tex.needsUpdate = true;
+        });
+        this._inkLines.forEach((mat) => mat.color.set(this.C.ink));
+        this._waves.forEach((w) => w.base.set(this.C.blue));
+        if (this._particles) this._particles.base.set(this.C[this._particles.role]);
+        this._pushView(true);
     }
 
     // ── sliders sonETH → parámetros vivos (sin reconstruir la escena) ──────
     // Recibe valores normalizados 0–1 desde el puente (estratos.ts pollea
     // window.__sonethParams). El mismo gesto que mueve el dron sonoro mueve
     // la cartografía: color, rotación, deriva, niebla, temblor.
+    // Aquí sólo se fija el OBJETIVO: _animate lo persigue suavizado y escribe
+    // en los materiales, así un barrido de slider no llega a saltos.
     applyControl(key, v) {
         const c = this._ctrl;
         switch (key) {
             case "spectralshift":
                 c.hue = v;                                    // color / tinte
-                this._applyTint();
                 break;
             case "spatialspread":
                 c.rotY = (v - 0.5) * Math.PI;                 // ángulo del mundo
@@ -865,51 +1132,108 @@ class Estratos extends BaseThreeJsModule {
             case "dronedepth":
                 c.partSize = 0.03 + v * 0.22;                 // presencia de partículas
                 c.partOp = 0.25 + v * 0.65;
-                if (this._particles) {
-                    this._particles.points.material.size = c.partSize;
-                    this._particles.points.material.opacity = c.partOp;
-                }
                 break;
             case "atmospheremix":
-                c.fogNear = 30 - v * 22;                      // densidad de niebla
-                c.fogFar = 90 - v * 55;
-                if (this.scene && this.scene.fog) {
-                    this.scene.fog.near = c.fogNear;
-                    this.scene.fog.far = c.fogFar;
-                }
+                // Rango calibrado al encuadre real: la cámara está a ~28.7 del
+                // origen y el mundo llega a ~45. El tope anterior (near 8 /
+                // far 35) disolvía TODO menos el texto (que va con fog:false),
+                // dejando el poema flotando sobre un fondo vacío.
+                c.fogNear = 40 - v * 16;                      // densidad de niebla
+                c.fogFar = 130 - v * 60;
+                break;
+
+            // ── Cámara Fenológica (window.__phenoParams) ──────────────────
+            case "opacityFloor":
+                c.opacityFloor = v * 0.7;                     // mismo 0..0.7 que SC
+                break;
+            case "seasonalWeight":
+                c.season = v;                                 // humedad del día
                 break;
         }
+    }
+
+    // activityThreshold → densidad de siembra. Reconstruye, así que el puente
+    // lo manda con debounce; se ignora si el cambio no altera la población.
+    setDensity({ value = PHENO_DEFAULTS.activityThreshold } = {}) {
+        const d = densityFromThreshold(Math.min(1, Math.max(0, value)));
+        if (Math.abs(d - this.density) < 0.02) return;
+        this.density = d;
+        this._buildScene();
     }
 
     // Reaplica el estado de control tras cada _buildScene (los materiales
-    // recién creados no conocen los valores actuales de los sliders).
+    // recién creados no conocen los valores actuales de los sliders): salta
+    // directo al objetivo, sin rampa.
     _reapplyControls() {
-        this._applyTint();
+        Object.assign(this._view, this._ctrl);
+        this._pushView(true);
+    }
+
+    // Escribe el estado suavizado en los materiales. Se llama cada frame.
+    //
+    // La estación NO reemplaza a los sliders: los MULTIPLICA. El intérprete
+    // sigue fijando el rango con memoryfeed/dronedepth/atmospheremix y el
+    // calendario lo inclina hacia el año seco o el lluvioso dentro de ese
+    // rango. Así ningún gesto humano queda anulado por la fenología.
+    _pushView(force = false) {
+        const view = this._view;
+        const season = view.season;
+
+        // Olas más altas y partículas más densas en lluvias; quietud en seca.
+        const seasonWave = 0.35 + season * 1.30;
+        const seasonPart = 0.45 + season * 0.85;
+        // La niebla espesa un poco con la humedad, sin tragarse la escena.
+        const seasonFogNear = 1 - season * 0.22;
+        const seasonFogFar = 1 - season * 0.18;
+        this._waveScale = seasonWave;
+
         if (this._particles) {
-            this._particles.points.material.size = this._ctrl.partSize;
-            this._particles.points.material.opacity = this._ctrl.partOp;
+            this._particles.points.material.size = view.partSize;
+            this._particles.points.material.opacity = Math.min(1, view.partOp * seasonPart);
         }
         if (this.scene && this.scene.fog) {
-            this.scene.fog.near = this._ctrl.fogNear;
-            this.scene.fog.far = this._ctrl.fogFar;
+            this.scene.fog.near = view.fogNear * seasonFogNear;
+            this.scene.fog.far = view.fogFar * seasonFogFar;
+        }
+
+        // Presencia fenológica: cada especie se desvanece según lo lejos que
+        // esté la humedad del día de su propia floración, nunca por debajo del
+        // piso de opacidad (la cláusula de opacidad hecha paisaje).
+        const floor = view.opacityFloor;
+        this._sprites.forEach((s) => {
+            const align = 1 - Math.abs(season - s.bloom);
+            s.phenoOp = floor + (1 - floor) * align;
+            s.obj.material.opacity = s.phenoOp;
+        });
+        if (force || this._tintApplied === null || Math.abs(view.hue - this._tintApplied) > 1e-4) {
+            this._tintApplied = view.hue;
+            this._applyTint(view.hue);
         }
     }
 
-    // spectralshift → tinte: 0.5 es neutro (blanco = colores horneados tal
-    // cual); alejarse del centro rota el matiz de especies, olas y partículas.
+    // spectralshift → tinte. HUE_NEUTRAL (el reposo del puente) no tiñe;
+    // alejarse de él colorea. Dos modelos distintos, a propósito:
+    //   · olas y partículas guardan su color base y ROTAN el matiz.
+    //   · las especies llevan su color horneado en la textura (arte a dos
+    //     tintas: acento + C.ink), así que sólo admiten un multiplicativo.
+    //     Se usa un lavado de saturación plena y luminosidad alta, cuyo canal
+    //     dominante vale siempre 1.0: colorea sin oscurecer ni fundir los
+    //     cinco acentos en un mismo tono turbio, y es continuo en el centro
+    //     (antes había un escalón de ~28% de brillo al cruzar sat = 0.03).
     // El texto queda sin teñir para preservar legibilidad del poema.
-    _applyTint() {
-        const v = this._ctrl.hue;
-        const sat = Math.min(1, Math.abs(v - 0.5) * 2.2);
-        const tint = new THREE.Color();
-        if (sat < 0.03) tint.set("#ffffff"); else tint.setHSL(v, sat, 0.72);
+    _applyTint(hue) {
+        const dist = Math.min(1, Math.abs(hue - HUE_NEUTRAL) * 2.2);
+        const wash = dist * 0.5;
+        // s = 1 con l = 1 - wash/2 ⇒ canal máximo = 1.0, mínimo = 1 - wash.
+        // En wash = 0 da blanco puro (identidad multiplicativa).
+        const tint = new THREE.Color().setHSL(hue, 1, 1 - wash / 2);
         this._sprites.forEach((s) => s.obj.material.color.copy(tint));
-        const hueShift = (v - 0.5) * 1.0;
+        const hueShift = hue - HUE_NEUTRAL;
         this._waves.forEach((w) => {
-            w.line.material.color.copy(w.base).offsetHSL(hueShift, sat * 0.3, 0);
+            w.line.material.color.copy(w.base).offsetHSL(hueShift, dist * 0.3, 0);
         });
         if (this._particles) {
-            this._particles.points.material.color.copy(this._particles.base).offsetHSL(hueShift, sat * 0.3, 0);
+            this._particles.points.material.color.copy(this._particles.base).offsetHSL(hueShift, dist * 0.3, 0);
         }
     }
 

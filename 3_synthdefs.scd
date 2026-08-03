@@ -15,6 +15,30 @@ s.doWhenBooted({
     // Control parameters (name/spec/default) live in the canonical registry:
     // see 0_parameters.scd (~paramDefs). Buses are created from it below.
 
+    // ── Master limiter ──────────────────────────────────────────────────
+    // Nothing in this graph protected the output: every synth writes straight
+    // to Out.ar(0, …) and they sum unbounded. 16 concurrent pads at the old
+    // amp with masterVolume 0.3 already reached 1.34 full-scale before the
+    // drone and beat layers were added — that is the distortion, and on a
+    // busy chain it was the normal operating state, not an edge case.
+    //
+    // Placed at the TAIL of the root node so it sees the summed bus. Failure
+    // mode is deliberately benign: if this synth is missing or mis-ordered it
+    // reads silence and ReplaceOut writes zeros BEFORE the sources add their
+    // output, so the worst case is "no limiting", never "no sound".
+    //
+    // LeakDC first — accumulated DC from many one-shot envelopes eats headroom
+    // that the limiter would otherwise spend on real signal.
+    // The channel count is captured HERE, when the graph is built — In.ar
+    // needs a literal integer; passing it as a SynthDef arg makes it an
+    // OutputProxy and the def fails to compile ("numChannels must be a
+    // nonzero positive integer"). Read once from the booted server.
+    ~limiterChans = s.options.numOutputBusChannels;
+    SynthDef(\masterLimiter, { |ceiling = 0.92|
+        var sig = In.ar(0, ~limiterChans);
+        ReplaceOut.ar(0, Limiter.ar(LeakDC.ar(sig), ceiling, 0.01));
+    }).add;
+
     // Main transaction bell with MIDI control
     SynthDef(\elektronBell, {
         arg freq=440, amp=0.3,
@@ -43,14 +67,15 @@ s.doWhenBooted({
         var filterResonance = Select.kr(resonantBus >= 0, [0.4, In.kr(resonantBus, 1)]);
         
         // Additional drone/noise parameters
+        // masterAmp + filterCutoff are applied further down (they used to be
+        // read into variables this SynthDef then threw away). The drone*
+        // buses are NOT read here — they belong to \opalDrone, which now
+        // declares and uses them itself.
         var legacyAmp = Select.kr(masterAmpBus >= 0, [0.7, In.kr(masterAmpBus, 1)]);
         var legacyFilter = Select.kr(filterCutoffBus >= 0, [0.6, In.kr(filterCutoffBus, 1)]);
         var noiseAmount = Select.kr(noiseLevelBus >= 0, [0.1, In.kr(noiseLevelBus, 1)]);
         var noiseFilter = Select.kr(noiseFiltBus >= 0, [0.5, In.kr(noiseFiltBus, 1)]);
-        var droneIntensity = Select.kr(droneDepthBus >= 0, [0.3, In.kr(droneDepthBus, 1)]);
-        var droneEnvelope = Select.kr(droneFadeBus >= 0, [2.0, In.kr(droneFadeBus, 1)]);
-        var droneMix = Select.kr(droneMixBus >= 0, [0.5, In.kr(droneMixBus, 1)]);
-        
+
         // Spatial positioning parameters from spatial GUI
         var spatialX = Select.kr(spatialXBus >= 0, [0.0, In.kr(spatialXBus, 1)]);
         var spatialY = Select.kr(spatialYBus >= 0, [0.0, In.kr(spatialYBus, 1)]);
@@ -109,13 +134,20 @@ s.doWhenBooted({
         noise = PinkNoise.ar() * noiseAmount * 0.15;
         noise = LPF.ar(noise, noiseFilter.linexp(0, 1, 200, 2000));
         sig = sig + noise;
+
+        // filterCutoff: broad tone tilt over the whole pad (was read and dropped)
+        sig = LPF.ar(sig, Lag.kr(legacyFilter, 0.3).linexp(0, 1, 300, 12000));
         
         // Calculate distance-based amplitude scaling
         distance = (spatialX.squared + spatialY.squared).sqrt;
         distanceAmp = 1 - (distance * distanceParam * 0.5);
         
-        // Volume: masterVol linear (not squared) so pads aren't buried at mid-knob settings
-        sig = sig * (amp * masterVol.clip(0.01, 1) * distanceAmp.clip(0.1, 1));
+        // Volume: masterVol linear (not squared) so pads aren't buried at mid-knob
+        // settings. masterAmp rides on top as the pad-layer trim (also previously
+        // read and dropped) — it is the same control the beat engine scales its
+        // percussion with, so the two layers now balance from one slider.
+        sig = sig * (amp * masterVol.clip(0.01, 1) * distanceAmp.clip(0.1, 1)
+            * Lag.kr(legacyAmp, 0.3).linlin(0, 1, 0.05, 1.4));
         
         // Quadraphonic spatial positioning
         quadSig = PanAz.ar(
@@ -224,7 +256,14 @@ s.doWhenBooted({
     SynthDef(\opalDrone, {
         arg out=0, freq=55, amp=0.5, gate=1,
         masterVolBus=(-1), pitchBus=(-1), timeBus=(-1), spectralBus=(-1), spatialBus=(-1),
-        textureBus=(-1), atmosphereBus=(-1), memoryBus=(-1), harmonicBus=(-1), resonantBus=(-1);
+        textureBus=(-1), atmosphereBus=(-1), memoryBus=(-1), harmonicBus=(-1), resonantBus=(-1),
+        // Drone/level buses. These existed in the registry and on the control
+        // surface but NOTHING read them: \opalDrone did not declare them at all
+        // and \elektronBell read them into variables it then discarded, so six
+        // sliders (Master Amp, Filter Cutoff, Drone Depth/Fade/Space/Mix) moved
+        // a bus that reached no UGen. They shape the drone here.
+        masterAmpBus=(-1), filterCutoffBus=(-1),
+        droneDepthBus=(-1), droneFadeBus=(-1), droneSpaceBus=(-1), droneMixBus=(-1);
 
         var vol   = Select.kr(masterVolBus >= 0, [0.3, In.kr(masterVolBus, 1)]);
         var pShift= Select.kr(pitchBus >= 0, [0.0, In.kr(pitchBus, 1)]);
@@ -236,8 +275,14 @@ s.doWhenBooted({
         var dMix  = Select.kr(memoryBus >= 0, [0.3, In.kr(memoryBus, 1)]);
         var fmR   = Select.kr(harmonicBus >= 0, [1.0, In.kr(harmonicBus, 1)]);
         var res   = Select.kr(resonantBus >= 0, [0.4, In.kr(resonantBus, 1)]);
+        var mAmp  = Select.kr(masterAmpBus >= 0, [0.7, In.kr(masterAmpBus, 1)]);
+        var cutoff= Select.kr(filterCutoffBus >= 0, [0.6, In.kr(filterCutoffBus, 1)]);
+        var dDepth= Select.kr(droneDepthBus >= 0, [0.3, In.kr(droneDepthBus, 1)]);
+        var dFade = Select.kr(droneFadeBus >= 0, [2.0, In.kr(droneFadeBus, 1)]);
+        var dSpace= Select.kr(droneSpaceBus >= 0, [0.5, In.kr(droneSpaceBus, 1)]);
+        var dLayer= Select.kr(droneMixBus >= 0, [0.5, In.kr(droneMixBus, 1)]);
 
-        var env, sig, mod, sub, grains, delay, quadSig, baseFreq;
+        var env, sig, mod, sub, grains, delay, quadSig, baseFreq, dry;
         
         env = EnvGen.kr(Env.asr(4.0, 1.0, 6.0), gate, doneAction: 2);
         
@@ -255,27 +300,36 @@ s.doWhenBooted({
             VarSaw.ar(baseFreq * 1.5, 0, width: LFNoise1.kr(0.2).range(0.1, 0.9))
         ]) * 0.3;
         
-        // Drone RLPF: clamp filt BEFORE applying LFNoise multiplier, ceiling 3000Hz
+        // Drone RLPF: clamp filt BEFORE applying LFNoise multiplier, ceiling 3000Hz.
+        // filterCutoff (0–1) now scales the sweep window a further ±1 octave, so
+        // it works as a broad tone tilt UNDER spectralShift's absolute setting.
+        // Lagged by droneFade so the slider glides instead of stepping.
         sig = RLPF.ar(
-            sig, 
-            LFNoise2.kr(0.05).exprange(filt.clip(80, 3000) * 0.5, filt.clip(80, 3000) * 1.5).clip(80, 4500), 
+            sig,
+            LFNoise2.kr(0.05).exprange(filt.clip(80, 3000) * 0.5, filt.clip(80, 3000) * 1.5).clip(80, 4500)
+                * Lag.kr(cutoff, dFade).linexp(0, 1, 0.5, 2.0),
             res.linexp(0, 1, 0.9, 0.15)  // rq floor raised to 0.15 — prevents instability at high Q
         );
-        
+
         // Granular texturizer
         grains = PitchShift.ar(sig, 0.2, 1.0, texD * 0.5, texD * 0.5);
         sig = XFade2.ar(sig, grains, texD.linlin(0, 1, -1, 1));
-        
-        // Wash effects
+        dry = sig;
+
+        // Wash effects. droneSpace sizes the room (was hardcoded 0.9).
         delay = CombC.ar(sig, 1.0, LFNoise1.kr(0.1).range(0.2, 0.6), dMix * 4.0) * dMix;
         sig = sig + delay;
-        sig = FreeVerb.ar(sig, revM, 0.9, 0.1);
-        
-        // Sub low end anchor
+        sig = FreeVerb.ar(sig, revM, Lag.kr(dSpace, dFade).linlin(0, 1, 0.15, 0.99), 0.1);
+
+        // Sub low end anchor — droneDepth sets how far the body sinks.
         sub = SinOsc.ar(baseFreq * 0.25) * 0.5 * LPF.ar(sig, 200, mul: 0.5);
-        sig = sig + sub;
-        
-        sig = sig * env * amp * vol * 0.4;
+        sig = sig + (sub * Lag.kr(dDepth, dFade).linlin(0, 1, 0.15, 2.2));
+
+        // droneMix crossfades the washed/sub layer against the bare oscillator
+        // bed, so the slider moves between a dry drone and a fully bloomed one.
+        sig = XFade2.ar(dry, sig, Lag.kr(dLayer, dFade).linlin(0, 1, -1, 1));
+
+        sig = sig * env * amp * vol * Lag.kr(mAmp, dFade).linlin(0, 1, 0.05, 1.4) * 0.4;
         
         quadSig = PanAz.ar(4, sig, spatialX.atan2(0) / pi + LFNoise1.kr(0.05).range(-0.2, 0.2), 1, 2, 0.5);
         Out.ar(out, quadSig);
@@ -362,6 +416,19 @@ s.doWhenBooted({
 
     // Wait for SynthDefs to be added to server
     s.sync;
+
+    // ── Spawn the master limiter at the tail of the root node ───────────
+    // addToTail on RootNode puts it after ~defaultGroup, so it sees everything
+    // already summed on the output bus. Freed first so re-running this file
+    // during a soundcheck cannot stack limiters.
+    if(~masterLimiterSynth.notNil) {
+        try { ~masterLimiterSynth.free };
+        ~masterLimiterSynth = nil;
+    };
+    ~masterLimiterSynth = Synth.tail(RootNode(s), \masterLimiter, [\ceiling, 0.92]);
+    s.sync;
+    "Master limiter active (% ch, ceiling 0.92) — output can no longer clip."
+        .format(~limiterChans).postln;
 
     // Note: OSC handlers are defined in 6_osc_handlers.scd to avoid conflicts
 

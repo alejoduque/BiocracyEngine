@@ -22,6 +22,29 @@ let IUCN_MULT = [2, 1, 3, 5, 5];
 const EDNA_IDS = ["CHO", "AMZ", "COR", "CAR", "ORI", "PAC", "MAG", "GUA"];
 const EDNA_ANGLES_DEG = Array.from({ length: 8 }, (_, i) => (i / 8) * 360);
 
+// ─── Cámara Fenológica params — live values shared with visual switches ─────
+// Same contract as __sonethParams below: keyed by the last segment of
+// /pheno/<key>, mirrored here whenever SC echoes a knob, MIDI CC or HTML
+// slider. Slot bridges poll this instead of each re-deriving calendar state.
+//
+// The last two are NOT sliders — they are the calendar's own reading of today,
+// republished by the reverse-breath loop in phenology/breath.ts:
+//   seasonalWeight · wet-vs-dry weight of the current day (0 dry → 1 rainy)
+//   activeFraction · fraction of species currently past the activity threshold
+// Defaults mirror the slider values in views/parliament.html.
+const phenoParams: Record<string, number> = {
+  activityThreshold: 0.46,
+  windowWidth: 0.29,
+  seasonalBias: 0.5,
+  absenceWeight: 0.3,
+  opacityFloor: 0.0,
+  pulseGain: 0.5,
+  bancada: 0,
+  seasonalWeight: 0.5,
+  activeFraction: 0,
+};
+(window as unknown as { __phenoParams?: Record<string, number> }).__phenoParams = phenoParams;
+
 // ─── OSC bridge WebSocket ───
 let controlWS: WebSocket | null = null;
 let controlWsReady = false;
@@ -105,6 +128,23 @@ function connectControlWS() {
         if (dispEl) dispEl.textContent = v.toFixed(2);
       }
 
+      // ── Ritmo · escucha profunda (/rhythm/*) ────────────────────────
+      // SC echoes the normalized value on the canonical path after ANY
+      // origin changes it — MIDI CC 17–23, the SC GUI knob, or a preset
+      // load. Ticking the box here is what keeps those three surfaces and
+      // this panel showing the same truth. Setting .checked fires no change
+      // event, so a browser-origin toggle echoes back harmlessly.
+      if (address.startsWith("/rhythm/")) {
+        const v = args[0];
+        if (typeof v === "number" && isFinite(v)) {
+          const box = document.querySelector<HTMLInputElement>(
+            `input[type='checkbox'][data-osc='${address}']`
+          );
+          if (box) box.checked = v >= 0.5;
+        }
+        return;
+      }
+
       // ── Cámara Fenológica (Capítulo VI) ─────────────────────────────
       // SC echoes /pheno/<key> values back to the browser whenever a knob,
       // MIDI CC, or HTML slider moves. Three things happen here:
@@ -141,6 +181,10 @@ function connectControlWS() {
             b.classList.toggle("active", parseInt(b.dataset.bancada ?? "0", 10) === idx);
           });
         }
+
+        // 1b. Mirror into window.__phenoParams so slot bridges can poll it
+        //     (Estratos reads bancada / activityThreshold / opacityFloor).
+        phenoParams[key] = v;
 
         // 2. Apply to the calendar instance (no-op if slot P not mounted)
         applyPhenoControl(key, v);
@@ -1317,8 +1361,21 @@ async function init() {
     });
   }
 
+  // ── Ritmo · escucha profunda: scheme toggles (/rhythm/*) ────────────────
+  // Same contract as wireSlider, but the value is 0/1. SC's registry entries
+  // use a stepped ControlSpec(0,1,\lin,1), so ~setParamNorm snaps whatever it
+  // receives — MIDI CC, preset load or this checkbox — to one of two states.
+  function wireToggle(el: HTMLInputElement) {
+    const addr = el.dataset.osc;
+    if (!addr) return;
+    el.addEventListener("change", () => {
+      sendOSC(addr, el.checked ? 1 : 0);
+    });
+  }
+
   // Wire all currently-present range sliders (includes static HTML ones)
   document.querySelectorAll<HTMLInputElement>("input[type='range'][data-osc]").forEach(wireSlider);
+  document.querySelectorAll<HTMLInputElement>("input[type='checkbox'][data-osc]").forEach(wireToggle);
 
   // ── CONFIGS: save/load the full control state ──────────────────────────
   // SC owns the preset files (presets/*.json); loading routes every value

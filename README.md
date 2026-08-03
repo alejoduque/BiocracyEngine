@@ -123,6 +123,9 @@ nw_wrld Electron browser  (parliament.html)
        ├─ Slot B  Transito             (Three.js · fetched module)       │
        │          └─ reverse: throughput → /soneth/drone* → bridge → SC  │
        ├─ Slot E  Estratos             (Three.js · fetched module)       │
+       │          └─ forward: __phenoParams → bancada pins the strata,    │
+       │             activityThreshold → population, opacityFloor +       │
+       │             seasonalWeight → which species are present today     │
        └─ Slot R  Registro     (canvas · pretext ASCII field × slot 6) ──┘
                   └─ reverse: buffer → /soneth/memoryfeed, consensus → atmospheremix
 
@@ -149,8 +152,8 @@ Four processes are managed by `start_ecosystem.sh`:
 
 | App | Process | Ports | Role |
 |---|---|---|---|
-| **Python ETH** | `eth_sonify.py` (venv) | → UDP **57120** | web3 scraper; maps each tx value→note/velocity |
-| **SuperCollider** | `sclang start_sonification.scd` | in **57120** (OSC) + **MIDI**; out **3333**; scsynth **57110** | audio engine, GUI, beat engine, drone |
+| **Python ETH** | `eth_sonify.py` (venv) | → UDP **57120** | web3 scraper; per-tx `/eth/note` + `/eth/tx_info`, per-block `/eth/block` |
+| **SuperCollider** | `sclang start_sonification.scd` | in **57120** (OSC) + **MIDI**; out **3333**; scsynth **57110** | audio engine, GUI, beat engine, drone, master limiter |
 | **Bridge** | `parliament-bridge.js` (Node) | in UDP **3333**; WS **3334**; out UDP **57120**; HTTP **3335** `/diag` | OSC ↔ WebSocket, path translation |
 | **Browser** | webpack-dev-server + Electron | HTTP **9001**; WS **3334** | `parliament.html` GUI, store, visual slots |
 | **Laser** _(opt)_ | `laser-bridge.js` (Node, `LASER=1`) | WS **3337** in; USB → Helios DAC | vector frames → ILDA / laser onto the forest |
@@ -175,6 +178,63 @@ Four processes are managed by `start_ecosystem.sh`:
 | **memoryFeed** | CC 34 | delay feedback 0–0.8 | bloom strength | ghost trail alpha | red lines opacity | ghost alpha |
 | **harmonicRich** | CC 35 | FM ratio 0.1–8 | lissajous complexity | harmonic overlay | Bézier Z-scale | hue drift |
 | **resonantBody** | CC 36 | filter Q 0.1–0.8 | chroma aberration | peak dot glow | red cloud scale | inner weight |
+
+### Row 3–4: Drone & Noise
+
+| Param | MIDI CC | SC Audio |
+|---|---|---|
+| **masterAmp** | CC 5 | layer trim — pads, drone **and** beat engine from one control |
+| **filterCutoff** | CC 6 | broad tone tilt, under `spectralShift`'s absolute setting |
+| **noiseLevel** | CC 7 | pink-noise breath under the pad |
+| **noiseFilt** | CC 8 | noise LPF 200–2000 Hz |
+| **droneDepth** | CC 9 | how far the sub body sinks |
+| **droneFade** | CC 37 | glide time on the drone's own controls |
+| **droneSpace** | CC 38 | reverb room size |
+| **droneMix** | CC 39 | dry drone ↔ fully bloomed (wash + sub) |
+| **delayFeedback** | CC 40 | comb delay feedback |
+| **transactionInfluence** | CC 41 | how far chain activity bends the engine |
+
+> Six of these (CC 5, 6, 9, 37, 38, 39) previously wrote to control buses that
+> **no UGen read** — `\opalDrone` did not declare them and `\elektronBell` read
+> them into variables it discarded. They now shape the drone.
+
+### Ritmo · Escucha Profunda
+
+Seven independent schemes for deriving rhythm **from** the chain's own temporal
+structure, rather than decorating a fixed 16-step grid with it. Each is a
+checkbox in the control panel, a MIDI CC, and a preset-persisted registry entry.
+**All off reproduces the previous engine exactly** — they are additive.
+
+| Toggle | OSC | CC | Reads |
+|---|---|---|---|
+| **Bloque = Compás** | `/rhythm/blockbar` | 17 | the real ~12 s block period as the bar; tx index as phase |
+| **Acento por Gas** | `/rhythm/gasaccent` | 18 | priority-over-base-fee ratio → accent and dynamics |
+| **Entropía** | `/rhythm/entropy` | 19 | dispersion of inter-arrival times → swing, subdivision |
+| **Dirección = Voz** | `/rhythm/voices` | 20 | counterparty address → register; a returning actor returns audibly |
+| **Semilla de Hash** | `/rhythm/hashseed` | 21 | block hash seeds that bar's cell — different, yet reproducible |
+| **Tres Relojes** | `/rhythm/polyclock` | 22 | block, arrival and decay on clocks with no integer relation |
+| **Silencio** | `/rhythm/silence` | 23 | chain quiet relative to its own rate → real rests |
+
+**Entropía is rate-invariant by construction.** It is the standard deviation of
+*log* intervals, so `sd(log(k·x)) = sd(log x)`: scaling every arrival by 2×, 5×
+or 10× leaves the reading unchanged. It measures *la forma de las llegadas, no
+cuántas*. Measured on a linear coefficient of variation it clipped to 1.0
+permanently, because a window mixing 0.05 s intra-block arrivals with ~12 s
+block gaps always has a CV above 2.
+
+**Performance safety.** Silence can never strand a set: the rest threshold is
+clipped to 0.5–4 s, and above a 20 s gap the grid *resumes* — a dead feed must
+read as failure, not as a musical rest. A starvation guard forces a pad through
+if a transaction arrived but nothing sounded for 6 s, so no combination of the
+128 possible toggle states can mute a layer indefinitely.
+
+**Master limiter.** Nothing previously protected the output — every synth wrote
+straight to `Out.ar(0, …)` and they summed unbounded (16 concurrent pads reached
+1.34 full-scale before the drone and beat layers were added). A `LeakDC →
+Limiter` at 0.92 sits at the tail of the root node. Its failure mode is benign:
+if the node is missing or mis-ordered it reads silence and `ReplaceOut` writes
+zeros *before* the sources add theirs, so the worst case is no limiting, never
+no sound.
 
 ---
 
@@ -214,6 +274,46 @@ Launches all services: nw_wrld, parliament-bridge, SuperCollider, Python ETH scr
 cd nw_wrld_local && node diag-sweep.js
 ```
 Sends all 22 params through the bridge (0 → 1 → 0.5), then runs a continuous volume LFO.
+
+### Live engine monitor
+
+The single most useful tool when something "sounds wrong". SuperCollider posts
+one line every 2 s describing what it is actually receiving and doing:
+
+```bash
+tail -f sclang_log.txt | grep MON
+```
+```
+[MON] flags:B-E---S  bells:47/gate:310/cap:12/bar:88  env(atk/dec/amp):0.81/0.83/0.071
+      prio:0.264 ent:0.517 dens:0.312  blk:25670857 txN:290 idx:289 base:0.051  synths:9
+```
+
+| Field | Answers |
+|---|---|
+| `flags` | `B G E V H P S` — uppercase means that toggle **reached SC**. Settles "is the control even connected?" without guessing. |
+| `bells` | pads spawned, and skipped *by which gate*: `gate` time-gate, `cap` synth ceiling, `bar` block-phase quantization |
+| `env` | atk/dec/amp of the last pad — if these stop being identical, the envelope is responding to the transaction |
+| `prio` `ent` `dens` | live chain-derived values; a constant here means a mapping has saturated |
+| `blk` `txN` `idx` `base` | whether the enriched `eth_sonify.py` payload is arriving at all |
+
+Three OSC controls, from anything that can reach SC on **57120**:
+
+| Address | Effect |
+|---|---|
+| `/diag/osctrace 1` | `OSCFunc.trace` — post **every** inbound OSC message; the definitive test of whether a control reaches SC |
+| `/diag/monitor 0` | silence the `[MON]` line |
+| `/diag/reset` | zero the pad counters to measure a fresh window |
+
+### Boot sanity check
+
+The registry banner in `sclang_log.txt` confirms the engine loaded the current
+sources — worth checking first when a change appears to have no effect, since
+`start_sonification.scd` reads all twelve `.scd` files from disk **at boot**:
+
+```
+Parameter registry loaded: 35 parameters, 39 OSC routes, 34 MIDI CCs.
+Master limiter active (2 ch, ceiling 0.92) — output can no longer clip.
+```
 
 ---
 
