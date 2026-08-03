@@ -25,6 +25,10 @@ A live audiovisual instrument and a deployable public artifact that couples thre
 
 Rather than "visualizing data," the engine performs a cybernetic coupling where the forest, blockchain protocols, and human actions hold equal standing as political agents.
 
+![Slot F · DarkForest — the tropical dry forest of Reserva Manakai (Planeta Rica, Córdoba) as a live stratigraphic data-scape: Humboldt's strata from atmósfera down through dosel, sotobosque and hojarasca to the mycorrhizal network, with species binomials, ecological flow vectors (fotosíntesis CO₂→C, respiración suelo C→ATM, micorriza C→hongo, herbivoría, fijación N) and the incoming Ethereum stream along the right edge.](BEngine.jpg)
+
+*Slot F · **DarkForest** — the forest reading itself while the chain flows. Strata after Humboldt; every binomial is a member of the parliament.*
+
 ---
 
 ## 1. Theoretical Foundations & Research Contributions
