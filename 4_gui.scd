@@ -219,7 +219,13 @@
             // Row 4: Additional Drone Controls
             [\droneFade, \droneSpace, \droneMix, \delayFeedback, \transactionInfluence],
             // Row 5: Cámara Fenológica de lo Vivo (1-bit white palette)
-            [\activityThreshold, \windowWidth, \seasonalBias, \absenceWeight, \pulseGain, \opacityFloor, \bancada]
+            [\activityThreshold, \windowWidth, \seasonalBias, \absenceWeight, \pulseGain, \opacityFloor, \bancada],
+            // Row 6: Ritmo · escucha profunda — toggles, not continuous knobs.
+            // Their ControlSpec is stepped (0,1,\lin,1), so the knobs snap
+            // between the two positions; the browser checkboxes are the
+            // comfortable surface, these mirror them for MIDI/GUI parity.
+            [\rhythmBlockBar, \rhythmGasAccent, \rhythmEntropy, \rhythmVoices,
+                \rhythmHashSeed, \rhythmPolyclock, \rhythmSilence]
         ];
 
         // Enhanced knob function with oscilloscope aesthetics

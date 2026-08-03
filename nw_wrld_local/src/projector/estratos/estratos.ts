@@ -36,6 +36,7 @@ type EstratosInstance = {
   regenerate?: () => void;
   toggleAnim?: (o?: EArg) => void;
   setNocturno?: (o?: EArg) => void;
+  setDensity?: (o?: EArg) => void;
   applyControl?: (key: string, v: number) => void;
   renderer?: { setSize: (w: number, h: number) => void; getPixelRatio?: () => number };
   camera?: { aspect: number; updateProjectionMatrix: () => void };
@@ -49,12 +50,18 @@ type EstratosHooks = {
 
 let _ctor: { new (container: HTMLElement): EstratosInstance } | null = null;
 let _instance: EstratosInstance | null = null;
-let _hooks: EstratosHooks | null = null;
 let _unsubscribeStore: (() => void) | null = null;
 let _ecoTimer: ReturnType<typeof setInterval> | null = null;
 let _voteTimer: ReturnType<typeof setInterval> | null = null;
 let _sonethTimer: ReturnType<typeof setInterval> | null = null;
+let _phenoTimer: ReturnType<typeof setInterval> | null = null;
+let _paletteRetry: ReturnType<typeof setTimeout> | null = null;
 let _lastVoteTime = 0;
+let _lastRegen = 0;
+let _currentMode = "total";
+let _lastPalette = "";
+let _lastPaletteChange = 0;
+let _pendingPalette: string | null = null;
 
 // sonETH keys routed live into the module (see Estratos.applyControl):
 // color (spectralshift), rotation (spatialspread + harmonicrich), and
@@ -65,6 +72,27 @@ const SONETH_CONTROL_KEYS = [
   "spectralshift", "spatialspread", "harmonicrich", "timedilation",
   "texturedepth", "memoryfeed", "noiselevel", "dronedepth", "atmospheremix",
 ];
+
+// ─── Cámara Fenológica → Estratos (window.__phenoParams) ───────────────────
+// Four couplings, three live and one that reseeds:
+//   bancada           → setMode          the human chamber PINS the strata
+//   activityThreshold → setDensity       how many species are seeded (debounced)
+//   opacityFloor      → sprite opacity   the opacity clause, as landscape
+//   seasonalWeight    → waves/fog/motes  the year passing (derived, not a knob)
+const PHENO_LIVE_KEYS = ["opacityFloor", "seasonalWeight"];
+
+// Bancada (Art. 43 §1) is a season-taxon grouping and `mode` is which strata
+// are present — the semantics line up one-to-one, so this is a direct map.
+// Index 0 ("todas") means "no pin": eco signals get the mode back.
+const BANCADA_MODE = ["", "desierto", "pantano", "aire", "mar"];
+// Set while a bancada other than "todas" is selected. An explicit human act
+// outranks the ETH eco bias, which is why wireEcoFromStore checks it.
+let _bancadaMode = "";
+let _densityTimer: ReturnType<typeof setTimeout> | null = null;
+let _lastDensitySent = -1;
+// Reseeding is a full _buildScene, so the threshold slider is only acted on
+// once it settles — dragging it must not rebuild on every input event.
+const DENSITY_DEBOUNCE_MS = 600;
 
 // ─── Mode-biome mapping: eco signals bias which zone-mode the strata show ──
 const ECO_MODE_MAP: Record<string, string> = {
@@ -112,19 +140,22 @@ async function ensureConstructor() {
   return _ctor!;
 }
 
+// `hooks` is accepted to match the sibling slot bridges' mount signature, but
+// Estratos has no reverse path (see header): every coupling here is forward
+// or surface-level, so there is nothing to route back through applyViz/sendOSC.
 export async function mountEstratos(
   container: HTMLElement,
-  hooks: EstratosHooks
+  _hooks: EstratosHooks
 ): Promise<EstratosInstance> {
   destroyEstratos();
   const Ctor = await ensureConstructor();
   _instance = new Ctor(container);
-  _hooks = hooks;
 
   wireEcoFromStore();
   wireConsensusFromStore();
   wireForwardVotes();
   wireSonethControls();
+  wirePhenoControls();
   return _instance;
 }
 
@@ -132,12 +163,30 @@ export function destroyEstratos() {
   if (_ecoTimer) { clearInterval(_ecoTimer); _ecoTimer = null; }
   if (_voteTimer) { clearInterval(_voteTimer); _voteTimer = null; }
   if (_sonethTimer) { clearInterval(_sonethTimer); _sonethTimer = null; }
+  if (_phenoTimer) { clearInterval(_phenoTimer); _phenoTimer = null; }
+  if (_paletteRetry) { clearTimeout(_paletteRetry); _paletteRetry = null; }
+  if (_densityTimer) { clearTimeout(_densityTimer); _densityTimer = null; }
   if (_unsubscribeStore) { _unsubscribeStore(); _unsubscribeStore = null; }
   if (_instance) {
     try { _instance.destroy(); } catch { /* ignore */ }
     _instance = null;
   }
-  _hooks = null;
+  _lastVoteTime = 0;
+  _lastRegen = 0;
+  _currentMode = "total";
+  _lastPalette = "";
+  _lastPaletteChange = 0;
+  _pendingPalette = null;
+  _bancadaMode = "";
+  _lastDensitySent = -1;
+}
+
+// setMode rebuilds the scene, so it is only worth calling on a real change —
+// both the eco poll and the vote poll can otherwise ask for the current mode.
+function applyMode(mode: string) {
+  if (!_instance || mode === _currentMode) return;
+  _currentMode = mode;
+  try { _instance.setMode?.({ mode }); } catch { /* ignore */ }
 }
 
 // ─── ETH /eco/* → mode changes (forward) ───────────────────────────────────
@@ -145,10 +194,12 @@ export function destroyEstratos() {
 // matching biome. This is purely VIZ — no SC handler for this address.
 function wireEcoFromStore() {
   let last = { co2: 0, mycoPulse: 0, phosphorus: 0, nitrogen: 0 };
-  let lastSetMode = "";
 
   _ecoTimer = setInterval(() => {
     if (!_instance) return;
+    // A selected bancada pins the strata: the human chamber outranks the
+    // ETH eco bias. Released ("todas") and eco gets the mode back.
+    if (_bancadaMode) return;
     const eco = parliamentStore.state?.eco;
     if (!eco) return;
 
@@ -165,9 +216,8 @@ function wireEcoFromStore() {
       }
     }
 
-    if (strongest && strongest !== lastSetMode) {
-      lastSetMode = strongest;
-      try { _instance!.setMode?.({ mode: strongest }); } catch { /* ignore */ }
+    if (strongest && strongest !== _currentMode) {
+      applyMode(strongest);
       console.log(`[estratos] eco → setMode("${strongest}")`);
     }
 
@@ -182,30 +232,51 @@ function wireEcoFromStore() {
 
 // ─── Parliament consensus → palette mood (VIZ coupling) ────────────────────
 // Min-dwell: the consensus wave oscillates across the palette thresholds
-// several times a minute — without a dwell every crossing forced a full
-// scene rebuild (visible hitch + the old light-paper palettes made the
-// background flash to white; palettes are now nocturno-inverted in the
-// module, and rebuilds are limited to one per dwell window here).
+// several times a minute. setPalette no longer rebuilds the scene (the module
+// recolors in place), but it still re-bakes every species and text canvas, so
+// a dwell keeps the piece from strobing through moods.
+//
+// performance.now(), not Date.now(): a backward NTP step made the elapsed
+// check go negative and swallowed every palette change until it caught up.
 const PALETTE_DWELL_MS = 12000;
+
+function applyPalette(pal: string) {
+  if (!_instance?.setPalette || pal === _lastPalette) return;
+  const wait = PALETTE_DWELL_MS - (performance.now() - _lastPaletteChange);
+  if (wait > 0) {
+    // Re-evaluate when the window expires instead of waiting for the next
+    // store notification — if the bridge WS drops right after a suppressed
+    // change, nothing else would ever come to unstick the palette.
+    _pendingPalette = pal;
+    if (!_paletteRetry) {
+      _paletteRetry = setTimeout(() => {
+        _paletteRetry = null;
+        const next = _pendingPalette;
+        _pendingPalette = null;
+        if (next) applyPalette(next);
+      }, wait);
+    }
+    return;
+  }
+  _lastPalette = pal;
+  _lastPaletteChange = performance.now();
+  try { _instance.setPalette({ palette: pal }); } catch { /* ignore */ }
+}
+
 function wireConsensusFromStore() {
-  let lastPalette = "";
-  let lastChange = 0;
   _unsubscribeStore = parliamentStore.subscribe((state) => {
-    if (!_instance || !_instance.setPalette) return;
     const c = state.consensus ?? state.consensusWave;
     if (typeof c !== "number") return;
-    const pal = consensusToPalette(c);
-    if (pal === lastPalette) return;
-    if (Date.now() - lastChange < PALETTE_DWELL_MS) return;
-    lastPalette = pal;
-    lastChange = Date.now();
-    try { _instance!.setPalette!({ palette: pal }); } catch { /* ignore */ }
+    applyPalette(consensusToPalette(c));
   });
 }
 
 // ─── sonETH sliders → live module controls (color/rotation/movement) ───────
 // Polls window.__sonethParams (~7 Hz) and pushes CHANGED values into
 // Estratos.applyControl — no scene rebuild, everything animates in place.
+// applyControl only sets targets: the module's own animate loop chases them
+// with a frame-rate-independent filter (see _ctrl/_view there), so this poll
+// rate is invisible rather than showing up as ~7 steps per second.
 function wireSonethControls() {
   const lastSent: Record<string, number> = {};
   _sonethTimer = setInterval(() => {
@@ -222,9 +293,66 @@ function wireSonethControls() {
   }, 140);
 }
 
+// ─── Cámara Fenológica → live module state ─────────────────────────────────
+// Polls window.__phenoParams on the same cadence as the sonETH poll. Live
+// values go through applyControl (targets the module smooths per frame);
+// bancada and activityThreshold are discrete/expensive and handled separately.
+function wirePhenoControls() {
+  const lastSent: Record<string, number> = {};
+  let lastBancada = -1;
+
+  _phenoTimer = setInterval(() => {
+    if (!_instance) return;
+    const pp = (window as unknown as { __phenoParams?: Record<string, number> }).__phenoParams;
+    if (!pp) return;
+
+    // ── live: opacityFloor + seasonalWeight ──
+    if (_instance.applyControl) {
+      for (const key of PHENO_LIVE_KEYS) {
+        const v = pp[key];
+        if (typeof v !== "number" || !isFinite(v)) continue;
+        if (lastSent[key] !== undefined && Math.abs(lastSent[key] - v) < 0.002) continue;
+        lastSent[key] = v;
+        try { _instance.applyControl(key, v); } catch { /* ignore */ }
+      }
+    }
+
+    // ── discrete: bancada → mode ──
+    const b = pp.bancada;
+    if (typeof b === "number" && isFinite(b)) {
+      const idx = Math.max(0, Math.min(4, Math.round(b * 4)));
+      if (idx !== lastBancada) {
+        lastBancada = idx;
+        _bancadaMode = BANCADA_MODE[idx];
+        // Releasing to "todas" hands the strata back to the eco poll, which
+        // re-asserts a mode on its next tick; until then keep the full view.
+        applyMode(_bancadaMode || "total");
+        console.log(`[estratos] bancada ${idx} → mode "${_bancadaMode || "total (eco released)"}"`);
+      }
+    }
+
+    // ── expensive: activityThreshold → population density (debounced) ──
+    const thr = pp.activityThreshold;
+    if (typeof thr === "number" && isFinite(thr) && Math.abs(thr - _lastDensitySent) >= 0.01) {
+      _lastDensitySent = thr;
+      if (_densityTimer) clearTimeout(_densityTimer);
+      _densityTimer = setTimeout(() => {
+        _densityTimer = null;
+        try { _instance?.setDensity?.({ value: thr }); } catch { /* ignore */ }
+      }, DENSITY_DEBOUNCE_MS);
+    }
+  }, 140);
+}
+
 // ─── Vote events → regenerate with new seed (forward) ──────────────────────
 // Each vote event triggers a full regeneration — the strata reseed themselves,
 // as if the landscape itself is responding to each political act.
+//
+// This is the hot path, not the palette one: votes arrive in bursts of several
+// per second and regenerate() IS a full _buildScene (~110 canvas allocations,
+// texture uploads, geometry rebuilds and disposals). Bursts are coalesced to
+// one reseed per dwell — the landscape answers the burst, not each ballot.
+const REGEN_DWELL_MS = 1500;
 function wireForwardVotes() {
   _voteTimer = setInterval(() => {
     if (!_instance || !_instance.regenerate) return;
@@ -235,9 +363,11 @@ function wireForwardVotes() {
     _lastVoteTime = ev.time;
 
     // Passed votes regenerate landscape; emergency votes shift to tectonica
-    if (ev.type === "emergency") {
-      try { _instance!.setMode?.({ mode: "tectonica" }); } catch { /* ignore */ }
-    }
+    if (ev.type === "emergency") applyMode("tectonica");
+
+    const now = performance.now();
+    if (now - _lastRegen < REGEN_DWELL_MS) return;
+    _lastRegen = now;
     try { _instance!.regenerate!(); } catch { /* ignore */ }
     console.log(`[estratos] vote "${ev.type}" → regenerate`);
   }, 90);

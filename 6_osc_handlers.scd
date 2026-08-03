@@ -23,10 +23,174 @@ s.doWhenBooted({
     OSCdef(\txHandler).free;
     OSCdef(\ethNoteHandler).free;
     OSCdef(\ethTxInfoHandler).free;
+    OSCdef(\ethBlockHandler).free;
+
+    // ── Ritmo · escucha profunda: the chain's own temporal structure ─────
+    // State the seven rhythm schemes read (see ~paramDefs \rhythm* toggles).
+    // Populated unconditionally from the enriched eth_sonify.py payload; the
+    // beat engine only CONSULTS it when the matching flag is on, and every
+    // field carries a sane default so a stale Python is never fatal.
+    ~rhythmState = ~rhythmState ?? {
+        (
+            blockNum: 0, blockHash: "", blockSeed: 0,
+            blockTxCount: 0, blockBaseFee: 0.0, blockAt: 0.0,
+            blockPeriod: 12.0,      // Ethereum's nominal cadence, refined live
+            txIndex: 0, txSinceBlock: 0, lastBarSlot: -1,
+            priorityRatio: 0.5,     // 0–1: how far over base fee this TX bid
+            addrSig: 0, nonce: 0, calldataLen: 0,
+            txIntervals: [],        // ring of the last N inter-arrival gaps
+            entropy: 0.0,           // 0–1 coefficient of variation of the above
+            lastTxAt: 0.0
+        )
+    };
+    ~rhythmIntervalMax = 24;
+
+    // ── Live monitor: what SC is ACTUALLY receiving and doing ────────────
+    // `tail -f sclang_log.txt | grep MON` gives one line every 2 s answering,
+    // without guesswork, the questions that are otherwise invisible:
+    //   · did a /rhythm/* toggle ever REACH SuperCollider?  (flags field)
+    //   · are pads sounding, or being gated — and by which gate? (bells field)
+    //   · is the enriched eth_sonify payload arriving?        (blk/prio fields)
+    //   · is the engine getting live values or frozen ones?   (prio/ent/dens)
+    // Flags read B G E V H P S (blockbar gasaccent entropy voices hashseed
+    // polyclock silence); UPPERCASE = on, "-" = off.
+    ~bellStats = ~bellStats ?? {
+        (spawned: 0, skipGate: 0, skipCap: 0, skipBar: 0,
+         lastAtk: 0, lastDec: 0, lastAmp: 0)
+    };
+
+    ~monitorFlags = {
+        var names = [\rhythmBlockBar, \rhythmGasAccent, \rhythmEntropy, \rhythmVoices,
+                     \rhythmHashSeed, \rhythmPolyclock, \rhythmSilence];
+        var letters = ["B", "G", "E", "V", "H", "P", "S"];
+        var out = "";
+        names.do { |n, i|
+            var v = if(~beatParams.notNil) { ~beatParams[n] ? 0 } { 0 };
+            out = out ++ if(v > 0.5, { letters[i] }, { "-" });
+        };
+        out
+    };
+
+    ~monitorLine = {
+        var rs = ~rhythmState, b = ~bellStats;
+        ("[MON] flags:" ++ ~monitorFlags.value
+            ++ "  bells:" ++ b[\spawned] ++ "/gate:" ++ b[\skipGate]
+                ++ "/cap:" ++ b[\skipCap] ++ "/bar:" ++ b[\skipBar]
+            ++ "  env(atk/dec/amp):" ++ b[\lastAtk].round(0.01) ++ "/"
+                ++ b[\lastDec].round(0.01) ++ "/" ++ b[\lastAmp].round(0.001)
+            ++ "  prio:" ++ rs[\priorityRatio].round(0.001)
+            ++ " ent:" ++ rs[\entropy].round(0.001)
+            ++ " dens:" ++ (~currentDensity ? 0).round(0.001)
+            ++ "  blk:" ++ rs[\blockNum] ++ " txN:" ++ rs[\blockTxCount]
+                ++ " idx:" ++ rs[\txIndex] ++ " base:" ++ rs[\blockBaseFee].round(0.001)
+            ++ "  synths:" ++ s.numSynths).postln;
+    };
+
+    if(~monitorRoutine.notNil) { ~monitorRoutine.stop };
+    // try-wrapped: an uncaught error inside a Routine kills it silently, and a
+    // diagnostic that dies the moment something goes wrong is worse than none.
+    ~monitorRoutine = Routine({
+        loop {
+            try { ~monitorLine.value } { |e| ("[MON] monitor error: " ++ e.errorString).postln };
+            2.0.wait;
+        };
+    });
+    ~monitorEnabled = ~monitorEnabled ? true;
+    if(~monitorEnabled) { ~monitorRoutine.play(AppClock) };
+
+    // /diag/monitor 0|1  — silence or resume the monitor line
+    // /diag/osctrace 0|1 — OSCFunc.trace: post EVERY inbound OSC message, the
+    //                      definitive test of whether a control reaches SC
+    // /diag/reset        — zero the bell counters to measure a fresh window
+    OSCdef(\diagMonitor).free;
+    OSCdef(\diagMonitor, { |msg|
+        var on = msg[1].asFloat > 0.5;
+        ~monitorEnabled = on;
+        if(on) { ~monitorRoutine.reset.play(AppClock) } { ~monitorRoutine.stop };
+        ("[MON] monitor " ++ if(on, "ON", "OFF")).postln;
+    }, "/diag/monitor");
+
+    OSCdef(\diagTrace).free;
+    OSCdef(\diagTrace, { |msg|
+        var on = msg[1].asFloat > 0.5;
+        OSCFunc.trace(on);
+        ("[MON] OSC trace " ++ if(on, "ON — every inbound message will post", "OFF")).postln;
+    }, "/diag/osctrace");
+
+    OSCdef(\diagReset).free;
+    OSCdef(\diagReset, { |msg|
+        [\spawned, \skipGate, \skipCap, \skipBar].do { |k| ~bellStats[k] = 0 };
+        "[MON] bell counters reset".postln;
+    }, "/diag/reset");
+
+    // Inter-arrival ENTROPY, not density. Density says how much is arriving;
+    // entropy says in what SHAPE — regular ticking vs bursty clustering — and
+    // shape is what keeps a rhythm from settling into repetition.
+    // Coefficient of variation (sd/mean), normalized: 0 = metronomic arrivals,
+    // 1 = heavily clustered.
+    // Measured in LOG time, not linear. A window mixing 0.05 s intra-block
+    // arrivals with ~12 s block gaps gives a raw coefficient of variation of
+    // 2–3 on every single sample, so the previous (sd/mean) form clipped to
+    // 1.0 permanently and the control was a constant — the live monitor read
+    // ent:1.0 flat. The same spread is ~2–4 octaves in log space, which sits
+    // inside the usable range and actually discriminates shapes.
+    // 3.5 octaves of spread = fully bursty.
+    ~rhythmEntropy = {
+        var iv = ~rhythmState[\txIntervals];
+        var n = iv.size, logs, mean, sd, r = 0.0;
+        if(n >= 4) {
+            logs = iv.collect { |x| x.clip(0.001, 120).log2 };
+            mean = logs.sum / n;
+            sd = (logs.collect { |x| (x - mean).squared }.sum / n).sqrt;
+            r = (sd / 3.5).clip(0, 1);
+        };
+        r
+    };
+
+    // Deterministic per-block pattern seed. Same block always yields the same
+    // rhythmic cell, so a session is reproducible while never repeating —
+    // the same trick the Estratos module uses for its layout.
+    ~rhythmSeededRand = { |seed, n|
+        var h = (seed + (n * 2654435761)) & 0x7FFFFFFF;
+        h = (h bitXor: (h >> 13)) * 1274126177;
+        ((h bitXor: (h >> 16)) & 0x7FFFFFFF) / 2147483647.0
+    };
+
+    // Handler for Python's /eth/block [number, hash, txCount, baseFeeGwei, ts].
+    // Blocks land on a ~12 s cadence that is given from outside the instrument:
+    // the one clock in this system that is neither a metronome nor a knob.
+    OSCdef(\ethBlockHandler, {|msg, time, addr, port|
+        var now = SystemClock.seconds;
+        var prevAt = ~rhythmState[\blockAt];
+        var hash = msg[2].asString;
+        if(prevAt > 0) {
+            // Measured cadence, smoothed — tracks reality rather than assuming 12 s
+            ~rhythmState[\blockPeriod] =
+                ((~rhythmState[\blockPeriod] * 0.7) + ((now - prevAt).clip(4, 30) * 0.3));
+        };
+        ~rhythmState[\blockNum]     = msg[1].asInteger;
+        ~rhythmState[\blockHash]    = hash;
+        ~rhythmState[\blockSeed]    = hash.hash.abs;
+        ~rhythmState[\blockTxCount] = msg[3].asInteger.max(1);
+        ~rhythmState[\blockBaseFee] = msg[4].asFloat;
+        ~rhythmState[\blockAt]      = now;
+        ~rhythmState[\txSinceBlock] = 0;
+        // Let the beat engine know a bar boundary just happened
+        if(~beatParams.notNil) { ~beatParams.blockPulse = now };
+    }, '/eth/block');
 
     // Shared function: sonify a transaction and broadcast to visuals
     ~handleTransaction = { |noteNum, velocity, value, gasPrice, txHash, time|
         var baseFreq, synthArgs, nutrient, consensus;
+        var valLog, priorityRatio, accent, relScale, minGap, sounds;
+        // ── the pad layer under the rhythm schemes ────────────────────────
+        // The seven toggles used to gate only ~beatRoutine (kick/perc/dust),
+        // so ticking every box left THIS layer — the one you actually hear
+        // most of the time — completely unchanged. They apply here too now.
+        var rBlockBar  = (~beatParams !? { ~beatParams.rhythmBlockBar }  ? 0) > 0.5;
+        var rGasAccent = (~beatParams !? { ~beatParams.rhythmGasAccent } ? 0) > 0.5;
+        var rVoices    = (~beatParams !? { ~beatParams.rhythmVoices }    ? 0) > 0.5;
+        var rSilence   = (~beatParams !? { ~beatParams.rhythmSilence }   ? 0) > 0.5;
 
         baseFreq = noteNum.midicps;
         // Add hash-based micro-variation
@@ -40,9 +204,42 @@ s.doWhenBooted({
         // pinging on top of it.
         while({ baseFreq > 320 }, { baseFreq = baseFreq * 0.5 });
 
-        // Calculate abstract values for visuals
+        // ── (4) Dirección = Voz ──
+        // The counterparty picks the register, so a returning address returns
+        // recognisably — the same actor at the same height in the texture.
+        if(rVoices and: { ~rhythmState.notNil }) {
+            baseFreq = baseFreq * [0.5, 0.667, 0.75, 1.0, 1.0, 1.333, 1.5]
+                .wrapAt(~rhythmState[\addrSig] % 7);
+        };
+
+        // ── (2) Acento por Gas ──  (1.0 = neutral when the toggle is off)
+        // Baseline 0.85, not 0.55. The priority ratio is heavily skewed toward
+        // zero — most transactions bid at or near the base fee — so a 0.55
+        // floor meant enabling this control ATTENUATED almost everything to
+        // 55% and only occasionally rose. It read as "turning it on makes the
+        // piece quieter", the opposite of an accent. Now the common case sits
+        // near unity and a genuine high bid punches to 1.75.
+        accent = if(rGasAccent and: { ~rhythmState.notNil }) {
+            0.85 + (~rhythmState[\priorityRatio] * 0.9)
+        } { 1.0 };
+
+        // ── (7) Silencio ──
+        // Shorter tails so gaps between bursts become real silence instead of
+        // the pads fusing. Without this the layer never stops sounding, so a
+        // quiet chain is inaudible as quiet.
+        relScale = if(rSilence) { 0.45 } { 1.0 };
+
+        // Calculate abstract values for visuals.
+        // consensus was gasPrice.linlin(1, 200, 0, 1) — at post-Dencun gas that
+        // clips to 0 on every single transaction, which is why the bridge log
+        // showed a constant /bio/consensus 0. The priority ratio carries the
+        // same intent ("how contested is this block") and stays alive.
         nutrient = value.linlin(0.001, 10, 0, 1);
-        consensus = gasPrice.linlin(1, 200, 0, 1);
+        consensus = if(~rhythmState.notNil and: { ~rhythmState[\blockBaseFee] > 0 }) {
+            ~rhythmState[\priorityRatio]
+        } {
+            gasPrice.linlin(1, 200, 0, 1)
+        };
 
         // Update global state
         ~globalState.transactionCount = ~globalState.transactionCount + 1;
@@ -55,7 +252,13 @@ s.doWhenBooted({
         ~txInterval = time - ~lastTxTime;
         ~lastTxTime = time;
         if(~currentDensity.isNil) { ~currentDensity = 0.5 };
-        ~currentDensity = (~currentDensity * 0.9) + ((~txInterval.linlin(0.1, 10, 1.0, 0.0)) * 0.1);
+        // The old map was linlin(0.1, 10, 1.0, 0.0): eth_sonify.py spaces
+        // intra-block transactions 0.05 s apart, BELOW that 0.1 floor, so every
+        // sample clipped to 1.0 and the EMA pinned at ~0.99997 — the constant
+        // the bridge log showed. A log map over 0.01–30 s keeps sub-0.1 s
+        // bursts distinguishable from each other and from the block gaps.
+        ~currentDensity = (~currentDensity * 0.9) +
+            ((1 - ((~txInterval.clip(0.01, 30) / 0.01).log2 / 11.5507)).clip(0, 1) * 0.1);
 
         // Broadcast to visuals bridge
         if(~visualsDest.notNil) {
@@ -78,12 +281,39 @@ s.doWhenBooted({
         // atk: larger value = slower fade-in (more contemplative)
         // dec: gas price drives the settle time (high gas = busier network = faster)
         // rel: ETH value drives the tail length (bigger TX = longer resonance)
+        // ── envelope: was frozen, now actually reads the transaction ──────
+        // Every one of these three was effectively constant:
+        //   atk = value.linlin(0.001, 10, 3.0, 1.2) — LINEAR over 0.001–10 ETH
+        //     while real values are log-distributed and cluster in the bottom
+        //     0.1% of that range, so it returned ~3.0 for every transaction.
+        //   dec = gasPrice.linlin(1, 200, 1.8, 0.7) — the same dead absolute-gas
+        //     map that made /bio/consensus read 0; clips to 1.8 forever.
+        //   rel = value.linlin(0.001, 10, 2.5, 5.0) — same problem as atk, ~2.5.
+        // So every bell was an identical slow swell. Combined with a 0.15 s
+        // spawn gate and a ~13 s life once timeStretch multiplied it, the pads
+        // never cleared: 16 sustained tones summing constantly, which is both
+        // the "pulsing bell" and the distortion (that many overlapping partials
+        // clip the output stage).
+        //
+        // valLog uses the SAME normalization as eth_sonify.map_value_to_note
+        // (log10 over 0.0001–100 ETH), so the envelope moves with the register.
+        valLog = (((value.max(0.000001).log10) + 4.0) / 6.0).clip(0, 1);
+        priorityRatio = if(~rhythmState.notNil) { ~rhythmState[\priorityRatio] } { 0.5 };
+
         synthArgs = [
             \freq, baseFreq,
-            \amp, velocity.linlin(30, 120, 0.12, 0.28),
-            \atk, value.linlin(0.001, 10, 3.0, 1.2),
-            \dec, gasPrice.linlin(1, 200, 1.8, 0.7),
-            \rel, value.linlin(0.001, 10, 2.5, 5.0),
+            // 0.12–0.28 guaranteed clipping: 16 concurrent pads at 0.28 with
+            // masterVolume 0.3 sums to 1.34 full-scale before the drone and the
+            // beat layer are added, and nothing in this graph limits the master
+            // bus. Retuned for the concurrency the gate actually allows.
+            \amp, velocity.linlin(30, 120, 0.05, 0.12) * accent,
+            // small transfer = quick articulation, large = slow swell
+            \atk, valLog.linlin(0, 1, 0.35, 2.2),
+            // urgency settles fast; a patient bid rings on
+            \dec, priorityRatio.linlin(0, 1, 1.3, 0.35),
+            // tails shortened so silence can open between bursts instead of
+            // the pads fusing into one continuous wash
+            \rel, valLog.linlin(0, 1, 0.7, 2.8) * relScale,
             \pan, if(txHash.notNil, { txHash.hash.fold(-1.0, 1.0) }, { 0 })
         ];
 
@@ -94,14 +324,80 @@ s.doWhenBooted({
             };
         };
 
-        // Time-gate: min 0.15s between pad spawns — prevents block-burst pile-up.
-        // Also cap at 16 concurrent pads (leaving room for drone + beat synths).
+        // Time-gate. 0.15 s was far too tight for a pad whose life runs several
+        // seconds once timeStretch multiplies the envelope: the layer saturated
+        // and stayed saturated, which is why it read as one continuous tone
+        // rather than a sequence of transactions. 0.45 s lets each pad be heard
+        // as an event, and the cap counts ALL synths so it also stops the pads
+        // starving the beat engine.
+        minGap = 0.45;
+        sounds = true;
+
+        // ── (1) Bloque = Compás ──
+        // Instead of firing on raw arrival, only transactions whose position in
+        // the block lands on one of the bar's 16 divisions sound. Blocks are
+        // ordered by priority fee, so the head of the bar is dense and urgent
+        // and the tail thins — the bar's shape is read from the block.
+        // Quantize by POSITION IN TIME inside the block, not by transaction
+        // index. eth_sonify enumerates every transaction in a block but only
+        // transmits those above min_value_threshold, so the indices that
+        // actually arrive are sparse and non-contiguous — (idx % stride) then
+        // landed far less often than 1-in-stride and the layer collapsed to a
+        // trickle (measured: 608 bar-skips against 55 pads). Worse, the old
+        // guard needed blockTxCount > 16, so before the first /eth/block the
+        // filter was inactive and pads flowed freely, then fell off a cliff
+        // the moment a block landed — the "loud for ten seconds, then silence".
+        //
+        // Time slots give a real 16-onset bar however much upstream filtering
+        // happens, and degrade gracefully: no block yet = no quantization.
+        if(rBlockBar and: { ~rhythmState.notNil } and: { ~rhythmState[\blockAt] > 0 }) {
+            var phase = ((SystemClock.seconds - ~rhythmState[\blockAt])
+                / ~rhythmState[\blockPeriod].max(1)).clip(0, 1);
+            var slot = (phase * 16).floor.asInteger;
+            if(slot == ~rhythmState[\lastBarSlot]) {
+                sounds = false
+            } {
+                ~rhythmState[\lastBarSlot] = slot
+            };
+            minGap = 0.05;   // the slot IS the quantizer; the time gate steps aside
+        };
+
+        // ⚠ This nil-guard MUST stay above every arithmetic use of
+        // ~lastPadTime. It previously sat below the starvation guard, so the
+        // very first transaction evaluated `time - nil`, threw, and aborted
+        // ~handleTransaction before ~lastPadTime was ever assigned — which
+        // made every later transaction throw at the same point. The pad layer
+        // went permanently silent while /eth/tx_info kept updating the rhythm
+        // state, so the monitor showed live chain data next to bells:0 and all
+        // four skip counters at zero.
         if(~lastPadTime.isNil) { ~lastPadTime = 0 };
-        if((time - ~lastPadTime > 0.15) and: { s.numSynths < 16 }) {
+
+        // Starvation guard. Any combination of the seven toggles must still
+        // produce sound while the chain is flowing: if a transaction has been
+        // received but nothing has sounded for 6 s, force this one through.
+        // Without it, a filter combination nobody tested could mute the pad
+        // layer for the rest of a set with no way to tell it apart from a
+        // dead feed.
+        if((time - ~lastPadTime) > 6.0) { sounds = true; minGap = 0 };
+        // Every branch is counted so the monitor can say WHY a pad did or did
+        // not sound — "it seems random" is otherwise impossible to check.
+        case
+        { sounds.not } {
+            ~bellStats[\skipBar] = ~bellStats[\skipBar] + 1;
+        }
+        { (time - ~lastPadTime) <= minGap } {
+            ~bellStats[\skipGate] = ~bellStats[\skipGate] + 1;
+        }
+        { s.numSynths >= 16 } {
+            ~bellStats[\skipCap] = ~bellStats[\skipCap] + 1;
+        }
+        {
             Synth(\elektronBell, synthArgs);
             ~lastPadTime = time;
-        } {
-            // silently skip — the sonic texture is already covered by active pads
+            ~bellStats[\spawned] = ~bellStats[\spawned] + 1;
+            ~bellStats[\lastAtk] = valLog.linlin(0, 1, 0.35, 2.2);
+            ~bellStats[\lastDec] = priorityRatio.linlin(0, 1, 1.3, 0.35);
+            ~bellStats[\lastAmp] = velocity.linlin(30, 120, 0.05, 0.12) * accent;
         };
 
         // Update GUI
@@ -130,17 +426,50 @@ s.doWhenBooted({
         ~handleTransaction.(noteNum, velocity, value, gasPrice, ~globalState.lastHash, time);
     }, '/eth/note');
 
-    // Handler for Python's /eth/tx_info [hash, value, gasPrice, toAddr]
-    // This arrives just after /eth/note — store the real values for the next note
+    // Handler for Python's /eth/tx_info
+    //   [hash, value, gasPrice, toAddr]                        ← original
+    //   + [txIndex, priorityGwei, baseGwei, addrSig, nonce, calldataLen]
+    // This arrives just after /eth/note — store the real values for the next note.
+    // The tail is optional: an older eth_sonify.py sends only args 1–4 and the
+    // rhythm state simply keeps its defaults.
     OSCdef(\ethTxInfoHandler, {|msg, time, addr, port|
         var txHash = msg[1].asString;
         var value = msg[2].asFloat;
         var gasPrice = msg[3].asFloat;
+        var now = SystemClock.seconds;
+        var iv, gap, priorityGwei, baseGwei;
 
         // Store for the next /eth/note to use
         ~globalState.lastValue = value;
         ~globalState.lastGasPrice = gasPrice;
         ~globalState.lastHash = txHash;
+
+        // ── enriched fields → rhythm state ──
+        if(msg.size >= 11) {
+            priorityGwei = msg[6].asFloat;
+            baseGwei = msg[7].asFloat;
+            ~rhythmState[\txIndex]      = msg[5].asInteger;
+            ~rhythmState[\addrSig]      = msg[8].asInteger;
+            ~rhythmState[\nonce]        = msg[9].asInteger;
+            ~rhythmState[\calldataLen]  = msg[10].asInteger;
+            // How far over base fee this actor bid, log-compressed 1x–8x → 0–1.
+            // Self-calibrating: unlike the old absolute gasPrice.linlin(1,200,…)
+            // (which read 0 at every modern gas price) this cannot go flat.
+            ~rhythmState[\priorityRatio] = if(baseGwei > 0) {
+                ((priorityGwei / baseGwei).max(1.0).log2 / 3.0).clip(0, 1)
+            } { 0.5 };
+        };
+        ~rhythmState[\txSinceBlock] = ~rhythmState[\txSinceBlock] + 1;
+
+        // ── inter-arrival ring → entropy ──
+        if(~rhythmState[\lastTxAt] > 0) {
+            gap = (now - ~rhythmState[\lastTxAt]).clip(0.001, 60);
+            iv = ~rhythmState[\txIntervals] ++ [gap];
+            if(iv.size > ~rhythmIntervalMax) { iv = iv.drop(iv.size - ~rhythmIntervalMax) };
+            ~rhythmState[\txIntervals] = iv;
+            ~rhythmState[\entropy] = ~rhythmEntropy.value;
+        };
+        ~rhythmState[\lastTxAt] = now;
     }, '/eth/tx_info');
 
     // Legacy handler for /tx [hash, value, gasPrice] — kept for backwards compat

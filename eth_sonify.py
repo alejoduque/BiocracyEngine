@@ -39,13 +39,45 @@ def map_value_to_note(value, min_note=36, max_note=84):
     note = min_note + normalized * (max_note - min_note)
     return int(note)
 
-# Map gas price to velocity/volume
-def map_gas_to_velocity(gas_price, min_vel=30, max_vel=120):
-    gas_gwei = w3.from_wei(gas_price, 'gwei')
-    # Normalize and map to MIDI velocity range
-    normalized = min(1.0, max(0.0, (float(gas_gwei) - 10) / 300))
-    velocity = min_vel + normalized * (max_vel - min_vel)
-    return int(velocity)
+# Map gas to velocity/volume.
+#
+# The old version normalized (gwei - 10) / 300, a window calibrated for 2021-era
+# mainnet. Post-Dencun base fees sit far below 10 gwei, so EVERY transaction
+# clamped to min_vel and velocity was a constant 30 — one whole expressive
+# dimension permanently dead.
+#
+# What actually carries information is not the absolute price but how far a
+# sender bid ABOVE the block's base fee: "how badly did this actor want in".
+# That ratio is self-calibrating — it stays alive whether the base fee is
+# 0.3 gwei or 300 — so this mapping cannot silently go flat again when the gas
+# regime shifts.
+def map_gas_to_velocity(gas_price, base_fee=None, min_vel=30, max_vel=120):
+    gas_gwei = float(w3.from_wei(gas_price, 'gwei'))
+    if base_fee:
+        base_gwei = float(w3.from_wei(base_fee, 'gwei'))
+        # Priority ratio: 1.0 = paid exactly base fee, 3.0 = bid 3x over.
+        ratio = gas_gwei / base_gwei if base_gwei > 0 else 1.0
+        # log2 over 1x..8x -> 0..1. Most blocks live in 1.0-2.0, which lands
+        # mid-range and leaves headroom for genuine priority spikes.
+        normalized = min(1.0, max(0.0, math.log2(max(1.0, ratio)) / 3.0))
+    else:
+        # No base fee available (pre-EIP-1559 tx, or a node that omits it):
+        # fall back to a log window across 0.1..100 gwei, still never flat.
+        normalized = min(1.0, max(0.0, (math.log10(max(0.1, gas_gwei)) + 1.0) / 4.0))
+    return int(min_vel + normalized * (max_vel - min_vel))
+
+
+# Stable small integer identity for an address. Used by the "address as voice"
+# rhythm scheme: the same counterparty returns as the same voice, so a long
+# listen lets you recognise recurring actors rather than hearing undifferentiated
+# events. Python's hash() is salted per process, so derive it deterministically.
+def address_signature(addr):
+    if not addr:
+        return 0
+    h = 2166136261
+    for ch in str(addr).lower():
+        h = ((h ^ ord(ch)) * 16777619) & 0xFFFFFFFF
+    return h % 1024
 
 # Generate instrument based on transaction type
 def get_instrument(tx_data):
@@ -88,8 +120,26 @@ async def poll_transactions(poll_interval=3):
                         block = w3.eth.get_block(block_num, full_transactions=True)
                         print(f"Block {block_num} has {len(block['transactions'])} transactions")
 
+                        # ── Block-level message ────────────────────────────
+                        # Ethereum blocks land on a ~12 s cadence — a real,
+                        # externally-given pulse. Emitting it lets SC use the
+                        # block as a BAR (rhythmBlockBar) and seed that bar's
+                        # pattern from the block hash (rhythmHashSeed) instead
+                        # of running a metronome the chain merely decorates.
+                        # Sent unconditionally; SC ignores it unless a scheme
+                        # that wants it is enabled.
+                        block_hash = block['hash'].hex() if hasattr(block['hash'], 'hex') else str(block['hash'])
+                        base_fee = block.get('baseFeePerGas')
+                        osc_client.send_message("/eth/block", [
+                            int(block_num),
+                            str(block_hash)[:18],
+                            int(len(block['transactions'])),
+                            float(w3.from_wei(base_fee, 'gwei')) if base_fee else 0.0,
+                            float(block.get('timestamp', 0)),
+                        ])
+
                         # Process each transaction in the block
-                        for tx in block['transactions']:
+                        for tx_index, tx in enumerate(block['transactions']):
                             # Convert to dict if it's an AttributeDict
                             tx_dict = dict(tx) if not isinstance(tx, dict) else tx
                             tx_hash = tx_dict['hash'].hex() if hasattr(tx_dict['hash'], 'hex') else tx_dict['hash']
@@ -118,7 +168,7 @@ async def poll_transactions(poll_interval=3):
 
                             # Map to musical parameters
                             note = map_value_to_note(value)
-                            velocity = map_gas_to_velocity(gas_price)
+                            velocity = map_gas_to_velocity(gas_price, base_fee)
                             instrument = get_instrument(tx_dict)
 
                             # Determine duration based on value (larger values = longer notes)
@@ -127,12 +177,30 @@ async def poll_transactions(poll_interval=3):
                             # Print info
                             print(f"TX: {tx_hash[:10]}... Value: {w3.from_wei(value, 'ether'):.5f} ETH → Note: {note}, Vel: {velocity}")
 
-                            # Send tx_info FIRST so SC has the real values when /eth/note fires
+                            # Send tx_info FIRST so SC has the real values when /eth/note fires.
+                            # Args 1–4 are unchanged (SC reads msg[1..4]); 5–10 are
+                            # appended for the rhythm schemes, which is backward
+                            # compatible — an older SC simply ignores the tail.
+                            #   5 txIndex     position in the block = priority rank,
+                            #                 since blocks are ordered by fee
+                            #   6 priorityGwei / 7 baseGwei  the live gas signal
+                            #   8 addrSig     stable voice identity per counterparty
+                            #   9 nonce       how many times this sender has acted
+                            #  10 calldataLen how complex the act was
+                            calldata = tx_dict.get('input') or '0x'
+                            calldata_len = max(0, (len(calldata) - 2) // 2) if isinstance(calldata, str) \
+                                else len(calldata)
                             osc_client.send_message("/eth/tx_info", [
                                 str(tx_hash)[:10],                          # Transaction hash (first 10 chars)
                                 float(w3.from_wei(value, 'ether')),         # Value in ether
                                 float(w3.from_wei(gas_price, 'gwei')),      # Gas price in gwei
-                                str(to_address)[-8:] if to_address else "contract_creation"  # Last 8 chars of recipient
+                                str(to_address)[-8:] if to_address else "contract_creation",  # Last 8 chars of recipient
+                                int(tx_index),
+                                float(w3.from_wei(gas_price, 'gwei')),
+                                float(w3.from_wei(base_fee, 'gwei')) if base_fee else 0.0,
+                                int(address_signature(to_address)),
+                                int(tx_dict.get('nonce') or 0),
+                                int(calldata_len),
                             ])
 
                             # Then send the note trigger
