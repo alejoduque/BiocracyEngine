@@ -191,6 +191,20 @@ class PhenologicalCalendar extends BaseThreeJsModule {
         rust: new THREE.Color("#ffffff"),
     };
 
+    // Site identity, as a single scrolling line. This was five stacked static
+    // rows in the info column (SITIO // SITE, the reserve, the municipality,
+    // the country, the coordinates, the rainfall regime) — text that never
+    // changes for the life of the piece yet held five lines of a column that
+    // sits over the calendar. As a ticker it says the same thing in one line
+    // and gives the other four back to the viewport.
+    static SITE_TICKER = [
+        "RESERVA MANAKAI",
+        "PLANETA RICA, CORDOBA",
+        "COLOMBIA",
+        "08.47N 75.58W",
+        "BIMODAL // TROPICO HUMEDO",
+    ].join("  ///  ") + "  ///  ";
+
     // Taxon → orbit assignment (innermost → outermost).
     // z: vertical offset so the orbits form a visible stack in 3D.
     // r: taxon-specific orbit radius. tube: torus tube thickness.
@@ -1062,16 +1076,26 @@ class PhenologicalCalendar extends BaseThreeJsModule {
             // no antialiasing, no gradients, pixel-grid feel.
             style.textContent = `
 .pheno-col {
+    /* ── ONE type scale for BOTH columns ────────────────────────────────
+       The info column (DIA / REGIMEN / SITIO) and the census column had
+       independent, ad-hoc sizes — info ranged 0.75vmin–2.4vmin while the
+       census sat flat at ~0.78vmin, so the two panels read as unrelated
+       pieces of UI. Every rule below now derives from these four values,
+       which makes "same typography in both columns" structural rather than
+       a coincidence that drifts on the next edit. */
+    --ph-body:  calc(2px + 0.78vmin);   /* all running text, both columns */
+    --ph-label: calc(2px + 0.72vmin);   /* section captions, dimmed       */
+    --ph-emph:  calc(3px + 1.05vmin);   /* the few values that must lead  */
+    --ph-lh: 1.15;
     position: absolute;
     top: 0; height: 100%;
     overflow-y: auto;
     overflow-x: hidden;
-    /* Base font size bumped from calc(2px+0.75vmin) → calc(4px+1.05vmin)
-       so the right-info column reads comfortably on a projector. */
-    font-size: calc(4px + 1.05vmin);
-    /* Tighter line-height across the column so sections feel dense and
-       readable rather than airy and small (was 1.4 → now 1.1). */
-    line-height: 1.1;
+    /* Inherited default — every child sets its own size from the scale above,
+       so this only catches unclassed text. Kept on the same body value so
+       nothing can accidentally render at a size outside the scale. */
+    font-size: var(--ph-body);
+    line-height: var(--ph-lh);
     color: #ffffff;
     pointer-events: auto;
     white-space: pre-wrap;
@@ -1081,23 +1105,68 @@ class PhenologicalCalendar extends BaseThreeJsModule {
     -webkit-font-smoothing: none;
     -moz-osx-font-smoothing: unset;
     font-family: 'Courier New', 'Lucida Console', 'Consolas', monospace;
-    background: rgba(0,0,0,0.82);
-    border-right: 1px solid rgba(255,255,255,0.18);
+    /* Barely-there overlay: 0.82 → 0.25. The columns already float above the
+       canvas, but at 0.82 they were effectively opaque panels and the ring
+       could not be read through them. The viewport now dominates. */
+    background: rgba(0,0,0,0.25);
+    /* With the fill this faint the panel no longer supplies its own contrast,
+       so the TEXT has to carry it — otherwise the column becomes unreadable
+       every time a lit species node passes behind it. A shadow does that
+       without putting the background opacity back. */
+    text-shadow: 0 0 2px #000, 0 0 4px #000, 0 1px 3px #000;
+    border-right: 1px solid rgba(255,255,255,0.12);
     z-index: 5;
     text-transform: uppercase;
     letter-spacing: 0.06em;
 }
 .pheno-col::-webkit-scrollbar { width: 3px; }
 .pheno-col::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.3); }
-.pheno-col__census { left: 0; width: 28%; padding: 0.3vmin 0.6vmin 0.3vmin 0.6vmin; text-align: left; }
-.pheno-col__info   { right: 0; width: 24%; padding: 0.3vmin 0.6vmin 0.3vmin 0.6vmin; text-align: left;
-    border-left: 1px solid rgba(255,255,255,0.18); border-right: none; }
+/* Census (left): 28% → 20%. The 2-across species grid is kept — the width
+   comes back from tighter gaps and a smaller row type instead. */
+.pheno-col__census { left: 0; width: 20%; padding: 0.25vmin 0.45vmin; text-align: left; }
+/* Info (right): a RECTANGLE, not a full-height strip. height:auto overrides
+   the inherited height:100%, so the panel ends where its content ends and can
+   never run past the bottom of the viewport; max-height keeps it contained
+   when the day's readout is long. */
+.pheno-col__info   { right: 0; width: 19%; padding: 0.25vmin 0.45vmin; text-align: left;
+    height: auto; max-height: 100%;
+    border-left: 1px solid rgba(255,255,255,0.12);
+    border-bottom: 1px solid rgba(255,255,255,0.12);
+    border-right: none; }
 
-.pheno-col .ph-section { margin: 0; padding: 0.25vmin 0; }
-.pheno-col .ph-section + .ph-section { border-top: 1px solid rgba(255,255,255,0.18); }
+/* Site ticker: the five static SITIO lines as one scrolling line. Same type
+   scale as everything else in the columns; the run is duplicated in the
+   markup-free way (animation translates by -50% of a doubled string) so the
+   loop has no visible seam. */
+.pheno-col .ph-ticker {
+    overflow: hidden;
+    white-space: nowrap;
+    border-top: 1px solid rgba(255,255,255,0.12);
+    padding-top: 0.15vmin;
+    margin-top: 0.15vmin;
+    font-size: var(--ph-label);
+    color: rgba(255,255,255,0.55);
+    letter-spacing: 0.12em;
+}
+.pheno-col .ph-ticker-run {
+    display: inline-block;
+    padding-left: 100%;
+    animation: ph-ticker-scroll 34s linear infinite;
+    will-change: transform;
+}
+@keyframes ph-ticker-scroll {
+    from { transform: translateX(0); }
+    to   { transform: translateX(-100%); }
+}
+@media (prefers-reduced-motion: reduce) {
+    .pheno-col .ph-ticker-run { animation: none; padding-left: 0; }
+}
+
+.pheno-col .ph-section { margin: 0; padding: 0.15vmin 0; }
+.pheno-col .ph-section + .ph-section { border-top: 1px solid rgba(255,255,255,0.12); }
 .pheno-col .ph-label {
     /* Section labels (DIA, REGIMEN, SITIO, etc.) — readable at projector distance */
-    font-size: calc(2px + 0.75vmin);
+    font-size: var(--ph-label);
     letter-spacing: 0.18em;
     color: rgba(255,255,255,0.6);
     text-transform: uppercase;
@@ -1106,70 +1175,70 @@ class PhenologicalCalendar extends BaseThreeJsModule {
 }
 .pheno-col .ph-big {
     /* Day number, active count — keep big and tight */
-    font-size: calc(7px + 2.4vmin);
+    font-size: var(--ph-emph);
     font-weight: 700;
     color: #ffffff;
     letter-spacing: 0.1em;
-    line-height: 0.95;
+    line-height: var(--ph-lh);
     margin: 0;
     display: block;
 }
 .pheno-col .ph-mid {
-    font-size: calc(3px + 1.15vmin);
+    font-size: var(--ph-emph);
     font-weight: 700;
     color: #ffffff;
     margin: 0;
     letter-spacing: 0.08em;
-    line-height: 1.05;
+    line-height: var(--ph-lh);
 }
 .pheno-col .ph-sub {
-    font-size: calc(2px + 0.85vmin);
+    font-size: var(--ph-body);
     color: rgba(255,255,255,0.7);
     letter-spacing: 0.08em;
-    line-height: 1.05;
+    line-height: var(--ph-lh);
     margin: 0;
 }
 .pheno-col .ph-rule { display: none; }
 .pheno-col .ph-quiet {
-    font-size: calc(3px + 1.2vmin);
+    font-size: var(--ph-body);
     color: rgba(255,255,255,0.4);
     margin: 0;
-    line-height: 1.05;
+    line-height: var(--ph-lh);
 }
 .pheno-col .ph-taxon {
-    font-size: calc(3px + 1.0vmin);
+    font-size: var(--ph-body);
     margin: 0;
     letter-spacing: 0.1em;
-    line-height: 1.05;
+    line-height: var(--ph-lh);
     color: rgba(255,255,255,0.8);
 }
 .pheno-col .ph-sci {
-    font-size: calc(4px + 1.55vmin);
+    font-size: var(--ph-emph);
     font-weight: 700;
     color: #ffffff;
-    line-height: 1.05;
+    line-height: var(--ph-lh);
     margin: 0;
     word-break: break-word;
     letter-spacing: 0.04em;
 }
 .pheno-col .ph-common {
     /* Vernacular name in focus block — promoted to readable size */
-    font-size: calc(3px + 1.15vmin);
+    font-size: var(--ph-body);
     color: rgba(255,255,255,0.85);
     margin: 0;
-    line-height: 1.05;
+    line-height: var(--ph-lh);
     font-weight: 700;
 }
 .pheno-col .ph-fam {
-    font-size: calc(2px + 0.85vmin);
+    font-size: var(--ph-body);
     color: rgba(255,255,255,0.5);
     margin: 0;
-    line-height: 1.05;
+    line-height: var(--ph-lh);
 }
 .pheno-col .ph-extras {
-    font-size: calc(2px + 0.85vmin);
+    font-size: var(--ph-body);
     color: rgba(255,255,255,0.5);
-    line-height: 1.05;
+    line-height: var(--ph-lh);
     margin: 0;
 }
 .pheno-col .ph-progress {
@@ -1183,14 +1252,14 @@ class PhenologicalCalendar extends BaseThreeJsModule {
     transition: width 0.5s steps(20, end);
 }
 .pheno-col .ph-bar-row {
-    display: flex; align-items: center; gap: 0.5vmin;
+    display: flex; align-items: center; gap: 0.35vmin;
     margin: 0;
-    font-size: calc(2px + 0.85vmin);
-    line-height: 1.1;
+    font-size: var(--ph-body);
+    line-height: var(--ph-lh);
 }
 .pheno-col .ph-bar-label {
     flex: 0 0 auto;
-    width: 9vmin;
+    width: 6.5vmin;
     color: rgba(255,255,255,0.75);
     letter-spacing: 0.08em;
 }
@@ -1216,19 +1285,29 @@ class PhenologicalCalendar extends BaseThreeJsModule {
     padding-bottom: 0.15vmin;
     margin: 0 0 0.2vmin;
 }
+/* ONE column. The 2-across grid halved the width available to each species
+   name, which is what forced the truncation in the first place; with the
+   column at 20% each cell was ~9% of the viewport for a full binomial plus
+   its family. A single list gives every line the whole column, so nothing
+   needs cutting and the names stay readable over the ring behind them. */
 .pheno-col .ph-census-body {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 0.1vmin 0.8vmin;
+    display: block;
 }
 .pheno-col .ph-c-row {
-    display: flex; align-items: baseline; gap: 0.5vmin;
-    font-size: calc(2px + 0.88vmin);
-    line-height: 1.1;
+    /* align-items:start, not baseline — rows are now multi-line when a name
+       wraps, and baseline would stagger the dot/tag columns against them. */
+    display: flex; align-items: flex-start; gap: 0.35vmin;
+    font-size: var(--ph-body);
+    line-height: var(--ph-lh);
 }
-.pheno-col .ph-c-d { flex: 0 0 auto; width: 3vmin; font-size: calc(2px + 0.78vmin); color: #fff; }
-.pheno-col .ph-c-t { flex: 0 0 auto; width: 6vmin; opacity: 0.6; font-size: calc(1px + 0.75vmin); letter-spacing: 0.06em; }
-.pheno-col .ph-c-s { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: rgba(255,255,255,0.9); }
+/* .ph-c-d (the "###.." meter) is gone — see the census builder. */
+.pheno-col .ph-c-t { flex: 0 0 auto; width: 4.6vmin; opacity: 0.6; font-size: var(--ph-body); letter-spacing: 0.04em; }
+/* Species name WRAPS instead of being clipped. It previously combined
+   overflow:hidden with text-overflow:ellipsis and white-space:nowrap, which
+   cut every binomial that did not fit the cell — and the column just got 8%
+   narrower, so that was most of them. The row grows a line instead.
+   (No backticks in comments here: this whole block is a JS template literal.) */
+.pheno-col .ph-c-s { flex: 1; min-width: 0; white-space: normal; overflow-wrap: anywhere; color: rgba(255,255,255,0.9); }
 .pheno-col .ph-c-c { color: rgba(255,255,255,0.55); }
 .pheno-col .ph-c-f { color: rgba(255,255,255,0.35); margin-left: 0.3vmin; }
 
@@ -1249,33 +1328,36 @@ class PhenologicalCalendar extends BaseThreeJsModule {
     text-shadow: 1px 1px 0 #000, -1px -1px 0 #000, 2px 2px 0 #000;
     transition: opacity 0.3s steps(3, end);
     opacity: 0; pointer-events: none;
-    background: rgba(0,0,0,0.85);
-    padding: 2px 5px;
-    outline: 1px solid rgba(255,255,255,0.7);
+    background: rgba(0,0,0,0.6);
+    padding: 1px 4px;
+    outline: 1px solid rgba(255,255,255,0.45);
     text-align: center;
 }
 /* Common (vernacular) name is the primary line — big, white, 1-bit feel.
    Scientific name is secondary, smaller and dim, beneath it. */
 .pheno-active-label .ph-l-com {
     font-weight: 700;
-    font-size: calc(5px + 1.6vmin);
+    /* 1.6vmin → 1.1vmin. The columns are translucent now, so far more of the
+       ring is visible and far more labels are on screen at once; at the old
+       size they crowded each other and covered the orbits they sit on. */
+    font-size: calc(3px + 1.1vmin);
     line-height: 1.0;
     color: #fff;
-    letter-spacing: 0.10em;
+    letter-spacing: 0.08em;
     image-rendering: pixelated;
 }
 .pheno-active-label .ph-l-sci {
-    font-size: calc(2px + 0.78vmin);
+    font-size: calc(2px + 0.62vmin);
     line-height: 1.1;
     color: rgba(255,255,255,0.55);
     font-style: normal;
     letter-spacing: 0.04em;
-    margin-top: 2px;
+    margin-top: 1px;
 }
 /* When a species has NO common name, the scientific name acts as primary */
 .pheno-active-label.no-common .ph-l-sci {
     font-weight: 700;
-    font-size: calc(4px + 1.3vmin);
+    font-size: calc(3px + 1.0vmin);
     color: #fff;
     margin-top: 0;
 }
@@ -1892,14 +1974,6 @@ class PhenologicalCalendar extends BaseThreeJsModule {
   <div class="ph-sub">&gt; ${season.tag.toUpperCase()}</div>
 </div>
 <div class="ph-section">
-  <div class="ph-label">SITIO // SITE</div>
-  <div class="ph-mid">RESERVA MANAKAI</div>
-  <div class="ph-sub">PLANETA RICA, CORDOBA</div>
-  <div class="ph-sub">COLOMBIA</div>
-  <div class="ph-sub">08.47N 75.58W</div>
-  <div class="ph-sub">BIMODAL // TROPICO HUMEDO</div>
-</div>
-<div class="ph-section">
   <div class="ph-label">YEAR PROGRESS</div>
   <div class="ph-progress"><div class="ph-progress-fill" style="width:${(this.day / 365 * 100).toFixed(1)}%"></div></div>
   <div class="ph-sub">${this.species.length} SPP // 365 D</div>
@@ -1908,9 +1982,9 @@ ${focusBlock}
 <div class="ph-section">
   <div class="ph-label">EN ACTIVIDAD // ACTIVE</div>
   <div class="ph-big">${String(total).padStart(3, "0")}</div>
-  <div class="ph-sub">/ ${this.species.length} TOTAL</div>
 </div>
-<div class="ph-section">${bars}</div>`;
+<div class="ph-section">${bars}</div>
+<div class="ph-ticker"><span class="ph-ticker-run">${PhenologicalCalendar.SITE_TICKER}</span></div>`;
 
         // ── CENSUS COLUMN (left): scrolling list of all species in peak ──
         // Rate-limited to once / 300 ms so DOM updates don't fight scroll.
@@ -1939,10 +2013,13 @@ ${focusBlock}
                 return v.act - u.act;
             });
             const lines = censusEntries.map(({ s: sp, act }) => {
-                // 1-bit: brightness via character repeat (pixel-fill proxy)
-                const filled = Math.max(1, Math.round(act * 5));
-                const dots = "#".repeat(filled) + ".".repeat(5 - filled);
+                // The five-character "###.." activity meter is gone. It cost a
+                // fixed column on every row and carried almost nothing: five
+                // quantisation steps of a value the ring already shows as
+                // brightness and position. Activity now modulates the row's
+                // own opacity instead — same information, no glyphs, no column.
                 const tag = (PhenologicalCalendar.TAXA.find(t => t.key === sp.taxon) || { label: sp.taxon.toUpperCase() }).label;
+                const rowOpacity = (0.55 + act * 0.45).toFixed(2);
                 // Vernacular name leads (white, primary). Scientific name follows
                 // dimmer in parens. Family at the end. If no common name exists,
                 // scientific takes the primary slot so the row never reads blank.
@@ -1953,12 +2030,15 @@ ${focusBlock}
                     ? `<span class="ph-c-c"> (${sp.sci.toUpperCase()})</span>`
                     : "";
                 const fam = sp.family ? `<span class="ph-c-f"> ${sp.family.toUpperCase()}</span>` : "";
-                return `<div class="ph-c-row"><span class="ph-c-d">${dots}</span><span class="ph-c-t">${tag}</span><span class="ph-c-s">${primary}${secondary}${fam}</span></div>`;
+                return `<div class="ph-c-row" style="opacity:${rowOpacity}"><span class="ph-c-t">${tag}</span><span class="ph-c-s">${primary}${secondary}${fam}</span></div>`;
             }).join("");
+            // Header carries the count only. The day used to be repeated here
+            // as "D045 // N SPP" while the info column already states it twice
+            // over (big number + date line) — three prints of one value.
             census.innerHTML = `
 <div class="ph-section ph-census-header">
   <div class="ph-label">CENSO // CENSUS</div>
-  <div class="ph-sub">D${String(this.day).padStart(3, "0")} // ${censusEntries.length} SPP</div>
+  <div class="ph-sub">${censusEntries.length} SPP</div>
 </div>
 <div class="ph-census-body">${lines || '<div class="ph-quiet">-- NINGUNA ESPECIE --</div>'}</div>`;
         }
