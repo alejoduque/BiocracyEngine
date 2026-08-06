@@ -1134,6 +1134,59 @@ class PhenologicalCalendar extends BaseThreeJsModule {
     border-bottom: 1px solid rgba(255,255,255,0.12);
     border-right: none; }
 
+/* ── Key/value row ───────────────────────────────────────────────────────
+   Caption and value on ONE line. Every block in the info column used to put
+   its label on a line above its value, which doubled the height of the column
+   and made it overflow. Same shared type scale as everything else. */
+.pheno-col .ph-kv {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 0.5vmin;
+    margin: 0;
+    line-height: var(--ph-lh);
+}
+.pheno-col .ph-kv .ph-k {
+    flex: 0 0 auto;
+    font-size: var(--ph-label);
+    color: rgba(255,255,255,0.6);
+    letter-spacing: 0.14em;
+    white-space: nowrap;
+}
+/* Right-hand caption (taxon + peak day on the focus row) — same weight as a
+   label, so it reads as annotation rather than as a second value. */
+.pheno-col .ph-kv .ph-k-r {
+    flex: 0 1 auto;
+    font-size: var(--ph-label);
+    color: rgba(255,255,255,0.55);
+    letter-spacing: 0.1em;
+    text-align: right;
+    white-space: nowrap;
+}
+.pheno-col .ph-kv .ph-v {
+    flex: 0 1 auto;
+    font-size: var(--ph-emph);
+    font-weight: 700;
+    color: #ffffff;
+    letter-spacing: 0.06em;
+    text-align: right;
+    white-space: nowrap;
+}
+/* Secondary half of a value (the date beside the day number, the season tag
+   beside its name) — dimmer and at body size so the pair still reads as one. */
+.pheno-col .ph-kv .ph-v-sub {
+    font-size: var(--ph-body);
+    font-weight: 400;
+    color: rgba(255,255,255,0.55);
+    letter-spacing: 0.04em;
+}
+.pheno-col .ph-kv .ph-v-quiet {
+    font-size: var(--ph-body);
+    color: rgba(255,255,255,0.4);
+    text-align: right;
+    white-space: nowrap;
+}
+
 /* Site ticker: the five static SITIO lines as one scrolling line. Same type
    scale as everything else in the columns; the run is duplicated in the
    markup-free way (animation translates by -50% of a doubled string) so the
@@ -1173,24 +1226,6 @@ class PhenologicalCalendar extends BaseThreeJsModule {
     margin: 0;
     line-height: 1.0;
 }
-.pheno-col .ph-big {
-    /* Day number, active count — keep big and tight */
-    font-size: var(--ph-emph);
-    font-weight: 700;
-    color: #ffffff;
-    letter-spacing: 0.1em;
-    line-height: var(--ph-lh);
-    margin: 0;
-    display: block;
-}
-.pheno-col .ph-mid {
-    font-size: var(--ph-emph);
-    font-weight: 700;
-    color: #ffffff;
-    margin: 0;
-    letter-spacing: 0.08em;
-    line-height: var(--ph-lh);
-}
 .pheno-col .ph-sub {
     font-size: var(--ph-body);
     color: rgba(255,255,255,0.7);
@@ -1204,13 +1239,6 @@ class PhenologicalCalendar extends BaseThreeJsModule {
     color: rgba(255,255,255,0.4);
     margin: 0;
     line-height: var(--ph-lh);
-}
-.pheno-col .ph-taxon {
-    font-size: var(--ph-body);
-    margin: 0;
-    letter-spacing: 0.1em;
-    line-height: var(--ph-lh);
-    color: rgba(255,255,255,0.8);
 }
 .pheno-col .ph-sci {
     font-size: var(--ph-emph);
@@ -1229,12 +1257,6 @@ class PhenologicalCalendar extends BaseThreeJsModule {
     line-height: var(--ph-lh);
     font-weight: 700;
 }
-.pheno-col .ph-fam {
-    font-size: var(--ph-body);
-    color: rgba(255,255,255,0.5);
-    margin: 0;
-    line-height: var(--ph-lh);
-}
 .pheno-col .ph-extras {
     font-size: var(--ph-body);
     color: rgba(255,255,255,0.5);
@@ -1242,9 +1264,9 @@ class PhenologicalCalendar extends BaseThreeJsModule {
     margin: 0;
 }
 .pheno-col .ph-progress {
-    height: 3px;
+    height: 2px;
     background: rgba(255,255,255,0.12);
-    margin: 0.15vmin 0;
+    margin: 0.1vmin 0 0;
 }
 .pheno-col .ph-progress-fill {
     height: 100%;
@@ -1944,44 +1966,44 @@ class PhenologicalCalendar extends BaseThreeJsModule {
         if (!s) {
             focusBlock = `
 <div class="ph-section">
-  <div class="ph-label">EN PICO // FOCUS</div>
-  <div class="ph-quiet">-- QUIETUD --</div>
+  <div class="ph-kv"><span class="ph-k">EN PICO</span><span class="ph-v-quiet">-- QUIETUD --</span></div>
 </div>`;
         } else {
-            const extras = [s.habit, s.origin, s.succession].filter(Boolean).join(" // ");
+            // Family folded in with habit/origin/succession — it was a line of
+            // its own carrying two words. Six stacked lines become three.
+            const extras = [
+                s.family ? `FAM. ${s.family.toUpperCase()}` : null,
+                s.habit, s.origin, s.succession,
+            ].filter(Boolean).join(" // ");
             // Vernacular (common) name leads, scientific dimmer underneath —
             // matches the floating species labels for consistency.
             focusBlock = `
 <div class="ph-section">
-  <div class="ph-label">EN PICO // FOCUS</div>
-  <div class="ph-taxon">&gt; ${s.taxon.toUpperCase()} // D${s.peakDay}</div>
+  <div class="ph-kv"><span class="ph-k">EN PICO</span><span class="ph-k-r">${s.taxon.toUpperCase()} D${s.peakDay}</span></div>
   ${s.common ? `<div class="ph-common">${s.common.toUpperCase()}</div>` : ""}
   <div class="ph-sci">${s.sci.toUpperCase()}</div>
-  ${s.family ? `<div class="ph-fam">FAM. ${s.family.toUpperCase()}</div>` : ""}
   ${extras ? `<div class="ph-extras">${extras.toUpperCase()}</div>` : ""}
 </div>`;
         }
 
+        // Label and value share ONE row (.ph-kv) instead of stacking. The
+        // column ran ~22 lines and overflowed; every caption sat on a line of
+        // its own above the value it named, which doubled the height of each
+        // block for no added information.
         info.innerHTML = `
 <div class="ph-section">
-  <div class="ph-label">DIA // DAY</div>
-  <div class="ph-big">${String(this.day).padStart(3, "0")}</div>
-  <div class="ph-sub">${String(dayOfMonth).padStart(2, "0")} ${month.toUpperCase()}</div>
+  <div class="ph-kv"><span class="ph-k">DIA // DAY</span><span class="ph-v">${String(this.day).padStart(3, "0")}<span class="ph-v-sub"> ${String(dayOfMonth).padStart(2, "0")} ${month.toUpperCase()}</span></span></div>
 </div>
 <div class="ph-section">
-  <div class="ph-label">REGIMEN</div>
-  <div class="ph-mid">${season.label.toUpperCase()}</div>
-  <div class="ph-sub">&gt; ${season.tag.toUpperCase()}</div>
+  <div class="ph-kv"><span class="ph-k">REGIMEN</span><span class="ph-v">${season.label.toUpperCase()}<span class="ph-v-sub"> ${season.tag.toUpperCase()}</span></span></div>
 </div>
 <div class="ph-section">
-  <div class="ph-label">YEAR PROGRESS</div>
+  <div class="ph-kv"><span class="ph-k">PROGRESO ANUAL</span><span class="ph-v">${(this.day / 365 * 100).toFixed(0)}%<span class="ph-v-sub"> ${this.species.length} SPP</span></span></div>
   <div class="ph-progress"><div class="ph-progress-fill" style="width:${(this.day / 365 * 100).toFixed(1)}%"></div></div>
-  <div class="ph-sub">${this.species.length} SPP // 365 D</div>
 </div>
 ${focusBlock}
 <div class="ph-section">
-  <div class="ph-label">EN ACTIVIDAD // ACTIVE</div>
-  <div class="ph-big">${String(total).padStart(3, "0")}</div>
+  <div class="ph-kv"><span class="ph-k">EN ACTIVIDAD</span><span class="ph-v">${String(total).padStart(3, "0")}</span></div>
 </div>
 <div class="ph-section">${bars}</div>
 <div class="ph-ticker"><span class="ph-ticker-run">${PhenologicalCalendar.SITE_TICKER}</span></div>`;
