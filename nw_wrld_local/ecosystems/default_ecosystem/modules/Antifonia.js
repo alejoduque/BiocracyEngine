@@ -19,12 +19,21 @@
  * desde las emergentes, la rana desde el sotobosque, el murciélago cruzando
  * el dosel. La altura no es decoración: es la posición del hablante.
  *
- * LA FRECUENCIA NO PELEA POR ESE EJE. Cada llamada se dibuja como un glifo
- * cuya longitud es su ancho de banda y cuyo color es su centro espectral,
- * de modo que el espectro se lee en la MORFOLOGÍA y no roba la vertical.
- * Abajo corre una franja aparte —EL NICHO— con tiempo en x y frecuencia en
- * y: ahí se ve la hipótesis del nicho acústico, las especies repartiéndose
- * bandas y horas para no enmascararse. Es la partitura de la sesión.
+ * CADA LLAMADA ES UNA VELA JAPONESA, la del gráfico bursátil: mecha fina del
+ * máximo al mínimo, cuerpo grueso donde vive la energía, lleno si cerró por
+ * encima de la llamada anterior de esa especie y apagado si por debajo. El
+ * "precio" es la frecuencia. No es un chiste gráfico: este motor ya sonifica
+ * una cadena de bloques, y poner al bosque en el mismo instrumento con el que
+ * se cotiza una divisa dice en voz alta lo que hace el aparato entero —
+ * intentar medir la naturaleza en tiempo real, con la herramienta equivocada,
+ * dejando la costura a la vista.
+ *
+ * Las velas van INMERSAS: cada animal canta desde una PERCHA real, un árbol
+ * de este rodal cuya altura alcance su estrato. El aullador sólo puede estar
+ * en la ceiba porque es la única emergente; el avión no tiene percha, está en
+ * la atmósfera. Abajo corre la misma lectura como gráfico completo —tiempo en
+ * x, frecuencia en y— donde se ve la hipótesis del nicho acústico: las
+ * especies repartiéndose bandas y horas para no enmascararse.
  *
  * TRES BANCADAS, no una. Biofonía (aullador, aves, insectos, oropéndola,
  * rana, murciélago), geofonía (lluvia, viento) y antropofonía (el avión, la
@@ -58,12 +67,12 @@
  * del cual se habla.
  *
  * Implementación: THREE core, materiales integrados. Seis THREE.Points (uno
- * por estrato, ~62 000 puntos en total) generados una vez con semilla fija y
- * barajados, de modo que el LOD adaptativo recorta el rango de dibujo y
- * obtiene una submuestra uniforme sin regenerar nada; una sola InstancedMesh
- * para todos los glifos; y una franja 2-D detrás del lienzo WebGL (el patrón
- * que ya usa Registro.js). Sin asignaciones por cuadro. Medido: 8.4 ms de
- * mediana, igual que DarkForest y Estratos.
+ * por estrato) generados una vez con semilla fija y barajados, de modo que el
+ * LOD adaptativo recorta el rango de dibujo y obtiene una submuestra uniforme
+ * sin regenerar nada; dos InstancedMesh (cuerpos y mechas) para todas las
+ * velas; y una franja 2-D detrás del lienzo WebGL (el patrón que ya usa
+ * Registro.js). El viento mece cada estrato desplazando SEIS posiciones por
+ * cuadro — ni un vértice se toca. Sin asignaciones por cuadro.
  * ════════════════════════════════════════════════════════════════════════ */
 
 class Antifonia extends BaseThreeJsModule {
@@ -160,7 +169,17 @@ class Antifonia extends BaseThreeJsModule {
   // máquina se dibuja en un solo draw call por estrato y no mueve la aguja del
   // cuadro. El LOD adaptativo de más abajo puede recortar hasta el 35 % sin
   // regenerar nada, porque los puntos están barajados.
-  static CLOUD = { scale: 1.0, ground: 9000, shrub: 220 };
+  // Deliberadamente ESCASA. Esto no es un levantamiento topográfico: es lo
+  // que la máquina alcanza a ver del bosque seco — una presencia espectral,
+  // no un modelo. Bajar densidad y tamaño de punto hasta que la forma se
+  // insinúe en vez de describirse es la decisión estética central del slot,
+  // y de paso deja el cuadro barato.
+  // scale rige el follaje: escaso a propósito. El SUELO lleva su propio
+  // presupuesto, mucho mayor, porque es lo único que debe leerse continuo —
+  // es la superficie sobre la que se sostiene todo lo demás, y con la mezcla
+  // aditiva un terreno ralo no se ve tenue, se ve AUSENTE: el rodal quedaba
+  // flotando sobre nada.
+  static CLOUD = { scale: 0.42, ground: 26000, shrub: 620 };
 
   // ── Metros → unidades de escena, en HORIZONTAL ──────────────────────────
   // La vertical ya la convierte _yFromAGL (metros sobre el suelo → y del
@@ -217,7 +236,8 @@ class Antifonia extends BaseThreeJsModule {
     this._score = null;          // partitura cargada, si existe
 
     this._dummy = null;
-    this._glyphs = null;
+    this._bodies = null;
+    this._wicks = null;
     this._srcByKey = new Map();
     Antifonia.SOURCES.forEach((s) => this._srcByKey.set(s.key, s));
 
@@ -236,7 +256,7 @@ class Antifonia extends BaseThreeJsModule {
     // mitad del cuadro vacío; a 15.5 y algo más bajo, el bosque llena la
     // ventana y la ceiba entra por arriba, que es como debe leerse una
     // emergente: saliéndose del dosel.
-    this.camera.position.set(2.2, 3.4, 18.5);
+    this.camera.position.set(2.2, 2.2, 17.5);
     this.camera.near = 0.1;
     this.camera.far = 220;
     this.camera.updateProjectionMatrix();
@@ -248,7 +268,7 @@ class Antifonia extends BaseThreeJsModule {
       this.controls.minDistance = 5;
       this.controls.maxDistance = 46;
       this.controls.maxPolarAngle = Math.PI * 0.92;
-      this.controls.target.set(0, 1.9, 0);
+      this.controls.target.set(0, 1.2, 0);
       this.controls.update();
     }
 
@@ -398,13 +418,26 @@ class Antifonia extends BaseThreeJsModule {
     // Microrrelieve suave; el suelo es lo único que devuelve casi siempre.
     const groundAt = (x, z) =>
       Math.sin(x * 0.21) * 0.5 + Math.cos(z * 0.17) * 0.42 + Math.sin((x + z) * 0.09) * 0.3;
+    // AMORFO. Muestreado en polares con el radio modulado por tres armónicos
+    // del ángulo, no en un cuadrado: un rectángulo cartesiano perfecto
+    // anunciaba que esto era una simulación con dominio rectangular, y el
+    // borde recto era lo primero que veía el ojo. La densidad además decae
+    // hacia el límite, así que el rodal se DESVANECE en vez de terminar —
+    // ningún barrido real tiene una frontera.
+    const lobe = (a) =>
+      0.74 + 0.16 * Math.sin(a * 2 + 0.7) + 0.10 * Math.sin(a * 3 - 1.9)
+           + 0.06 * Math.sin(a * 5 + 2.6);
+    this._lobe = lobe;
     const nGround = Math.round(Antifonia.CLOUD.ground * Antifonia.CLOUD.scale);
     for (let i = 0; i < nGround; i++) {
-      const x = (rnd() * 2 - 1) * W;
-      const z = (rnd() * 2 - 1) * W;
+      const a = rnd() * Math.PI * 2;
+      const t = Math.sqrt(rnd());                 // uniforme en área
+      if (rnd() < Math.pow(t, 3.4)) continue;     // ralea sólo el borde exterior
+      const r = t * W * lobe(a);
+      const x = Math.cos(a) * r, z = Math.sin(a) * r;
       // Intensidad baja: el suelo devuelve mucho pero no es lo que hay que
       // mirar. A 0.55-1.0 se comía las copas por brillo.
-      put(x, 0.15 + groundAt(x, z) * 0.55 + rnd() * 0.25, z, 0.26 + rnd() * 0.22);
+      put(x, 0.15 + groundAt(x, z) * 0.55 + rnd() * 0.25, z, 0.24 + rnd() * 0.20);
     }
 
     // ── árboles ──────────────────────────────────────────────────────────
@@ -412,22 +445,49 @@ class Antifonia extends BaseThreeJsModule {
     // ceiba domina el centro-izquierda; los campanos abren a la derecha; las
     // palmas rellenan los bordes, que es como se reparten de verdad cuando el
     // dosel alto ya está ocupado.
+    // Los árboles NO se dispersan uniformemente: crecen juntos. La ceiba tenía
+    // un claro alrededor, que es exactamente lo que no ocurre en el bosque —
+    // una emergente arrastra un cortejo de árboles menores a su sombra y los
+    // campanos se agrupan. Aquí hay tres cohortes, y sólo DOS palmas: la
+    // palma de vino puntúa el rodal, no lo puebla.
     this._trees = [];
-    this._tree_ceiba(rnd, -2.2, 1.4, 1.0);
-    this._tree_campano(rnd, 3.6, -2.0, 1.0);
-    this._tree_campano(rnd, 5.4, 3.9, 0.82);
-    this._tree_campano(rnd, -5.8, -4.4, 0.74);
-    const palmSpots = [
-      [-7.4, 5.6], [-4.6, 6.8], [0.4, 7.4], [6.9, 6.4], [7.8, 0.6],
-      [6.2, -5.9], [1.8, -6.8], [-2.6, -7.2], [-7.0, -1.6], [-8.1, 2.4],
-      [2.9, 5.2], [-0.9, -3.4],
-    ];
-    for (const [px, pz] of palmSpots) this._tree_palma(rnd, px, pz, 0.78 + rnd() * 0.44);
+
+    // cohorte de la ceiba — la giganta y su séquito, apretados
+    this._tree_ceiba(rnd, -1.2, 0.6, 1.0);
+    this._tree_arbol(rnd, 0.9, 1.9, 0.82);
+    this._tree_arbol(rnd, -2.9, 2.1, 0.70);
+    this._tree_arbol(rnd, -3.1, -1.2, 0.88);
+    this._tree_arbol(rnd, 1.3, -1.4, 0.64);
+    this._tree_campano(rnd, 2.6, 0.4, 0.68);
+
+    // cohorte de campanos — abre a la derecha
+    this._tree_campano(rnd, 5.4, -2.2, 0.94);
+    this._tree_campano(rnd, 6.6, 1.8, 0.80);
+    this._tree_arbol(rnd, 4.4, 3.4, 0.74);
+    this._tree_arbol(rnd, 7.2, -0.4, 0.60);
+    this._tree_arbol(rnd, 4.9, -4.4, 0.68);
+
+    // cohorte baja, al frente y a la izquierda
+    this._tree_campano(rnd, -5.9, -3.6, 0.72);
+    this._tree_arbol(rnd, -6.8, -0.8, 0.66);
+    this._tree_arbol(rnd, -4.6, -5.0, 0.58);
+    this._tree_arbol(rnd, -2.0, -4.6, 0.72);
+    this._tree_arbol(rnd, 1.9, -5.2, 0.62);
+    this._tree_arbol(rnd, -6.2, 3.4, 0.60);
+    this._tree_arbol(rnd, 0.2, 4.6, 0.66);
+    this._tree_arbol(rnd, 3.1, 5.4, 0.54);
+
+    // dos palmas, nada más
+    this._tree_palma(rnd, -4.4, 4.6, 1.0);
+    this._tree_palma(rnd, 6.4, 4.6, 0.88);
 
     // ── sotobosque ───────────────────────────────────────────────────────
     const nShrub = Math.round(Antifonia.CLOUD.shrub * Antifonia.CLOUD.scale);
     for (let i = 0; i < nShrub; i++) {
-      const cx = (rnd() * 2 - 1) * W, cz = (rnd() * 2 - 1) * W;
+      // Los arbustos siguen el mismo borde amorfo que el suelo.
+      const sa = rnd() * Math.PI * 2;
+      const sr = Math.sqrt(rnd()) * W * this._lobe(sa) * 0.96;
+      const cx = Math.cos(sa) * sr, cz = Math.sin(sa) * sr;
       const h = 0.8 + rnd() * 3.4;
       const r = (0.5 + rnd() * 1.3) * Antifonia.M;
       const n = 6 + (rnd() * 10) | 0;
@@ -459,9 +519,13 @@ class Antifonia extends BaseThreeJsModule {
       const g = new THREE.BufferGeometry();
       g.setAttribute("position", new THREE.Float32BufferAttribute(b.pos, 3));
       g.setAttribute("color", new THREE.Float32BufferAttribute(b.col, 3));
+      // Punto mínimo. Con mezcla aditiva, muchos puntos diminutos leen como una
+      // niebla que se condensa donde hay materia — la presencia fantasmal que
+      // se busca. Puntos grandes leen como bolitas y vuelven diagrama el
+      // bosque.
       const m = new THREE.PointsMaterial({
-        size: 0.055, sizeAttenuation: true, vertexColors: true,
-        transparent: true, opacity: 0.9, depthWrite: false,
+        size: 0.020, sizeAttenuation: true, vertexColors: true,
+        transparent: true, opacity: 0.82, depthWrite: false,
         blending: THREE.AdditiveBlending,
       });
       const pts = new THREE.Points(g, m);
@@ -579,6 +643,54 @@ class Antifonia extends BaseThreeJsModule {
     this._trees.push({ kind: "campano", x: cx, z: cz, h: H, r: R });
   }
 
+  // El árbol común del bosque seco: gusanero, indio desnudo, guayacán,
+  // algarrobo. Sin firma arquitectónica propia —copa redondeada irregular,
+  // 12–22 m— y por eso mismo indispensable: son ellos los que hacen la MASA
+  // del dosel. Un rodal de puras siluetas famosas parece un catálogo; el
+  // bosque es mayoritariamente esto, y la ceiba destaca porque ellos están.
+  _tree_arbol(rnd, cx, cz, scale) {
+    const put = this._putRef;
+    const M = Antifonia.M;
+    const H = (13 + rnd() * 9) * scale;
+    const fork = H * (0.30 + rnd() * 0.16);
+    const R = (5.5 + rnd() * 3.5) * scale * M;
+    const S = Antifonia.CLOUD.scale;
+
+    const nBole = Math.round(120 * S);
+    for (let i = 0; i < nBole; i++) {
+      const t = rnd();
+      const r = (0.55 - t * 0.18) * scale * M;
+      const a = rnd() * Math.PI * 2;
+      put(cx + Math.cos(a) * r, t * fork + 0.1, cz + Math.sin(a) * r, 0.60 + rnd() * 0.30);
+    }
+
+    // Copa irregular: tres o cuatro lóbulos desplazados del eje, no una
+    // esfera. La asimetría es lo que impide que se lean como clones.
+    const lobes = 3 + ((rnd() * 2) | 0);
+    const cxo = [], czo = [], cro = [], cyo = [];
+    for (let l = 0; l < lobes; l++) {
+      const a = rnd() * Math.PI * 2;
+      const d = rnd() * R * 0.45;
+      cxo.push(Math.cos(a) * d); czo.push(Math.sin(a) * d);
+      cro.push(R * (0.55 + rnd() * 0.5));
+      cyo.push(fork + (H - fork) * (0.35 + rnd() * 0.5));
+    }
+    const n = Math.round(1350 * S);
+    for (let i = 0; i < n; i++) {
+      const l = (rnd() * lobes) | 0;
+      const a = rnd() * Math.PI * 2;
+      // cáscara: el follaje vive en la superficie de la copa, no en su volumen
+      const t = 0.72 + rnd() * 0.28;
+      const rr = cro[l] * t;
+      const ph = Math.acos(1 - rnd() * 1.25);           // sesgo hacia arriba
+      put(cx + cxo[l] + Math.cos(a) * rr * Math.sin(ph),
+          cyo[l] + Math.cos(ph) * (H - fork) * 0.42 * t,
+          cz + czo[l] + Math.sin(a) * rr * Math.sin(ph),
+          0.16 + rnd() * 0.26);
+    }
+    this._trees.push({ kind: "arbol", x: cx, z: cz, h: H, r: R });
+  }
+
   // Attalea butyracea — palma de vino. Estípite columnar delgadísimo y una
   // corona de hojas que nacen todas del ápice y se arquean: un plumero. Es la
   // arquitectura más fácil de reconocer en una nube de puntos.
@@ -649,26 +761,57 @@ class Antifonia extends BaseThreeJsModule {
   // máquina es explícito: el pool se reserva una vez, nada se crea por cuadro,
   // y las llamadas que exceden el pool simplemente no se dibujan (la más vieja
   // ya se estará apagando).
+  // ── Velas ───────────────────────────────────────────────────────────────
+  // Cada llamada se dibuja como una VELA JAPONESA, la del gráfico bursátil:
+  // cuerpo grueso entre apertura y cierre, mechas finas hasta el máximo y el
+  // mínimo. Aquí el "precio" es la frecuencia:
+  //     mecha superior  → highHz, el armónico más alto que alcanzó
+  //     cuerpo          → la banda donde vive la energía
+  //     mecha inferior  → lowHz, el fundamental
+  //     cuerpo lleno/hueco → si la llamada subió o bajó respecto a la
+  //                          anterior de su especie (la "sesión" previa)
+  //
+  // No es un chiste gráfico. Este motor ya sonifica una cadena de bloques;
+  // poner al bosque en el mismo instrumento con el que se cotiza una divisa
+  // es decir en voz alta lo que hace el aparato entero: intentar medir la
+  // naturaleza en tiempo real, con la herramienta equivocada, y dejar que se
+  // vea la costura. Las velas van INMERSAS en el dosel, a la altura desde la
+  // que se cantó, no en un panel aparte.
+  //
+  // Dos InstancedMesh (cuerpos y mechas) en vez de una: dos draw calls para
+  // todo el parlamento, y el índice de instancia es el mismo en ambas.
   _buildGlyphs() {
     const geo = new THREE.PlaneGeometry(1, 1);
-    const mat = new THREE.MeshBasicMaterial({
-      color: 0xffffff, transparent: true, opacity: 0.9,
+    const mkMat = () => new THREE.MeshBasicMaterial({
+      color: 0xffffff, transparent: true, opacity: 0.95,
       depthWrite: false, side: THREE.DoubleSide,
     });
-    this._glyphs = new THREE.InstancedMesh(geo, mat, Antifonia.GLYPH_POOL);
-    this._glyphs.instanceColor = new THREE.InstancedBufferAttribute(
-      new Float32Array(Antifonia.GLYPH_POOL * 3), 3
-    );
-    this._glyphs.frustumCulled = false;
+    const mk = () => {
+      const m = new THREE.InstancedMesh(geo, mkMat(), Antifonia.GLYPH_POOL);
+      m.instanceColor = new THREE.InstancedBufferAttribute(
+        new Float32Array(Antifonia.GLYPH_POOL * 3), 3
+      );
+      m.frustumCulled = false;
+      return m;
+    };
+    this._bodies = mk();
+    this._wicks = mk();
+
     this._dummy = new THREE.Object3D();
     // Todo fuera de cuadro hasta que exista una llamada que lo ocupe.
     this._dummy.position.set(0, -9999, 0);
     this._dummy.updateMatrix();
     for (let i = 0; i < Antifonia.GLYPH_POOL; i++) {
-      this._glyphs.setMatrixAt(i, this._dummy.matrix);
+      this._bodies.setMatrixAt(i, this._dummy.matrix);
+      this._wicks.setMatrixAt(i, this._dummy.matrix);
     }
-    this._glyphs.instanceMatrix.needsUpdate = true;
-    this.scene.add(this._glyphs);
+    this._bodies.instanceMatrix.needsUpdate = true;
+    this._wicks.instanceMatrix.needsUpdate = true;
+    this.scene.add(this._bodies);
+    this.scene.add(this._wicks);
+
+    // Último cierre por especie, para saber si la vela sube o baja.
+    this._lastClose = new Map();
   }
 
   // La franja del nicho: 2-D detrás del lienzo WebGL, como hace Registro.js.
@@ -963,16 +1106,69 @@ class Antifonia extends BaseThreeJsModule {
     }
   }
 
+  // ── ¿Desde dónde se canta? ──────────────────────────────────────────────
+  // Un animal canta DESDE algo. Repartir las llamadas por x,z al azar las
+  // dejaba flotando en aire vacío —un aullador a 38 m sobre un claro donde no
+  // hay ningún árbol de 38 m— y por eso los registros se leían como barras
+  // pegadas encima del bosque en vez de inmersas en él.
+  //
+  // Ahora cada fuente busca una PERCHA: un árbol cuya altura alcance su
+  // estrato, y la llamada sale de su copa. El aullador sólo puede estar en la
+  // ceiba, porque es la única emergente del rodal; las aves y la oropéndola
+  // reparten campanos y árboles de dosel; la rana y la chicharra van al
+  // sotobosque, bajo cualquier copa. El avión no tiene percha —está en la
+  // atmósfera, es lo que es— y la cinta suena desde el suelo, en cualquier
+  // parte. Que el aullador quede confinado a un solo árbol no es una
+  // limitación: es el dato.
+  _perchFor(src) {
+    const wantM = this._stratumMeters(src.stratum);
+    if (src.cls === "antropofonia" && src.stratum === "atmosfera") return null;  // el avión
+    if (!this._trees || this._trees.length === 0) return null;
+    const cand = [];
+    for (const t of this._trees) {
+      if (t.kind === "palma") continue;                    // no se canta desde una palma aquí
+      if (t.h >= wantM * 0.78) cand.push(t);
+    }
+    if (cand.length === 0) return null;
+    const t = cand[(Math.random() * cand.length) | 0];
+    const a = Math.random() * Math.PI * 2;
+    const rr = Math.sqrt(Math.random()) * t.r * 0.85;
+    return {
+      x: t.x + Math.cos(a) * rr,
+      z: t.z + Math.sin(a) * rr,
+      // dentro de la copa de ESE árbol, sin pasarse de su altura real
+      agl: Math.min(t.h * (0.62 + Math.random() * 0.36), wantM * (0.8 + Math.random() * 0.45)),
+    };
+  }
+
   _emit(src, scored) {
     if (this.calls.length >= Antifonia.GLYPH_POOL) return;
     const S = Antifonia.STRATA;
     const spread = 0.35 + this.ctl.spread * 0.65;
-    const agl = scored ? scored.heightAGL : this._stratumMeters(src.stratum) * (0.75 + Math.random() * 0.5);
-    const x = (scored ? scored.x : (Math.random() * 2 - 1)) * Antifonia.PLOT * spread;
-    const z = (scored ? scored.z : (Math.random() * 2 - 1)) * Antifonia.PLOT * spread;
+    const perch = scored ? null : this._perchFor(src);
+    const agl = scored ? scored.heightAGL
+      : (perch ? perch.agl : this._stratumMeters(src.stratum) * (0.75 + Math.random() * 0.5));
+    const x = perch ? perch.x
+      : (scored ? scored.x : (Math.random() * 2 - 1)) * Antifonia.PLOT * spread;
+    const z = perch ? perch.z
+      : (scored ? scored.z : (Math.random() * 2 - 1)) * Antifonia.PLOT * spread;
     const lo = scored ? scored.lo : src.lo;
     const hi = scored ? scored.hi : src.hi;
     const dur = scored ? scored.dur : (0.5 + Math.random() * 2.2);
+
+    // ── Apertura y cierre de la vela ─────────────────────────────────────
+    // El "precio" es la frecuencia central geométrica de la llamada, y la
+    // sesión anterior es la última llamada de esa misma especie. Sube o baja
+    // respecto a ella: eso es todo lo que hace falta para que la vela diga
+    // algo cierto en vez de decorar. Sin sesión previa se abre alcista, como
+    // hace cualquier gráfico con su primer dato.
+    const close = Math.sqrt(Math.max(20, lo) * Math.max(40, hi));
+    const prev = this._lastClose.get(src.key);
+    const up = prev === undefined ? true : close >= prev;
+    this._lastClose.set(src.key, close);
+    // Qué fracción del rango ocupa el cuerpo: llamadas largas concentran la
+    // energía (cuerpo grande), los chasquidos son casi toda mecha.
+    const bodyFrac = Math.max(0.12, Math.min(0.9, dur / (dur + 1.1)));
 
     const call = {
       key: src.key, cls: src.cls, smp: src.smp,
@@ -981,11 +1177,12 @@ class Antifonia extends BaseThreeJsModule {
       age: 0,
       life: Math.max(1.2, dur * 1.8),
       hour: this.hour,
+      up, bodyFrac, close,
     };
     this.calls.push(call);
 
     // Historia para la franja del nicho, recortada por arriba.
-    this.niche.push({ hour: this.hour, lo, hi, cls: src.cls, t: 0 });
+    this.niche.push({ hour: this.hour, lo, hi, cls: src.cls, up, bodyFrac, close, t: 0 });
     if (this.niche.length > Antifonia.NICHE_KEEP) this.niche.shift();
 
     this._fired += 1;
@@ -1015,9 +1212,10 @@ class Antifonia extends BaseThreeJsModule {
   }
 
   _updateCalls(dt) {
-    const glyphs = this._glyphs;
-    if (!glyphs) return;
+    const bodies = this._bodies, wicks = this._wicks;
+    if (!bodies || !wicks) return;
     const d = this._dummy;
+    const cam = this.camera;
     let n = 0;
 
     for (let i = this.calls.length - 1; i >= 0; i--) {
@@ -1029,25 +1227,54 @@ class Antifonia extends BaseThreeJsModule {
       const t = c.age / c.life;
       const env = Math.sin(Math.PI * Math.min(1, t)) ** 0.6;   // ataque y caída
 
-      // El glifo: su LONGITUD es el ancho de banda en octavas, su grosor la
-      // duración. Así el espectro se lee en la forma y la vertical queda
-      // libre para lo único que debe significar, la altura.
-      // Ancho de banda en octavas → longitud, duración → grosor. Las escalas
-      // de la primera versión daban losas de 2.5 unidades (14 m) que tapaban
-      // el dosel entero: el glifo pasaba de anotar el bosque a sustituirlo.
-      const oct = Math.log2(Math.max(1.02, c.hi / Math.max(20, c.lo)));
-      const len = 0.16 + oct * 0.17;
-      const thick = 0.028 + Math.min(0.14, c.dur * 0.028);
+      // La vela se dibuja de canto a la cámara: el ancho es constante y la
+      // altura es lo que informa, como en cualquier gráfico de velas.
+      const yaw = Math.atan2(cam.position.x - c.x, cam.position.z - c.z);
 
-      d.position.set(c.x, c.y + Math.sin(c.age * 1.7) * 0.05, c.z);
-      d.rotation.set(0, Math.atan2(this.camera.position.x - c.x, this.camera.position.z - c.z), 0);
-      d.scale.set(thick, len * (0.55 + env * 0.75), 1);
+      // Escala vertical: octavas sobre el fundamental. Una llamada de banda
+      // ancha da una vela alta; una nota pura, una casi plana. Se mantiene
+      // pequeña y LOCAL para quedar inmersa en el dosel, no atravesándolo.
+      const octTot = Math.log2(Math.max(1.03, c.hi / Math.max(20, c.lo)));
+      const total = Math.min(1.15, 0.16 + octTot * 0.20) * (0.55 + env * 0.7);
+      const bodyH = total * (0.30 + c.bodyFrac * 0.42);
+      // El cuerpo debe ser CLARAMENTE más ancho que la mecha o la vela se lee
+      // como un palito: es esa relación, no el color, la que hace reconocible
+      // la figura de un gráfico de velas.
+      const wickW = 0.009 + c.dur * 0.004;
+      const bodyW = 0.055 + Math.min(0.075, c.dur * 0.022);
+
+      // Centro de la vela: la altura desde la que se cantó, con una deriva
+      // mínima para que no quede clavada.
+      const y0 = c.y + Math.sin(c.age * 1.6 + c.x) * 0.035;
+      // Un pelo hacia la cámara: si la vela nace dentro de una copa, sin esto
+      // queda sepultada bajo los puntos del follaje que la rodea.
+      const nx = cam.position.x - c.x, nz = cam.position.z - c.z;
+      const nl = Math.max(0.001, Math.hypot(nx, nz));
+
+      // mecha: máximo a mínimo, el rango completo
+      d.position.set(c.x + (nx / nl) * 0.10, y0, c.z + (nz / nl) * 0.10);
+      d.rotation.set(0, yaw, 0);
+      d.scale.set(wickW, total, 1);
       d.updateMatrix();
-      glyphs.setMatrixAt(n, d.matrix);
+      wicks.setMatrixAt(n, d.matrix);
 
-      const col = this._classColor(c.cls, env > 0.72);
-      const boost = 0.45 + env * 0.75;
-      glyphs.setColorAt(n, col.multiplyScalar(boost));
+      // cuerpo: desplazado dentro del rango según si cerró arriba o abajo
+      d.position.set(c.x + (nx / nl) * 0.12,
+                     y0 + (c.up ? 1 : -1) * (total - bodyH) * 0.22,
+                     c.z + (nz / nl) * 0.12);
+      d.rotation.set(0, yaw, 0);
+      d.scale.set(bodyW, bodyH, 1);
+      d.updateMatrix();
+      bodies.setMatrixAt(n, d.matrix);
+
+      // Vela alcista: cuerpo lleno y brillante. Bajista: apagado, casi hueco
+      // —no se puede vaciar de verdad una InstancedMesh, así que el "hueco"
+      // se hace por luminancia, que a este tamaño lee igual.
+      const col = this._classColor(c.cls, env > 0.7);
+      const bodyBoost = c.up ? (0.55 + env * 0.95) : (0.16 + env * 0.28);
+      const wickBoost = 0.34 + env * 0.6;
+      bodies.setColorAt(n, col.clone().multiplyScalar(bodyBoost));
+      wicks.setColorAt(n, col.multiplyScalar(wickBoost));
       n += 1;
     }
 
@@ -1057,11 +1284,16 @@ class Antifonia extends BaseThreeJsModule {
     d.rotation.set(0, 0, 0);
     d.scale.set(1, 1, 1);
     d.updateMatrix();
-    for (let i = n; i < Antifonia.GLYPH_POOL; i++) glyphs.setMatrixAt(i, d.matrix);
-
-    glyphs.count = Antifonia.GLYPH_POOL;
-    glyphs.instanceMatrix.needsUpdate = true;
-    if (glyphs.instanceColor) glyphs.instanceColor.needsUpdate = true;
+    for (let i = n; i < Antifonia.GLYPH_POOL; i++) {
+      bodies.setMatrixAt(i, d.matrix);
+      wicks.setMatrixAt(i, d.matrix);
+    }
+    for (const m of [bodies, wicks]) {
+      m.count = Antifonia.GLYPH_POOL;
+      m.instanceMatrix.needsUpdate = true;
+      if (m.instanceColor) m.instanceColor.needsUpdate = true;
+    }
+    this._liveCandles = n;
   }
 
   // El rodal responde por ESTRATO, no por punto. Seis materiales cambian de
@@ -1103,7 +1335,36 @@ class Antifonia extends BaseThreeJsModule {
         Math.min(1.6, base * (0.94 - warm * 0.24))
       );
       m.opacity = Math.min(1, 0.34 + w * 0.32 + l * 0.34);
-      m.size = 0.042 + this.ctl.body * 0.03 + l * 0.012;
+      m.size = 0.016 + this.ctl.body * 0.012 + l * 0.006;
+    }
+
+    // ── Viento ───────────────────────────────────────────────────────────
+    // El rodal se mece. Cada estrato se desplaza un poco, y MÁS ARRIBA MÁS:
+    // el suelo no se mueve, las emergentes sí, que es como se comporta un
+    // dosel real y lo que separa un bosque vivo de un modelo. Cuesta seis
+    // escrituras de posición por cuadro — no se toca un solo vértice.
+    //
+    // La amplitud la manda la bancada de geofonía: cuando VIENTO está en su
+    // ventana el bosque se agita, y cuando calla se queda quieto. Es la única
+    // fuente sin grabación que aun así hace algo audible-por-la-vista, lo que
+    // vuelve visible su ausencia sonora en vez de dejarla en nada.
+    let windSrc = 0;
+    for (const src of Antifonia.SOURCES) {
+      if (src.cls !== "geofonia") continue;
+      windSrc = Math.max(windSrc, this._circadian(src, this.hour));
+    }
+    this._wind = (this._wind ?? 0) + (windSrc - (this._wind ?? 0)) * Math.min(1, dt * 0.7);
+    const tNow = this._last - this._t0;
+    for (let si = 0; si < this._cloudPoints.length; si++) {
+      const p = this._cloudPoints[si];
+      if (!p) continue;
+      // 0 abajo, 1 arriba
+      const hf = 1 - si / Math.max(1, Antifonia.STRATA.length - 1);
+      const amp = (0.012 + this._wind * 0.075) * hf * hf;
+      p.position.x = Math.sin(tNow * 0.43 + si * 0.7) * amp
+                   + Math.sin(tNow * 1.13 + si * 1.9) * amp * 0.35;
+      p.position.z = Math.cos(tNow * 0.37 + si * 1.2) * amp * 0.8;
+      p.position.y = Math.sin(tNow * 0.61 + si * 0.4) * amp * 0.22;
     }
 
     // ── LOD adaptativo ───────────────────────────────────────────────────
@@ -1173,13 +1434,30 @@ class Antifonia extends BaseThreeJsModule {
       g.fillRect(a, y1, Math.max(2, b - a), Math.max(2, y2 - y1));
     }
 
-    // llamadas ocurridas
+    // Las llamadas, como velas. Aquí el gráfico bursátil está en su hábitat
+    // —tiempo en x, "precio" en y— y por eso la lectura es tan directa: la
+    // sesión del bosque cotizada hora a hora. Mecha fina de máximo a mínimo,
+    // cuerpo grueso donde vive la energía, lleno si cerró por encima de la
+    // llamada anterior de esa especie y apagado si por debajo.
     for (const nq of this.niche) {
       const x = xOf(nq.hour);
-      const y1 = yOf(nq.hi), y2 = yOf(nq.lo);
-      const c = this._classColor(nq.cls, true);
-      g.fillStyle = `rgba(${(c.r * 255) | 0},${(c.g * 255) | 0},${(c.b * 255) | 0},0.55)`;
-      g.fillRect(x - 1, y1, 2.5, Math.max(1.5, y2 - y1));
+      const yHi = yOf(nq.hi), yLo = yOf(nq.lo);
+      const c = this._classColor(nq.cls, nq.up);
+      const rgb = `${(c.r * 255) | 0},${(c.g * 255) | 0},${(c.b * 255) | 0}`;
+      const span = Math.max(2, yLo - yHi);
+      const bodyH = Math.max(1.5, span * (nq.bodyFrac ?? 0.5));
+      const bodyY = yHi + (span - bodyH) * (nq.up ? 0.12 : 0.55);
+
+      g.fillStyle = `rgba(${rgb},0.34)`;                 // mecha
+      g.fillRect(x - 0.5, yHi, 1, span);
+      if (nq.up) {
+        g.fillStyle = `rgba(${rgb},0.78)`;               // alcista: lleno
+        g.fillRect(x - 2, bodyY, 4, bodyH);
+      } else {
+        g.strokeStyle = `rgba(${rgb},0.70)`;             // bajista: hueco
+        g.lineWidth = 1;
+        g.strokeRect(x - 2, bodyY, 4, bodyH);
+      }
     }
 
     // aguja de la hora actual

@@ -222,20 +222,42 @@ the canopy. A call at 20 m lands in the canopy in all three slots, and a check
 asserts the stack has not drifted apart between them.
 
 **The stand is a simulated LiDAR sweep**, not scenery: a ceiba (*Ceiba
-pentandra*) with a clean bole and a flat tiered crown, three campanos
-(*Albizia saman*) in umbrella domes wider than they are tall, and a dozen wine
-palms (*Attalea butyracea*) with columnar stipes and arching crowns. The three
-architectures are distinguishable at a glance — that is what makes a point
-cloud a place. An aerial flight is simulated (canopy returns strongly, ground
-moderately, vertical boles barely), because that asymmetry is what makes an
-aerial cloud look the way it does. Seeded, so the stand is identical every
-boot. ~62 000 points in six `THREE.Points`, one per stratum, shuffled at build
-so the adaptive LOD can trim the draw range into a uniform subsample without
-regenerating anything. Measured at **8.4 ms median — the same as DarkForest and
-Estratos**.
+pentandra*) with a clean bole and a flat tiered crown, four campanos (*Albizia
+saman*) in umbrella domes wider than they are tall, fourteen ordinary dry-forest
+canopy trees, and exactly two wine palms (*Attalea butyracea*). They grow in
+**cohorts, not a scatter** — an emergent drags a retinue of smaller trees into
+its shade, and the palms punctuate the stand rather than populating it. An
+aerial flight is simulated (canopy returns strongly, ground moderately, vertical
+boles barely), because that asymmetry is what makes an aerial cloud look the way
+it does. The ground boundary is **amorphous** — polar sampling with an angular
+lobe, thinned at the rim so the plot fades out instead of ending on a cartesian
+edge.
+
+The cloud is deliberately **sparse and small-pointed**: not a survey, but what
+the machine manages to see of the forest — a spectral presence rather than a
+model. Seeded, so the stand is identical every boot. Six `THREE.Points`, one per
+stratum, shuffled at build so the adaptive LOD can trim the draw range into a
+uniform subsample without regenerating anything. The wind sways each stratum
+(more with height, driven by the geophony bench) by moving **six positions per
+frame** — not one vertex is touched. Measured at **8.3 ms median, the same as
+DarkForest and Estratos**.
 
 Each call lights the stratum it came from, so the forest is the body that
 speaks rather than the backdrop it speaks in front of.
+
+**Every call is a Japanese candlestick** — the one from a trading chart. Thin
+wick from high to low, thick body where the energy sits, filled if it closed
+above the previous call of its own species and dimmed if below. The "price" is
+frequency. This is not a visual joke: the engine already sonifies a blockchain,
+and putting the forest into the same instrument a currency is quoted with says
+out loud what the whole apparatus does — try to measure nature in real time,
+with the wrong tool, leaving the seam visible.
+
+The candles are **immersed**: each animal sings from a real perch, a tree in
+this stand tall enough to reach its stratum. The howler can only be in the
+ceiba, because it is the one emergent. The aircraft has no perch — it is in the
+atmosphere, which is what it is. The strip along the bottom draws the same
+reading as a full chart, time on x and frequency on y.
 
 **Frequency does not fight for that axis.** Each call is a glyph whose length is
 its bandwidth; the spectrum reads as morphology. A separate strip along the
