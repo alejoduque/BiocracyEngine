@@ -93,6 +93,13 @@ s.doWhenBooted({
     ~trimKick  = 1.00 * ~trimMaster;
     ~trimPerc  = 0.45 * ~trimMaster;
     ~trimDust  = 0.60 * ~trimMaster;
+    // Field recordings (10_sample_system.scd). Kept in this table rather than
+    // beside the sample SynthDef so the whole budget stays readable in one
+    // place — a layer that sets its own level somewhere else is exactly how
+    // the pad explosion went unnoticed. \samplePlayer* defaults amp to 0.7,
+    // ~7x the drone, so the ratio places a call slightly ABOVE the drone: a
+    // species taking its turn should be the foreground, but not by 17 dB.
+    ~trimSample = 0.25 * ~trimMaster;
 
     ~limiterChans = s.options.numOutputBusChannels;
     SynthDef(\masterLimiter, { |ceiling = 0.92|

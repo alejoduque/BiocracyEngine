@@ -170,10 +170,27 @@ s.doWhenBooted({
             // Distance attenuation
             distance = (sampleSpatialX.squared + sampleSpatialY.squared).sqrt;
             distanceAmp = 1 - (distance * distanceParam * 0.5);
-            sig = sig * controlAmp.clip(0, 1) * distanceAmp.clip(0.1, 1);
+            // ~trimSample places this layer in the gain budget defined in
+            // 3_synthdefs.scd. Without it the samples were the one voice
+            // outside the budget entirely: amp 0.7 against a drone reference
+            // of 0.10, straight past a limiter calibrated for everything else.
+            // Falls back to the same number if 10_ is loaded standalone.
+            sig = sig * controlAmp.clip(0, 1) * distanceAmp.clip(0.1, 1)
+                * (~trimSample ? 0.0175);
 
-            // Quad panning
-            quadSig = PanAz.ar(4, sig.sum, sampleSpatialX.atan2(sampleSpatialY) / pi, 1, 2, 0.5);
+            // Panner chosen from the REAL output channel count, at graph-build
+            // time — same fix as the five voices in 3_synthdefs.scd. PanAz(4)
+            // on 2-channel hardware writes two of its four channels to buses
+            // that do not exist, so half of every field recording was being
+            // thrown away and the survivors moved in steps rather than
+            // sweeping. On a genuine quad rig the 2-D angle is kept.
+            quadSig = if((~limiterChans ? s.options.numOutputBusChannels) >= 4) {
+                PanAz.ar(4, sig.sum, sampleSpatialX.atan2(sampleSpatialY) / pi, 1, 2, 0.5)
+            } {
+                // Stereo: keep the recording's own stereo image rather than
+                // collapsing it with sig.sum, and place it with the X coord.
+                Balance2.ar(sig[0], sig[1], sampleSpatialX.clip(-1, 1))
+            };
             Out.ar(0, quadSig);
         }).add;
     };
@@ -188,9 +205,32 @@ s.doWhenBooted({
         // Sample synth tracking for multiple simultaneous playback
         ~activeSampleSynths = [];
         
+        // ── Per-event overrides ─────────────────────────────────────────────
+        // Bus key -> the SynthDef arg it shadows. A bus wins whenever it is
+        // connected (`Select.kr(xBus >= 0, [arg, In.kr(xBus)])`), and
+        // ~triggerSample connects ALL of them — so before this table a
+        // per-event argument could not have any effect at all. To honour one,
+        // its bus is deliberately LEFT DISCONNECTED for that synth and the
+        // literal is passed instead; every other parameter still follows the
+        // GUI buses live. This is what lets a call event carry its own
+        // frequency band and position (Antifonía) while the performer keeps
+        // hold of everything else.
+        ~sampleArgForBus = (
+            sampleRate: \rate,          samplePitch: \pitch,
+            timeStretch: \timeStretch,  grainSize: \grainSize,
+            sampleAmp: \amp,            sampleReverb: \reverbAmt,
+            sampleDelay: \delayAmt,     delayTime: \delayTime,
+            delayFeedback: \delayFB,    lowPass: \lpf,
+            highPass: \hpf,             filterRes: \filterRes,
+            samplePan: \pan,            sampleSpatialX: \spatialX,
+            sampleSpatialY: \spatialY
+        );
+
         // Create sample trigger functions
-        ~triggerSample = { |index, duration=nil|
-            var sampleName, synthArgs, newSynth, defName, buf;
+        // `overrides` is an Event of BUS KEYS (e.g. (lowPass: 4000, samplePan: -0.3)).
+        ~triggerSample = { |index, duration=nil, overrides=nil|
+            var sampleName, synthArgs, newSynth, defName, buf, ov;
+            ov = overrides ? ();
             if(index < ~sampleBuffers.size and: { ~sampleBuffers[index].notNil }) {
                 buf = ~sampleBuffers[index];
                 sampleName = ~sampleNames[index];
@@ -205,7 +245,13 @@ s.doWhenBooted({
                 if(~sampleBuses.notNil) {
                     ~sampleBuses.keysValuesDo { |paramName, bus|
                         var busParamName = (paramName.asString ++ "Bus").asSymbol;
-                        synthArgs = synthArgs ++ [busParamName, bus.index];
+                        var argName = ~sampleArgForBus[paramName];
+                        if(argName.notNil and: { ov[paramName].notNil }) {
+                            // overridden for this event only — bus left off
+                            synthArgs = synthArgs ++ [argName, ov[paramName].asFloat];
+                        } {
+                            synthArgs = synthArgs ++ [busParamName, bus.index];
+                        };
                     };
                 } {
                     "Sample buses not initialized yet".warn;
@@ -250,6 +296,99 @@ s.doWhenBooted({
             };
         };
         
+        // ── OSC surface for the sample system ───────────────────────────────
+        // Until now these seven field recordings could ONLY be played by
+        // clicking a button in the SC GUI (4_gui.scd:473) — there was no OSC
+        // path, so the browser, MIDI and every module were unable to reach
+        // them. Slot A (Antifonía) plays them from call events, so they need
+        // an address.
+        //
+        // Registered HERE rather than in 6_osc_handlers.scd because that file
+        // loads four files earlier, and a handler closing over a ~triggerSample
+        // that does not exist yet is a nil waiting to happen. 6_osc_handlers
+        // carries a pointer to this block so the canonical list still leads
+        // here.
+        //
+        //   /sample/trigger idx [amp] [rate] [lowHz] [highHz] [pan] [durSec]
+        //   /sample/param   name value            (native units, clipped)
+        //   /sample/stop                          (last triggered)
+        //   /sample/stopall                       (panic)
+        //
+        // lowHz/highHz are a CALL'S BAND, mapped onto the voice's own high-pass
+        // and low-pass — a call that occupies 1800-4900 Hz opens the recording
+        // in that window instead of playing it flat. Everything not supplied
+        // keeps following the performer's GUI buses.
+
+        // Concurrency cap. Field recordings are seconds long, so a dawn chorus
+        // can stack them faster than they end; the pad layer taught this lesson
+        // expensively. Oldest voice is freed rather than refusing the newest,
+        // so the texture stays live instead of freezing at the cap.
+        ~sampleMaxVoices = 12;
+        ~sampleTrimVoices = {
+            while({ (~activeSampleSynths ? []).size > ~sampleMaxVoices }, {
+                var oldest = ~activeSampleSynths[0];
+                ~activeSampleSynths.removeAt(0);
+                if(oldest.notNil) { try { oldest.free } };
+            });
+        };
+
+        ~sampleParamSpecs = (
+            sampleRate:     ControlSpec(0.1, 4.0),   samplePitch:  ControlSpec(-24, 24),
+            timeStretch:    ControlSpec(0.25, 8.0),  grainSize:    ControlSpec(0.05, 1.0),
+            sampleAmp:      ControlSpec(0, 1),       sampleReverb: ControlSpec(0, 1),
+            sampleDelay:    ControlSpec(0, 1),       delayTime:    ControlSpec(0.1, 2.0),
+            delayFeedback:  ControlSpec(0, 0.95),    lowPass:      ControlSpec(200, 8000),
+            highPass:       ControlSpec(20, 2000),   filterRes:    ControlSpec(0.1, 0.8),
+            samplePan:      ControlSpec(-1, 1),      sampleSpatialX: ControlSpec(-1, 1),
+            sampleSpatialY: ControlSpec(-1, 1)
+        );
+
+        OSCdef(\sampleTrigger, { |msg|
+            var idx = (msg[1] ? 0).asInteger;
+            var ov = ();
+            var dur = msg[7];
+            if(~triggerSample.isNil) {
+                "[sample] /sample/trigger before the sample system was ready".warn;
+            } {
+                // Positional and all-optional. nil means "leave this one on the
+                // performer's bus", which is why each is tested rather than
+                // defaulted — a default would silently seize the control.
+                if(msg[2].notNil) { ov[\sampleAmp]  = msg[2].asFloat.clip(0, 1) };
+                if(msg[3].notNil) { ov[\sampleRate] = msg[3].asFloat.clip(0.1, 4.0) };
+                if(msg[4].notNil) { ov[\highPass]   = msg[4].asFloat.clip(20, 2000) };
+                if(msg[5].notNil) { ov[\lowPass]    = msg[5].asFloat.clip(200, 8000) };
+                if(msg[6].notNil) {
+                    ov[\samplePan]      = msg[6].asFloat.clip(-1, 1);
+                    ov[\sampleSpatialX] = msg[6].asFloat.clip(-1, 1);
+                };
+                ~triggerSample.(idx, if(dur.notNil, { dur.asFloat.clip(0.05, 30) }, nil), ov);
+                ~sampleTrimVoices.value;
+                ~sampleStats = ~sampleStats ? ();
+                ~sampleStats[\fired] = (~sampleStats[\fired] ? 0) + 1;
+                ~sampleStats[\lastIdx] = idx;
+                ~sampleStats[\lastAt] = SystemClock.seconds;
+            };
+        }, '/sample/trigger');
+
+        OSCdef(\sampleParam, { |msg|
+            var name = (msg[1] ? \none).asSymbol;
+            var spec = ~sampleParamSpecs[name];
+            var bus = if(~sampleBuses.notNil) { ~sampleBuses[name] };
+            if(bus.notNil and: { msg[2].notNil }) {
+                var v = msg[2].asFloat;
+                if(spec.notNil) { v = spec.constrain(v) };
+                bus.set(v);
+                if(~sampleParams.notNil) { ~sampleParams[name] = v };
+            } {
+                ("[sample] unknown /sample/param '" ++ name ++ "'").warn;
+            };
+        }, '/sample/param');
+
+        OSCdef(\sampleStop, { if(~stopSample.notNil) { ~stopSample.value } }, '/sample/stop');
+        OSCdef(\sampleStopAll, { if(~stopAllSamples.notNil) { ~stopAllSamples.value } }, '/sample/stopall');
+
+        "Sample OSC ready: /sample/trigger · /sample/param · /sample/stop · /sample/stopall".postln;
+
         // Stop all samples (more aggressive)
         ~stopAllSamples = {
             "Stopping all active samples...".postln;
@@ -261,8 +400,11 @@ s.doWhenBooted({
                         synth.free;
                     };
                 });
+                // Counted BEFORE the list is emptied — this line reported 0
+                // every time, which made "stop did nothing" and "stop freed
+                // twelve voices" look identical in the log.
+                ("Freed " ++ ~activeSampleSynths.size ++ " tracked sample synths").postln;
                 ~activeSampleSynths = [];
-                "Freed % tracked sample synths".format(~activeSampleSynths.size).postln;
             };
             
             // Also free current sample reference
@@ -271,12 +413,15 @@ s.doWhenBooted({
                 ~currentSampleSynth = nil;
             };
             
-            // Clean up any remaining synths more gently
-            if(~defaultGroup.notNil and: { ~defaultGroup.isPlaying }) {
-                // Only free if group exists
-                s.sendMsg("/g_freeAll", ~defaultGroup.nodeID);
-            };
-            
+            // NO /g_freeAll here. Samples share ~defaultGroup with the drone,
+            // the pads and the whole beat engine, so freeing the group emptied
+            // the entire piece — every voice, not just the samples. That was
+            // survivable while this was a GUI-only escape hatch; it is not now
+            // that /sample/stopall is reachable from the browser, where it is
+            // the obvious thing to call when the chorus gets too thick. The
+            // tracked-synth loop above is the whole job: anything it does not
+            // know about is not a sample.
+
             "All samples stopped".postln;
         };
         

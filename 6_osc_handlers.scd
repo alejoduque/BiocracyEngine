@@ -119,6 +119,13 @@ s.doWhenBooted({
     });
     ~padDrainRoutine.play(SystemClock);
 
+    // ── Sample system OSC ───────────────────────────────────────────────
+    // /sample/trigger · /sample/param · /sample/stop · /sample/stopall are
+    // registered in 10_sample_system.scd, not here: they close over
+    // ~triggerSample and ~sampleBuses, which that file defines four files
+    // AFTER this one. Registering them here would capture nils. Pointer left
+    // so the canonical OSC list still leads to them.
+
     ~monitorLine = {
         var rs = ~rhythmState, b = ~bellStats;
         ("[MON] bells:" ++ b[\spawned] ++ "/gate:" ++ b[\skipGate]
@@ -164,6 +171,15 @@ s.doWhenBooted({
                 ++ "/" ++ (~beatParams !? { ~beatParams.tidePhase } ? 0).round(0.01)
                 ++ "=" ++ (~beatParams !? { ~beatParams.tideValue } ? 0).round(0.01)
             ++ " puls:" ++ if((~beatParams !? { ~beatParams.tidePulse } ? 0) > 0.5, "on", "off")
+            // smp: field recordings — cumulative triggers / live voices / cap.
+            // The seven samples were previously reachable only from a GUI
+            // button and appeared nowhere on this line, so "the forest is not
+            // speaking" had no reading. live is the number that matters: if it
+            // pins at the cap the chorus is being culled, and if it stays 0
+            // while fired climbs the buffers never loaded.
+            ++ "  smp:" ++ (~sampleStats !? { ~sampleStats[\fired] } ? 0)
+                ++ "/" ++ (~activeSampleSynths !? { ~activeSampleSynths.size } ? 0)
+                ++ "/" ++ (~sampleMaxVoices ? 0)
             ++ " padPoly:" ++ (~bellStats !? { ~bellStats[\lastPoly] } ? 1).round(0.01)
             // srv: is the AUDIO SERVER alive. Everything else on this line is
             // counted in sclang and keeps incrementing whether or not scsynth
