@@ -37,6 +37,7 @@ type EstratosInstance = {
   toggleAnim?: (o?: EArg) => void;
   setNocturno?: (o?: EArg) => void;
   setDensity?: (o?: EArg) => void;
+  setRegions?: (v: number[]) => void;
   applyControl?: (key: string, v: number) => void;
   renderer?: { setSize: (w: number, h: number) => void; getPixelRatio?: () => number };
   camera?: { aspect: number; updateProjectionMatrix: () => void };
@@ -329,6 +330,15 @@ function wirePhenoControls() {
         applyMode(_bancadaMode || "total");
         console.log(`[estratos] bancada ${idx} → mode "${_bancadaMode || "total (eco released)"}"`);
       }
+    }
+
+    // ── regional eDNA → per-stratum presence ──
+    // The eight biogeographic regions weight the strata they belong to. Pushed
+    // on the same tick as the phenology values; the module smooths and applies
+    // them as a live opacity multiplier, so there is no rebuild.
+    const eb = (window as unknown as { __ednaBio?: number[] }).__ednaBio;
+    if (Array.isArray(eb) && _instance.setRegions) {
+      try { _instance.setRegions(eb); } catch { /* ignore */ }
     }
 
     // ── expensive: activityThreshold → population density (debounced) ──

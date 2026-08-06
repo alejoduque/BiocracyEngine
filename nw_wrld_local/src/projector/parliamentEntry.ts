@@ -1296,6 +1296,41 @@ async function init() {
     target.dispatchEvent(new Event("input"));
   }
 
+  // ─── Regional eDNA vector — live values shared with visual modules ────────
+  // Eight Colombian biogeographic regions, in EDNA_IDS order:
+  //   CHO Chocó · AMZ Amazonas · COR Cordillera Oriental · CAR Caribe
+  //   ORI Orinoquía · PAC Pacífico · MAG Magdalena · GUA Guayana
+  //
+  // Published on the same contract the modules already poll (__sonethParams,
+  // __phenoParams, __activeSpecies, __transitoDrone). Until now these eight
+  // sliders reached nothing regional anywhere: a binary >0.7 class on the
+  // biome map and three numbers in a diag readout. No 3-D module saw them.
+  const ednaBio: number[] = new Array(8).fill(0.5);
+  (window as unknown as { __ednaBio?: number[] }).__ednaBio = ednaBio;
+
+  function publishEdna() {
+    const arr = parliamentStore.state?.edna;
+    if (!Array.isArray(arr)) return;
+    for (let i = 0; i < ednaBio.length; i++) {
+      const v = arr[i]?.biodiversity;
+      if (typeof v === "number" && isFinite(v)) ednaBio[i] = v;
+    }
+  }
+
+  // Mean of one field across an agent group in the live store. Returns the
+  // field's own value when the group is empty or unreadable, so a macro can
+  // never drive its target from NaN.
+  function groupMean(group: "species" | "edna", field: string): number {
+    const arr = (parliamentStore.state as unknown as Record<string, Record<string, number>[]>)?.[group];
+    if (!Array.isArray(arr) || arr.length === 0) return 0.5;
+    let sum = 0, n = 0;
+    for (const a of arr) {
+      const x = a?.[field];
+      if (typeof x === "number" && isFinite(x)) { sum += x; n++; }
+    }
+    return n > 0 ? sum / n : 0.5;
+  }
+
   const REPLICA_MACROS: Record<string, (v: number) => void> = {
     // Rotation of the assembly = the cyclical cadence → beat tempo.
     // (slider range is 0.1–2.0; normalise to 0–1 for the beatTempo fader)
@@ -1305,12 +1340,23 @@ async function init() {
       driveSonethSlider("harmonicrich", 0.35 + v * 0.5);
       driveSonethSlider("noiselevel", 0.45 * (1 - v));
     },
-    // Species activity = liveliness → granular texture density.
-    "/agents/species/activity": (v) => driveSonethSlider("texturedepth", v),
-    // Species presence = being-there → enveloping atmosphere / spatial bloom.
-    "/agents/species/presence": (v) => driveSonethSlider("atmospheremix", 0.2 + v * 0.6),
-    // eDNA biodiversity = spectral richness → filter opens, brighter spectrum.
-    "/agents/edna/biodiversity": (v) => driveSonethSlider("spectralshift", 0.25 + v * 0.6),
+    // ── The three GROUP macros drive their target from the group MEAN ──────
+    // Each of these addresses is shared by several sliders — 5 species, 5
+    // presence, 8 eDNA regions — and each used to pass only the value of the
+    // slider that had just moved. Eight controls fighting over one parameter,
+    // each ignoring the other seven: region 3 at 0.95 put spectralShift at
+    // 0.82, then touching region 5 at 0.78 teleported it to 0.72. That is the
+    // jumping. wireSlider calls patchStoreFromSlider BEFORE the macro, so the
+    // store already holds the new value here and the mean is current.
+    // One slider now moves the target by ~1/5 or ~1/8 of its range.
+    "/agents/species/activity": () =>
+      driveSonethSlider("texturedepth", groupMean("species", "activity")),
+    "/agents/species/presence": () =>
+      driveSonethSlider("atmospheremix", 0.2 + groupMean("species", "presence") * 0.6),
+    "/agents/edna/biodiversity": () => {
+      publishEdna();   // regions reach Estratos + DarkForest via __ednaBio
+      driveSonethSlider("spectralshift", 0.25 + groupMean("edna", "biodiversity") * 0.6);
+    },
   };
 
   function wireSlider(slider: HTMLInputElement) {
@@ -1553,6 +1599,10 @@ async function init() {
   parliamentStore.subscribe((state) => {
     if (!state || !Array.isArray(state.species)) return;
     currentState = state;
+
+    // Keep __ednaBio current for values that arrive over OSC (/agent/edna/state)
+    // rather than from a slider — the macro only fires on local slider moves.
+    publishEdna();
 
     // Connection
     if (statusDot) statusDot.className = state.connected ? "on" : "";

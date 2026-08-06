@@ -86,6 +86,16 @@ class DarkForest extends BaseThreeJsModule {
     { key: "micorriza",  label: "RED MICORRÍCICA",  sub: "C ↔ N · P (subsuelo)",   y: -2.3, accent: "fungal"   },
   ];
 
+  // ── eDNA regional → estrato ────────────────────────────────────────────
+  // window.__ednaBio carries eight Colombian biogeographic regions in
+  // EDNA_IDS order (CHO AMZ COR CAR ORI PAC MAG GUA). There are six strata, so
+  // the last two wrap; a stratum fed by two regions takes their mean. The
+  // weight modulates how strongly that stratum's exchanges read — it shifts
+  // which flows feel active, it does not add or remove anything drawn.
+  // Until now these eight sliders reached no module at all: they merely took
+  // turns overwriting one shared spectralShift.
+  static REGION_STRATUM = [2, 3, 1, 0, 4, 2, 5, 4];
+
   // Bosque seco tropical, Colombia — real assemblage, placed by stratum.
   // [sci, common, taxon(glyph), stratum]
   static SPECIES = [
@@ -157,6 +167,10 @@ class DarkForest extends BaseThreeJsModule {
     this.species = [];       // {sci, common, taxon, stratum, pos, sprite, mark}
     this.strata = [];        // {def, y, group, labelSprite, lines}
     this.flows = [];         // active data-flow vectors
+    // Per-stratum weight from the eDNA regions. 0.5 = neutral, so the scene
+    // starts exactly as it did before the regions reached it.
+    this.stratumW = new Array(DarkForest.STRATA.length).fill(0.5);
+    this.tgtStratum = new Array(DarkForest.STRATA.length).fill(0.5);
     this._flowSpawnBudget = 0;
     this._carbon = [];       // carbon field arrows
     this._co2ppm = 416;      // simulated atmospheric reading, drifts
@@ -455,7 +469,14 @@ class DarkForest extends BaseThreeJsModule {
     lbl.position.copy(ctrl);
     this.world.add(lbl);
 
-    this.flows.push({ line, mat, geo, cone, head, lbl, pts, N, type,
+    // Nearest stratum to the flow's control point — lets the regional weight
+    // find the flow without changing any spawn call site.
+    let sIdx = 0, sBest = Infinity;
+    for (let j = 0; j < DarkForest.STRATA.length; j++) {
+      const d = Math.abs(DarkForest.STRATA[j].y - ctrl.y);
+      if (d < sBest) { sBest = d; sIdx = j; }
+    }
+    this.flows.push({ line, mat, geo, cone, head, lbl, pts, N, type, sIdx,
       t: 0, draw: 0, life: 3.4 + Math.random() * 2.2, age: 0, label, colHex });
 
     // also log it to the terminal + crawl
@@ -639,6 +660,24 @@ class DarkForest extends BaseThreeJsModule {
     if (typeof sp.spectralshift === "number") this.tgt.spectral = sp.spectralshift;
     if (typeof sp.spatialspread === "number") this.tgt.spatial = sp.spatialspread;
     if (typeof sp.txInfluence === "number") this.ethPressureTgt = sp.txInfluence;
+
+    // Regional eDNA — same contract, same smoothing as everything above.
+    let eb = null;
+    try { eb = (typeof window !== "undefined") ? window.__ednaBio : null; } catch (e) { eb = null; }
+    if (Array.isArray(eb)) {
+      const sum = new Array(DarkForest.STRATA.length).fill(0);
+      const n = new Array(DarkForest.STRATA.length).fill(0);
+      for (let i = 0; i < eb.length && i < DarkForest.REGION_STRATUM.length; i++) {
+        const v = eb[i];
+        if (typeof v === "number" && isFinite(v)) {
+          const j = DarkForest.REGION_STRATUM[i];
+          sum[j] += v; n[j]++;
+        }
+      }
+      for (let j = 0; j < sum.length; j++) {
+        if (n[j] > 0) this.tgtStratum[j] = sum[j] / n[j];
+      }
+    }
   }
 
   _updateControls(dt) {
@@ -650,6 +689,9 @@ class DarkForest extends BaseThreeJsModule {
     this.ctl.spatial += (this.tgt.spatial - this.ctl.spatial) * k;
     this.coherence += (this.coherenceTgt - this.coherence) * k;
     this.ethPressure += (this.ethPressureTgt - this.ethPressure) * k;
+    for (let j = 0; j < this.stratumW.length; j++) {
+      this.stratumW[j] += (this.tgtStratum[j] - this.stratumW[j]) * k;
+    }
 
     // Spatial Sprd → horizontal scale of the whole stack (tight ↔ diffuse)
     if (this.world) {
@@ -738,7 +780,10 @@ class DarkForest extends BaseThreeJsModule {
       let env;
       if (f.draw < 1) env = f.draw;
       else { const rem = f.life - (f.age); env = Math.max(0, Math.min(1, rem / 1.2)); }
-      f.mat.opacity = (0.25 + 0.6 * env) * glowBase;
+      // Regional weight as a gentle multiplier (0.6–1.0): raising a region
+      // brings its stratum's exchanges forward without erasing the others.
+      const rw = 0.6 + (this.stratumW[f.sIdx !== undefined ? f.sIdx : 0] * 0.4);
+      f.mat.opacity = (0.25 + 0.6 * env) * glowBase * rw;
 
       f.head.position.copy(headPt);
       f.head.material.opacity = env * 0.9 * glowBase;
