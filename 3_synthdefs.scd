@@ -113,7 +113,13 @@ s.doWhenBooted({
     //     0.0014 * sqrt(5) * 0.5 * k = 0.012  ->  k ~ 7.5
     // so 0.25 * 7.5 ~ 1.9. Higher than every other ratio in this table, which
     // is the correct answer for a source that arrives quiet.
-    ~trimSample = 1.90 * ~trimMaster;
+    // 1.90 -> 1.55. The ratio was calibrated when a call was cut dead at 1.5 s,
+    // so ~5 voices overlapped. With the envelope owning the lifetime a call
+    // now sustains its full hold plus release, and the measured concurrency
+    // went to 9 — the layer grows as sqrt(n) for incoherent sources, so
+    // sqrt(9/5) = 1.34x more energy from the same trim. Measured with slot A
+    // live at vol/amp 0.70: outPk p90 0.933, just over the 0.5-0.9 band.
+    ~trimSample = 1.55 * ~trimMaster;
 
     ~limiterChans = s.options.numOutputBusChannels;
     SynthDef(\masterLimiter, { |ceiling = 0.92|

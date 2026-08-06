@@ -66,7 +66,13 @@ export const INSTRUMENTS: Record<string, Instrument> = {
     s6: { label: "PERCUSIÓN",  sub: "opalPerc · pulso",          voice: "perc",   band: [0.30, 0.74], hue: 0.33 },
     s7: { label: "BOMBO",      sub: "opalKick · sub",            voice: "kick",   band: [0.00, 0.18], hue: 0.02 },
     s8: { label: "POLVO",      sub: "opalDust · granular",       voice: "dust",   band: [0.55, 1.00], hue: 0.52 },
-    s9: { label: "MUESTRAS",   sub: "samplePlayer · campo",      voice: "sample", band: [0.10, 0.95], hue: 0.75 },
+    // [0.10, 0.95] was 85% of the spectrum — ~58 Hz to 8 kHz — and bandRange
+    // is a plain mean, so this slot's level was dominated by the drone and
+    // kick bands sitting near 0.15 while the field recordings it is supposed
+    // to be showing sit near 0.004. It was measuring everything except itself.
+    // The samples' actual register, after Antifonía's per-call hpf/lpf, is
+    // bands 11-13 — roughly 2.3-4.8 kHz.
+    s9: { label: "MUESTRAS",   sub: "samplePlayer · campo",      voice: "sample", band: [0.68, 0.88], hue: 0.75 },
 };
 
 /** Live reading for one instrument: its register, and its last attack. */

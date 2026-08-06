@@ -105,6 +105,27 @@ s.doWhenBooted({
         SynthDef(defName, {
             arg buf=0, amp=0.7,
             rate=1, pitch=0, loop=0,
+            // ── Envolvente ──────────────────────────────────────────────
+            // Esta voz era la ÚNICA del motor sin envolvente: PlayBuf iba
+            // directo a la salida por una ganancia estática, y quien la
+            // terminaba era un `.free` programado desde sclang. Un .free es un
+            // salto del valor instantáneo de la onda a cero — un clic de banda
+            // ancha en CADA llamada— y además se llevaba por delante la cola
+            // de reverb y el delay, que viven DENTRO de la voz: el sonido no
+            // decaía, desaparecía junto con el espacio en el que sonaba.
+            //
+            // Ahora la envolvente es dueña de la vida del nodo (doneAction 2).
+            // `hold` viene de la duración de la llamada, así que `dur` da forma
+            // a un gesto en vez de guillotinar una forma de onda.
+            atk=0.04, hold=1.2, rel=0.5,
+            // Puerta de liberación: 1 mientras suena, 0 para soltar. Es lo que
+            // permite que ~sampleTrimVoices desaloje la voz más vieja con un
+            // fundido en lugar de un corte.
+            gate=1,
+            // Posición de arranque, 0-1 del búfer. Sin esto PlayBuf empezaba
+            // siempre en el frame 0, de modo que una grabación de 51 s se oía
+            // siempre por el mismo fragmento inicial.
+            startPos=0,
             timeStretch=1.0, grainSize=0.2, overlap=4,
             reverbAmt=0.3, delayAmt=0.2, delayTime=0.5, delayFB=0.3,
             lpf=8000, hpf=20, filterRes=0.1,
@@ -116,7 +137,7 @@ s.doWhenBooted({
             samplePanBus=(-1), sampleSpatialXBus=(-1), sampleSpatialYBus=(-1),
             roomSizeBus=(-1), distanceEffectBus=(-1);
 
-            var sig, grains, wet, stretchAmount, distance, distanceAmp, quadSig;
+            var sig, grains, wet, stretchAmount, distance, distanceAmp, quadSig, env;
 
             var controlRate = Select.kr(sampleRateBus >= 0, [rate, In.kr(sampleRateBus, 1)]);
             var controlPitch = Select.kr(samplePitchBus >= 0, [pitch, In.kr(samplePitchBus, 1)]);
@@ -137,8 +158,20 @@ s.doWhenBooted({
             var distanceParam = Select.kr(distanceEffectBus >= 0, [0.5, In.kr(distanceEffectBus, 1)]);
             var finalRate = controlRate * controlTimeStretch.reciprocal * (controlPitch / 12).midiratio;
 
-            // PlayBuf with correct channel count — no mismatch
-            sig = PlayBuf.ar(numCh, buf, finalRate, loop: loop, doneAction: if(loop == 0, 2, 0));
+            // PlayBuf with correct channel count — no mismatch.
+            //
+            // doneAction 0, A PROPÓSITO: la envolvente termina el nodo. Antes
+            // decía `doneAction: if(loop == 0, 2, 0)`, que compilaba SIEMPRE a
+            // 0 sin avisar — `loop` es un control (OutputProxy) y `==` no es
+            // perezoso en sclang, así que caía en la identidad de Object y
+            // devolvía false en tiempo de construcción del grafo. Verificado.
+            // Consecuencia: PlayBuf no se liberaba nunca, y por eso las
+            // muestras disparadas desde los botones de la GUI —que no pasan
+            // duración— quedaban como nodos vivos y mudos consumiendo CPU
+            // hasta un STOP ALL.
+            sig = PlayBuf.ar(numCh, buf, finalRate,
+                startPos: startPos.clip(0, 0.999) * BufFrames.kr(buf),
+                loop: loop, doneAction: 0);
             // Ensure stereo
             sig = if(numCh == 1, { [sig, sig] }, { sig });
 
@@ -175,10 +208,23 @@ s.doWhenBooted({
             // outside the budget entirely: amp 0.7 against a drone reference
             // of 0.10, straight past a limiter calibrated for everything else.
             // Falls back to the same number if 10_ is loaded standalone —
-            // keep the two in step, or a standalone load is silently 7.5x
-            // quieter than the ecosystem it is supposed to mirror.
-            sig = sig * controlAmp.clip(0, 1) * distanceAmp.clip(0.1, 1)
-                * (~trimSample ? 0.133);
+            // keep the two in step (1.55 * 0.07), or a standalone load is
+            // silently at a different level than the ecosystem it mirrors.
+            // La envolvente, con la misma forma de cuatro tramos que usa
+            // \elektronBell (3_synthdefs.scd). Su doneAction es lo único que
+            // libera el nodo, así que la cola de reverb alcanza a sonar.
+            env = EnvGen.kr(
+                Env.new(
+                    [0, 1, 1, 0],
+                    [atk.clip(0.005, 2.0), hold.clip(0.05, 600), rel.clip(0.02, 8.0)],
+                    [\sine, 0, -3]
+                ),
+                gate,
+                doneAction: 2
+            );
+
+            sig = sig * env * controlAmp.clip(0, 1) * distanceAmp.clip(0.1, 1)
+                * (~trimSample ? 0.1085);
 
             // Panner chosen from the REAL output channel count, at graph-build
             // time — same fix as the five voices in 3_synthdefs.scd. PanAz(4)
@@ -232,25 +278,38 @@ s.doWhenBooted({
         // `overrides` is an Event of BUS KEYS (e.g. (lowPass: 4000, samplePan: -0.3)).
         ~triggerSample = { |index, duration=nil, overrides=nil|
             var sampleName, synthArgs, newSynth, defName, buf, ov;
+            var bufSecs, holdSecs, startFrac;
             ov = overrides ? ();
             if(index < ~sampleBuffers.size and: { ~sampleBuffers[index].notNil }) {
                 buf = ~sampleBuffers[index];
                 sampleName = ~sampleNames[index];
                 // Pick the right SynthDef for the buffer's channel count
                 defName = if(buf.numChannels <= 1, \samplePlayerMono, \samplePlayerStereo);
-                // NO se hace loop por traer duración. `duration` significaba
-                // dos cosas a la vez —"repite" y "libera a los N segundos"— y
-                // el puente de Antifonía manda SIEMPRE los siete argumentos,
-                // así que toda llamada del bosque entraba en bucle: una rana
-                // de 0.9 s pedida con dur 4 s se repetía cuatro veces. Lo
-                // contrario exacto de la regla que el propio puente enuncia,
-                // "una grabación es un EVENTO — un pájaro, una vez".
+                // ── Duración → forma, no guillotina ─────────────────────
+                // `duration` viene de Antifonía y es la vida del GLIFO visual
+                // (0.5-2.7 s), no una medida del material: cinco de las siete
+                // grabaciones duran entre 51 y 360 segundos. Usarla como punto
+                // de corte hacía que una grabación de 51 s se oyera un 3 % de
+                // sí misma y muriera de un tajo.
                 //
-                // El bucle explícito queda disponible por \sampleLoop para
-                // quien lo quiera; la duración ahora sólo acota la vida.
+                // Ahora abre una VENTANA dentro de la grabación: entra, se
+                // sostiene ese tiempo y sale. Sin duración (los botones de la
+                // GUI) se sostiene el búfer entero, que es lo que esos botones
+                // siempre debieron hacer.
+                bufSecs = buf.numFrames / s.sampleRate.max(1);
+                holdSecs = if(duration.notNil, { duration }, { bufSecs });
+                // El arranque varía por disparo, salvo que quepa entera: las
+                // dos grabaciones cortas (ranas, oropéndola) se oyen completas,
+                // las largas se abren por un sitio distinto cada vez.
+                startFrac = if(holdSecs >= (bufSecs * 0.9), { 0 },
+                    { rrand(0.0, (1 - ((holdSecs + 0.6) / bufSecs)).max(0.0)) });
                 synthArgs = [
                     \buf, buf,
-                    \loop, ((ov[\sampleLoop] ? 0).asInteger)
+                    \loop, ((ov[\sampleLoop] ? 0).asInteger),
+                    \startPos, startFrac,
+                    \atk,  (holdSecs * 0.10).clip(0.01, 0.25),
+                    \hold, (holdSecs * 0.80).clip(0.05, 600),
+                    \rel,  (holdSecs * 0.35).clip(0.08, 4.0)
                 ];
 
                 // Connect all sample control buses if they exist
@@ -284,25 +343,14 @@ s.doWhenBooted({
                 ~activeSampleSynths = ~activeSampleSynths.add(newSynth);
                 
                 // Auto-cleanup when synth ends (for non-looping samples)
-                if(duration.notNil) {
-                    SystemClock.sched(duration, {
-                        // Sólo si sigue en la lista: ~sampleTrimVoices puede
-                        // haberlo liberado ya al recortar por el tope, y
-                        // liberarlo dos veces imprime "FAILURE /n_free Node not
-                        // found" por cada voz recortada.
-                        if(newSynth.notNil and: {
-                            (~activeSampleSynths ? []).includes(newSynth)
-                        }) {
-                            ~activeSampleSynths.remove(newSynth);
-                            newSynth.free;
-                        };
-                    });
-                } {
-                    // For looping or long samples, add cleanup when synth naturally ends
-                    newSynth.onFree({
-                        ~activeSampleSynths.remove(newSynth);
-                    });
-                };
+                // Nada programa un .free aquí. La envolvente (doneAction 2)
+                // termina el nodo, así que la cola de reverb suena hasta el
+                // final y no hay clic. La lista viva se limpia con onFree, que
+                // ahora SÍ se dispara — antes no lo hacía nunca, porque el
+                // doneAction de PlayBuf compilaba a 0 en silencio.
+                newSynth.onFree({
+                    ~activeSampleSynths.remove(newSynth);
+                });
                 
                 // Keep track for individual stopping (last triggered)
                 ~currentSampleSynth = newSynth;
@@ -354,7 +402,11 @@ s.doWhenBooted({
             while({ (~activeSampleSynths ? []).size > ~sampleMaxVoices }, {
                 var oldest = ~activeSampleSynths[0];
                 ~activeSampleSynths.removeAt(0);
-                if(oldest.notNil) { try { oldest.free } };
+                // Soltar la puerta, no matar el nodo: el desalojo por tope se
+                // oía como un clic igual que el corte por duración. Con
+                // gate 0 la envolvente hace su release y el nodo se libera
+                // solo al terminarlo.
+                if(oldest.notNil) { try { oldest.set(\gate, 0) } };
             });
         };
 

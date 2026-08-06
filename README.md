@@ -362,7 +362,16 @@ the air. That inversion is literal: anthropophony's spawn weight is driven by
 
 **It really sounds.** Calls fire the seven field recordings in
 `10_sample_system.scd` through `/sample/trigger`, each opened in that call's
-frequency band and panned by its position. Geophony sources are drawn but
+frequency band and panned by its position.
+
+A call **opens a window into** the recording rather than truncating it. Five of
+the seven files are 51–360 s soundscape beds, not isolated calls, so a call's
+duration shapes an envelope — attack, hold, release — over an excerpt taken from
+a varying offset. The two short files (ranas 4.9 s, oropéndola 6.2 s) still read
+whole. Previously the duration was a hard `.free`, which cut a 51-second howler
+after 3% of itself with no release at all: a broadband click on every call, and
+because the reverb and delay live *inside* the voice, the acoustic space vanished
+with it. Geophony sources are drawn but
 silent — there is no rain or wind recording yet — and the HUD says so out loud
 rather than letting the gap disappear. Adding one is a file in `samples/` and a
 line in `~samplePaths`.

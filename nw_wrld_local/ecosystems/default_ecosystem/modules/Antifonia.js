@@ -1885,11 +1885,16 @@ class Antifonia extends BaseThreeJsModule {
   // Cola de llamadas para SC. Devuelve y VACÍA: el puente es el único
   // consumidor, y si nadie drena, _emit deja de encolar en 24 para que una
   // pestaña en segundo plano no acumule una avalancha.
-  getPendingCalls() {
+  // `max` es cuántas va a poder mandar el puente. Antes se vaciaba la cola
+  // ENTERA y el puente enviaba como mucho dos: el resto se descartaba en
+  // silencio, así que la mayoría de las llamadas encoladas no sonaba nunca y
+  // no había forma de notarlo. Ahora se entrega sólo lo que se va a usar y el
+  // resto espera al siguiente tick.
+  getPendingCalls(max = 2) {
     if (this._pending.length === 0) return null;
-    const out = this._pending;
-    this._pending = [];
-    return out;
+    const n = Math.max(1, max | 0);
+    const out = this._pending.splice(0, n);
+    return out.length ? out : null;
   }
 
   // Especie activa, en la MISMA forma que publica PhenologicalCalendar, para

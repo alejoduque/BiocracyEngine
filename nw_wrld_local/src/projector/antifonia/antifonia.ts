@@ -60,7 +60,7 @@ type AntifoniaInstance = {
   getMachineShare?: () => number;
   getSpread?: () => number;
   getHour?: () => number;
-  getPendingCalls?: () => PendingCall[] | null;
+  getPendingCalls?: (max?: number) => PendingCall[] | null;
   getActiveSpecies?: () => ActiveSpecies | null;
   renderer?: { setSize: (w: number, h: number) => void; getPixelRatio?: () => number };
   camera?: { aspect: number; updateProjectionMatrix: () => void };
@@ -224,7 +224,8 @@ function startCallDrain() {
       sendParliamentAction?: (address: string, args: number[]) => void;
     }).sendParliamentAction;
 
-    const queued = _instance.getPendingCalls?.() ?? null;
+    // Ask for exactly what this tick can send; the rest stays queued.
+    const queued = _instance.getPendingCalls?.(MAX_CALLS_PER_TICK) ?? null;
     if (queued && queued.length && typeof send === "function") {
       const tv = tide && typeof tide.value === "number" ? clamp01(tide.value) : 0.65;
       const gap = GAP_TROUGH + (GAP_CREST - GAP_TROUGH) * tv;
