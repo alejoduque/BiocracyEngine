@@ -49,14 +49,30 @@
 // reads as struck-metal resonance INSIDE the drone rather than high pinging
 // on top of it (basePitch was 200 with a 2.0 spread and a 200 Hz TX shift —
 // pools reached ~1 kHz fundamentals, ~9 kHz partials).
+// Degrees of a minor pentatonic, as ratios on the base pitch.
+//
+// The pool used to be INTEGER MULTIPLES — basePitch × 1, ×2, ×3, ×4, ×5, ×6 —
+// which is a harmonic series. Walked in order (see poolIdx below) that is a
+// rising scale run that resets at the top: measured at the live settings it
+// played 50 · 99 · 149 · 199 · 248 · 298 Hz and repeated, forever. That is the
+// "dumb progression, up then down". It was arithmetic, not a synth.
+//
+// Ratios instead of multiples: the pool spans about an octave and a half of a
+// usable mode rather than six rungs of a ladder, so any order through it is
+// musical rather than a run.
+~pitchDegrees = #[1.0, 1.2, 1.3333, 1.5, 1.8, 2.0, 2.4];
+
 ~computePitchPool = { |harmRich=1.0, txInfluence=0.0, density=0.5|
     var basePitch = 70;
     var pitchShift = txInfluence * 50;   // TX activity nudges pitch gently
-    var spread = harmRich.linexp(0.1, 8.0, 0.5, 1.4);  // narrow→moderate spread
+    // Range matched to the registry spec, which is now ControlSpec(0.1, 5):
+    // the old 0.1–8.0 mapping could never reach its own top after that change.
+    var spread = harmRich.linexp(0.1, 5.0, 0.5, 1.4);  // narrow→moderate spread
     var numSteps = (4 + (density * 3)).round.clip(4, 7);  // 4–7 notes
 
+    // Clamped to 40–400 Hz: the struck-resonance register the drone sits in.
     Array.fill(numSteps, { |i|
-        (basePitch * spread * (i + 1)) + pitchShift;
+        ((basePitch * spread * ~pitchDegrees[i]) + pitchShift).clip(40, 400);
     });
 };
 
@@ -110,7 +126,9 @@
         \droneDepthBus,   ~bi.(\droneDepth),
         \droneFadeBus,    ~bi.(\droneFade),
         \droneSpaceBus,   ~bi.(\droneSpace),
-        \droneMixBus,     ~bi.(\droneMix)
+        \droneMixBus,     ~bi.(\droneMix),
+        // delayFeedback had no reader at all until now.
+        \delayFeedbackBus, ~bi.(\delayFeedback)
     ], target: if(~defaultGroup.notNil, { ~defaultGroup }, { s.defaultGroup }));
     
     ~beatRoutine = Routine({
@@ -306,15 +324,38 @@
             if((step % percDivisor == 0) or: {
                 (step % 10 == 0) and: { transactionInfluence > 0.6 } and: { 0.3.coin }
             }) {
+                // Degree selection. Stepping +1 through an ordered pool is a
+                // scale run whatever the pool contains — that was the other
+                // half of the "up then down".
+                //
+                // A FIXED hop does not fix it either: any hop sharing a factor
+                // with the pool size cycles a subset (hop 3 on a 6-note pool is
+                // a two-note ostinato), and hop = size-1 is a descending run.
+                // Measured over 60 hits: hop 2 → 3/6 notes, hop 3 → 2/6,
+                // hop 5 → all six but strictly descending.
+                //
+                // So: take the degree from the transaction itself when the
+                // chain is flowing — its counterparty and its position in the
+                // block. The same actor tends to return around the same degree
+                // while the block position keeps consecutive hits apart, which
+                // is motion that follows the chain rather than counting.
+                // With no chain data, hop by a VARYING amount in 2..size-1:
+                // never repeats a note, never steps to a neighbour, and has no
+                // fixed cycle to lock into (verified full pool coverage at
+                // every size 4–7).
                 var baseFreq = pitchPool.wrapAt(poolIdx);
-                poolIdx = (poolIdx + 1) % pitchPool.size;
+                poolIdx = if(rs.notNil and: { rs[\addrSig] > 0 }) {
+                    ((rs[\addrSig] >> 2) + rs[\txIndex]) % pitchPool.size
+                } {
+                    (poolIdx + rrand(2, pitchPool.size - 1)) % pitchPool.size
+                };
                 ~beatParams.percCount = (~beatParams.percCount ? 0) + 1;
 
                 // ─ Voicing: single note, dyad, or triad based on texture control ─
                 case
                 { voicingMode == \single } {
                     // Single pitched note
-                    var percFreq = baseFreq * rrand(0.95, 1.05);
+                    var percFreq = (baseFreq * rrand(0.95, 1.05)).clip(40, 900);
                     Synth(\opalPerc, [
                         \out,          0,
                         \freq,         percFreq,
@@ -333,7 +374,7 @@
                 { voicingMode == \dyad } {
                     // Two-note interval
                     2.do { |voice|
-                        var harmFreq = baseFreq * ([1.0, 1.5][voice]) * rrand(0.98, 1.02);
+                        var harmFreq = (baseFreq * ([1.0, 1.5][voice]) * rrand(0.98, 1.02)).clip(40, 900);
                         Synth(\opalPerc, [
                             \out,          0,
                             \freq,         harmFreq,
@@ -353,7 +394,11 @@
                 { voicingMode == \triad } {
                     // Full harmonic series (up to harmCount)
                     (harmCount.clip(2, 5)).do { |h|
-                        var harmFreq = baseFreq * (h + 1) * resBdy.linexp(0.1, 0.8, 0.95, 1.15);
+                        // (h+1) reached 5x on top of a 686 Hz pool note. Clamped
+                        // to the same ceiling \opalPerc enforces internally, so the
+                        // harmonics thin toward the top instead of climbing away.
+                        var harmFreq = (baseFreq * (h + 1)
+                            * resBdy.linexp(0.1, 0.8, 0.95, 1.15)).clip(40, 900);
                         Synth(\opalPerc, [
                             \out,          0,
                             \freq,         harmFreq,
@@ -398,12 +443,32 @@
             // Step + interval
             step = (step + 1) % 16;
 
-            // Interval with micro-swing: odd steps slightly delayed for groove.
-            // Half the old grid rate (was tempo*4): at tempo 1.0 a step is
-            // 0.5 s, a 16-step bar 8 s, a phrase 32 s — evolution you can
-            // hear as slow drift rather than beat-machine motion.
-            interval = (1 / (~beatParams.beatTempo * 2)) *
-                       (1 - (transactionInfluence * 0.1));
+            // ── Tempo: the BAR follows the chain ──────────────────────────
+            // Transactions used to bend this by ±10% only
+            //     (1 / (beatTempo*2)) * (1 - transactionInfluence*0.1)
+            // so the pulse was a fixed grid the ETH inflow merely decorated —
+            // which is why so little of what arrives was audible in the beat.
+            //
+            // Now a 16-step bar spans the MEASURED block period (maintained by
+            // the /eth/block handler and already proven driving ~padDrainRoutine),
+            // transactionDensity scales the subdivision so a busy chain
+            // subdivides finer, and beatTempo stays the performer's master
+            // multiplier over the result.
+            //
+            // Two guards, straight from the rhythm toggles that had to be
+            // removed: fall back to the fixed grid whenever no block has been
+            // seen (cold start, or the Python feed died) so the engine never
+            // stalls waiting on the chain, and clamp the result so a bad
+            // blockPeriod can neither freeze the beat nor machine-gun it.
+            if(rs.notNil and: { rs[\blockAt] > 0 }) {
+                var subdiv = 16 * (0.75 + (density * 0.75));   // 12–24 steps/bar
+                interval = (rs[\blockPeriod] / subdiv) / ~beatParams.beatTempo.max(0.25);
+            } {
+                interval = (1 / (~beatParams.beatTempo * 2)) *
+                           (1 - (transactionInfluence * 0.1));
+            };
+            interval = interval.clip(0.06, 2.0);
+            ~beatParams.lastInterval = interval;   // surfaced on [MON] as int:
 
             if(step.odd) { interval = interval * rrand(1.0, 1.12) }; // swing
             } { |e|

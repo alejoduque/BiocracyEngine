@@ -124,7 +124,20 @@ s.doWhenBooted({
             // an error killed the Routine outright and the only visible symptom
             // was kick:/perc: frozen at whatever they had reached.
             ++ " err:" ++ (~beatParams !? { ~beatParams.beatErrors } ? 0)
-            ++ "  outPk:" ++ (~limiterPeak ? 0).round(0.001)
+            // int: the EFFECTIVE step interval in seconds. The bar now follows
+            // the measured block period, so this is how you check the tempo is
+            // actually tracking the chain rather than assuming it. It should
+            // move with block cadence and density, and sit at the fixed-grid
+            // value when the feed stops.
+            ++ " int:" ++ (~beatParams !? { ~beatParams.lastInterval } ? 0).round(0.001)
+            // srv: is the AUDIO SERVER alive. Everything else on this line is
+            // counted in sclang and keeps incrementing whether or not scsynth
+            // exists — bells, kicks and perc all climbed happily through a
+            // session that produced no sound at all, because those counters
+            // only record that a Synth message was SENT. Without this field
+            // "no audio" and "engine fine, server dead" look identical.
+            ++ "  srv:" ++ if(s.serverRunning, "up", "DOWN")
+            ++ " outPk:" ++ (~limiterPeak ? 0).round(0.001)
             ++ " gr:" ++ (~limiterGR ? 1).round(0.01)).postln;
         // reset the hold window so each line describes the last 2 s only
         ~limiterPeak = 0;
@@ -368,6 +381,11 @@ s.doWhenBooted({
             \atk, valLog.linlin(0, 1, 0.35, 2.2),
             // urgency settles fast; a patient bid rings on
             \dec, priorityRatio.linlin(0, 1, 1.3, 0.35),
+            // Sustain HOLD: a large transfer holds its body longer, a small one
+            // passes through. This is the stage the old three-segment envelope
+            // did not have — every pad decayed straight into its release.
+            \sus, valLog.linlin(0, 1, 0.4, 1.6),
+            \susLvl, 0.55 + (priorityRatio * 0.2),
             // tails shortened so silence can open between bursts instead of
             // the pads fusing into one continuous wash
             \rel, valLog.linlin(0, 1, 0.7, 2.8) * relScale,

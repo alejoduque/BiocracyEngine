@@ -217,7 +217,10 @@
             // Row 3: Drone/Noise Controls (Existing System)
             [\masterAmp, \filterCutoff, \noiseLevel, \noiseFilt, \droneDepth],
             // Row 4: Additional Drone Controls
-            [\droneFade, \droneSpace, \droneMix, \delayFeedback, \transactionInfluence],
+            // \beatTempo added — it was the ONLY parameter present in
+            // parliament.html but missing from this surface, so the two control
+            // surfaces were not at parity. Everything else appears on both.
+            [\droneFade, \droneSpace, \droneMix, \delayFeedback, \transactionInfluence, \beatTempo],
             // Row 5: Cámara Fenológica de lo Vivo (1-bit white palette)
             [\activityThreshold, \windowWidth, \seasonalBias, \absenceWeight, \pulseGain, \opacityFloor, \bancada]
         ];

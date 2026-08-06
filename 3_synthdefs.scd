@@ -65,7 +65,10 @@ s.doWhenBooted({
     // Main transaction bell with MIDI control
     SynthDef(\elektronBell, {
         arg freq=440, amp=0.3,
-        atk=2.0, dec=1.0, rel=1.5,
+        // ADSR: sus is the HOLD TIME at susLvl, not a level — the level is
+        // susLvl. Defaults keep any caller that does not pass them sounding
+        // close to the previous three-stage shape.
+        atk=2.0, dec=1.0, sus=0.8, susLvl=0.6, rel=1.5,
         tone=0.3, res=0.4, pan=0,
         // Bus indices for real-time MIDI control (merged parameter set)
         masterVolBus=(-1), pitchBus=(-1), timeBus=(-1), spectralBus=(-1), spatialBus=(-1),
@@ -105,13 +108,29 @@ s.doWhenBooted({
         var roomSizeParam = Select.kr(roomSizeBus >= 0, [0.8, In.kr(roomSizeBus, 1)]);
         var distanceParam = Select.kr(distanceEffectBus >= 0, [0.5, In.kr(distanceEffectBus, 1)]);
         
-        // Apply pitch shift
-        freq = freq * (pitchOffset.clip(-24, 24) / 12).midiratio;
+        // Apply pitch shift, then HARD-CLAMP the fundamental.
+        // ~handleTransaction folds the value-derived pitch below 160 Hz so the
+        // pads sit with the drone's sub. The clamp is a backstop placed HERE
+        // rather than in sclang, so no control path — MIDI CC 1, the HTML
+        // slider, a preset load — can lift the layer out of that register.
+        //
+        // NOTE on the shift itself: `(x / 12).midiratio` divides by twelve
+        // TWICE, because midiratio is already 2**(n/12). pitchShift is
+        // documented and specced as ±2 octaves but currently delivers ±1.12x
+        // (about two semitones). Left as-is deliberately — correcting it makes
+        // the control 12x stronger, which is a musical change, not a fix to
+        // make silently mid-session. The clamp above makes it safe to correct
+        // whenever wanted. Same pattern exists in \opalDrone.
+        freq = (freq * (pitchOffset.clip(-24, 24) / 12).midiratio).clip(28, 180);
 
         // --- Sustained pad tone (replaces the old percussive cowbell) ---
-        // Gentle FM with near-unison ratios (1.0-1.5x) — warm, not metallic
+        // Gentle FM with near-unison ratios (1.0-1.5x) — warm, not metallic.
+        // Modulation index halved (0.3 → 0.15): the index scales WITH freq, so
+        // at harmonicRich=8 the deviation was ±0.3·freq and the sidebands ran
+        // several multiples above the fundamental. Halving keeps the timbre
+        // without letting harmonicRich brighten the layer into a bell again.
         mod = SinOsc.ar(freq * harmonicComplexity.linexp(0.1, 8, 1.0, 1.5)) *
-              (harmonicComplexity.linlin(0.1, 8, 0.0, 0.3)) * freq;
+              (harmonicComplexity.linlin(0.1, 8, 0.0, 0.15)) * freq;
         carrier = SinOsc.ar(freq + mod);
 
         // Blend in a soft sub octave and a quiet 5th for body
@@ -119,17 +138,30 @@ s.doWhenBooted({
             + (SinOsc.ar(freq * 0.5) * 0.3)
             + (SinOsc.ar(freq * 1.5) * 0.1 * harmonicComplexity.linlin(0.1, 8, 0.0, 1.0));
 
-        // Slow attack / sustained body / slow release — drone shape, not hit shape.
-        // Total life ≤ atk(2) + dec(1) + rel(1.5) = 4.5s max — manageable at 24-synth cap.
+        // ── ADSR ─────────────────────────────────────────────────────────
+        // A true four-stage envelope with a HELD sustain, not the previous
+        // three-segment ramp ([0,1,0.6,0]) which decayed straight into its
+        // release and so had no steady portion at all — every pad was a swell
+        // that immediately began dying, which is part of why the layer read as
+        // a wash of bells rather than sustained tone.
+        //
+        //   A  atk        slow fade-in, sine curve
+        //   D  dec        settle to the sustain level, exponential-ish
+        //   S  sus/susLvl HELD — the body of the pad
+        //   R  rel        gentle tail
+        //
+        // timeStretch (timeDilation) still scales every stage, clamped per
+        // stage so a high setting cannot stretch one pad across several bars.
         env = EnvGen.kr(
             Env.new(
-                [0, 1, 0.6, 0],
+                [0, 1, susLvl, susLvl, 0],
                 [
-                    atk  * timeStretch.clip(0.5, 3.0),   // slow fade-in
-                    dec  * timeStretch.clip(0.5, 2.0),   // settle
-                    rel  * timeStretch.clip(0.5, 1.5)    // gentle tail
+                    atk * timeStretch.clip(0.5, 3.0),   // A
+                    dec * timeStretch.clip(0.5, 2.0),   // D
+                    sus * timeStretch.clip(0.5, 2.0),   // S — held
+                    rel * timeStretch.clip(0.5, 1.5)    // R
                 ],
-                [\sine, \sine, -3]
+                [\sine, -2, 0, -3]
             ),
             doneAction: 2
         );
@@ -158,8 +190,15 @@ s.doWhenBooted({
         noise = LPF.ar(noise, noiseFilter.linexp(0, 1, 200, 2000));
         sig = sig + noise;
 
-        // filterCutoff: broad tone tilt over the whole pad (was read and dropped)
-        sig = LPF.ar(sig, Lag.kr(legacyFilter, 0.3).linexp(0, 1, 300, 12000));
+        // filterCutoff: broad tone tilt over the whole pad (was read and dropped).
+        // Ceiling 12000 → 2600 Hz. At 12 kHz this filter was effectively open
+        // and undid the 200–3000 Hz clamp applied earlier in the chain, so FM
+        // sidebands and the grain shimmer passed straight through. The pads are
+        // a drone bed; nothing in them needs to reach beyond ~2.6 kHz.
+        sig = LPF.ar(sig, Lag.kr(legacyFilter, 0.3).linexp(0, 1, 300, 2600));
+        // Final safety net, independent of every control: whatever the buses
+        // say, this layer does not emit above 3 kHz.
+        sig = LPF.ar(sig, 3000);
         
         // Calculate distance-based amplitude scaling
         distance = (spatialX.squared + spatialY.squared).sqrt;
@@ -173,14 +212,19 @@ s.doWhenBooted({
             * Lag.kr(legacyAmp, 0.3).linlin(0, 1, 0.05, 1.4));
         
         // Quadraphonic spatial positioning
-        quadSig = PanAz.ar(
-            4,                    // 4 channels for quad
-            sig.sum,              // Mono sum for panning
-            spatialX.atan2(spatialY) / pi,  // Angle from X,Y coordinates
-            1,                    // Amplitude
-            2,                    // Speaker array radius
-            0.5                   // Orientation
-        );
+        // Panner chosen from the REAL output channel count, at graph-build time
+        // — see the note on the other voices. This one additionally has a Y
+        // coordinate when the spatial GUI (12_spatial_gui.scd) is open, so the
+        // quad branch keeps the 2-D angle; no spawn passes spatialYBus, so in
+        // normal operation Y is 0 and only spatialX matters.
+        quadSig = if(~limiterChans >= 4) {
+            PanAz.ar(4, sig.sum,
+                Select.kr(spatialYBus >= 0,
+                    [spatialX.clip(-1, 1) * 0.5, spatialX.atan2(spatialY) / pi]),
+                1, 2, 0.5)
+        } {
+            Pan2.ar(sig.sum, spatialX.clip(-1, 1))
+        };
         
         Out.ar(0, quadSig);
     }).add;
@@ -219,7 +263,24 @@ s.doWhenBooted({
         sig = sig * env * amp * vol;
         
         // Quadraphonic spatial positioning
-        quadSig = PanAz.ar(4, sig, spatialX.atan2(0) / pi, 1, 2, 0.5);
+        // PanAz's position is already a -1..1 traversal of the ring, which is
+        // exactly the range spatialSpread has. The old atan2(x, 0) collapsed
+        // to -pi/2, 0 or +pi/2 — three discrete values — so the balance
+        // control could only jump hard-left / centre / hard-right and could
+        // never fade. Use the value directly.
+        // Panner chosen from the REAL output channel count, at graph-build time.
+        // The server runs 2-channel; PanAz.ar(4, ...) sent half the ring to
+        // channels 2-3, which do not exist, so the sound vanished for half the
+        // knob's travel. And PanAz's position is cyclic over 2.0, so pos -1 and
+        // +1 both land where pos 0 started — the sweep restarted before either
+        // extreme. Pan2 gives a true left/right balance on stereo; on a genuine
+        // quad rig PanAz is kept but scaled to half the ring so its two ends
+        // are opposite points rather than the same one.
+        quadSig = if(~limiterChans >= 4) {
+            PanAz.ar(4, sig, spatialX.clip(-1, 1) * 0.5, 1, 2, 0.5)
+        } {
+            Pan2.ar(sig, spatialX.clip(-1, 1))
+        };
         Out.ar(out, quadSig);
     }).add;
 
@@ -239,6 +300,15 @@ s.doWhenBooted({
         var spatialX= Select.kr(spatialBus >= 0, [0.0, In.kr(spatialBus, 1)]);
 
         var exciter, sig, wet, quadSig;
+
+        // HARD-CLAMP the struck frequency, like \elektronBell's fundamental.
+        // The caller can ask for almost anything: ~computePitchPool tops out at
+        // basePitch(70) x spread(<=1.4) x step(<=7) = 686 Hz, and the TRIAD
+        // voicing then multiplies that by (h+1) up to 5 — 3.8 kHz at
+        // harmonicRich 8, which is where the high metallic pings came from.
+        // Clamped here so every voicing path and every knob position is caught,
+        // not just the ones that were thought of at the call site.
+        freq = freq.clip(40, 900);
 
         // Softened exciter: the old 1 ms attack read as a hard metallic "ping".
         // 10 ms attacks + longer noise burst bow the resonator instead of
@@ -260,6 +330,10 @@ s.doWhenBooted({
         // Changed from BPF to LPF: BPF at high freq passes almost nothing (silence);
         // LPF at high freq is transparent — sound always passes through.
         sig = LPF.ar(sig, filt.clip(300, 3000));
+        // Fixed backstop, independent of spectralShift: the Ringz body plus the
+        // WhiteNoise exciter put energy well above the fundamental, and this
+        // layer has no business up there.
+        sig = LPF.ar(sig, 2600);
         // 50 ms swell + longer tail (was 1 ms / 1.5x) — resonance blooms out
         // of the drone bed rather than popping over it
         sig = sig * EnvGen.ar(Env.perc(0.05, 2.5 * tStretch), doneAction: 2);
@@ -271,7 +345,24 @@ s.doWhenBooted({
 
         sig = sig * amp * vol;
         
-        quadSig = PanAz.ar(4, sig, spatialX.atan2(0) / pi, 1, 2, 0.5);
+        // PanAz's position is already a -1..1 traversal of the ring, which is
+        // exactly the range spatialSpread has. The old atan2(x, 0) collapsed
+        // to -pi/2, 0 or +pi/2 — three discrete values — so the balance
+        // control could only jump hard-left / centre / hard-right and could
+        // never fade. Use the value directly.
+        // Panner chosen from the REAL output channel count, at graph-build time.
+        // The server runs 2-channel; PanAz.ar(4, ...) sent half the ring to
+        // channels 2-3, which do not exist, so the sound vanished for half the
+        // knob's travel. And PanAz's position is cyclic over 2.0, so pos -1 and
+        // +1 both land where pos 0 started — the sweep restarted before either
+        // extreme. Pan2 gives a true left/right balance on stereo; on a genuine
+        // quad rig PanAz is kept but scaled to half the ring so its two ends
+        // are opposite points rather than the same one.
+        quadSig = if(~limiterChans >= 4) {
+            PanAz.ar(4, sig, spatialX.clip(-1, 1) * 0.5, 1, 2, 0.5)
+        } {
+            Pan2.ar(sig, spatialX.clip(-1, 1))
+        };
         Out.ar(out, quadSig);
     }).add;
 
@@ -286,7 +377,8 @@ s.doWhenBooted({
         // sliders (Master Amp, Filter Cutoff, Drone Depth/Fade/Space/Mix) moved
         // a bus that reached no UGen. They shape the drone here.
         masterAmpBus=(-1), filterCutoffBus=(-1),
-        droneDepthBus=(-1), droneFadeBus=(-1), droneSpaceBus=(-1), droneMixBus=(-1);
+        droneDepthBus=(-1), droneFadeBus=(-1), droneSpaceBus=(-1), droneMixBus=(-1),
+        delayFeedbackBus=(-1);
 
         var vol   = Select.kr(masterVolBus >= 0, [0.3, In.kr(masterVolBus, 1)]);
         var pShift= Select.kr(pitchBus >= 0, [0.0, In.kr(pitchBus, 1)]);
@@ -304,6 +396,7 @@ s.doWhenBooted({
         var dFade = Select.kr(droneFadeBus >= 0, [2.0, In.kr(droneFadeBus, 1)]);
         var dSpace= Select.kr(droneSpaceBus >= 0, [0.5, In.kr(droneSpaceBus, 1)]);
         var dLayer= Select.kr(droneMixBus >= 0, [0.5, In.kr(droneMixBus, 1)]);
+        var dFeed = Select.kr(delayFeedbackBus >= 0, [0.3, In.kr(delayFeedbackBus, 1)]);
 
         var env, sig, mod, sub, grains, delay, quadSig, baseFreq, dry;
         
@@ -340,9 +433,20 @@ s.doWhenBooted({
         dry = sig;
 
         // Wash effects. droneSpace sizes the room (was hardcoded 0.9).
-        delay = CombC.ar(sig, 1.0, LFNoise1.kr(0.1).range(0.2, 0.6), dMix * 4.0) * dMix;
+        // delayFeedback now owns the CombC decay time. It had ZERO references
+        // in any SynthDef — the one genuinely dead control on the surface. The
+        // decay was hard-wired to dMix*4, so memoryFeed set both the send level
+        // AND the tail; memoryFeed keeps the level, delayFeedback gets the tail.
+        // 0.2 s to 9 s: at the top the comb sings and the drone grows a rhythm
+        // of its own, which is what makes the control audible on its own.
+        delay = CombC.ar(sig, 1.0, LFNoise1.kr(0.1).range(0.2, 0.6),
+            Lag.kr(dFeed, 0.2).linexp(0, 1, 0.2, 9.0)) * dMix;
         sig = sig + delay;
-        sig = FreeVerb.ar(sig, revM, Lag.kr(dSpace, dFade).linlin(0, 1, 0.15, 0.99), 0.1);
+        // droneSpace: room AND width. Room alone (0.15-0.99) moved one FreeVerb
+        // coefficient and was nearly inaudible; widening the image is what the
+        // control reads as. Room floor lifted so the top of the range is a
+        // genuinely large space.
+        sig = FreeVerb.ar(sig, revM, Lag.kr(dSpace, dFade).linlin(0, 1, 0.30, 0.99), 0.1);
 
         // Sub low end anchor — droneDepth sets how far the body sinks.
         sub = SinOsc.ar(baseFreq * 0.25) * 0.5 * LPF.ar(sig, 200, mul: 0.5);
@@ -350,11 +454,41 @@ s.doWhenBooted({
 
         // droneMix crossfades the washed/sub layer against the bare oscillator
         // bed, so the slider moves between a dry drone and a fully bloomed one.
+        // droneMix: full traverse dry <-> bloomed. XFade2's -1..1 was already
+        // the full range, but the two ends were too alike to hear because the
+        // "wet" side had only the delay and reverb on it; the sub now rides the
+        // wet side too (see above), so the ends genuinely differ.
         sig = XFade2.ar(dry, sig, Lag.kr(dLayer, dFade).linlin(0, 1, -1, 1));
+
+        // droneFade: an audible slow swell, not only a glide time. It still
+        // sets the Lag of every other drone control above, but on its own it
+        // was the one knob on the surface that could not be heard at all —
+        // moving it changed how fast OTHER knobs took effect and nothing else.
+        // Longer fade = slower, deeper breathing of the whole drone body.
+        sig = sig * SinOsc.kr(
+            Lag.kr(dFade, 0.5).linexp(0.1, 5.0, 0.6, 0.045),   // 0.6 Hz -> 0.045 Hz
+            0,
+            dFade.linlin(0.1, 5.0, 0.04, 0.30),                // depth grows with fade
+            1
+        );
 
         sig = sig * env * amp * vol * Lag.kr(mAmp, dFade).linlin(0, 1, 0.05, 1.4) * 0.4;
         
-        quadSig = PanAz.ar(4, sig, spatialX.atan2(0) / pi + LFNoise1.kr(0.05).range(-0.2, 0.2), 1, 2, 0.5);
+        // Same fix as the other voices; the slow LFNoise wander stays on top.
+        // Panner chosen from the REAL output channel count, at graph-build time.
+        // The server runs 2-channel; PanAz.ar(4, ...) sent half the ring to
+        // channels 2-3, which do not exist, so the sound vanished for half the
+        // knob's travel. And PanAz's position is cyclic over 2.0, so pos -1 and
+        // +1 both land where pos 0 started — the sweep restarted before either
+        // extreme. Pan2 gives a true left/right balance on stereo; on a genuine
+        // quad rig PanAz is kept but scaled to half the ring so its two ends
+        // are opposite points rather than the same one.
+        quadSig = if(~limiterChans >= 4) {
+            PanAz.ar(4, sig, (spatialX.clip(-1, 1) * 0.5)
+                + LFNoise1.kr(0.05).range(-0.2, 0.2), 1, 2, 0.5)
+        } {
+            Pan2.ar(sig, (spatialX.clip(-1, 1) + LFNoise1.kr(0.05).range(-0.15, 0.15)).clip(-1, 1))
+        };
         Out.ar(out, quadSig);
     }).add;
 
@@ -382,6 +516,9 @@ s.doWhenBooted({
         // Changed from BPF to LPF: BPF at high freq silences the signal entirely;
         // LPF at high freq is open — dust crackle always comes through.
         sig = LPF.ar(grains, filt.clip(200, 3000));
+        // Dust2 is broadband by construction — this is the sparkle/hiss at the
+        // top of the mix. Fixed backstop so no knob position can open it up.
+        sig = LPF.ar(sig, 2200);
         
         // Delay + Reverb wash
         wet = CombC.ar(sig, 0.5, 0.15, 2.0) * dMix;
@@ -390,7 +527,24 @@ s.doWhenBooted({
 
         sig = sig * env * amp * vol * 2.0; // Volume compensation
         
-        quadSig = PanAz.ar(4, sig, spatialX.atan2(0) / pi, 1, 2, 0.5);
+        // PanAz's position is already a -1..1 traversal of the ring, which is
+        // exactly the range spatialSpread has. The old atan2(x, 0) collapsed
+        // to -pi/2, 0 or +pi/2 — three discrete values — so the balance
+        // control could only jump hard-left / centre / hard-right and could
+        // never fade. Use the value directly.
+        // Panner chosen from the REAL output channel count, at graph-build time.
+        // The server runs 2-channel; PanAz.ar(4, ...) sent half the ring to
+        // channels 2-3, which do not exist, so the sound vanished for half the
+        // knob's travel. And PanAz's position is cyclic over 2.0, so pos -1 and
+        // +1 both land where pos 0 started — the sweep restarted before either
+        // extreme. Pan2 gives a true left/right balance on stereo; on a genuine
+        // quad rig PanAz is kept but scaled to half the ring so its two ends
+        // are opposite points rather than the same one.
+        quadSig = if(~limiterChans >= 4) {
+            PanAz.ar(4, sig, spatialX.clip(-1, 1) * 0.5, 1, 2, 0.5)
+        } {
+            Pan2.ar(sig, spatialX.clip(-1, 1))
+        };
         Out.ar(out, quadSig);
     }).add;
     // -----------------------

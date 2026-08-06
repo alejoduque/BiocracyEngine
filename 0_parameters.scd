@@ -34,7 +34,12 @@
     (name: \pitchShift,    spec: ControlSpec(-24, 24, \lin),  default: 0.0,  path: "/soneth/pitchshift",    cc: 1),
     (name: \timeDilation,  spec: ControlSpec(0.5, 6, \exp),   default: 2.0,  path: "/soneth/timedilation",  cc: 2,
         aliases: ["/parliament/fx/delaytime"]),
-    (name: \spectralShift, spec: ControlSpec(80, 3000, \exp), default: 1000, path: "/soneth/spectralshift", cc: 3),
+    // Ceiling 3000 -> 2400 Hz. This bus is the LPF cutoff in EVERY voice
+    // (bell, kick, perc, dust, drone), so its top end sets how bright the
+    // whole engine can get. The synths now carry fixed backstops below this
+    // anyway; lowering the knob means the useful range of the fader maps onto
+    // the range that is actually audible instead of the top third doing nothing.
+    (name: \spectralShift, spec: ControlSpec(80, 2400, \exp), default: 1000, path: "/soneth/spectralshift", cc: 3),
     (name: \spatialSpread, spec: ControlSpec(-1, 1, \lin),    default: 0.0,  path: "/soneth/spatialspread", cc: 4),
 
     // ── Row 2: Ambient Processing ────────────────────────────────────────
@@ -42,7 +47,11 @@
     (name: \atmosphereMix, spec: ControlSpec(0, 0.9, \lin),   default: 0.4,  path: "/soneth/atmospheremix", cc: 33,
         aliases: ["/parliament/fx/reverb"]),
     (name: \memoryFeed,    spec: ControlSpec(0, 0.8, \lin),   default: 0.3,  path: "/soneth/memoryfeed",    cc: 34),
-    (name: \harmonicRich,  spec: ControlSpec(0.1, 8, \exp),   default: 1.0,  path: "/soneth/harmonicrich",  cc: 35),
+    // Ceiling 8 -> 5. harmonicRich widens the percussion pitch pool AND sets
+    // how many harmonics the triad voicing stacks, so its top end was the main
+    // route to high metallic pings. It is also driven automatically by the
+    // phenology reverse-breath loop, which could push it there unattended.
+    (name: \harmonicRich,  spec: ControlSpec(0.1, 5, \exp),   default: 1.0,  path: "/soneth/harmonicrich",  cc: 35),
     (name: \resonantBody,  spec: ControlSpec(0.1, 0.8, \lin), default: 0.4,  path: "/soneth/resonantbody",  cc: 36),
 
     // ── Row 3: Drone/Noise Controls ──────────────────────────────────────
