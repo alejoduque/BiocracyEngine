@@ -8,6 +8,7 @@ type PhenoInstance = {
   species: Array<{ peakDay: number; window?: number; taxon: string }>;
   pulse: (opts?: PhenoMethodArg) => void;
   setDay: (opts?: PhenoMethodArg) => void;
+  setConsensus?: (opts?: { value?: number }) => void;
   advance: (opts?: PhenoMethodArg) => void;
   autoplay: (opts?: PhenoMethodArg) => void;
   jumpToMonth: (opts?: PhenoMethodArg) => void;
@@ -45,6 +46,7 @@ let _ctor: { new (container: HTMLElement): PhenoInstance } | null = null;
 let _instance: PhenoInstance | null = null;
 let _hooks: BreathHooks | null = null;
 let _voteListenerWired = false;
+let _voteTimer: ReturnType<typeof setInterval> | null = null;
 let _reverseTimer: ReturnType<typeof setInterval> | null = null;
 let _lastSentHarmonic = -1;
 let _lastSentTexture = -1;
@@ -119,6 +121,7 @@ export async function mountPhenologyCalendar(
 
 export function destroyPhenologyCalendar() {
   stopReverseBreath();
+  if (_voteTimer) { clearInterval(_voteTimer); _voteTimer = null; _voteListenerWired = false; }
   if (_unsubscribeStore) { _unsubscribeStore(); _unsubscribeStore = null; }
   if (_instance) {
     try { _instance.destroy(); } catch { /* ignore */ }
@@ -133,12 +136,26 @@ export function destroyPhenologyCalendar() {
 // same control surface that already drives parliament rotation.
 function wireRotationFromStore() {
   let lastSent = -1;
+  let lastCons = -1;
   _unsubscribeStore = parliamentStore.subscribe((state) => {
-    if (!_instance || !_instance.setRotation) return;
+    if (!_instance) return;
     const r = state.rotation;
-    if (Math.abs(r - lastSent) < 0.01) return;
-    lastSent = r;
-    try { _instance.setRotation!({ rotation: r }); } catch { /* ignore */ }
+    if (_instance.setRotation && Math.abs(r - lastSent) >= 0.01) {
+      lastSent = r;
+      try { _instance.setRotation!({ rotation: r }); } catch { /* ignore */ }
+    }
+    // CONSENSUS — the calendar had NO path for it at all: this subscription
+    // read state.rotation and nothing else, so of the sixteen slots this was
+    // the only one where the consensus slider was not merely inert but
+    // genuinely unwired. The chamber's agreement is the phenological quorum:
+    // it widens or narrows the window in which a species counts as active,
+    // which is the calendar's own reading of "we agree that this is
+    // happening".
+    const c = state.consensus ?? state.consensusWave;
+    if (_instance.setConsensus && typeof c === "number" && Math.abs(c - lastCons) >= 0.01) {
+      lastCons = c;
+      try { _instance.setConsensus!({ value: c }); } catch { /* ignore */ }
+    }
   });
 }
 
@@ -186,7 +203,11 @@ function wireForwardBreath() {
   if (_voteListenerWired) return;
   _voteListenerWired = true;
   let lastVoteTime = 0;
-  setInterval(() => {
+  // Kept in a module-level handle so destroy() can clear it. It used to be an
+  // anonymous setInterval behind a latch that was never reset, so switching
+  // away from the calendar left an 80 ms timer running for the rest of the
+  // session — once, harmlessly, but it never died and nothing said so.
+  _voteTimer = setInterval(() => {
     if (!_instance) return;
     const ev = (window as unknown as {
       __voteEvent?: { type: string; intensity: number; time: number };

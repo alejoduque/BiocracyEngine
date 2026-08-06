@@ -11,6 +11,7 @@ import {
 } from "./phenology/breath";
 import { initSwitcher, getActiveThreeStage, updateSpeciesRoster } from "./visualizationSwitcher";
 import { initLaserTap } from "./laserTap";
+import { startVizMotion } from "./vizMotion";
 import { fetchSpeciesRoster, computeIUCNMults } from "./speciesFetcher";
 import * as THREE from "three";
 
@@ -299,6 +300,14 @@ function sendOSCString(address: string, value: string) {
 
 // ─── Vote/Emergency visual burst across ALL 4 visualization slots ──────────
 function triggerVoteVisualBurst(type: string, intensity: number) {
+  // Publish the event FIRST, unconditionally. This used to sit at the bottom
+  // of the function behind an early return on __applySonethToViz — so before
+  // that global was assigned (it is set late, inside the DOM-ready init), a
+  // vote silently reached no slot at all. The sonETH ramp below is a bonus;
+  // __voteEvent is the actual channel every slot polls, and it must not be
+  // hostage to an unrelated global.
+  (window as any).__voteEvent = { type, intensity, time: performance.now() };
+
   const applyViz = (window as any).__applySonethToViz;
   if (typeof applyViz !== "function") return;
 
@@ -358,7 +367,6 @@ function triggerVoteVisualBurst(type: string, intensity: number) {
   }
 
   // Broadcast event flag to p5.js slots for custom flash effects
-  (window as any).__voteEvent = { type, intensity, time: performance.now() };
 }
 
 // ─── Project 3D world pos to CSS px ───
@@ -645,6 +653,30 @@ async function init() {
   // Keys 0–9 swap center stage. Left/right panels + spectrogram stay.
   // getActiveThreeStage() returns the live ParliamentStage when slot 0 is active.
   initSwitcher(container, hudEl!, () => currentState);
+
+  // Idle-driven auto-rotation + the shared vote-flash reader. Publishes
+  // window.__vizMotion, which every slot reads for its own drift.
+  startVizMotion();
+
+  // ── "failed" votes, at last ────────────────────────────────────────────
+  // Eight places across the slots branch on type === "failed" and nothing has
+  // ever produced one: the four buttons emit passed/start/stop/emergency only.
+  // But SC does report real outcomes on /parliament/vote/result with a passed
+  // flag, and parliamentStore already ingests it — the result simply never
+  // reached __voteEvent. Bridging it here makes every one of those dead
+  // branches live, and makes a rejected motion look different from a carried
+  // one for the first time.
+  {
+    let lastResultAt = 0;
+    parliamentStore.subscribe((st) => {
+      const vr = st.events?.voteResult;
+      if (!vr) return;
+      const stamp = vr.consensus * 1e6 + vr.yes * 1e3 + vr.total;
+      if (stamp === lastResultAt) return;
+      lastResultAt = stamp;
+      if (!vr.passed) triggerVoteVisualBurst("failed", 1 - (vr.consensus ?? 0.5));
+    });
+  }
 
   // ─── Laser projection feed (ILDA / Helios DAC via laser-bridge:3337) ──────
   // Streams the active module's vector scene (default: slot-P year-ring +

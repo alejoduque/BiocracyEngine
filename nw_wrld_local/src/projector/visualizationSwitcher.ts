@@ -52,6 +52,7 @@ import {
 // Slots 1–9 draw from this roster and shuffle names reactively.
 
 import type { RosterEntry } from "./speciesFetcher";
+import { getVizMotion, readVoteFlash, isAlarm } from "./vizMotion";
 
 // Hardcoded fallback roster (used when IUCN API is unreachable)
 const FALLBACK_ROSTER: [string, string, string][] = [
@@ -161,6 +162,12 @@ function hideStage(stageEl: HTMLElement | null) { if (stageEl) stageEl.style.vis
 
 // ─── Teardown ────────────────────────────────────────────────────────────────
 function clearStage() {
+  // Drop the WebGL-only slots' scalar probe. It is set by whichever of slots
+  // 4-9 mounted last and captured that slot's objects in a closure; leaving it
+  // behind means the next slot reports a frozen number from a dead scene,
+  // which reads as "nothing is moving" — a stale probe is worse than no probe.
+  try { (window as any).__vizProbe = null; } catch { /* ignore */ }
+
   _activeThreeStage = null;
   currentKey = "";
   if (currentViz) {
@@ -354,17 +361,18 @@ function mountAsteroidWaves(): Viz {
       const resDot = sp1.resonantbody ?? 0.4;
 
       // Vote event flash: white flash on passed, red on failed/emergency
-      const voteEvt = (window as any).__voteEvent;
-      let voteFlash = 0;
-      if (voteEvt && (performance.now() - voteEvt.time) < 1500) {
-        voteFlash = 1.0 - (performance.now() - voteEvt.time) / 1500;
-      }
+      // Factored into vizMotion — this slot and slot 3 both open-coded the
+      // same poll-and-decay, and seven more slots needed it.
+      const vfA = readVoteFlash(1500);
+      const voteEvt = vfA;
+      const voteFlash = vfA ? vfA.flash : 0;
+      const vmA = getVizMotion();
 
       // Background alpha: presence + atmospheremix control ghosting
       const avgPres = meteors.length ? meteors.reduce((s, m) => s + m.presence, 0) / meteors.length : 0.5;
       const bgAlpha = Math.floor(Math.max(25, 200 + avgPres * 50 - memFeed * 120 - atmGhost * 80));
       if (voteFlash > 0 && voteEvt) {
-        const isRed = voteEvt.type === "failed" || voteEvt.type === "emergency";
+        const isRed = isAlarm(voteEvt.type);
         const fr = isRed ? 60 + voteFlash * 180 : voteFlash * 255;
         const fg = isRed ? 10 : voteFlash * 200;
         const fb = isRed ? 0 : voteFlash * 120;
@@ -396,6 +404,16 @@ function mountAsteroidWaves(): Viz {
       p.strokeWeight(1);
       p.line(0, centerY, p.width, centerY);
 
+      // CONSENSUS — slot 1 received this on every notify and read nothing
+      // from it; the only observable effect was an accidentally faster
+      // roster shuffle. Here it is wave ALIGNMENT: at high consensus the
+      // lanes travel together, at low consensus each finds its own phase.
+      const consensus1 = (() => {
+        const c = parliamentStore.state?.consensus;
+        return typeof c === "number" ? c : 0.5;
+      })();
+      const laneCoherence = 0.15 + consensus1 * 0.85;
+
       // Waves — laneSpread and noiseScrollSpeed are live from onState
       meteors.forEach((m, idx) => {
         const col = m.color;
@@ -422,7 +440,11 @@ function mountAsteroidWaves(): Viz {
         // Pitch shift → horizontal wave offset per lane
         const xOff = pitchSh * idx * 0.4;
         for (let x = 0; x < p.width; x += 3) {
-          const nv = p.noise(noiseX + (x + xOff) * noiseZoom, noiseY + idx * 1.5);
+          // laneCoherence collapses each lane's private noise row toward a
+          // shared one: at consensus 1 every band rides the same wave, at 0
+          // each finds its own. This is what the CONSENSUS slider means here.
+          const laneRow = idx * 1.5 * (1.05 - laneCoherence);
+          const nv = p.noise(noiseX + (x + xOff) * noiseZoom, noiseY + laneRow);
           const dist = (nv - 0.5) * 2 * distMag;
           const y = laneY - dist;
           p.vertex(x, y);
@@ -481,8 +503,12 @@ function mountAsteroidWaves(): Viz {
       p.text(`Σ ${totalMass.toFixed(0)}  spd:${noiseScrollSpeed.toFixed(3)}`, p.width - 6, p.height - 4);
 
       // Scroll speed driven live by state
-      noiseX += noiseScrollSpeed;
-      noiseY += noiseScrollSpeed * 0.6;
+      // Idle drift. This slot is flat 2-D — spinning it would just tilt a
+      // graph — so the ROTATION SPD control expresses itself as a slow
+      // PHASE DRIFT of the noise field: the wave bands keep travelling when
+      // nobody is at the desk. Same control, this slot's own idiom.
+      noiseX += noiseScrollSpeed + vmA.speed * 0.02;
+      noiseY += noiseScrollSpeed * 0.6 + vmA.speed * 0.012;
     };
   };
 
@@ -671,11 +697,23 @@ async function mountLowEarthPoint(): Promise<Viz> {
     // cameraSettings is the object animateLoop reads for cameraSpeed
     if (!stage.cameraSettings) stage.cameraSettings = {};
     // Base speed 1.0; activity multiplies up to 8×; consensus above 0.7 triggers counter-spin on red
-    stage.cameraSettings.cameraSpeed = 0.1 + avgActivity * 7.9;
+    //
+    // cameraSpeed had TWO writers stomping each other — this line (species
+    // activity) and parliamentEntry's timedilation handler. Whichever fired
+    // last won, so neither control behaved predictably. Activity stays the
+    // base and the idle drift is added, rather than either replacing the
+    // other.
+    const vm2 = getVizMotion();
+    stage.cameraSettings.cameraSpeed = 0.1 + avgActivity * 7.9 + vm2.speed * 6;
 
     // White point cloud: presence → scale (0.4 → 1.8), opacity
     if (stage.pointCloud?.material) {
-      stage.pointCloud.material.size = 0.02 + avgPresence * 0.14;
+      // × the live vote boost. Without this factor applyState stomps the vote
+      // ripple flat: a vote triggers a 4 s / 40-step consensus decay, each
+      // step notifying the store, each notify landing here and re-writing the
+      // size from presence alone. The reaction was being overwritten ~10×/s by
+      // the very event that caused it.
+      stage.pointCloud.material.size = (0.02 + avgPresence * 0.14) * (stage._voteBoost ?? 1);
       stage.pointCloud.material.opacity = 0.2 + avgPresence * 0.80;
       stage.pointCloud.material.transparent = true;
     }
@@ -819,10 +857,28 @@ async function mountLowEarthPoint(): Promise<Viz> {
   // Re-schedule when sonETH params change (called from parliamentEntry via window event)
   window.addEventListener("soneth-param-change", scheduleZkMatch);
 
+  // ── Votes, slot 2 ──────────────────────────────────────────────────────
+  // This slot had no vote channel of any kind — no __voteEvent read, no event
+  // hook. Its only coupling was the incidental sonETH ramp a vote also fires.
+  // Now a vote RIPPLES the cloud: point size swells and the shell pulses
+  // outward, which is the vocabulary this slot already speaks.
+  const _slot2Vote = setInterval(() => {
+    if (stage.destroyed) return;
+    const vf = readVoteFlash(1600);
+    const k = vf ? vf.flash * (isAlarm(vf.type) ? 1.6 : 1.0) : 0;
+    // A multiplier rather than an absolute, so presence and the vote compose
+    // instead of racing. applyState reads it above.
+    (stage as any)._voteBoost = 1 + k * 1.8;
+    const pc = (stage as any).pointCloud;
+    if (pc?.material) pc.material.size = (pc.material.size || 0.05);
+    if (pc) pc.scale.setScalar((pc.__baseScale ?? (pc.__baseScale = pc.scale.x)) * (1 + k * 0.25));
+  }, 60);
+
   return {
     name: "Low Earth Point",
     key: "2",
     destroy: () => {
+      clearInterval(_slot2Vote);
       (window as any).__activeVizStage2 = null;
       if (zkMatchInterval) clearInterval(zkMatchInterval);
       window.removeEventListener("soneth-param-change", scheduleZkMatch);
@@ -974,20 +1030,22 @@ function mountPerlinBlob(): Viz {
       const maxRadius = (Math.min(p.width, p.height) * 0.8) / 2;
 
       // Vote event flash for Slot 3
-      const voteEvt3 = (window as any).__voteEvent;
-      let voteFlash3 = 0;
-      if (voteEvt3 && (performance.now() - voteEvt3.time) < 2000) {
-        voteFlash3 = 1.0 - (performance.now() - voteEvt3.time) / 2000;
-      }
+      const vf3 = readVoteFlash(2000);
+      const voteEvt3 = vf3;
+      const voteFlash3 = vf3 ? vf3.flash : 0;
+      const vm3 = getVizMotion();
 
       // Ghost overlay (creates motion trail; fully black = no ghost)
       p.push();
       p.noStroke();
       if (voteFlash3 > 0 && voteEvt3) {
-        const isRed3 = voteEvt3.type === "failed" || voteEvt3.type === "emergency";
-        const r3 = isRed3 ? Math.floor(voteFlash3 * 120) : 0;
-        const g3 = isRed3 ? 0 : Math.floor(voteFlash3 * 40);
-        const b3 = isRed3 ? 0 : Math.floor(voteFlash3 * 20);
+        const isRed3 = isAlarm(voteEvt3.type);
+        // The assent tint used to be rgb(0, <=40, <=20) against a black
+        // ghost — technically present, invisible in the room. Lifted so a
+        // carried motion actually registers.
+        const r3 = isRed3 ? Math.floor(voteFlash3 * 140) : Math.floor(voteFlash3 * 25);
+        const g3 = isRed3 ? 0 : Math.floor(voteFlash3 * 110);
+        const b3 = isRed3 ? 0 : Math.floor(voteFlash3 * 70);
         p.fill(r3, g3, b3, blobParams.ghostAlpha);
       } else {
         p.fill(0, 0, 0, blobParams.ghostAlpha);

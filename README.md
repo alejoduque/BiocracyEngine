@@ -143,6 +143,46 @@ nw_wrld Electron browser  (parliament.html)
 MIDI (Faderfox Micromodul LC2) ──► SC buses ──► OSC echo ──► bridge ──► browser
 ```
 
+### Idle auto-rotation · ROTATION SPD
+
+The slider reaches **all sixteen slots** now. It reached exactly one before —
+the phenological calendar, where it sets the year-sweep rate, not any rotation.
+
+`src/projector/vizMotion.ts` publishes `window.__vizMotion` (mutated in place,
+like `__ednaBio`): `{ rotation, idle, factor, speed, angle, t }`. Interaction is
+captured once at the document — `pointerdown`, `wheel`, `keydown`, `input`, in
+capture phase — so both the control panel and a camera drag reset the clock,
+with no per-module wiring. After **8 s idle** the drift eases in over **4 s**
+(smoothstep, so it neither starts nor settles with a corner) and reaches roughly
+**one turn every three minutes** at `rotation = 1.0`.
+
+The seven OrbitControls slots need nothing of their own: there is exactly one
+`new OrbitControls` in the tree, so `helpers/threeBase.ts` enables `autoRotate`
+and feeds `autoRotateSpeed` from the shared value on a 200 ms timer. That same
+change **removed the `"change"` → `render` listener**: with damping on it fired
+every `update()`, so every one of those slots was rendering the same frame
+twice.
+
+The nine remaining slots each got an idiom rather than a literal spin — a flat
+chart that slowly tilts reads as broken. Slot 1 drifts the phase of its noise
+field; slots 4 and 7 add to their radar sweep; 5 and 6 precess; 8 leans like a
+settling shelf; 9 precesses its bucket ring.
+
+### Votes and consensus — all sixteen
+
+Votes reached 9 slots and missed 7 (2, 4–9). Consensus was dead in 5: slot 1
+ignored it, slot 8 never received it, the calendar had **no path at all**, and
+DarkForest and Antifonía wrote it into a `coherence` field no render path read.
+Each now has a reaction in its own vocabulary — a radar ping, an edge cascade, a
+forced rebalance, a flush wave down the hierarchy, a forced rehash, a ripple
+through the point cloud; consensus becomes wave alignment, cache coherence,
+phenological quorum, flow straightness, chorus synchrony.
+
+**`"failed"` was handled in eight places and produced in none.** SC reports real
+outcomes on `/parliament/vote/result`, and `parliamentStore` already ingested
+them — the result simply never reached `__voteEvent`. It does now, so a rejected
+motion looks different from a carried one.
+
 ### Bidirectional Feedback Loop
 Every parameter change is reflected across all three control surfaces:
 ```

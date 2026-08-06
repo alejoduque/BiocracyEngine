@@ -277,6 +277,8 @@ class PhenologicalCalendar extends BaseThreeJsModule {
         // via the phenology breath bridge from SC OSC echoes.
         this._activityThreshold = 0.50;   // Art. 45 — quórum sensible
         this._windowWidth = 1.0;          // Art. 44 — ventana de presencia
+        this.consensus = 0.5;
+        this.consensusWindow = 1.0;       // quórum: consenso → ancho de ventana
         this._seasonalBias = 0.0;         // Art. 42 — calendario bimodal
         this._absenceWeight = 0.3;        // Art. 44 § — la ausencia es voz
         this._pulseGain = 1.0;            // Art. 45 § — modula no anula
@@ -363,7 +365,14 @@ class PhenologicalCalendar extends BaseThreeJsModule {
             // straight down (god's-eye on the calendar) or up from below.
             this.controls.minPolarAngle = 0;
             this.controls.maxPolarAngle = Math.PI;
-            this.controls.autoRotate = false;
+            // NO se apaga el autoRotate. threeBase lo enciende y lo alimenta desde
+        // window.__vizMotion (la deriva por inactividad); apagarlo aquí hacía
+        // de este el único slot con OrbitControls al que el deslizador de
+        // ROTATION SPD no llegaba — y encima es el slot que ya usaba ese mismo
+        // deslizador para el barrido del año, así que la mitad del control
+        // funcionaba y la otra mitad no, en la misma pantalla.
+        // El barrido anual (daysPerSecond) sigue igual: son dos cosas
+        // distintas montadas sobre el mismo mando, y ahora ambas responden.
             this.controls.target.set(0, 0, 0);
             this.controls.update();
         }
@@ -1578,7 +1587,9 @@ class PhenologicalCalendar extends BaseThreeJsModule {
         // flicker on/off as the random seed rolled). _opacityFloor=0.0 →
         // nothing hidden; 0.7 → ~70% of would-be-labels stay invisible.
         const opacityFloor = this._opacityFloor;
-        const windowScale = this._windowWidth;
+        // El quórum del consenso ensancha o estrecha la ventana de presencia:
+        // lo que la sala acuerda que ocurre, cuenta durante más días.
+        const windowScale = this._windowWidth * (this.consensusWindow ?? 1.0);
 
         for (const s of this.species) {
             // Opacity floor: skip this species' label entirely if its
@@ -1780,7 +1791,9 @@ class PhenologicalCalendar extends BaseThreeJsModule {
         const cur = this.day;
         const pulse = this._pulseAmount;
         const threshold = this._activityThreshold;
-        const windowScale = this._windowWidth;
+        // El quórum del consenso ensancha o estrecha la ventana de presencia:
+        // lo que la sala acuerda que ocurre, cuenta durante más días.
+        const windowScale = this._windowWidth * (this.consensusWindow ?? 1.0);
         const absW = this._absenceWeight;
         const bancada = this._bancada;
 
@@ -2014,7 +2027,9 @@ ${focusBlock}
         if (!this._lastCensusUpdate || (tnow - this._lastCensusUpdate) > 300) {
             this._lastCensusUpdate = tnow;
             const censusEntries = [];
-            const winScale = this._windowWidth;
+            // El quórum del consenso ensancha o estrecha la ventana de presencia:
+            // lo que la sala acuerda que ocurre, cuenta durante más días.
+            const winScale = this._windowWidth * (this.consensusWindow ?? 1.0);
             const censusThresh = this._activityThreshold;
             const opacityFloor = this._opacityFloor;
             for (const sp of this.species) {
@@ -2132,6 +2147,19 @@ ${focusBlock}
     // ── Rotation slider control. Mirrors parliament rotation 0.1..2.0 →
     // daysPerSecond 0.15..3.0 (linear). Caller is the bridge which observes
     // parliamentStore.state.rotation.
+    // CONSENSO → quórum fenológico. La sala acuerda o no que algo está
+    // ocurriendo, y eso ensancha o estrecha la ventana en la que una especie
+    // cuenta como activa. Este slot era el único de los dieciséis donde el
+    // deslizador de consenso no estaba siquiera cableado: la suscripción al
+    // store leía state.rotation y nada más.
+    setConsensus({ value = 0.5 } = {}) {
+        const c = Math.max(0, Math.min(1, Number(value) || 0));
+        this.consensus = c;
+        // Acuerdo alto → ventana amplia y generosa; acuerdo bajo → sólo lo
+        // que está en su pico exacto cuenta.
+        this.consensusWindow = 0.55 + c * 0.9;
+    }
+
     setRotation({ rotation = 1.0 } = {}) {
         const r = Math.max(0.1, Math.min(2.0, Number(rotation) || 1.0));
         this.daysPerSecond = r * 1.5;

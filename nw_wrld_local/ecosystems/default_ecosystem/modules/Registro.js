@@ -708,7 +708,23 @@ class Registro extends BaseThreeJsModule {
   setSpectralShift({ value = 0.4 } = {}) { this.tgt.spectral = this._c01(value); }
   setSpatialSpread({ value = 0.5 } = {}) { this.tgt.spatial = this._c01(value); }
   setCoherence({ value = 0.5 } = {})     { this.coherenceTgt = this._c01(value); }
-  pulse({ intensity = 1.4 } = {}) { this._pushUtterance(`voto — consenso ${this.coherence.toFixed(2)}`, { kind: "event" }); }
+  // El único puente que descartaba el tipo de voto: una EMERGENCIA y un STOP
+  // escribían exactamente la misma línea en el acta. Un registro que no
+  // distingue qué se votó no es un registro. Ahora el acta nombra el acto, y
+  // la intensidad —que se desestructuraba y se tiraba— gradúa el énfasis.
+  pulse({ intensity = 1.4, type = "voto" } = {}) {
+    const NOMBRE = {
+      passed:    "MOCIÓN APROBADA",
+      failed:    "MOCIÓN RECHAZADA",
+      emergency: "EMERGENCIA",
+      start:     "SESIÓN ABIERTA",
+      stop:      "SESIÓN LEVANTADA",
+    };
+    const acto = NOMBRE[type] || "voto";
+    const fuerza = intensity >= 3 ? "···" : intensity >= 1.5 ? "··" : "·";
+    this._pushUtterance(`${acto} ${fuerza} — consenso ${this.coherence.toFixed(2)}`,
+      { kind: "event" });
+  }
   whisper({ text = "" } = {}) { if (text) this._pushUtterance(String(text), { kind: "event" }); }
   // ETH eco signals accumulate; _composeTick emits one summarised line (no flood)
   triggerCO2({ amount = 50 } = {}) { this._eth.co2 += amount; }

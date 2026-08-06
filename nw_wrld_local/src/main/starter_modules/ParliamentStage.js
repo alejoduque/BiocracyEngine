@@ -175,6 +175,12 @@ class ParliamentStage extends BaseThreeJsModule {
     this._smoothCo2        = 0.0;
     this._smoothWarmth     = 0.5;
 
+    // Vote flash — decays, so a vote reads as an EVENT rather than latching a
+    // colour on for the rest of the session (which is what it used to do).
+    this._lastVoteAt = 0;
+    this._voteFlash  = 0;
+    this._voteAlarm  = false;
+
     // ─── Renderer ─────────────────────────────────────────────────────────
     this.renderer.setClearColor(BG, 1);
     this.renderer.toneMapping         = THREE.ACESFilmicToneMapping;
@@ -505,6 +511,10 @@ class ParliamentStage extends BaseThreeJsModule {
   updateStage() {
     const state   = this.parliamentState;
     const elapsed = this.clock.getElapsedTime();
+    // Frame delta, for the decays below. getDelta() is not used because other
+    // code in this file already consumes the clock via getElapsedTime().
+    const dt = Math.min(0.1, Math.max(0.001, elapsed - (this._lastElapsed ?? elapsed)));
+    this._lastElapsed = elapsed;
 
     const phase      = state ? state.phase      : (elapsed / 120) % 1;
     const consensus  = state ? state.consensus  : 0.5 + Math.sin(elapsed * 0.3) * 0.3;
@@ -569,7 +579,18 @@ class ParliamentStage extends BaseThreeJsModule {
     this._vignettePass.uniforms.darkness.value = lerp(1.1, 2.2, this._smoothEmergency);
 
     // ── Point light ───────────────────────────────────────────────────────
-    this.controls.autoRotateSpeed = 0.2 + this._smoothConsensus * 0.5;
+    // Consensus sets how briskly the assembly turns; the shared idle drift
+    // (window.__vizMotion, fed by ROTATION SPD) sets whether it turns at all
+    // when nobody is at the desk. This line used to be a bare assignment, so
+    // it overwrote whatever threeBase had just set 200 ms earlier and slot 0
+    // was the one place the slider could never reach.
+    {
+      const vm = (typeof window !== "undefined") ? window.__vizMotion : null;
+      const drift = (vm && typeof vm.speed === "number") ? vm.speed * (30 / Math.PI) : 0;
+      // The stage has always turned on its own; the drift adds to that floor
+      // rather than replacing it, so slot 0 never comes to a dead stop.
+      this.controls.autoRotateSpeed = 0.2 + this._smoothConsensus * 0.5 + drift;
+    }
     this._ptLight.intensity = 0.8 + consensusW * 1.2;
     this._ptLight.position.set(
       Math.sin(elapsed * 0.3) * 1.5,
@@ -774,12 +795,34 @@ class ParliamentStage extends BaseThreeJsModule {
     }
 
     // ── Vote event: flash ────────────────────────────────────────────────
-    if (state && state.events.voteResult) {
-      const passed = state.events.voteResult.passed;
-      for (const grp of this.speciesGroups)
-        grp.children[1].material.color.setHex(passed ? AMBER_BRIGHT : AMBER_DIM);
-      parliamentStore.consumeEvents();
+    // Two things were wrong here. It read state.events.voteResult, which only
+    // /parliament/vote ever sets — so START, STOP and EMERGENCY were invisible
+    // to slot 0, one of five types. And it SET a colour with no decay, so
+    // after the first vote the species markers stayed AMBER_BRIGHT for the
+    // rest of the session: a one-time state change wearing the costume of an
+    // event.
+    //
+    // Now it polls the same window.__voteEvent every other slot polls, keeps
+    // its own decay, and distinguishes assent from alarm.
+    {
+      const ev = (typeof window !== "undefined") ? window.__voteEvent : null;
+      if (ev && ev.time !== this._lastVoteAt) {
+        this._lastVoteAt = ev.time;
+        this._voteFlash = 1.0;
+        this._voteAlarm = (ev.type === "failed" || ev.type === "emergency" || ev.type === "stop");
+      }
+      if (this._voteFlash > 0.001) {
+        this._voteFlash *= Math.exp(-dt * 1.6);
+        const k = this._voteFlash;
+        const hot = this._voteAlarm ? 0xff5a39 : AMBER_BRIGHT;
+        for (const grp of this.speciesGroups) {
+          const m = grp.children[1].material;
+          m.color.setHex(AMBER_DIM);
+          m.color.lerp(new THREE.Color(hot), k);
+        }
+      }
     }
+    if (state && state.events.voteResult) parliamentStore.consumeEvents();
   }
 
   static methods = [...BaseThreeJsModule.methods];

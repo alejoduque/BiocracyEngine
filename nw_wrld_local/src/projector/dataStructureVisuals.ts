@@ -5,6 +5,7 @@ import { UnrealBloomPass } from "three/examples/jsm/postprocessing/UnrealBloomPa
 import { AfterimagePass }  from "three/examples/jsm/postprocessing/AfterimagePass.js";
 import { ShaderPass }      from "three/examples/jsm/postprocessing/ShaderPass.js";
 import type { ParliamentState } from "./parliament/parliamentStore";
+import { getVizMotion, readVoteFlash, isAlarm } from "./vizMotion";
 import {
     Viz,
     pickSpecies,
@@ -220,6 +221,19 @@ export function mountTimeTravel(stageEl: HTMLElement, getLatestState: () => Parl
         const st = getLatestState();
         const sp4 = (window as any).__slot4Soneth ?? {};
 
+        // Shared idle drift + vote flash. These six slots had NO vote channel
+        // at all — no onState, no store subscription, no listener — so the top
+        // of animate() is the only hook they have, and it is the same idiom
+        // slots 1 and 3 already use.
+        const vm4 = getVizMotion();
+        const vf4 = readVoteFlash();
+
+        // Observability: these six render to WebGL only, so no pixel probe can
+        // read them back (a canvas without preserveDrawingBuffer returns blank
+        // through drawImage). Publishing one representative scalar is the only
+        // way "is this slot actually moving?" can be answered from outside.
+        try { (window as any).__vizProbe = () => (reticuleGroup.rotation.z); } catch { /* ignore */ }
+
         const vol      = sp4.volume         ?? 0.7;
         const pitchSh  = sp4.pitchshift     ?? 0.5;
         const timeDil  = sp4.timedilation   ?? 0.3;
@@ -330,7 +344,14 @@ export function mountTimeTravel(stageEl: HTMLElement, getLatestState: () => Parl
         });
 
         // Reticule rotation
-        radarAngle += (0.01 + (1 - consensus) * 0.05) * (0.5 + timeDil);
+        // Idle drift rides ON TOP of the consensus-driven sweep, so the
+        // reticule keeps turning when nobody is at the desk.
+        radarAngle += (0.01 + (1 - consensus) * 0.05) * (0.5 + timeDil) + vm4.speed * 0.016;
+        // A vote is a PING: the reticule flares and snaps a quarter turn.
+        // Alarm types kick it the other way, so a rejection reads as a recoil.
+        if (vf4) {
+          radarAngle += (isAlarm(vf4.type) ? -1 : 1) * vf4.flash * 0.06;
+        }
         reticuleGroup.rotation.z = radarAngle;
         const retSize = (H * 0.3 + resBody * H * 0.2) / 180;
         reticuleGroup.scale.setScalar(retSize);
@@ -489,6 +510,19 @@ export function mountDynamicGraphs(stageEl: HTMLElement, getLatestState: () => P
         const st = getLatestState();
         const sp5 = (window as any).__slot5Soneth ?? {};
 
+        // Shared idle drift + vote flash. These six slots had NO vote channel
+        // at all — no onState, no store subscription, no listener — so the top
+        // of animate() is the only hook they have, and it is the same idiom
+        // slots 1 and 3 already use.
+        const vm5 = getVizMotion();
+        const vf5 = readVoteFlash();
+
+        // Observability: these six render to WebGL only, so no pixel probe can
+        // read them back (a canvas without preserveDrawingBuffer returns blank
+        // through drawImage). Publishing one representative scalar is the only
+        // way "is this slot actually moving?" can be answered from outside.
+        try { (window as any).__vizProbe = () => (radarGroup.rotation.z + bloom.strength * 10); } catch { /* ignore */ }
+
         const vol      = sp5.volume         ?? 0.5;
         const pitchSh  = sp5.pitchshift     ?? 0.5;
         const tDil     = sp5.timedilation   ?? 0.5;
@@ -514,6 +548,11 @@ export function mountDynamicGraphs(stageEl: HTMLElement, getLatestState: () => P
         afterimage.uniforms["damp"].value = lerp(0.76, 0.94, delayFb * 0.7 + memFeed * 0.3);
         chromatic.uniforms["amount"].value = txInf * 0.007;
         bloom.strength = lerp(0.3, 1.0, consensus * masterA);
+        // Idle: the whole graph precesses slowly. A vote is an EDGE CASCADE —
+        // the bloom surges and every edge is briefly forced, so the network
+        // flashes fully connected and settles back.
+        radarGroup.rotation.z = vm5.angle * 0.6;
+        if (vf5) bloom.strength += vf5.flash * (isAlarm(vf5.type) ? 0.5 : 1.1);
         renderer.setClearColor(0x000804, lerp(0.5, 0.95, 1 - atmMix));
 
         // Connection distance controlled by filtercutoff
@@ -535,7 +574,7 @@ export function mountDynamicGraphs(stageEl: HTMLElement, getLatestState: () => P
                 if (dist < restLength * 2) {
                     // Connection noise probability
                     const noise = snoise(i * 17 + j, frame * 0.05 * (1 + tDil));
-                    if (noise < consensus) {
+                    if (noise < consensus + (vf5 ? vf5.flash * 0.9 : 0)) {
                         const baseIdx = edgeCount * 6;
                         let ax = nodes[i].x, ay = nodes[i].y;
                         let bx = nodes[j].x, by = nodes[j].y;
@@ -600,7 +639,7 @@ export function mountDynamicGraphs(stageEl: HTMLElement, getLatestState: () => P
             (n.mesh.material as THREE.MeshBasicMaterial).opacity = (0.5 + vol * 0.5) * masterA;
 
             // dronedepth: detail level via geometry segments (proxy: wireframe density via scale noise)
-            n.mesh.rotation.z += 0.005 + droneD * 0.02;
+            n.mesh.rotation.z += 0.005 + droneD * 0.02 + vm5.speed * 0.02;
 
             // Glow ring
             const gr = glowRings[i];
@@ -745,6 +784,19 @@ export function mountDynamicOptimality(stageEl: HTMLElement, getLatestState: () 
         const st = getLatestState();
         const sp6 = (window as any).__slot6Soneth ?? {};
 
+        // Shared idle drift + vote flash. These six slots had NO vote channel
+        // at all — no onState, no store subscription, no listener — so the top
+        // of animate() is the only hook they have, and it is the same idiom
+        // slots 1 and 3 already use.
+        const vm6 = getVizMotion();
+        const vf6 = readVoteFlash();
+
+        // Observability: these six render to WebGL only, so no pixel probe can
+        // read them back (a canvas without preserveDrawingBuffer returns blank
+        // through drawImage). Publishing one representative scalar is the only
+        // way "is this slot actually moving?" can be answered from outside.
+        try { (window as any).__vizProbe = () => (nodeData[0] ? nodeData[0].mesh.rotation.z : 0); } catch { /* ignore */ }
+
         const vol       = sp6.volume        ?? 0.5;
         const pitchSh   = sp6.pitchshift    ?? 0.5;
         const tDil      = sp6.timedilation  ?? 0.5;
@@ -830,7 +882,11 @@ export function mountDynamicOptimality(stageEl: HTMLElement, getLatestState: () 
                 childIdx++;
             }
 
-            const snap = Math.min(0.05 + (1 - consensus) * 0.35 * (0.5 + tDil), 1);
+            // A vote forces a REBALANCE, which is this slot's own vocabulary:
+            // the tree reorganises itself under pressure. snap is how hard it
+            // pulls toward the new layout, so a vote is a hard reorganisation.
+            const snap = Math.min(
+                0.05 + (1 - consensus) * 0.35 * (0.5 + tDil) + (vf6 ? vf6.flash * 0.55 : 0), 1);
             n.x = lerp(n.x, n.tx, snap);
             n.y = lerp(n.y, n.ty, snap);
             if (consensus < 0.8) {
@@ -844,7 +900,10 @@ export function mountDynamicOptimality(stageEl: HTMLElement, getLatestState: () 
             // Outer box
             n.mesh.position.set(n.x, n.y, 0);
             n.mesh.scale.setScalar(glW / 20);
-            n.mesh.rotation.z += 0.005 + texDep * 0.04 * (1 + act * 8);
+            // Drift folded in, and the vote's rebalance shows in the boxes
+            // as well as in the snap rate above.
+            n.mesh.rotation.z += 0.005 + texDep * 0.04 * (1 + act * 8) + vm6.speed * 0.02
+              + (vf6 ? vf6.flash * 0.10 * (isAlarm(vf6.type) ? -1 : 1) : 0);
             (n.mesh.material as THREE.MeshBasicMaterial).color.setRGB(
                 lerp(0.78, 1.0, harmR), lerp(1.0, 0.67, harmR), lerp(0.9, 0.0, harmR)
             );
@@ -1057,6 +1116,19 @@ export function mountGeometry(stageEl: HTMLElement, getLatestState: () => Parlia
         const st = getLatestState();
         const sp7 = (window as any).__slot7Soneth ?? {};
 
+        // Shared idle drift + vote flash. These six slots had NO vote channel
+        // at all — no onState, no store subscription, no listener — so the top
+        // of animate() is the only hook they have, and it is the same idiom
+        // slots 1 and 3 already use.
+        const vm7 = getVizMotion();
+        const vf7 = readVoteFlash();
+
+        // Observability: these six render to WebGL only, so no pixel probe can
+        // read them back (a canvas without preserveDrawingBuffer returns blank
+        // through drawImage). Publishing one representative scalar is the only
+        // way "is this slot actually moving?" can be answered from outside.
+        try { (window as any).__vizProbe = () => (reticuleGroup.rotation.z); } catch { /* ignore */ }
+
         const vol     = sp7.volume        ?? 0.5;
         const pitchSh = sp7.pitchshift    ?? 0.5;
         const tDil    = sp7.timedilation  ?? 0.5;
@@ -1115,7 +1187,8 @@ export function mountGeometry(stageEl: HTMLElement, getLatestState: () => Parlia
         sweepMat.opacity = (0.5 + vol * 0.5) * masterA;
 
         // Reticule — resBody controls size, droneFade warmth, droneSpace Y offset
-        radarAngle += 0.005 + tDil * 0.025;
+        // Idle drift on the sweep, and a vote widens the ray fan for a moment.
+        radarAngle += 0.005 + tDil * 0.025 + vm7.speed * 0.016;
         reticuleGroup.rotation.z = radarAngle;
         reticuleGroup.position.y = (droneSpace - 0.5) * H * 0.15;
         const retScale = (H * (0.25 + resBody * 0.2)) / (H * 0.25);
@@ -1333,6 +1406,22 @@ export function mountMemoryHierarchy(stageEl: HTMLElement, getLatestState: () =>
         const st = getLatestState();
         const sp8 = (window as any).__slot8Soneth ?? {};
 
+        // Shared idle drift + vote flash. These six slots had NO vote channel
+        // at all — no onState, no store subscription, no listener — so the top
+        // of animate() is the only hook they have, and it is the same idiom
+        // slots 1 and 3 already use.
+        const vm8 = getVizMotion();
+        const vf8 = readVoteFlash();
+
+        // Observability: these six render to WebGL only, so no pixel probe can
+        // read them back (a canvas without preserveDrawingBuffer returns blank
+        // through drawImage). Publishing one representative scalar is the only
+        // way "is this slot actually moving?" can be answered from outside.
+        try {
+          (window as any).__vizProbe = () => layerBorders.reduce(
+            (a: number, b: any) => a + b.rotation.z + (b.material?.opacity ?? 0) * 10, 0);
+        } catch { /* ignore */ }
+
         const vol      = sp8.volume        ?? 0.5;
         const pitchSh  = sp8.pitchshift    ?? 0.5;
         const tDil     = sp8.timedilation  ?? 0.5;
@@ -1379,6 +1468,20 @@ export function mountMemoryHierarchy(stageEl: HTMLElement, getLatestState: () =>
         hexTexture.needsUpdate = true;
         (hexPlane.material as THREE.MeshBasicMaterial).opacity = (0.15 + texDep * 0.2 + filtC * 0.1) * masterA;
 
+        // ── Consensus + vote, slot 8 ─────────────────────────────────────
+        // This was the ONLY slot of the sixteen receiving neither: it read
+        // ai.optimization and species presence and nothing else from the
+        // parliament. Both now land in its own vocabulary — a memory
+        // hierarchy has coherence and it has flushes.
+        //
+        // CONSENSUS = cache coherence: agreement makes the layers line up
+        // and read cool/aligned, disagreement makes them ragged and warm.
+        const consensus8 = typeof st?.consensus === "number" ? st.consensus : 0.5;
+        // VOTE = a flush wave travelling DOWN the hierarchy, L1 first. Each
+        // layer lights as the front passes it, which is what a flush looks
+        // like from outside: the fast levels give up their lines first.
+        const flushFront = vf8 ? (1 - vf8.flash) * (LAYERS + 1) : -1;
+
         // Layer layout
         const baseH = H / (LAYERS + 1.5);
         const layerGap = 30 + pitchSh * 40 + droneSpace * 20;
@@ -1408,7 +1511,23 @@ export function mountMemoryHierarchy(stageEl: HTMLElement, getLatestState: () =>
             const t = specS * (j / 3);
             const lr = lerp(1.0, 0.31, t); const lg = lerp(0.67, 0.9, t); const lb = lerp(0.0, 0.78, t);
             (border.material as THREE.LineBasicMaterial).color.setRGB(lr, lg, lb);
-            (border.material as THREE.LineBasicMaterial).opacity = (0.5 + resBody * 0.5) * (0.4 + vol * 0.6) * masterA;
+            // Coherence tightens the borders; the flush front blows through them.
+            const flushHit = flushFront < 0 ? 0
+              : Math.max(0, 1 - Math.abs(flushFront - j) * 1.4);
+            (border.material as THREE.LineBasicMaterial).opacity =
+              (0.5 + resBody * 0.5) * (0.4 + vol * 0.6) * masterA
+              * (0.55 + consensus8 * 0.45) + flushHit * 0.6;
+            if (flushHit > 0.01) {
+              const fc = isAlarm(vf8?.type);
+              (border.material as THREE.LineBasicMaterial).color.setRGB(
+                lr + flushHit * (fc ? 0.9 : 0.4),
+                lg + flushHit * (fc ? -0.3 : 0.6),
+                lb + flushHit * (fc ? -0.2 : 0.5)
+              );
+            }
+            // Idle drift: the whole stack leans, very slowly, like a shelf
+            // settling. A hierarchy should not spin — this is its idiom.
+            border.rotation.z = Math.sin(vm8.angle * 0.5) * 0.035;
 
             // Species blocks inside layer
             let blockCX = bx + 10;
@@ -1601,6 +1720,19 @@ export function mountHashing(stageEl: HTMLElement, getLatestState: () => Parliam
         const st = getLatestState();
         const sp9 = (window as any).__slot9Soneth ?? {};
 
+        // Shared idle drift + vote flash. These six slots had NO vote channel
+        // at all — no onState, no store subscription, no listener — so the top
+        // of animate() is the only hook they have, and it is the same idiom
+        // slots 1 and 3 already use.
+        const vm9 = getVizMotion();
+        const vf9 = readVoteFlash();
+
+        // Observability: these six render to WebGL only, so no pixel probe can
+        // read them back (a canvas without preserveDrawingBuffer returns blank
+        // through drawImage). Publishing one representative scalar is the only
+        // way "is this slot actually moving?" can be answered from outside.
+        try { (window as any).__vizProbe = () => (keyBoxes[0] ? keyBoxes[0].rotation.z : 0); } catch { /* ignore */ }
+
         const vol     = sp9.volume        ?? 0.5;
         const pShift  = sp9.pitchshift    ?? 0.5;
         const tDil    = sp9.timedilation  ?? 0.5;
@@ -1659,7 +1791,11 @@ export function mountHashing(stageEl: HTMLElement, getLatestState: () => Parliam
             const kbSize = 20 * (1 + noiseL * (snoise(i, frame * 0.01) - 0.3));
             keyBoxes[i].position.set(colA_X, yA, 0);
             keyBoxes[i].scale.setScalar(kbSize / 20);
-            keyBoxes[i].rotation.z += 0.005 + droneD * 0.02;
+            // Idle drift added to the key-box spin, and a vote forces a
+            // REHASH — the boxes jolt as if every key had just been assigned
+            // a new bucket, which is this slot's own vocabulary.
+            keyBoxes[i].rotation.z += 0.005 + droneD * 0.02 + vm9.speed * 0.02
+              + (vf9 ? vf9.flash * 0.14 * (isAlarm(vf9.type) ? -1 : 1) : 0);
             (keyBoxes[i].material as THREE.MeshBasicMaterial).color.setRGB(0.78, 1.0, 0.9);
             (keyBoxes[i].material as THREE.MeshBasicMaterial).opacity = (0.8 + vol * 0.2) * masterA;
 

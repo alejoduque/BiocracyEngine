@@ -1381,6 +1381,21 @@ class Antifonia extends BaseThreeJsModule {
     const tideDens = 0.15 + this.tide * 0.85;
     const base = (0.9 + this.ctl.dens * 3.4) * tideDens;
 
+    // CONSENSO → sincronía del coro. `coherence` llegaba por setCoherence y
+    // moría ahí: ni el dibujo ni el reverse-breath la leían, así que el
+    // deslizador de consenso no hacía absolutamente nada en este slot.
+    //
+    // Con acuerdo alto las fuentes cantan A LA VEZ, en ráfagas cerradas —
+    // antifonía propiamente dicha, el turno respetado. Con acuerdo bajo cada
+    // una emite por su cuenta y la sala se convierte en un murmullo. Es la
+    // lectura parlamentaria del mismo número.
+    const sync = this.coherence;
+    // ventana de turno: a sincronía alta sólo se canta en fase
+    const phase = (this._t0 !== undefined)
+      ? (this._last - this._t0) * (0.6 + this.ctl.dens * 0.8) : 0;
+    const turno = 0.5 + 0.5 * Math.sin(phase * 2 * Math.PI * 0.35);
+    const gateSync = 1 - sync * 0.85 + sync * 0.85 * (turno * turno);
+
     for (const src of Antifonia.SOURCES) {
       const circ = this._circadian(src, this.hour);
       if (circ <= 0.001) continue;
@@ -1399,7 +1414,7 @@ class Antifonia extends BaseThreeJsModule {
         w = circ * (0.55 + this.stratumW[si] * 0.9);
       }
 
-      const p = base * w * dt * 0.9;
+      const p = base * w * dt * 0.9 * gateSync;
       if (Math.random() < p) this._emit(src);
     }
   }
@@ -1573,9 +1588,14 @@ class Antifonia extends BaseThreeJsModule {
       // Vela alcista: cuerpo lleno y brillante. Bajista: apagado, casi hueco
       // —no se puede vaciar de verdad una InstancedMesh, así que el "hueco"
       // se hace por luminancia, que a este tamaño lee igual.
-      const col = this._classColor(c.cls, env > 0.7);
-      const bodyBoost = c.up ? (0.55 + env * 0.95) : (0.16 + env * 0.28);
-      const wickBoost = 0.34 + env * 0.6;
+      // pulseEnergy es la fuerza del último voto. Se fijaba en pulse() y se
+      // decaía cada cuadro, y NINGUNA ruta la leía: los cinco tipos de voto se
+      // calculaban en el puente para nada. Ahora enciende las velas — un voto
+      // hace que la sesión entera cotice más fuerte durante unos segundos.
+      const voto = Math.min(1, (this.pulseEnergy || 0) * 0.35);
+      const col = this._classColor(c.cls, env > 0.7 || voto > 0.5);
+      const bodyBoost = (c.up ? (0.55 + env * 0.95) : (0.16 + env * 0.28)) * (1 + voto * 0.9);
+      const wickBoost = (0.34 + env * 0.6) * (1 + voto * 0.7);
       bodies.setColorAt(n, col.clone().multiplyScalar(bodyBoost));
       wicks.setColorAt(n, col.multiplyScalar(wickBoost));
       n += 1;
