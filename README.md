@@ -130,8 +130,15 @@ nw_wrld Electron browser  (parliament.html)
        │          └─ forward: __phenoParams → bancada pins the strata,    │
        │             activityThreshold → population, opacityFloor +       │
        │             seasonalWeight → which species are present today     │
-       └─ Slot R  Registro     (canvas · pretext ASCII field × slot 6) ──┘
-                  └─ reverse: buffer → /soneth/memoryfeed, consensus → atmospheremix
+       ├─ Slot R  Registro     (canvas · pretext ASCII field × slot 6)    │
+       │          └─ reverse: buffer → /soneth/memoryfeed, consensus →     │
+       │             atmospheremix                                          │
+       └─ Slot A  Antifonía            (Three.js · fetched module) ───────┘
+                  ├─ forward: /tide/state → chorus density, votes → the room
+                  │           speaks, __ednaBio → per-stratum weight
+                  ├─ events:  calls → /sample/trigger → the field recordings
+                  └─ reverse: chorus → /soneth/texturedepth, spread →
+                              spatialspread, machine share → noiselevel
 
 MIDI (Faderfox Micromodul LC2) ──► SC buses ──► OSC echo ──► bridge ──► browser
 ```
@@ -201,6 +208,48 @@ Four processes are managed by `start_ecosystem.sh`:
 > Six of these (CC 5, 6, 9, 37, 38, 39) previously wrote to control buses that
 > **no UGen read** — `\opalDrone` did not declare them and `\elektronBell` read
 > them into variables it discarded. They now shape the drone.
+
+### Slot A · Antifonía — the forest's acoustic parliament
+
+Antiphony is alternating song between groups: a real bioacoustic phenomenon
+(duetting) and the oldest form of parliament, speaking in turns. Each sound
+source is a member taking the floor, and one session lasts a day.
+
+**The vertical axis is height.** It reuses the same Humboldt strata that order
+DarkForest [F] and Estratos [E] — whoever sings, sings *from* a height: the
+howler from the emergent crowns, the frog from the understory, the bat crossing
+the canopy. A call at 20 m lands in the canopy in all three slots, and a check
+asserts the stack has not drifted apart between them.
+
+**Frequency does not fight for that axis.** Each call is a glyph whose length is
+its bandwidth; the spectrum reads as morphology. A separate strip along the
+bottom carries time on x and log frequency on y — the acoustic niche, species
+partitioning bands and hours so as not to mask one another.
+
+**Three benches, not one.** Biophony, geophony, and anthropophony. The machine
+is not an intruder in this chamber; it is the third bench, and its noise grows
+into ambient through the deep-listening transitions instead of sitting beside
+them. When the tide rises the forest speaks; when it falls, the machine holds
+the air. That inversion is literal: anthropophony's spawn weight is driven by
+`(1 - tide)`.
+
+**It really sounds.** Calls fire the seven field recordings in
+`10_sample_system.scd` through `/sample/trigger`, each opened in that call's
+frequency band and panned by its position. Geophony sources are drawn but
+silent — there is no rain or wind recording yet — and the HUD says so out loud
+rather than letting the gap disappear. Adding one is a file in `samples/` and a
+line in `~samplePaths`.
+
+Only biophony is published to `__activeSpecies`: rain is not a species and
+neither is an aircraft, and that field feeds the parliament's living census and
+the laser's opacity clause.
+
+Inspired by **AveRosetta™** (NeotropicalScience), a forest-communication
+visualizer crossing a LiDAR cloud with annotated calls. No AveRosetta code or
+data is used here; the debt is conceptual and is credited on screen.
+
+Real annotations drop in at `assets/json/antifonia_calls.json` (schema in the
+module header); absent that, the session is generated from the source table.
 
 ### Marea — the density arc
 

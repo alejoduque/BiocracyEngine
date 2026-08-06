@@ -174,9 +174,11 @@ s.doWhenBooted({
             // 3_synthdefs.scd. Without it the samples were the one voice
             // outside the budget entirely: amp 0.7 against a drone reference
             // of 0.10, straight past a limiter calibrated for everything else.
-            // Falls back to the same number if 10_ is loaded standalone.
+            // Falls back to the same number if 10_ is loaded standalone —
+            // keep the two in step, or a standalone load is silently 7.5x
+            // quieter than the ecosystem it is supposed to mirror.
             sig = sig * controlAmp.clip(0, 1) * distanceAmp.clip(0.1, 1)
-                * (~trimSample ? 0.0175);
+                * (~trimSample ? 0.133);
 
             // Panner chosen from the REAL output channel count, at graph-build
             // time — same fix as the five voices in 3_synthdefs.scd. PanAz(4)

@@ -96,10 +96,24 @@ s.doWhenBooted({
     // Field recordings (10_sample_system.scd). Kept in this table rather than
     // beside the sample SynthDef so the whole budget stays readable in one
     // place — a layer that sets its own level somewhere else is exactly how
-    // the pad explosion went unnoticed. \samplePlayer* defaults amp to 0.7,
-    // ~7x the drone, so the ratio places a call slightly ABOVE the drone: a
-    // species taking its turn should be the foreground, but not by 17 dB.
-    ~trimSample = 0.25 * ~trimMaster;
+    // the pad explosion went unnoticed.
+    //
+    // Derived from MEASUREMENT, not from the nominal amp. The first attempt
+    // reasoned from \samplePlayer*'s amp default of 0.7 and set 0.25, on the
+    // assumption that a recording at amp 0.7 arrives at 0.7. It does not: a
+    // field recording has far lower RMS than a synth voice at the same amp,
+    // and the chain then costs it more (HPF, RLPF, FreeVerb2, distance). With
+    // the engine ducked and 12 voices held at amp 1.0, the whole layer read
+    // outPk 0.005 — under the drone's 0.007, so a call was quieter than the
+    // bed it was supposed to speak over.
+    //
+    // Measured per voice at amp 1.0: ~0.0014 (they sum incoherently, so the
+    // layer grows as sqrt(n)). A working chorus is ~5 voices at amp ~0.5, and
+    // should sit just above the drone at ~0.012:
+    //     0.0014 * sqrt(5) * 0.5 * k = 0.012  ->  k ~ 7.5
+    // so 0.25 * 7.5 ~ 1.9. Higher than every other ratio in this table, which
+    // is the correct answer for a source that arrives quiet.
+    ~trimSample = 1.90 * ~trimMaster;
 
     ~limiterChans = s.options.numOutputBusChannels;
     SynthDef(\masterLimiter, { |ceiling = 0.92|

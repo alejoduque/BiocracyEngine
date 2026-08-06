@@ -40,6 +40,10 @@ import {
   mountRegistro,
   destroyRegistro,
 } from "./registro/registro";
+import {
+  mountAntifonia,
+  destroyAntifonia,
+} from "./antifonia/antifonia";
 
 // ─── Species roster for parliament consensus display ─────────────────────────
 // Populated at runtime from IUCN Red List API (Colombian species).
@@ -1523,6 +1527,72 @@ async function mountDarkForestSlot(): Promise<Viz> {
   };
 }
 
+// ─── Mount: slot A — Antifonía (the forest's acoustic parliament) ───────────
+// Same shape as mountDarkForestSlot. The one thing to notice is that this slot
+// makes SOUND of its own — it fires the field recordings through
+// /sample/trigger — so leaving it mounted is not visually idle the way the
+// others are. destroy() therefore has to stop the drain, which
+// destroyAntifonia does by clearing its timers.
+async function mountAntifoniaSlot(): Promise<Viz> {
+  const container = stageEl!;
+  showStage(stageEl);
+
+  const host = document.createElement("div");
+  host.style.cssText = "position:absolute;inset:0;width:100%;height:100%;";
+  container.appendChild(host);
+  void host.offsetWidth; // sync reflow before ModuleBase reads dims
+
+  const w = window as unknown as {
+    __applySonethToViz?: (key: string, val: number) => void;
+    __sendOscToSC?: (address: string, value: number) => void;
+  };
+  const applyViz = w.__applySonethToViz ?? (() => { /* not ready */ });
+  const sendOSC = w.__sendOscToSC ?? (() => { /* WS not ready */ });
+
+  let instance: unknown = null;
+  try {
+    instance = await mountAntifonia(host, { applyViz, sendOSC });
+  } catch (e) {
+    console.error("[switcher] Antifonia mount failed:", e);
+  }
+
+  host.style.visibility = "visible";
+  void host.offsetWidth;
+
+  await new Promise<void>((resolve) => requestAnimationFrame(() => {
+    const inst = instance as { renderer?: { setSize: (w: number, h: number) => void }; camera?: { aspect: number; updateProjectionMatrix: () => void } } | null;
+    if (inst && inst.renderer && inst.camera) {
+      const wpx = host.offsetWidth || 800;
+      const hpx = host.offsetHeight || 600;
+      inst.renderer.setSize(wpx, hpx);
+      inst.camera.aspect = wpx / hpx;
+      inst.camera.updateProjectionMatrix();
+    }
+    resolve();
+  }));
+
+  const ro = new ResizeObserver(() => {
+    const inst = instance as { renderer?: { setSize: (w: number, h: number) => void }; camera?: { aspect: number; updateProjectionMatrix: () => void } } | null;
+    if (!inst || !inst.renderer || !inst.camera) return;
+    const wpx = host.offsetWidth || 800;
+    const hpx = host.offsetHeight || 600;
+    inst.renderer.setSize(wpx, hpx);
+    inst.camera.aspect = wpx / hpx;
+    inst.camera.updateProjectionMatrix();
+  });
+  ro.observe(container);
+
+  return {
+    name: "Antifonia",
+    key: "a",
+    destroy: () => {
+      ro.disconnect();
+      destroyAntifonia();
+      if (host.parentNode) host.parentNode.removeChild(host);
+    },
+  };
+}
+
 // ─── Mount: slot B — Transito (the dossier's flow machine; proves the drone) ─
 async function mountTransitoSlot(): Promise<Viz> {
   const container = stageEl!;
@@ -1767,6 +1837,7 @@ async function switchTo(key: string) {
     else if (key === "b") viz = await mountTransitoSlot();
     else if (key === "e") viz = await mountEstratosSlot();
     else if (key === "r") viz = await mountRegistroSlot();
+    else if (key === "a") viz = await mountAntifoniaSlot();
     else viz = mountPlaceholder(key);
   } catch (e) {
     console.error("[switcher] mount failed:", e);
@@ -1792,13 +1863,17 @@ async function switchTo(key: string) {
 // ─── Keyboard ────────────────────────────────────────────────────────────────
 function onKeyDown(e: KeyboardEvent) {
   if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
-  if (!/^[0-9pfbre]$/.test(e.key)) return;
+  // 'a' added with slot A (Antifonía). This regex is the real gate: adding a
+  // mount function without widening it produces a slot that exists, compiles,
+  // and can never be reached.
+  if (!/^[0-9pfbrea]$/.test(e.key)) return;
   e.preventDefault();
   switchTo(e.key);
 
   // Send mode switch OSC message to SuperCollider (numeric slots only —
-  // 'p' (phenology), 'f' (DarkForest), 'b' (Transito), 'e' (Estratos) and
-  // 'r' (Registro) are parliament-side overlay slots not known to SC).
+  // 'p' (phenology), 'f' (DarkForest), 'b' (Transito), 'e' (Estratos),
+  // 'r' (Registro) and 'a' (Antifonía) are parliament-side overlay slots not
+  // known to SC).
   if (/^[0-9]$/.test(e.key)) {
     const modeVal = parseInt(e.key, 10);
     if (typeof (window as any).sendParliamentAction === "function") {

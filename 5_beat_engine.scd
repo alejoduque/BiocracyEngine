@@ -551,6 +551,13 @@
                 ~visualsDest.sendMsg('/bio/nutrient', transactionInfluence.linlin(0, 1, 0.1, 0.9));
                 ~visualsDest.sendMsg('/bio/consensus', density.linlin(0, 1, 0.2, 0.8));
                 ~visualsDest.sendMsg('/bio/density', density);
+                // The tide itself, so the browser can follow the same swell the
+                // audio is following. Slot A thins its chorus through the
+                // trough and lets the machine bench carry the crest-to-trough
+                // transition; without this it would have to guess, or invent a
+                // second envelope that drifts against this one. Arc periods are
+                // 40 s to 6 min, so a ~1.5 s update is ample resolution.
+                ~visualsDest.sendMsg('/tide/state', tide, ~beatParams.tidePhase ? 0);
             };
 
             // Step + interval

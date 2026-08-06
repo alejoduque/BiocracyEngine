@@ -136,6 +136,27 @@ function connectControlWS() {
       //      (instance setters clamp + persist state)
       //   3. The reverse-breath loop in breath.ts picks up the new state
       //      on its next 320ms tick → harmonicrich/texturedepth follow
+      // ── Marea · the swell itself (/tide/state) ──────────────────────
+      // Distinct from the /tide/* toggles below: those are the four booleans
+      // choosing an arc, this is the value that arc currently yields. SC owns
+      // it — it is computed inside the beat engine and drives the audio — so
+      // the browser reflects rather than recomputes. A module that derived its
+      // own envelope would drift against the sound within one arc, and the
+      // whole point of slot A's crossfade is that the two agree.
+      if (address === "/tide/state") {
+        const v = args[0];
+        const ph = args[1];
+        if (typeof v === "number" && isFinite(v)) {
+          (window as unknown as { __tideState?: { value: number; phase: number; t: number } })
+            .__tideState = {
+              value: Math.max(0, Math.min(1, v)),
+              phase: typeof ph === "number" && isFinite(ph) ? ph : 0,
+              t: Date.now() / 1000,
+            };
+        }
+        return;
+      }
+
       // ── Marea · arco de densidad (/tide/*) ──────────────────────────
       // SC echoes the normalized value on the canonical path after ANY origin
       // changes it — MIDI CC 17–20, the SC GUI button, or a preset load — AND
