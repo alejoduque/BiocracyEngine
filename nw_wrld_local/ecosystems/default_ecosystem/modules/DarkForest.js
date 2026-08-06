@@ -775,6 +775,8 @@ class DarkForest extends BaseThreeJsModule {
   }
 
   _updateFlows(dt) {
+    // Vector de trabajo para el jitter, para no tocar los puntos guardados.
+    const _jitPt = this._jitPt || (this._jitPt = new THREE.Vector3());
     const td = this.ctl.time;
     const drawSpeed = THREE.MathUtils.lerp(2.4, 0.7, td);
     const up = new THREE.Vector3(0, 1, 0);
@@ -801,12 +803,20 @@ class DarkForest extends BaseThreeJsModule {
       // Consenso → rectitud. La cabeza del flujo serpentea cuando la sala no
       // está de acuerdo y va derecha cuando sí. Es el mismo campo que ya
       // entraba por setCoherence y que hasta ahora no leía nada.
+      // headPt es una REFERENCIA a f.pts[...], el arreglo de puntos guardado
+      // de la curva. Sumarle el jitter ahí desplazaba el punto de forma
+      // ACUMULATIVA: a consenso 0.5 hasta ±0.055 por cuadro, sin reinicio, así
+      // que en los 3-5 s de vida del flujo el punto se alejaba caminando de su
+      // propia línea, la punta de flecha se orientaba desde un punto corrompido
+      // y, en cuanto `drawn` avanzaba, la deriva quedaba grabada en la
+      // trayectoria almacenada. El desplazamiento tiene que ser POR CUADRO.
       const jit = this.flowJitter || 0;
+      _jitPt.copy(headPt);
       if (jit > 0.001) {
-        headPt.x += Math.sin(this._t * 3.1 + i * 1.7) * jit * 0.22;
-        headPt.y += Math.sin(this._t * 2.3 + i * 2.9) * jit * 0.16;
+        _jitPt.x += Math.sin(this._t * 3.1 + i * 1.7) * jit * 0.22;
+        _jitPt.y += Math.sin(this._t * 2.3 + i * 2.9) * jit * 0.16;
       }
-      f.head.position.copy(headPt);
+      f.head.position.copy(_jitPt);
       f.head.material.opacity = env * 0.9 * glowBase;
       f.head.scale.setScalar(0.35 + 0.25 * Math.sin(this._t * 6 + i) * env + 0.25 * env);
 

@@ -189,7 +189,14 @@
 
     ~opalDroneSynth = Synth(\opalDrone, [
         \freq, 55, // Low ambient anchor
-        \amp, ~beatParams.masterAmp * (~beatParams.transportGain ? 1) *0.8,
+        // masterAmp NO va aquí: \opalDrone lo lee en vivo por masterAmpBus más
+        // abajo. Estaba en los dos sitios, así que el drone respondía al mando
+        // aproximadamente al cuadrado y —peor— con la mitad del producto
+        // congelada en el valor que tuviera al arrancar el motor: mover el
+        // fader a mitad de sesión sólo bajaba el factor del bus, y reiniciar
+        // con el mismo fader daba otro nivel. Todas las demás capas lo aplican
+        // una sola vez.
+        \amp, (~beatParams.transportGain ? 1) * 0.8,
         \masterVolBus, ~bi.(\masterVolume),
         \pitchBus,     ~bi.(\pitchShift),
         \timeBus,      ~bi.(\timeDilation),
@@ -402,7 +409,19 @@
             // PULSO overrides that: one hit per block regardless of phase, a
             // heartbeat that survives the troughs. It is the anchor to switch
             // on when the tide alone leaves the piece too unmoored.
-            if(blockEdge and: { (~beatParams.tidePulse ? 0) > 0.5 or: { tide.squared.coin } }) {
+            // ⚠ PARÉNTESIS OBLIGATORIOS. En sclang todos los selectores binarios
+            // tienen la MISMA precedencia y se evalúan de izquierda a derecha,
+            // así que `A and: {B} or: {C}` es `(A and: B) or: C`, no
+            // `A and: (B or: C)`. Sin ellos, con PULSO apagado el bombo dejaba
+            // de mirar blockEdge por completo y disparaba con la moneda de la
+            // marea en CADA tick —uno cada ~0.5 s en vez de uno por bloque de
+            // ~12 s— y toda la regla "el bombo sólo ocurre donde la cadena
+            // tiene una costura" quedaba anulada.
+            //
+            // No se detectó en vivo porque la prueba se hizo con PULSO
+            // ENCENDIDO, que es justo el caso donde la rama izquierda es
+            // verdadera y el paréntesis no cambia nada.
+            if(blockEdge and: { ((~beatParams.tidePulse ? 0) > 0.5) or: { tide.squared.coin } }) {
                 // Subtle frequency drift: ±5Hz per bar for organic feel
                 var kickFreq = 50 + ((bar % 7) - 3 * 1.5);
                 ~beatParams.kickCount = (~beatParams.kickCount ? 0) + 1;
@@ -416,7 +435,7 @@
                     ~visualsDest.sendMsg('/voice/kick',
                         (~beatParams.masterAmp * (0.5 + (density * 0.2)) * accent).clip(0, 1));
                 };
-                s.makeBundle(jitTick, { Synth(\opalKick, [
+                s.makeBundle(s.latency + jitTick, { Synth(\opalKick, [
                     \out,         0,
                     \freq,        kickFreq,
                     \amp,         ~beatParams.masterAmp * (~beatParams.transportGain ? 1) *(0.5 + (density * 0.2)) * accent,
@@ -480,7 +499,7 @@
                 // ─ Voicing: single note, dyad, or triad based on texture control ─
                 // ONE bundle for the whole case: every voice of a dyad or triad
                 // must share the same jitter, or the chord arpeggiates itself.
-                s.makeBundle(jitTick, {
+                s.makeBundle(s.latency + jitTick, {
                 case
                 { voicingMode == \single } {
                     // Single pitched note
@@ -553,7 +572,7 @@
                     ~visualsDest.sendMsg('/voice/dust',
                         (0.3 + (density * 0.35)).clip(0, 1));
                 };
-                s.makeBundle(jitTick, { Synth(\opalDust, [
+                s.makeBundle(s.latency + jitTick, { Synth(\opalDust, [
                     \out,         0,
                     \amp,         ~beatParams.masterAmp * (~beatParams.transportGain ? 1) *(0.3 + (density * 0.35)) * accent,
                     \masterVolBus, bMVol,

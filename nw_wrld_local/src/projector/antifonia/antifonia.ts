@@ -166,6 +166,11 @@ export function destroyAntifonia() {
   try {
     const w = window as unknown as { __activeSpecies?: unknown; __antifoniaStrata?: unknown };
     if (w.__antifoniaStrata) w.__antifoniaStrata = undefined;
+    // __activeSpecies too — the comment above said exactly this and the code
+    // only cleared the strata. A torn-down slot kept its last species
+    // published forever, so laserTap went on drawing that ring marker with no
+    // slot producing it.
+    w.__activeSpecies = undefined;
   } catch { /* ignore */ }
   _hooks = null;
 }
@@ -225,11 +230,16 @@ function startCallDrain() {
       const gap = GAP_TROUGH + (GAP_CREST - GAP_TROUGH) * tv;
       const now = Date.now();
       let fired = 0;
+      // `now` is sampled once, and _lastSampleAt was being set to that same
+      // value — so the gap test tripped on the second iteration and
+      // MAX_CALLS_PER_TICK could never be reached. The measured rate was right
+      // by accident; the constant was a lie. Stagger the stamps so a crest can
+      // genuinely fire two.
       for (let i = 0; i < queued.length && fired < MAX_CALLS_PER_TICK; i++) {
         const c = queued[i];
         if (!c || c.smp < 0) continue;         // geophony has no recording yet
-        if (now - _lastSampleAt < gap) break;  // the rest of this batch is dropped
-        _lastSampleAt = now;
+        if (now + fired * gap - _lastSampleAt < gap) break;
+        _lastSampleAt = now + fired * gap;
         try {
           send("/sample/trigger", [c.smp, c.amp, c.rate, c.hpf, c.lpf, c.pan, c.dur]);
         } catch { /* ignore */ }

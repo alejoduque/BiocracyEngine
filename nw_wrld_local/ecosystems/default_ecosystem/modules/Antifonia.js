@@ -1901,22 +1901,57 @@ class Antifonia extends BaseThreeJsModule {
   // en el censo de seres vivos, que es precisamente la confusión que este slot
   // existe para deshacer. Las otras dos bancadas se ven y se oyen; no se
   // cuentan como especies.
+  // Mismo criterio que PhenologicalCalendar._isSensitive: anfibios, orquídeas
+  // y zamias, más una fracción estable por hash del binomio. El hash es lo que
+  // impide que "no sensible" sea deducible por eliminación — si sólo se
+  // protegieran las categorías obvias, el resto quedaría confirmado como
+  // localizable, que es la misma exposición por otra vía.
+  _isSensitive(src, taxon) {
+    if (!src) return false;
+    if (taxon === "amphibians") return true;
+    const fam = String(src.family || "").toLowerCase();
+    if (fam === "orchidaceae" || fam === "zamiaceae") return true;
+    // hash estable sobre el binomio, en [0,1)
+    const str = String(src.sci || "") + "|sensitive";
+    let h = 2166136261;
+    for (let i = 0; i < str.length; i++) {
+      h ^= str.charCodeAt(i);
+      h = Math.imul(h, 16777619);
+    }
+    return ((h >>> 0) / 4294967296) < 0.15;
+  }
+
   getActiveSpecies() {
     for (let i = this.calls.length - 1; i >= 0; i--) {
       const c = this.calls[i];
       if (c.cls !== "biofonia") continue;
       const src = this._srcByKey.get(c.key);
       if (!src) continue;
+      // ── CLÁUSULA DE OPACIDAD ─────────────────────────────────────────
+      // Aquí decía `sensitive: false` a secas, para TODAS las fuentes. Ese
+      // campo es exactamente lo que consulta laserTap.ts antes de proyectar
+      // (`if (active && active.ring && !active.sensitive)`), y la rana entra
+      // en este módulo con taxon "amphibians", que es una de las categorías
+      // que PhenologicalCalendar._isSensitive protege. Resultado: montar el
+      // slot A, esperar a que cante la rana, y el láser dibujaba sobre el
+      // bosque real un anfibio sensible a la localidad CON SU BINOMIO —
+      // justo lo que la cláusula existe para impedir.
+      //
+      // Se aplica ahora la MISMA regla, y el nombre se vela como allí. No se
+      // comparte la función porque los dos módulos se evalúan por separado en
+      // sandboxes distintos; se comparte el criterio, que es lo que importa.
+      const taxon = Antifonia.TAXON[src.key] || "birds";
+      const sensitive = this._isSensitive(src, taxon);
       return {
-        sci: src.sci,
-        common: src.label,
+        sci: sensitive ? "Sp. * (Vulnerable)" : src.sci,
+        common: sensitive ? "Protegida" : src.label,
         // El vocabulario de taxon lo fija PhenologicalCalendar; se elige el
         // más cercano por fuente en vez de un único valor para todo.
-        taxon: Antifonia.TAXON[src.key] || "birds",
+        taxon,
         family: null,
         peakDay: null,
         day: Math.floor(this.hour),
-        sensitive: false,
+        sensitive,
         ring: {
           ang: (this.hour / 24) * Math.PI * 2, r: 0.7,
           x: c.x / Antifonia.PLOT, y: c.y / 8, z: c.z / Antifonia.PLOT,

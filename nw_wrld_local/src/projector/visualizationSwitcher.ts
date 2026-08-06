@@ -836,14 +836,14 @@ async function mountLowEarthPoint(): Promise<Viz> {
   }
   requestAnimationFrame(s2Raf);
 
-  // ZKP match() pulse driven by txinfluence sonETH param — fires periodically
+  // ZKP match() pulse driven by txInfluence sonETH param — fires periodically
   let zkMatchInterval: ReturnType<typeof setInterval> | null = null;
   function scheduleZkMatch() {
     if (zkMatchInterval) clearInterval(zkMatchInterval);
     const sp = (window as any).__slot2Soneth ?? {};
-    const txInf = sp.txinfluence ?? 0.5;
+    const txInf = sp.txInfluence ?? 0.5;
     const harmRi = sp.harmonicrich ?? 0.5;
-    // txinfluence: high = frequent flashes (300ms), low = rare (4000ms)
+    // txInfluence: high = frequent flashes (300ms), low = rare (4000ms)
     const intervalMs = Math.round(4000 - txInf * 3700);
     // harmonicrich → matchCount (2–12 pairs highlighted per flash)
     const matchCount = Math.round(2 + harmRi * 10);
@@ -870,8 +870,17 @@ async function mountLowEarthPoint(): Promise<Viz> {
     // instead of racing. applyState reads it above.
     (stage as any)._voteBoost = 1 + k * 1.8;
     const pc = (stage as any).pointCloud;
-    if (pc?.material) pc.material.size = (pc.material.size || 0.05);
-    if (pc) pc.scale.setScalar((pc.__baseScale ?? (pc.__baseScale = pc.scale.x)) * (1 + k * 0.25));
+    // X and Z only. setScalar wrote Y as well, and parliamentEntry's
+    // pitchshift handler owns pointCloud.scale.y — so the ripple erased that
+    // coupling within one 60 ms tick and the PITCH SHIFT fader was dead for as
+    // long as slot 2 was mounted. (The line that used to sit here assigned
+    // material.size to itself and did nothing at all.)
+    if (pc) {
+        const base = pc.__baseScaleXZ ?? (pc.__baseScaleXZ = pc.scale.x);
+        const r = base * (1 + k * 0.25);
+        pc.scale.x = r;
+        pc.scale.z = r;
+    }
   }, 60);
 
   return {
@@ -1244,7 +1253,7 @@ function mountPerlinBlob(): Viz {
     // Occasionally flash a matched pair (white-phosphor highlight)
     if (Math.random() < 0.035) {
       const sp3 = (window as any).__slot3Soneth ?? {};
-      const txInf = sp3.txinfluence ?? 0.5;
+      const txInf = sp3.txInfluence ?? 0.5;
       const harmRi = sp3.harmonicrich ?? 0.5;
       const count = Math.round(1 + harmRi * 6);
       for (let k = 0; k < count; k++) {

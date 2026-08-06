@@ -238,9 +238,19 @@ s.doWhenBooted({
                 sampleName = ~sampleNames[index];
                 // Pick the right SynthDef for the buffer's channel count
                 defName = if(buf.numChannels <= 1, \samplePlayerMono, \samplePlayerStereo);
+                // NO se hace loop por traer duración. `duration` significaba
+                // dos cosas a la vez —"repite" y "libera a los N segundos"— y
+                // el puente de Antifonía manda SIEMPRE los siete argumentos,
+                // así que toda llamada del bosque entraba en bucle: una rana
+                // de 0.9 s pedida con dur 4 s se repetía cuatro veces. Lo
+                // contrario exacto de la regla que el propio puente enuncia,
+                // "una grabación es un EVENTO — un pájaro, una vez".
+                //
+                // El bucle explícito queda disponible por \sampleLoop para
+                // quien lo quiera; la duración ahora sólo acota la vida.
                 synthArgs = [
                     \buf, buf,
-                    \loop, if(duration.isNil, 0, 1)
+                    \loop, ((ov[\sampleLoop] ? 0).asInteger)
                 ];
 
                 // Connect all sample control buses if they exist
@@ -276,9 +286,15 @@ s.doWhenBooted({
                 // Auto-cleanup when synth ends (for non-looping samples)
                 if(duration.notNil) {
                     SystemClock.sched(duration, {
-                        if(newSynth.notNil) {
-                            newSynth.free;
+                        // Sólo si sigue en la lista: ~sampleTrimVoices puede
+                        // haberlo liberado ya al recortar por el tope, y
+                        // liberarlo dos veces imprime "FAILURE /n_free Node not
+                        // found" por cada voz recortada.
+                        if(newSynth.notNil and: {
+                            (~activeSampleSynths ? []).includes(newSynth)
+                        }) {
                             ~activeSampleSynths.remove(newSynth);
+                            newSynth.free;
                         };
                     });
                 } {

@@ -32,10 +32,10 @@ s.doWhenBooted({
     // Python is never fatal — the engine simply runs on its own clock.
     ~rhythmState = ~rhythmState ?? {
         (
-            blockNum: 0, blockHash: "", blockSeed: 0,
+            blockNum: 0, blockHash: "",
             blockTxCount: 0, blockBaseFee: 0.0, blockAt: 0.0,
             blockPeriod: 12.0,      // Ethereum's nominal cadence, refined live
-            txIndex: 0, txSinceBlock: 0, lastBarSlot: -1,
+            txIndex: 0, txSinceBlock: 0,
             priorityRatio: 0.5,     // 0–1: how far over base fee this TX bid
             addrSig: 0, nonce: 0, calldataLen: 0,
             txIntervals: [],        // ring of the last N inter-arrival gaps
@@ -82,7 +82,14 @@ s.doWhenBooted({
     ~padLive = ~padLive ?? { List.new };
     ~padPolyComp = {
         var now = SystemClock.seconds, n;
-        while({ ~padLive.size > 0 and: { ~padLive[0] <= now } }, { ~padLive.removeAt(0) });
+        // Filtrar la lista entera, no sacar de la cabeza. Las envolventes
+        // duran cosas distintas (life va de ~1.75 s a ~8.6 s antes del x2.2),
+        // así que ~padLive NO está ordenada por vencimiento: un pad largo
+        // encolado primero se quedaba en el índice 0 bloqueando la salida de
+        // todos los cortos posteriores, n crecía sin parar y 1/sqrt(n) dejaba
+        // cada pad nuevo más flojo que el anterior — exactamente el fallo de
+        // "los pads no se oyen" que la compensación existe para arreglar.
+        ~padLive = ~padLive.reject { |t| t <= now };
         n = ~padLive.size.max(1);
         // 1/sqrt(n): the correct law for uncorrelated sources. Bounds the sum
         // as voices pile up without making one pad as loud as thirty together.
@@ -98,7 +105,15 @@ s.doWhenBooted({
             };
             if(~padQueue.notNil and: { ~padQueue.size > 0 }) {
                 args = ~padQueue.removeAt(0);
-                if(s.numSynths < ~padSynthMax) {
+                // Cuenta PADS, no todos los nodos del servidor. s.numSynths
+                // incluye el limitador, el osciloscopio, el drone, el bombo,
+                // la percusión, el polvo y —desde el slot A— hasta doce voces
+                // de grabación de campo. En un coro del amanecer eso suma 22-23
+                // por sí solo, así que el tope de 24 se alcanzaba sin un solo
+                // pad vivo y la capa entera enmudecía justo cuando más pasa.
+                // Los dos topes se dimensionaron por separado y su suma excedía
+                // el presupuesto compartido.
+                if(~padLive.size < ~padSynthMax) {
                     var pc = ~padPolyComp.value;
                     var life = 0;
                     // Envelope end time, so the voice expires from ~padLive on
@@ -295,11 +310,10 @@ s.doWhenBooted({
     // Deterministic per-block pattern seed. Same block always yields the same
     // rhythmic cell, so a session is reproducible while never repeating —
     // the same trick the Estratos module uses for its layout.
-    ~rhythmSeededRand = { |seed, n|
-        var h = (seed + (n * 2654435761)) & 0x7FFFFFFF;
-        h = (h bitXor: (h >> 13)) * 1274126177;
-        ((h bitXor: (h >> 16)) & 0x7FFFFFFF) / 2147483647.0
-    };
+    // (~rhythmSeededRand vivía aquí: un hash-PRNG de cinco líneas sin un solo
+    //  sitio de llamada, resto de los siete tickers de ritmo que se quitaron.
+    //  Los campos blockSeed / blockPulse / lastBarSlot que alimentaba corren
+    //  la misma suerte más abajo por la misma razón: escritos, nunca leídos.)
 
     // Handler for Python's /eth/block [number, hash, txCount, baseFeeGwei, ts].
     // Blocks land on a ~12 s cadence that is given from outside the instrument:
@@ -315,19 +329,17 @@ s.doWhenBooted({
         };
         ~rhythmState[\blockNum]     = msg[1].asInteger;
         ~rhythmState[\blockHash]    = hash;
-        ~rhythmState[\blockSeed]    = hash.hash.abs;
         ~rhythmState[\blockTxCount] = msg[3].asInteger.max(1);
         ~rhythmState[\blockBaseFee] = msg[4].asFloat;
         ~rhythmState[\blockAt]      = now;
         ~rhythmState[\txSinceBlock] = 0;
         // Let the beat engine know a bar boundary just happened
-        if(~beatParams.notNil) { ~beatParams.blockPulse = now };
     }, '/eth/block');
 
     // Shared function: sonify a transaction and broadcast to visuals
     ~handleTransaction = { |noteNum, velocity, value, gasPrice, txHash, time|
         var baseFreq, synthArgs, nutrient, consensus;
-        var valLog, priorityRatio, accent, relScale, minGap, sounds, queued;
+        var valLog, priorityRatio, accent, minGap, queued;
 
         baseFreq = noteNum.midicps;
         // Add hash-based micro-variation
@@ -353,7 +365,6 @@ s.doWhenBooted({
         accent = if(~rhythmState.notNil) {
             0.85 + (~rhythmState[\priorityRatio] * 0.9)
         } { 1.0 };
-        relScale = 1.0;
 
         // Calculate abstract values for visuals.
         // consensus was gasPrice.linlin(1, 200, 0, 1) — at post-Dencun gas that
@@ -449,7 +460,7 @@ s.doWhenBooted({
             \susLvl, 0.55 + (priorityRatio * 0.2),
             // tails shortened so silence can open between bursts instead of
             // the pads fusing into one continuous wash
-            \rel, valLog.linlin(0, 1, 0.7, 2.8) * relScale,
+            \rel, valLog.linlin(0, 1, 0.7, 2.8),
             \pan, if(txHash.notNil, { txHash.hash.fold(-1.0, 1.0) }, { 0 })
         ];
 
@@ -467,7 +478,6 @@ s.doWhenBooted({
         // as an event, and the cap counts ALL synths so it also stops the pads
         // starving the beat engine.
         minGap = 0.45;
-        sounds = true;
         queued = false;
 
         // Instead of firing on raw arrival, only transactions whose position in
@@ -521,20 +531,21 @@ s.doWhenBooted({
         // dead feed.
         // (Skipped when the pad was queued — the drain routine will sound it,
         // and forcing an immediate spawn as well would double it.)
-        if(queued.not and: { (time - ~lastPadTime) > 6.0 }) { sounds = true; minGap = 0 };
+        // Guardia de inanición: si nada se ha encolado y hace más de 6 s que
+        // no suena un pad, se fuerza el paso. (`sounds` se quitó: se ponía en
+        // true y nunca en false, así que la rama { sounds.not } del case era
+        // inalcanzable y `relScale` era un 1.0 que sólo multiplicaba por uno.)
+        if(queued.not and: { (time - ~lastPadTime) > 6.0 }) { minGap = 0 };
         // Every branch is counted so the monitor can say WHY a pad did or did
         // not sound — "it seems random" is otherwise impossible to check.
         case
         { queued } {
             // already handed to ~padDrainRoutine — not a skip, not a spawn
         }
-        { sounds.not } {
-            ~bellStats[\skipBar] = ~bellStats[\skipBar] + 1;
-        }
         { (time - ~lastPadTime) <= minGap } {
             ~bellStats[\skipGate] = ~bellStats[\skipGate] + 1;
         }
-        { s.numSynths >= ~padSynthMax } {
+        { ~padLive.size >= ~padSynthMax } {
             ~bellStats[\skipCap] = ~bellStats[\skipCap] + 1;
         }
         {

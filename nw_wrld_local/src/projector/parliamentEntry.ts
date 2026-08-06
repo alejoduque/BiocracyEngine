@@ -289,19 +289,33 @@ function sendOSCString(address: string, value: string) {
     // Visual burst: slam brightness down, red shift across all slots
     triggerVoteVisualBurst("emergency", args[0]);
   } else if (address === "/parliament/vote") {
-    // Vote: manual trigger always passes — performer tool, not a quorum check.
-    // Boost consensus briefly to reflect the affirmative intent.
+    // ── The motion is put to the chamber ─────────────────────────────────
+    // It used to pass unconditionally: "performer tool, not a quorum check".
+    // That made the VOTE button a flash generator rather than a vote, and it
+    // is why the five slots that branch on type === "failed" had dead code —
+    // nothing in the entire system could ever produce a rejection.
+    //
+    // A motion now CARRIES only if the chamber agrees. The threshold is the
+    // consensus already on the panel, so the performer decides the odds by
+    // where they leave that fader: high consensus and motions carry, low
+    // consensus and the chamber refuses. Pressing VOTE at consensus 0.2 and
+    // watching it fail is the point — a parliament that cannot say no is not
+    // deliberating, it is applauding.
     const prevConsensus = st.consensus;
-    st.consensus = Math.min(1.0, Math.max(st.consensus, 0.5) + 0.15);
+    const QUORUM = 0.5;
+    const carried = st.consensus >= QUORUM;
+    st.consensus = carried
+      ? Math.min(1.0, Math.max(st.consensus, 0.5) + 0.15)
+      : Math.max(0, st.consensus - 0.08);
     st.events.voteResult = {
       consensus: st.consensus,
-      passed: true,
+      passed: carried,
       yes: Math.round(st.votes * st.consensus),
       total: st.votes,
     };
     parliamentStore.notifyListeners();
     // Visual burst: bloom flash + color surge across all slots
-    triggerVoteVisualBurst("passed", st.consensus);
+    triggerVoteVisualBurst(carried ? "passed" : "failed", carried ? st.consensus : 1 - st.consensus);
     // Decay consensus back over 4 s
     const decayStart = st.consensus;
     const decayTarget = prevConsensus;
@@ -698,25 +712,12 @@ async function init() {
   // window.__vizMotion, which every slot reads for its own drift.
   startVizMotion();
 
-  // ── "failed" votes, at last ────────────────────────────────────────────
-  // Eight places across the slots branch on type === "failed" and nothing has
-  // ever produced one: the four buttons emit passed/start/stop/emergency only.
-  // But SC does report real outcomes on /parliament/vote/result with a passed
-  // flag, and parliamentStore already ingests it — the result simply never
-  // reached __voteEvent. Bridging it here makes every one of those dead
-  // branches live, and makes a rejected motion look different from a carried
-  // one for the first time.
-  {
-    let lastResultAt = 0;
-    parliamentStore.subscribe((st) => {
-      const vr = st.events?.voteResult;
-      if (!vr) return;
-      const stamp = vr.consensus * 1e6 + vr.yes * 1e3 + vr.total;
-      if (stamp === lastResultAt) return;
-      lastResultAt = stamp;
-      if (!vr.passed) triggerVoteVisualBurst("failed", 1 - (vr.consensus ?? 0.5));
-    });
-  }
+  // NOTE on "failed": there is no /parliament/vote/result ingress. An earlier
+  // version subscribed to parliamentStore for it, which was dead code —
+  // nothing in the repo (no .scd, no bridge, no python) has ever emitted that
+  // address, and its dedupe key went NaN on a short message, which would have
+  // strobed all sixteen slots had it ever arrived. The outcome is decided
+  // where the vote is cast, in sendParliamentAction above.
 
   // ─── Laser projection feed (ILDA / Helios DAC via laser-bridge:3337) ──────
   // Streams the active module's vector scene (default: slot-P year-ring +
@@ -1117,7 +1118,13 @@ async function init() {
           // Time dilation → rotation damping (high = slow, inverted)
           if (activeViz.cameraSettings) {
             const base = (window as any).__slot2Soneth?.txInfluence ?? 0.5;
-            activeViz.cameraSettings.cameraSpeed = (0.1 + base * 7.9) * (1.1 - v * 0.9);
+            activeViz.cameraSettings.cameraSpeed =
+              // Compose, do not overwrite. applyState writes
+              // (0.1 + avgActivity*7.9 + idleDrift) here too; this used to
+              // replace that outright with a txInfluence-derived number, so the
+              // two raced every notify and the "resolved" race in
+              // visualizationSwitcher only fixed one of the two writers.
+              (activeViz.cameraSettings?.cameraSpeed ?? 1) * (1.1 - v * 0.9);
           }
           break;
         case "spectralshift":
@@ -1631,6 +1638,8 @@ async function init() {
   // (denied, no device, insecure origin) falls back to the synthetic bins, so
   // the panel never goes blank.
   let micAnalyser: AnalyserNode | null = null;
+  let micStream: MediaStream | null = null;
+  let micCtx: AudioContext | null = null;
   // Explicit ArrayBuffer backing: getByteFrequencyData's lib.dom signature
   // requires Uint8Array<ArrayBuffer>, not the ArrayBufferLike default.
   let micBuf: Uint8Array<ArrayBuffer> | null = null;
@@ -1638,6 +1647,16 @@ async function init() {
     const btn = document.getElementById("spectro-src-btn");
     btn?.addEventListener("click", async () => {
       if (micAnalyser) {   // already live — revert to the synthetic source
+        // Release the hardware, not just the reference. Nulling the analyser
+        // left the MediaStream and the AudioContext unreachable but ALIVE: the
+        // OS mic-in-use indicator stayed lit for the rest of the session after
+        // one toggle-off, and each re-enable leaked another stream and another
+        // context until the browser's AudioContext cap was hit and the button
+        // silently fell through to the denied path.
+        try { micStream?.getTracks().forEach((t) => t.stop()); } catch { /* ignore */ }
+        try { void micCtx?.close(); } catch { /* ignore */ }
+        micStream = null;
+        micCtx = null;
         micAnalyser = null;
         micBuf = null;
         btn.textContent = "SPECTRUM ▸ MIC";
@@ -1645,11 +1664,14 @@ async function init() {
         return;
       }
       try {
+        // Held in the outer scope so the off-branch can actually stop them.
         const stream = await navigator.mediaDevices.getUserMedia({
           audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: false },
         });
         const AC = window.AudioContext ?? (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
         const ctx = new AC();
+        micStream = stream;
+        micCtx = ctx;
         if (ctx.state === "suspended") await ctx.resume();
         const analyser = ctx.createAnalyser();
         analyser.fftSize = 1024;
