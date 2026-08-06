@@ -221,6 +221,22 @@ howler from the emergent crowns, the frog from the understory, the bat crossing
 the canopy. A call at 20 m lands in the canopy in all three slots, and a check
 asserts the stack has not drifted apart between them.
 
+**The stand is a simulated LiDAR sweep**, not scenery: a ceiba (*Ceiba
+pentandra*) with a clean bole and a flat tiered crown, three campanos
+(*Albizia saman*) in umbrella domes wider than they are tall, and a dozen wine
+palms (*Attalea butyracea*) with columnar stipes and arching crowns. The three
+architectures are distinguishable at a glance — that is what makes a point
+cloud a place. An aerial flight is simulated (canopy returns strongly, ground
+moderately, vertical boles barely), because that asymmetry is what makes an
+aerial cloud look the way it does. Seeded, so the stand is identical every
+boot. ~62 000 points in six `THREE.Points`, one per stratum, shuffled at build
+so the adaptive LOD can trim the draw range into a uniform subsample without
+regenerating anything. Measured at **8.4 ms median — the same as DarkForest and
+Estratos**.
+
+Each call lights the stratum it came from, so the forest is the body that
+speaks rather than the backdrop it speaks in front of.
+
 **Frequency does not fight for that axis.** Each call is a glyph whose length is
 its bandwidth; the spectrum reads as morphology. A separate strip along the
 bottom carries time on x and log frequency on y — the acoustic niche, species

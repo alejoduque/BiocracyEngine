@@ -44,9 +44,26 @@
  * de su código ni de sus datos se usa aquí; la deuda es conceptual y queda
  * dicha en pantalla.
  *
- * Implementación: THREE core, materiales integrados, una sola InstancedMesh
- * para todos los glifos y una franja 2-D detrás del lienzo WebGL (el patrón
- * que ya usa Registro.js). Sin asignaciones por cuadro.
+ * EL RODAL ES UN BARRIDO LiDAR SIMULADO, no un decorado. Una ceiba emergente
+ * de fuste limpio y copa en bandejas horizontales, tres campanos en cúpula de
+ * paraguas más ancha que alta, y una docena de palmas de vino de estípite
+ * columnar y corona arqueada: las tres arquitecturas son distinguibles a
+ * simple vista, que es lo que convierte una nube de puntos en un lugar. Se
+ * simula un vuelo aéreo —el dosel devuelve mucho, el suelo bastante, los
+ * fustes verticales poco— porque esa asimetría es la que hace que una nube
+ * aérea se vea como se ve. Fósforo blanco sobre negro, aditivo.
+ *
+ * La nube RESPONDE POR ESTRATO: cada llamada enciende la altura desde la que
+ * se emitió, así que el bosque es el cuerpo que habla y no el fondo delante
+ * del cual se habla.
+ *
+ * Implementación: THREE core, materiales integrados. Seis THREE.Points (uno
+ * por estrato, ~62 000 puntos en total) generados una vez con semilla fija y
+ * barajados, de modo que el LOD adaptativo recorta el rango de dibujo y
+ * obtiene una submuestra uniforme sin regenerar nada; una sola InstancedMesh
+ * para todos los glifos; y una franja 2-D detrás del lienzo WebGL (el patrón
+ * que ya usa Registro.js). Sin asignaciones por cuadro. Medido: 8.4 ms de
+ * mediana, igual que DarkForest y Estratos.
  * ════════════════════════════════════════════════════════════════════════ */
 
 class Antifonia extends BaseThreeJsModule {
@@ -137,6 +154,23 @@ class Antifonia extends BaseThreeJsModule {
     rana: "amphibians",   chicharra: "reptiles",
   };
 
+  // ── Presupuesto de la nube ──────────────────────────────────────────────
+  // scale multiplica TODOS los conteos: es la perilla única para subir o bajar
+  // el rodal entero. A 1.0 el barrido queda en ~62 000 puntos, que en esta
+  // máquina se dibuja en un solo draw call por estrato y no mueve la aguja del
+  // cuadro. El LOD adaptativo de más abajo puede recortar hasta el 35 % sin
+  // regenerar nada, porque los puntos están barajados.
+  static CLOUD = { scale: 1.0, ground: 9000, shrub: 220 };
+
+  // ── Metros → unidades de escena, en HORIZONTAL ──────────────────────────
+  // La vertical ya la convierte _yFromAGL (metros sobre el suelo → y del
+  // estrato). La horizontal no tenía conversión ninguna: los radios de copa
+  // estaban escritos en metros y se usaban como unidades de escena, así que
+  // un campano de 16 m de radio abarcaba 32 unidades sobre una parcela de 18.
+  // Las copas se salían del mundo y formaban un cuenco que se comía la imagen.
+  // La parcela son 100 m ↔ PLOT*2 unidades.
+  static M = (9.0 * 2) / 100;
+
   static GLYPH_POOL = 220;      // techo duro de glifos vivos
   static NICHE_KEEP = 260;      // llamadas retenidas en la franja del nicho
   static PLOT = 9.0;            // media anchura de la parcela, en unidades de escena
@@ -158,7 +192,9 @@ class Antifonia extends BaseThreeJsModule {
     // Controles vivos (leídos por cuadro de window.__sonethParams) y sus
     // objetivos suavizados. Dos objetos y no uno para que ningún salto de
     // slider llegue crudo a la imagen.
-    this.ctl = { vol: 0.5, time: 0.3, spectral: 0.4, spatial: 0.5, texture: 0.3, noise: 0.2, tx: 0.5 };
+    // Nombres propios, NO los de los parámetros: lo que este slot lee y lo
+    // que escribe son conjuntos disjuntos a propósito (ver _readControls).
+    this.ctl = { vol: 0.5, time: 0.3, spectral: 0.4, spread: 0.5, dens: 0.4, body: 0.4, tx: 0.5 };
     this.tgt = { ...this.ctl };
 
     this.coherence = 0.5;
@@ -193,9 +229,14 @@ class Antifonia extends BaseThreeJsModule {
   init() {
     const P = Antifonia.PALETTE;
     this.scene.background = new THREE.Color(P.bg);
-    this.scene.fog = new THREE.Fog(new THREE.Color(P.bg), 26, 78);
+    this.scene.fog = new THREE.Fog(new THREE.Color(P.bg), 18, 52);
 
-    this.camera.position.set(0, 5.2, 24);
+    // Encuadre: el rodal ocupa ±9 unidades en horizontal y de -1.3 a +5.2 en
+    // vertical. A 24 unidades quedaba flotando en medio del viewport con la
+    // mitad del cuadro vacío; a 15.5 y algo más bajo, el bosque llena la
+    // ventana y la ceiba entra por arriba, que es como debe leerse una
+    // emergente: saliéndose del dosel.
+    this.camera.position.set(2.2, 3.4, 18.5);
     this.camera.near = 0.1;
     this.camera.far = 220;
     this.camera.updateProjectionMatrix();
@@ -204,10 +245,10 @@ class Antifonia extends BaseThreeJsModule {
       this.controls.enabled = true;
       this.controls.enableDamping = true;
       this.controls.dampingFactor = 0.06;
-      this.controls.minDistance = 9;
-      this.controls.maxDistance = 64;
+      this.controls.minDistance = 5;
+      this.controls.maxDistance = 46;
       this.controls.maxPolarAngle = Math.PI * 0.92;
-      this.controls.target.set(0, 2.0, 0);
+      this.controls.target.set(0, 1.9, 0);
       this.controls.update();
     }
 
@@ -216,6 +257,7 @@ class Antifonia extends BaseThreeJsModule {
     key.position.set(6, 12, 8);
     this.scene.add(key);
 
+    this._buildCloud();
     this._buildStrata();
     this._buildGlyphs();
     this._buildNiche();
@@ -266,22 +308,29 @@ class Antifonia extends BaseThreeJsModule {
       for (let z = -W; z <= W + 0.001; z += step) { pts.push(-W, st.y, z, W, st.y, z); }
       const g = new THREE.BufferGeometry();
       g.setAttribute("position", new THREE.Float32BufferAttribute(pts, 3));
+      // Tenues a propósito: cuando sólo había líneas, la rejilla ERA la imagen.
+      // Ahora el rodal es el cuerpo y esto vuelve a ser lo que debía ser, una
+      // regla graduada detrás del bosque.
       const m = new THREE.LineBasicMaterial({
         color: new THREE.Color(i % 2 === 0 ? P.gridHi : P.grid),
-        transparent: true, opacity: 0.34, depthWrite: false,
+        transparent: true, opacity: 0.16, depthWrite: false,
       });
       const grid = new THREE.LineSegments(g, m);
       grid.userData.stratum = i;
       this._strataGroup.add(grid);
 
+      // A la IZQUIERDA del rodal y al frente, no al fondo. Colocadas en
+      // z = -W quedaban proyectadas SOBRE las copas desde la vista por
+      // defecto y no se podía leer ninguna de las seis. La escala vertical
+      // sólo sirve si se puede leer sin girar la cámara.
       const spr = this._textSprite(st.label, st.sub, i);
-      spr.position.set(-W - 1.4, st.y + 0.42, -W);
+      spr.position.set(-W - 3.1, st.y + 0.30, 0);
       this._strataGroup.add(spr);
     }
 
     // Eje vertical: la altura sobre el suelo, que es de lo que trata el slot.
-    const axisPts = [0, Antifonia.STRATA[Antifonia.STRATA.length - 1].y - 1, -W,
-                     0, Antifonia.STRATA[0].y + 1.2, -W];
+    const axisPts = [-W - 1.5, Antifonia.STRATA[Antifonia.STRATA.length - 1].y - 1, 0,
+                     -W - 1.5, Antifonia.STRATA[0].y + 1.2, 0];
     const ag = new THREE.BufferGeometry();
     ag.setAttribute("position", new THREE.Float32BufferAttribute(axisPts, 3));
     this._strataGroup.add(new THREE.Line(ag, new THREE.LineBasicMaterial({
@@ -289,6 +338,287 @@ class Antifonia extends BaseThreeJsModule {
     })));
 
     this.scene.add(this._strataGroup);
+  }
+
+  // ══ la nube ════════════════════════════════════════════════════════════
+  //
+  // Un barrido LiDAR SIMULADO de un rodal de bosque seco: una ceiba emergente,
+  // tres campanos y una decena de palmas de vino. No es una nube genérica: las
+  // tres arquitecturas son distinguibles a simple vista, que es el punto —
+  // esto es un instrumento de lectura, y quien mira debe poder decir "esa es
+  // la ceiba" antes de leer una sola etiqueta.
+  //
+  //   Ceiba pentandra   fuste limpio y larguísimo, contrafuertes en la base,
+  //                     copa ancha y APLANADA en pisos horizontales, ~42 m.
+  //   Albizia saman     campano: ramifica bajo, cúpula en PARAGUAS más ancha
+  //                     que alta (~30 m de diámetro por ~25 de alto).
+  //   Attalea butyracea palma de vino: estípite columnar delgadísimo y corona
+  //                     de hojas que salen del ápice y se arquean hacia abajo.
+  //
+  // Se simula un vuelo aéreo, no un escáner terrestre: el dosel devuelve
+  // mucho, el suelo bastante, y los fustes verticales POCO —un haz que baja
+  // casi vertical apenas los roza—. Esa asimetría es la que hace que una nube
+  // aérea se vea como se ve, y es gratis reproducirla.
+  //
+  // Semilla fija: el rodal debe ser el MISMO en cada arranque. Un bosque que
+  // cambia de forma entre ensayo y función no es un lugar, es ruido.
+  _rng(seed) {
+    let s = (seed >>> 0) || 1;
+    return () => {
+      s = (Math.imul(s, 1664525) + 1013904223) >>> 0;
+      return s / 4294967296;
+    };
+  }
+
+  _buildCloud() {
+    const rnd = this._rng(20221109);           // fecha del barrido de referencia
+    const W = Antifonia.PLOT;
+    // Un cubo por estrato: cada uno acaba siendo su propio THREE.Points, de
+    // modo que responder a la actividad por estrato cuesta SEIS cambios de
+    // material por cuadro en vez de reescribir 60 000 colores.
+    const buckets = Antifonia.STRATA.map(() => ({ pos: [], col: [] }));
+
+    const put = (x, agl, z, intensity) => {
+      const y = this._yFromAGL(agl);
+      const si = this._stratumIndexFromAGL(agl);
+      const b = buckets[si];
+      b.pos.push(x, y, z);
+      // Fósforo blanco: casi blanco con un sesgo verde-cian, modulado por la
+      // intensidad de retorno. El follaje devuelve flojo, el suelo y la madera
+      // devuelven fuerte — así la copa queda vaporosa y el suelo firme.
+      const i = Math.max(0.16, Math.min(1, intensity));
+      b.col.push(0.80 * i + 0.10, 0.97 * i + 0.06, 0.90 * i + 0.10);
+    };
+    // Los constructores de árbol son métodos (para que cada arquitectura se
+    // lea por separado) y necesitan este emisor; se pasa por referencia en vez
+    // de reconstruirlo tres veces.
+    this._putRef = put;
+
+    // ── suelo ────────────────────────────────────────────────────────────
+    // Microrrelieve suave; el suelo es lo único que devuelve casi siempre.
+    const groundAt = (x, z) =>
+      Math.sin(x * 0.21) * 0.5 + Math.cos(z * 0.17) * 0.42 + Math.sin((x + z) * 0.09) * 0.3;
+    const nGround = Math.round(Antifonia.CLOUD.ground * Antifonia.CLOUD.scale);
+    for (let i = 0; i < nGround; i++) {
+      const x = (rnd() * 2 - 1) * W;
+      const z = (rnd() * 2 - 1) * W;
+      // Intensidad baja: el suelo devuelve mucho pero no es lo que hay que
+      // mirar. A 0.55-1.0 se comía las copas por brillo.
+      put(x, 0.15 + groundAt(x, z) * 0.55 + rnd() * 0.25, z, 0.26 + rnd() * 0.22);
+    }
+
+    // ── árboles ──────────────────────────────────────────────────────────
+    // Posiciones a mano: un rodal compuesto, no una dispersión aleatoria. La
+    // ceiba domina el centro-izquierda; los campanos abren a la derecha; las
+    // palmas rellenan los bordes, que es como se reparten de verdad cuando el
+    // dosel alto ya está ocupado.
+    this._trees = [];
+    this._tree_ceiba(rnd, -2.2, 1.4, 1.0);
+    this._tree_campano(rnd, 3.6, -2.0, 1.0);
+    this._tree_campano(rnd, 5.4, 3.9, 0.82);
+    this._tree_campano(rnd, -5.8, -4.4, 0.74);
+    const palmSpots = [
+      [-7.4, 5.6], [-4.6, 6.8], [0.4, 7.4], [6.9, 6.4], [7.8, 0.6],
+      [6.2, -5.9], [1.8, -6.8], [-2.6, -7.2], [-7.0, -1.6], [-8.1, 2.4],
+      [2.9, 5.2], [-0.9, -3.4],
+    ];
+    for (const [px, pz] of palmSpots) this._tree_palma(rnd, px, pz, 0.78 + rnd() * 0.44);
+
+    // ── sotobosque ───────────────────────────────────────────────────────
+    const nShrub = Math.round(Antifonia.CLOUD.shrub * Antifonia.CLOUD.scale);
+    for (let i = 0; i < nShrub; i++) {
+      const cx = (rnd() * 2 - 1) * W, cz = (rnd() * 2 - 1) * W;
+      const h = 0.8 + rnd() * 3.4;
+      const r = (0.5 + rnd() * 1.3) * Antifonia.M;
+      const n = 6 + (rnd() * 10) | 0;
+      for (let k = 0; k < n; k++) {
+        const a = rnd() * Math.PI * 2, rr = Math.sqrt(rnd()) * r;
+        put(cx + Math.cos(a) * rr, rnd() * h + 0.2, cz + Math.sin(a) * rr, 0.22 + rnd() * 0.3);
+      }
+    }
+
+    // ── a la GPU ─────────────────────────────────────────────────────────
+    this._cloudPoints = [];
+    this._cloudMats = [];
+    this._cloudGroup = new THREE.Group();
+    for (let si = 0; si < buckets.length; si++) {
+      const b = buckets[si];
+      if (b.pos.length === 0) { this._cloudPoints.push(null); this._cloudMats.push(null); continue; }
+      // Barajado Fisher-Yates sobre las ternas. Esto es lo que hace que el LOD
+      // adaptativo sea gratis más abajo: si los puntos están en orden
+      // aleatorio, dibujar un PREFIJO del buffer es una submuestra uniforme
+      // del rodal entero, no un trozo con forma.
+      const n = b.pos.length / 3;
+      for (let i = n - 1; i > 0; i--) {
+        const j = (rnd() * (i + 1)) | 0;
+        for (let k = 0; k < 3; k++) {
+          let t = b.pos[i * 3 + k]; b.pos[i * 3 + k] = b.pos[j * 3 + k]; b.pos[j * 3 + k] = t;
+          t = b.col[i * 3 + k]; b.col[i * 3 + k] = b.col[j * 3 + k]; b.col[j * 3 + k] = t;
+        }
+      }
+      const g = new THREE.BufferGeometry();
+      g.setAttribute("position", new THREE.Float32BufferAttribute(b.pos, 3));
+      g.setAttribute("color", new THREE.Float32BufferAttribute(b.col, 3));
+      const m = new THREE.PointsMaterial({
+        size: 0.055, sizeAttenuation: true, vertexColors: true,
+        transparent: true, opacity: 0.9, depthWrite: false,
+        blending: THREE.AdditiveBlending,
+      });
+      const pts = new THREE.Points(g, m);
+      pts.frustumCulled = false;
+      pts.userData.total = n;
+      this._cloudGroup.add(pts);
+      this._cloudPoints.push(pts);
+      this._cloudMats.push(m);
+    }
+    this.scene.add(this._cloudGroup);
+    this._cloudTotal = this._cloudPoints.reduce((a, p) => a + (p ? p.userData.total : 0), 0);
+    this._lod = 1.0;
+  }
+
+  // Ceiba pentandra — la emergente. Fuste limpio y largo, contrafuertes en la
+  // base, y una copa ancha y APLANADA construida en pisos horizontales: es esa
+  // silueta en bandejas la que la delata desde el aire.
+  _tree_ceiba(rnd, cx, cz, scale) {
+    const put = this._putRef;
+    const M = Antifonia.M;
+    // Alturas en METROS (la vertical las convierte); radios en UNIDADES.
+    const H = 42 * scale, boleTop = 24 * scale, R = 13 * scale * M;
+    const S = Antifonia.CLOUD.scale;
+
+    // contrafuertes: aletas radiales que salen del fuste hasta ~3.5 m
+    for (let f = 0; f < 7; f++) {
+      const a = (f / 7) * Math.PI * 2 + rnd() * 0.2;
+      const n = Math.round(90 * S);
+      for (let i = 0; i < n; i++) {
+        const t = rnd();
+        const h = t * 3.4 * scale;
+        const out = (1 - t) * 3.0 * scale * M * (0.5 + rnd() * 0.5);
+        const wob = (rnd() - 0.5) * 0.25;
+        put(cx + Math.cos(a + wob) * (0.9 * scale * M + out), h + 0.1,
+            cz + Math.sin(a + wob) * (0.9 * scale * M + out), 0.75 + rnd() * 0.25);
+      }
+    }
+    // fuste — pocos retornos: un haz casi vertical apenas roza una pared
+    const nBole = Math.round(320 * S);
+    for (let i = 0; i < nBole; i++) {
+      const t = rnd();
+      const h = 3.0 * scale + t * (boleTop - 3.0 * scale);
+      const r = (1.05 - t * 0.35) * scale * M;
+      const a = rnd() * Math.PI * 2;
+      put(cx + Math.cos(a) * r, h, cz + Math.sin(a) * r, 0.62 + rnd() * 0.3);
+    }
+    // copa en pisos: 5 bandejas horizontales, la más ancha en el tercio bajo
+    const tiers = 5;
+    for (let ti = 0; ti < tiers; ti++) {
+      const u = ti / (tiers - 1);
+      const h = boleTop + u * (H - boleTop);
+      // ancho máximo hacia abajo, estrechando arriba — de ahí lo aplanado
+      const rr = R * Math.sin(Math.PI * (0.30 + u * 0.62)) * (1 - u * 0.22);
+      const n = Math.round((1500 - ti * 130) * S);
+      // ramas: radios que salen del eje en esta bandeja
+      const branches = 7 + ((rnd() * 4) | 0);
+      for (let i = 0; i < n; i++) {
+        const bi = (rnd() * branches) | 0;
+        const a = (bi / branches) * Math.PI * 2 + (rnd() - 0.5) * 0.55;
+        const t = Math.pow(rnd(), 0.62);            // más denso hacia la punta
+        const r = t * rr;
+        // cada bandeja es una lámina delgada: poco espesor vertical
+        const dy = (rnd() - 0.5) * 1.9 * scale - t * 0.9 * scale;   // metros
+        put(cx + Math.cos(a) * r + (rnd() - 0.5) * 0.09,
+            h + dy,
+            cz + Math.sin(a) * r + (rnd() - 0.5) * 0.09,
+            0.20 + rnd() * 0.34);
+      }
+    }
+    this._trees.push({ kind: "ceiba", x: cx, z: cz, h: H, r: R });
+  }
+
+  // Albizia saman — el campano. Ramifica bajo y arma una cúpula en paraguas
+  // MÁS ANCHA QUE ALTA; desde arriba es un disco casi perfecto.
+  _tree_campano(rnd, cx, cz, scale) {
+    const put = this._putRef;
+    const M = Antifonia.M;
+    const H = 25 * scale, fork = 6.5 * scale, R = 16 * scale * M;
+    const S = Antifonia.CLOUD.scale;
+
+    const nBole = Math.round(210 * S);
+    for (let i = 0; i < nBole; i++) {
+      const t = rnd();
+      const h = t * fork;
+      const r = (1.0 - t * 0.25) * scale * M;
+      const a = rnd() * Math.PI * 2;
+      put(cx + Math.cos(a) * r, h + 0.1, cz + Math.sin(a) * r, 0.66 + rnd() * 0.3);
+    }
+    // ramas primarias: salen del punto de horquilla y suben abriéndose
+    const arms = 5 + ((rnd() * 3) | 0);
+    for (let ai = 0; ai < arms; ai++) {
+      const a0 = (ai / arms) * Math.PI * 2 + rnd() * 0.3;
+      const n = Math.round(150 * S);
+      for (let i = 0; i < n; i++) {
+        const t = rnd();
+        const r = t * R * 0.72;
+        const h = fork + Math.sin(t * Math.PI * 0.5) * (H - fork) * 0.72;
+        put(cx + Math.cos(a0) * r + (rnd() - 0.5) * 0.11, h + (rnd() - 0.5) * 0.5,
+            cz + Math.sin(a0) * r + (rnd() - 0.5) * 0.11, 0.5 + rnd() * 0.3);
+      }
+    }
+    // la cúpula: casquete achatado, denso arriba y hueco por debajo
+    const n = Math.round(5200 * S);
+    for (let i = 0; i < n; i++) {
+      const a = rnd() * Math.PI * 2;
+      const t = Math.sqrt(rnd());                  // uniforme en área
+      const r = t * R;
+      // perfil de paraguas: alto en el centro, cayendo a los bordes
+      const top = H - Math.pow(t, 1.7) * (H - fork) * 0.78;
+      // espesor de la lámina de follaje: delgado, por eso se ve como cáscara
+      const depth = (1.6 + (1 - t) * 2.6) * scale;               // metros
+      const h = top - rnd() * depth;
+      put(cx + Math.cos(a) * r, h, cz + Math.sin(a) * r, 0.18 + rnd() * 0.30);
+    }
+    this._trees.push({ kind: "campano", x: cx, z: cz, h: H, r: R });
+  }
+
+  // Attalea butyracea — palma de vino. Estípite columnar delgadísimo y una
+  // corona de hojas que nacen todas del ápice y se arquean: un plumero. Es la
+  // arquitectura más fácil de reconocer en una nube de puntos.
+  _tree_palma(rnd, cx, cz, scale) {
+    const put = this._putRef;
+    const M = Antifonia.M;
+    const H = 17 * scale, crown = 13.5 * scale;
+    const S = Antifonia.CLOUD.scale;
+
+    // estípite: columna regular, anillada
+    const nStipe = Math.round(230 * S);
+    for (let i = 0; i < nStipe; i++) {
+      const h = rnd() * crown;
+      const a = rnd() * Math.PI * 2;
+      const r = 0.30 * scale * M * (1 + Math.sin(h * 3.1) * 0.07);   // anillos
+      put(cx + Math.cos(a) * r, h + 0.1, cz + Math.sin(a) * r, 0.70 + rnd() * 0.28);
+    }
+    // corona: hojas pinnadas que salen del ápice, se elevan y luego caen
+    const fronds = 15 + ((rnd() * 6) | 0);
+    for (let f = 0; f < fronds; f++) {
+      const a = (f / fronds) * Math.PI * 2 + rnd() * 0.22;
+      // La hoja mide lo mismo en las dos direcciones, pero la horizontal va en
+      // unidades y la vertical en metros — de ahí las dos variables.
+      const lenM = (4.4 + rnd() * 2.4) * scale;
+      const lenU = lenM * M;
+      const lift = 0.55 + rnd() * 0.55;
+      const n = Math.round(120 * S);
+      for (let i = 0; i < n; i++) {
+        const t = Math.pow(rnd(), 0.8);
+        const r = t * lenU;
+        // arco: sube al principio, cae al final
+        const dy = lenM * (lift * Math.sin(t * Math.PI * 0.85) - 1.05 * t * t);
+        // folíolos: dispersión perpendicular al raquis
+        const spread = (rnd() - 0.5) * 0.95 * scale * M * (0.35 + t);
+        const px = cx + Math.cos(a) * r - Math.sin(a) * spread;
+        const pz = cz + Math.sin(a) * r + Math.cos(a) * spread;
+        put(px, crown + dy + (H - crown) * 0.35, pz, 0.16 + rnd() * 0.28);
+      }
+    }
+    this._trees.push({ kind: "palma", x: cx, z: cz, h: H, r: 5 * scale * M });
   }
 
   _textSprite(label, sub, idx) {
@@ -308,9 +638,9 @@ class Antifonia extends BaseThreeJsModule {
     tex.minFilter = THREE.LinearFilter;
     this._labelTexes.push(tex);
     const spr = new THREE.Sprite(new THREE.SpriteMaterial({
-      map: tex, transparent: true, opacity: 0.85, depthWrite: false,
+      map: tex, transparent: true, opacity: 0.62, depthWrite: false,
     }));
-    spr.scale.set(6.4, 1.6, 1);
+    spr.scale.set(4.6, 1.15, 1);
     spr.userData.stratum = idx;
     return spr;
   }
@@ -519,6 +849,7 @@ class Antifonia extends BaseThreeJsModule {
     this._advanceClock(dt);
     this._spawn(dt);
     this._updateCalls(dt);
+    this._updateCloud(dt);
     this._drawNiche();
     this._updateHUD();
 
@@ -533,14 +864,29 @@ class Antifonia extends BaseThreeJsModule {
     try { ed = window.__ednaBio; } catch (e) { ed = null; }
     try { tp = window.__tideState; } catch (e) { tp = null; }
 
+    // ⚠ ESTE MÓDULO NO PUEDE LEER LO QUE ESCRIBE.
+    // El puente publica texturedepth, spatialspread y noiselevel desde la
+    // densidad del coro. La primera versión leía esos tres exactos: más coro
+    // subía texturedepth, texturedepth subía la tasa de emisión, y eso subía
+    // el coro. Un lazo cerrado de realimentación positiva en las tres vías a
+    // la vez. No se disparó al infinito sólo porque la marea y la vida corta
+    // de cada llamada lo tapaban, que es la peor forma de tener un error:
+    // invisible mientras las condiciones ayuden.
+    //
+    // Se leen ahora parámetros que este slot NO escribe. DarkForest mantiene
+    // la misma disciplina (escribe drone*/harmonicrich, lee volume/pitch/
+    // time/spectral/spatial), y por eso nunca tuvo este problema.
     if (sp) {
       if (typeof sp.volume === "number") this.tgt.vol = sp.volume;
       if (typeof sp.timedilation === "number") this.tgt.time = sp.timedilation;
       if (typeof sp.spectralshift === "number") this.tgt.spectral = sp.spectralshift;
-      if (typeof sp.spatialspread === "number") this.tgt.spatial = sp.spatialspread;
-      if (typeof sp.texturedepth === "number") this.tgt.texture = sp.texturedepth;
-      if (typeof sp.noiselevel === "number") this.tgt.noise = sp.noiselevel;
+      // riqueza del coro — cuántas voces se levantan
+      if (typeof sp.harmonicrich === "number") this.tgt.dens = sp.harmonicrich;
+      // amplitud de la sala — cuán repartidas están las fuentes
+      if (typeof sp.atmospheremix === "number") this.tgt.spread = sp.atmospheremix;
+      // presión de la cadena — cuánto empuja la bancada de la máquina
       if (typeof sp.txInfluence === "number") this.tgt.tx = sp.txInfluence;
+      if (typeof sp.resonantbody === "number") this.tgt.body = sp.resonantbody;
     }
     // La marea llega desde SC por /tide/state cuando existe; si no, plana.
     if (tp && typeof tp.value === "number") this.tide = tp.value;
@@ -592,7 +938,7 @@ class Antifonia extends BaseThreeJsModule {
     // La marea decide cuánto se habla; texturedepth es el control del
     // intérprete sobre lo mismo. Cresta → coro; valle → la máquina sola.
     const tideDens = 0.15 + this.tide * 0.85;
-    const base = (0.9 + this.ctl.texture * 3.4) * tideDens;
+    const base = (0.9 + this.ctl.dens * 3.4) * tideDens;
 
     for (const src of Antifonia.SOURCES) {
       const circ = this._circadian(src, this.hour);
@@ -604,7 +950,7 @@ class Antifonia extends BaseThreeJsModule {
       // ruido electrónico convertido en ambiente, no un añadido al lado.
       let w = circ;
       if (src.cls === "antropofonia") {
-        w = circ * (0.35 + (1 - this.tide) * 0.9 + this.ctl.tx * 0.5 + this.ctl.noise * 0.8);
+        w = circ * (0.35 + (1 - this.tide) * 1.15 + this.ctl.tx * 0.6);
       } else if (src.cls === "geofonia") {
         w = circ * (0.5 + this.ctl.spectral * 0.7);
       } else {
@@ -620,7 +966,7 @@ class Antifonia extends BaseThreeJsModule {
   _emit(src, scored) {
     if (this.calls.length >= Antifonia.GLYPH_POOL) return;
     const S = Antifonia.STRATA;
-    const spread = 0.35 + this.ctl.spatial * 0.65;
+    const spread = 0.35 + this.ctl.spread * 0.65;
     const agl = scored ? scored.heightAGL : this._stratumMeters(src.stratum) * (0.75 + Math.random() * 0.5);
     const x = (scored ? scored.x : (Math.random() * 2 - 1)) * Antifonia.PLOT * spread;
     const z = (scored ? scored.z : (Math.random() * 2 - 1)) * Antifonia.PLOT * spread;
@@ -686,9 +1032,12 @@ class Antifonia extends BaseThreeJsModule {
       // El glifo: su LONGITUD es el ancho de banda en octavas, su grosor la
       // duración. Así el espectro se lee en la forma y la vertical queda
       // libre para lo único que debe significar, la altura.
+      // Ancho de banda en octavas → longitud, duración → grosor. Las escalas
+      // de la primera versión daban losas de 2.5 unidades (14 m) que tapaban
+      // el dosel entero: el glifo pasaba de anotar el bosque a sustituirlo.
       const oct = Math.log2(Math.max(1.02, c.hi / Math.max(20, c.lo)));
-      const len = 0.30 + oct * 0.42;
-      const thick = 0.05 + Math.min(0.5, c.dur * 0.09);
+      const len = 0.16 + oct * 0.17;
+      const thick = 0.028 + Math.min(0.14, c.dur * 0.028);
 
       d.position.set(c.x, c.y + Math.sin(c.age * 1.7) * 0.05, c.z);
       d.rotation.set(0, Math.atan2(this.camera.position.x - c.x, this.camera.position.z - c.z), 0);
@@ -713,6 +1062,64 @@ class Antifonia extends BaseThreeJsModule {
     glyphs.count = Antifonia.GLYPH_POOL;
     glyphs.instanceMatrix.needsUpdate = true;
     if (glyphs.instanceColor) glyphs.instanceColor.needsUpdate = true;
+  }
+
+  // El rodal responde por ESTRATO, no por punto. Seis materiales cambian de
+  // color y opacidad cada cuadro; los ~62 000 vértices no se tocan nunca
+  // después de generarse. Esa es toda la razón de haber partido la nube en
+  // seis objetos: la alternativa —reescribir el atributo de color -- cuesta
+  // dos órdenes de magnitud más para el mismo efecto visible.
+  //
+  // Lo que se lee: el peso eDNA de ese estrato (window.__ednaBio, el mismo
+  // reparto que usa DarkForest) y la actividad acústica reciente ahí. Una
+  // llamada ENCIENDE la altura desde la que se emitió, de modo que el rodal
+  // deja de ser un decorado y pasa a ser el cuerpo que habla.
+  _updateCloud(dt) {
+    if (!this._cloudMats) return;
+
+    // decaimiento de la iluminación por estrato
+    if (!this._stratumLit) this._stratumLit = new Array(Antifonia.STRATA.length).fill(0);
+    const lit = this._stratumLit;
+    for (let i = 0; i < lit.length; i++) lit[i] *= Math.exp(-dt * 1.25);
+    for (const c of this.calls) {
+      const si = this._stratumIndexFromAGL(c.agl);
+      const env = Math.sin(Math.PI * Math.min(1, c.age / c.life));
+      lit[si] = Math.min(2.2, lit[si] + env * dt * 2.6);
+    }
+
+    // Temperatura del fósforo: spectralShift lo lleva de verde-frío a un
+    // blanco cálido. Es el único control del intérprete sobre el color, y no
+    // toca la geometría.
+    const warm = this.ctl.spectral;
+    for (let si = 0; si < this._cloudMats.length; si++) {
+      const m = this._cloudMats[si];
+      if (!m) continue;
+      const w = this.stratumW[si];                  // 0..1 desde eDNA
+      const l = Math.min(1.6, lit[si]);
+      const base = 0.42 + w * 0.5 + l * 0.55;
+      m.color.setRGB(
+        Math.min(1.6, base * (0.78 + warm * 0.34)),
+        Math.min(1.6, base * (0.98 - warm * 0.06)),
+        Math.min(1.6, base * (0.94 - warm * 0.24))
+      );
+      m.opacity = Math.min(1, 0.34 + w * 0.32 + l * 0.34);
+      m.size = 0.042 + this.ctl.body * 0.03 + l * 0.012;
+    }
+
+    // ── LOD adaptativo ───────────────────────────────────────────────────
+    // Esto es un instrumento en vivo: si el cuadro se alarga, lo que hay que
+    // ceder es densidad de nube, no latencia de audio ni respuesta de mando.
+    // Como los puntos se barajaron al generarse, recortar el rango de dibujo
+    // es una submuestra uniforme del rodal — se ve más ralo, no incompleto.
+    this._ftAvg = this._ftAvg === undefined ? dt : this._ftAvg + (dt - this._ftAvg) * 0.05;
+    const want = this._ftAvg > 0.024 ? -0.02 : (this._ftAvg < 0.016 ? 0.01 : 0);
+    if (want !== 0) this._lod = Math.max(0.35, Math.min(1, this._lod + want));
+    if (Math.abs(this._lod - (this._lodApplied ?? -1)) > 0.02) {
+      this._lodApplied = this._lod;
+      for (const p of this._cloudPoints) {
+        if (p) p.geometry.setDrawRange(0, Math.floor(p.userData.total * this._lod));
+      }
+    }
   }
 
   // La franja: tiempo en x (24 h), frecuencia logarítmica en y. Es donde se ve
@@ -810,6 +1217,10 @@ class Antifonia extends BaseThreeJsModule {
         `<span style="color:${P.geo}">■</span> geofonía &nbsp;` +
         `<span style="color:${P.antro}">■</span> antropofonía` +
         gap +
+        // El rodal se nombra: quien mira debe poder decir qué árbol es cuál.
+        // Tres líneas de texto a cambio de que la nube deje de ser "puntos".
+        `<br><span style="opacity:.62">barrido · <i>Ceiba pentandra</i> · ` +
+        `<i>Albizia saman</i> · <i>Attalea butyracea</i></span>` +
         `<br><span style="opacity:.55">inspirado en AveRosetta™ · NeotropicalScience</span>`;
     }
   }
@@ -819,7 +1230,7 @@ class Antifonia extends BaseThreeJsModule {
   setMasterVol(o) { this.tgt.vol = this._num(o, this.tgt.vol); }
   setTimeDilation(o) { this.tgt.time = this._num(o, this.tgt.time); }
   setSpectralShift(o) { this.tgt.spectral = this._num(o, this.tgt.spectral); }
-  setSpatialSpread(o) { this.tgt.spatial = this._num(o, this.tgt.spatial); }
+  setSpatialSpread(o) { this.tgt.spread = this._num(o, this.tgt.spread); }
   setCoherence(o) { this.coherence = this._num(o, this.coherence); }
   pulse(o) {
     const i = (o && typeof o.intensity === "number") ? o.intensity : 1.4;
@@ -858,7 +1269,7 @@ class Antifonia extends BaseThreeJsModule {
     for (const c of this.calls) if (c.cls === "antropofonia") m += 1;
     return Math.max(0, Math.min(1, m / this.calls.length));
   }
-  getSpread() { return Math.max(0, Math.min(1, this.ctl.spatial)); }
+  getSpread() { return Math.max(0, Math.min(1, this.ctl.spread)); }
   getHour() { return this.hour; }
 
   // Cola de llamadas para SC. Devuelve y VACÍA: el puente es el único
