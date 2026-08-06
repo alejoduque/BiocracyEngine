@@ -128,23 +128,6 @@ function connectControlWS() {
         if (dispEl) dispEl.textContent = v.toFixed(2);
       }
 
-      // ── Ritmo · escucha profunda (/rhythm/*) ────────────────────────
-      // SC echoes the normalized value on the canonical path after ANY
-      // origin changes it — MIDI CC 17–23, the SC GUI knob, or a preset
-      // load. Ticking the box here is what keeps those three surfaces and
-      // this panel showing the same truth. Setting .checked fires no change
-      // event, so a browser-origin toggle echoes back harmlessly.
-      if (address.startsWith("/rhythm/")) {
-        const v = args[0];
-        if (typeof v === "number" && isFinite(v)) {
-          const box = document.querySelector<HTMLInputElement>(
-            `input[type='checkbox'][data-osc='${address}']`
-          );
-          if (box) box.checked = v >= 0.5;
-        }
-        return;
-      }
-
       // ── Cámara Fenológica (Capítulo VI) ─────────────────────────────
       // SC echoes /pheno/<key> values back to the browser whenever a knob,
       // MIDI CC, or HTML slider moves. Three things happen here:
@@ -1313,6 +1296,41 @@ async function init() {
     target.dispatchEvent(new Event("input"));
   }
 
+  // ─── Regional eDNA vector — live values shared with visual modules ────────
+  // Eight Colombian biogeographic regions, in EDNA_IDS order:
+  //   CHO Chocó · AMZ Amazonas · COR Cordillera Oriental · CAR Caribe
+  //   ORI Orinoquía · PAC Pacífico · MAG Magdalena · GUA Guayana
+  //
+  // Published on the same contract the modules already poll (__sonethParams,
+  // __phenoParams, __activeSpecies, __transitoDrone). Until now these eight
+  // sliders reached nothing regional anywhere: a binary >0.7 class on the
+  // biome map and three numbers in a diag readout. No 3-D module saw them.
+  const ednaBio: number[] = new Array(8).fill(0.5);
+  (window as unknown as { __ednaBio?: number[] }).__ednaBio = ednaBio;
+
+  function publishEdna() {
+    const arr = parliamentStore.state?.edna;
+    if (!Array.isArray(arr)) return;
+    for (let i = 0; i < ednaBio.length; i++) {
+      const v = arr[i]?.biodiversity;
+      if (typeof v === "number" && isFinite(v)) ednaBio[i] = v;
+    }
+  }
+
+  // Mean of one field across an agent group in the live store. Returns the
+  // field's own value when the group is empty or unreadable, so a macro can
+  // never drive its target from NaN.
+  function groupMean(group: "species" | "edna", field: string): number {
+    const arr = (parliamentStore.state as unknown as Record<string, Record<string, number>[]>)?.[group];
+    if (!Array.isArray(arr) || arr.length === 0) return 0.5;
+    let sum = 0, n = 0;
+    for (const a of arr) {
+      const x = a?.[field];
+      if (typeof x === "number" && isFinite(x)) { sum += x; n++; }
+    }
+    return n > 0 ? sum / n : 0.5;
+  }
+
   const REPLICA_MACROS: Record<string, (v: number) => void> = {
     // Rotation of the assembly = the cyclical cadence → beat tempo.
     // (slider range is 0.1–2.0; normalise to 0–1 for the beatTempo fader)
@@ -1322,12 +1340,23 @@ async function init() {
       driveSonethSlider("harmonicrich", 0.35 + v * 0.5);
       driveSonethSlider("noiselevel", 0.45 * (1 - v));
     },
-    // Species activity = liveliness → granular texture density.
-    "/agents/species/activity": (v) => driveSonethSlider("texturedepth", v),
-    // Species presence = being-there → enveloping atmosphere / spatial bloom.
-    "/agents/species/presence": (v) => driveSonethSlider("atmospheremix", 0.2 + v * 0.6),
-    // eDNA biodiversity = spectral richness → filter opens, brighter spectrum.
-    "/agents/edna/biodiversity": (v) => driveSonethSlider("spectralshift", 0.25 + v * 0.6),
+    // ── The three GROUP macros drive their target from the group MEAN ──────
+    // Each of these addresses is shared by several sliders — 5 species, 5
+    // presence, 8 eDNA regions — and each used to pass only the value of the
+    // slider that had just moved. Eight controls fighting over one parameter,
+    // each ignoring the other seven: region 3 at 0.95 put spectralShift at
+    // 0.82, then touching region 5 at 0.78 teleported it to 0.72. That is the
+    // jumping. wireSlider calls patchStoreFromSlider BEFORE the macro, so the
+    // store already holds the new value here and the mean is current.
+    // One slider now moves the target by ~1/5 or ~1/8 of its range.
+    "/agents/species/activity": () =>
+      driveSonethSlider("texturedepth", groupMean("species", "activity")),
+    "/agents/species/presence": () =>
+      driveSonethSlider("atmospheremix", 0.2 + groupMean("species", "presence") * 0.6),
+    "/agents/edna/biodiversity": () => {
+      publishEdna();   // regions reach Estratos + DarkForest via __ednaBio
+      driveSonethSlider("spectralshift", 0.25 + groupMean("edna", "biodiversity") * 0.6);
+    },
   };
 
   function wireSlider(slider: HTMLInputElement) {
@@ -1361,21 +1390,8 @@ async function init() {
     });
   }
 
-  // ── Ritmo · escucha profunda: scheme toggles (/rhythm/*) ────────────────
-  // Same contract as wireSlider, but the value is 0/1. SC's registry entries
-  // use a stepped ControlSpec(0,1,\lin,1), so ~setParamNorm snaps whatever it
-  // receives — MIDI CC, preset load or this checkbox — to one of two states.
-  function wireToggle(el: HTMLInputElement) {
-    const addr = el.dataset.osc;
-    if (!addr) return;
-    el.addEventListener("change", () => {
-      sendOSC(addr, el.checked ? 1 : 0);
-    });
-  }
-
   // Wire all currently-present range sliders (includes static HTML ones)
   document.querySelectorAll<HTMLInputElement>("input[type='range'][data-osc]").forEach(wireSlider);
-  document.querySelectorAll<HTMLInputElement>("input[type='checkbox'][data-osc]").forEach(wireToggle);
 
   // ── CONFIGS: save/load the full control state ──────────────────────────
   // SC owns the preset files (presets/*.json); loading routes every value
@@ -1473,10 +1489,106 @@ async function init() {
   let elapsed = 0;
   let currentState: ParliamentState | null = null;
 
+  // ── Live audio source for the spectrogram ───────────────────────────────
+  // buildFftBins synthesises its bins from parliament state — it has never
+  // touched real audio, so the display could not disagree with the engine even
+  // when the engine was silent. Routing the machine's microphone through an
+  // AnalyserNode makes it a genuine monitor: what you see is what is actually
+  // leaving the speakers, which is exactly what a performance needs.
+  //
+  // Opt-in by click: getUserMedia and AudioContext both require a user gesture,
+  // and a performance machine should not open its mic unasked. Any failure
+  // (denied, no device, insecure origin) falls back to the synthetic bins, so
+  // the panel never goes blank.
+  let micAnalyser: AnalyserNode | null = null;
+  // Explicit ArrayBuffer backing: getByteFrequencyData's lib.dom signature
+  // requires Uint8Array<ArrayBuffer>, not the ArrayBufferLike default.
+  let micBuf: Uint8Array<ArrayBuffer> | null = null;
+  {
+    const btn = document.getElementById("spectro-src-btn");
+    btn?.addEventListener("click", async () => {
+      if (micAnalyser) {   // already live — revert to the synthetic source
+        micAnalyser = null;
+        micBuf = null;
+        btn.textContent = "SPECTRUM ▸ MIC";
+        btn.className = "";
+        return;
+      }
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({
+          audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: false },
+        });
+        const AC = window.AudioContext ?? (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
+        const ctx = new AC();
+        if (ctx.state === "suspended") await ctx.resume();
+        const analyser = ctx.createAnalyser();
+        analyser.fftSize = 1024;
+        analyser.smoothingTimeConstant = 0.72;
+        ctx.createMediaStreamSource(stream).connect(analyser);
+        micAnalyser = analyser;
+        micBuf = new Uint8Array(new ArrayBuffer(analyser.frequencyBinCount));
+        btn.textContent = "SPECTRUM ◉ LIVE";
+        btn.className = "live";
+      } catch (e) {
+        console.warn("[spectrogram] mic unavailable, staying on synthetic bins:", e);
+        btn.textContent = "SPECTRUM ▸ MIC ✕";
+        btn.className = "denied";
+      }
+    });
+  }
+
+  // Resample the analyser's linear bins onto the renderer's bin count, on a
+  // LOG frequency axis so the display matches the 20Hz–8kHz labels underneath.
+  function micBins(count: number): Float32Array | null {
+    if (!micAnalyser || !micBuf) return null;
+    micAnalyser.getByteFrequencyData(micBuf);
+    const out = new Float32Array(count);
+    const nyquist = 22050;
+    const binHz = nyquist / micBuf.length;
+    for (let i = 0; i < count; i++) {
+      const f = 20 * Math.pow(8000 / 20, i / (count - 1));
+      const idx = Math.min(micBuf.length - 1, Math.max(0, Math.round(f / binHz)));
+      out[i] = micBuf[idx] / 255;
+    }
+    return out;
+  }
+
+  // ── /spectrum from SuperCollider: the master bus itself ─────────────────
+  // The preferred source. A microphone only reflects the engine if the room
+  // can hear the speakers — on headphones or an audio interface it hears
+  // nothing, which is why the panel looked dead to itself. SC analyses its own
+  // output bus after the limiter and sends 16 log-spaced band amplitudes, so
+  // this is the sound that is actually leaving the machine.
+  let scSpectrum: number[] | null = null;
+  let scSpectrumAt = 0;
+  (window as unknown as { __onScSpectrum?: (v: number[]) => void }).__onScSpectrum = (v) => {
+    scSpectrum = v;
+    scSpectrumAt = performance.now();
+  };
+
+  // Interpolate 16 bands up to the renderer's bin count, in log-frequency
+  // space to match the axis labels. Goes stale after 1 s so a stopped engine
+  // falls back rather than freezing the last frame on screen.
+  function scBins(count: number): Float32Array | null {
+    if (!scSpectrum || performance.now() - scSpectrumAt > 1000) return null;
+    const src = scSpectrum;
+    const out = new Float32Array(count);
+    for (let i = 0; i < count; i++) {
+      const pos = (i / (count - 1)) * (src.length - 1);
+      const lo = Math.floor(pos), hi = Math.min(src.length - 1, lo + 1);
+      const v = src[lo] + (src[hi] - src[lo]) * (pos - lo);
+      // Amplitude.kr is linear; compress so quiet detail stays visible
+      out[i] = Math.min(1, Math.pow(v * 3.2, 0.6));
+    }
+    return out;
+  }
+
   // Animate loop: push spectrogram + update stage FFT exposure
   (function animLoop() {
     elapsed += 0.016;
-    const bins = buildFftBins(currentState, elapsed);
+    // Source priority: real engine output > microphone > synthetic fallback.
+    // Same bin count as buildFftBins' default, so the renderer sees one shape.
+    const bins = scBins(256) ?? micBins(256) ?? buildFftBins(currentState, elapsed);
     if (spectroRenderer) spectroRenderer.push(bins, performance.now());
     // Expose bins to active Three.js stage for FFT ring animation
     const s = getActiveThreeStage();
@@ -1487,6 +1599,10 @@ async function init() {
   parliamentStore.subscribe((state) => {
     if (!state || !Array.isArray(state.species)) return;
     currentState = state;
+
+    // Keep __ednaBio current for values that arrive over OSC (/agent/edna/state)
+    // rather than from a slider — the macro only fires on local slider moves.
+    publishEdna();
 
     // Connection
     if (statusDot) statusDot.className = state.connected ? "on" : "";

@@ -34,7 +34,12 @@
     (name: \pitchShift,    spec: ControlSpec(-24, 24, \lin),  default: 0.0,  path: "/soneth/pitchshift",    cc: 1),
     (name: \timeDilation,  spec: ControlSpec(0.5, 6, \exp),   default: 2.0,  path: "/soneth/timedilation",  cc: 2,
         aliases: ["/parliament/fx/delaytime"]),
-    (name: \spectralShift, spec: ControlSpec(80, 3000, \exp), default: 1000, path: "/soneth/spectralshift", cc: 3),
+    // Ceiling 3000 -> 2400 Hz. This bus is the LPF cutoff in EVERY voice
+    // (bell, kick, perc, dust, drone), so its top end sets how bright the
+    // whole engine can get. The synths now carry fixed backstops below this
+    // anyway; lowering the knob means the useful range of the fader maps onto
+    // the range that is actually audible instead of the top third doing nothing.
+    (name: \spectralShift, spec: ControlSpec(80, 2400, \exp), default: 1000, path: "/soneth/spectralshift", cc: 3),
     (name: \spatialSpread, spec: ControlSpec(-1, 1, \lin),    default: 0.0,  path: "/soneth/spatialspread", cc: 4),
 
     // ── Row 2: Ambient Processing ────────────────────────────────────────
@@ -42,7 +47,11 @@
     (name: \atmosphereMix, spec: ControlSpec(0, 0.9, \lin),   default: 0.4,  path: "/soneth/atmospheremix", cc: 33,
         aliases: ["/parliament/fx/reverb"]),
     (name: \memoryFeed,    spec: ControlSpec(0, 0.8, \lin),   default: 0.3,  path: "/soneth/memoryfeed",    cc: 34),
-    (name: \harmonicRich,  spec: ControlSpec(0.1, 8, \exp),   default: 1.0,  path: "/soneth/harmonicrich",  cc: 35),
+    // Ceiling 8 -> 5. harmonicRich widens the percussion pitch pool AND sets
+    // how many harmonics the triad voicing stacks, so its top end was the main
+    // route to high metallic pings. It is also driven automatically by the
+    // phenology reverse-breath loop, which could push it there unattended.
+    (name: \harmonicRich,  spec: ControlSpec(0.1, 5, \exp),   default: 1.0,  path: "/soneth/harmonicrich",  cc: 35),
     (name: \resonantBody,  spec: ControlSpec(0.1, 0.8, \lin), default: 0.4,  path: "/soneth/resonantbody",  cc: 36),
 
     // ── Row 3: Drone/Noise Controls ──────────────────────────────────────
@@ -78,34 +87,7 @@
 
     // ── Beat engine (no control bus — lives in ~beatParams) ─────────────
     (name: \beatTempo, spec: ControlSpec(0.5, 2.0, \exp), default: 1.0, path: "/soneth/beatTempo",
-        hasBus: false, beatParam: \beatTempo),
-
-    // ── Ritmo · escucha profunda (toggles 0/1) ──────────────────────────
-    // Seven independent generative schemes for deriving rhythm FROM the chain
-    // instead of decorating a fixed 16-step grid with it. Each is a boolean:
-    // stepped ControlSpec(0,1,\lin,1), no control bus (the Routine reads them
-    // from ~beatParams in sclang), so they inherit OSC, MIDI CC, the SC GUI
-    // knob, the browser echo and preset persistence from this registry alone.
-    //
-    // ALL OFF = the engine's previous behaviour, exactly. Ship-dark by design.
-    //
-    // Several need the enriched payload from eth_sonify.py (/eth/block plus the
-    // extra /eth/tx_info fields); each scheme falls back to the plain grid when
-    // the data it wants has not arrived, so a stale Python is never fatal.
-    (name: \rhythmBlockBar,  spec: ControlSpec(0, 1, \lin, 1), default: 0, path: "/rhythm/blockbar",
-        hasBus: false, beatParam: \rhythmBlockBar,  cc: 17),
-    (name: \rhythmGasAccent, spec: ControlSpec(0, 1, \lin, 1), default: 0, path: "/rhythm/gasaccent",
-        hasBus: false, beatParam: \rhythmGasAccent, cc: 18),
-    (name: \rhythmEntropy,   spec: ControlSpec(0, 1, \lin, 1), default: 0, path: "/rhythm/entropy",
-        hasBus: false, beatParam: \rhythmEntropy,   cc: 19),
-    (name: \rhythmVoices,    spec: ControlSpec(0, 1, \lin, 1), default: 0, path: "/rhythm/voices",
-        hasBus: false, beatParam: \rhythmVoices,    cc: 20),
-    (name: \rhythmHashSeed,  spec: ControlSpec(0, 1, \lin, 1), default: 0, path: "/rhythm/hashseed",
-        hasBus: false, beatParam: \rhythmHashSeed,  cc: 21),
-    (name: \rhythmPolyclock, spec: ControlSpec(0, 1, \lin, 1), default: 0, path: "/rhythm/polyclock",
-        hasBus: false, beatParam: \rhythmPolyclock, cc: 22),
-    (name: \rhythmSilence,   spec: ControlSpec(0, 1, \lin, 1), default: 0, path: "/rhythm/silence",
-        hasBus: false, beatParam: \rhythmSilence,   cc: 23)
+        hasBus: false, beatParam: \beatTempo)
 ];
 
 // ─── Derived lookup tables ──────────────────────────────────────────────────

@@ -217,15 +217,12 @@
             // Row 3: Drone/Noise Controls (Existing System)
             [\masterAmp, \filterCutoff, \noiseLevel, \noiseFilt, \droneDepth],
             // Row 4: Additional Drone Controls
-            [\droneFade, \droneSpace, \droneMix, \delayFeedback, \transactionInfluence],
+            // \beatTempo added — it was the ONLY parameter present in
+            // parliament.html but missing from this surface, so the two control
+            // surfaces were not at parity. Everything else appears on both.
+            [\droneFade, \droneSpace, \droneMix, \delayFeedback, \transactionInfluence, \beatTempo],
             // Row 5: Cámara Fenológica de lo Vivo (1-bit white palette)
-            [\activityThreshold, \windowWidth, \seasonalBias, \absenceWeight, \pulseGain, \opacityFloor, \bancada],
-            // Row 6: Ritmo · escucha profunda — toggles, not continuous knobs.
-            // Their ControlSpec is stepped (0,1,\lin,1), so the knobs snap
-            // between the two positions; the browser checkboxes are the
-            // comfortable surface, these mirror them for MIDI/GUI parity.
-            [\rhythmBlockBar, \rhythmGasAccent, \rhythmEntropy, \rhythmVoices,
-                \rhythmHashSeed, \rhythmPolyclock, \rhythmSilence]
+            [\activityThreshold, \windowWidth, \seasonalBias, \absenceWeight, \pulseGain, \opacityFloor, \bancada]
         ];
 
         // Enhanced knob function with oscilloscope aesthetics

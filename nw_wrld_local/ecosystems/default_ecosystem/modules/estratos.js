@@ -240,6 +240,23 @@ const ZONE_BLOOM = {
     abyss: 0.45, tectonic: 0.30, desierto: 0.05, pantano: 0.90, hielo: 0.15,
 };
 
+// ── eDNA regional → estrato ────────────────────────────────────────────
+// Las ocho regiones biogeográficas de window.__ednaBio (orden EDNA_IDS)
+// pesan el estrato que les corresponde ecológicamente. Hasta ahora los ocho
+// deslizadores no llegaban a ningún módulo: sólo encendían una clase en el
+// mapa de biomas y empujaban TODOS el mismo spectralShift, cada uno pisando
+// al anterior. Aquí cada región tiene su propio territorio en la escena.
+const REGION_ZONE = [
+    "forest",     // CHO · Chocó biogeográfico — selva húmeda
+    "pantano",    // AMZ · Amazonas
+    "mountain",   // COR · Cordillera Oriental
+    "shore",      // CAR · Caribe
+    "desierto",   // ORI · Orinoquía — llanura estacional
+    "sea",        // PAC · Pacífico
+    "abyss",      // MAG · valle del Magdalena
+    "tectonic",   // GUA · escudo guayanés
+];
+
 // activityThreshold → densidad de población. El umbral decide cuántas especies
 // cuentan como despiertas, así que aquí decide cuántas HAY: subirlo despuebla
 // el estrato, bajarlo lo llena. Requiere reconstruir (la población se siembra
@@ -605,6 +622,14 @@ class Estratos extends BaseThreeJsModule {
 
         this._rotAuto = 0;
         this._waveScale = 1;   // multiplicador estacional, lo fija _pushView
+        // Peso por estrato de las ocho regiones eDNA. 0.5 = neutro, de modo
+        // que la escena arranca exactamente como antes de que existieran.
+        this._regionWeight = {};
+        this._regionTarget = {};
+        Object.keys(ZONE_BLOOM).forEach((z) => {
+            this._regionWeight[z] = 0.5;
+            this._regionTarget[z] = 0.5;
+        });
         this._bgTarget = null;
 
         this.world = new THREE.Group();
@@ -976,6 +1001,10 @@ class Estratos extends BaseThreeJsModule {
         const kCtrl = 1 - Math.pow(CTRL_SMOOTH_TAU, dt);
         const view = this._view;
         for (const key in this._ctrl) view[key] += (this._ctrl[key] - view[key]) * kCtrl;
+        // Los pesos regionales siguen el mismo filtro independiente del framerate.
+        for (const z in this._regionTarget) {
+            this._regionWeight[z] += (this._regionTarget[z] - this._regionWeight[z]) * kCtrl;
+        }
         this._pushView();
 
         // timedilation → el tiempo interno de la pieza se estira o comprime
@@ -1152,6 +1181,19 @@ class Estratos extends BaseThreeJsModule {
         }
     }
 
+    // window.__ednaBio → peso por estrato. Se guarda como OBJETIVO y _animate
+    // lo persigue suavizado, igual que los sliders sonETH: el puente pollea a
+    // ~7 Hz y empujar sus valores directos escalonaría la opacidad.
+    setRegions(v) {
+        if (!Array.isArray(v)) return;
+        for (let i = 0; i < REGION_ZONE.length && i < v.length; i++) {
+            const x = v[i];
+            if (typeof x === "number" && isFinite(x)) {
+                this._regionTarget[REGION_ZONE[i]] = Math.min(1, Math.max(0, x));
+            }
+        }
+    }
+
     // activityThreshold → densidad de siembra. Reconstruye, así que el puente
     // lo manda con debounce; se ignora si el cambio no altera la población.
     setDensity({ value = PHENO_DEFAULTS.activityThreshold } = {}) {
@@ -1200,9 +1242,15 @@ class Estratos extends BaseThreeJsModule {
         // esté la humedad del día de su propia floración, nunca por debajo del
         // piso de opacidad (la cláusula de opacidad hecha paisaje).
         const floor = view.opacityFloor;
+        const rw = this._regionWeight;
         this._sprites.forEach((s) => {
             const align = 1 - Math.abs(season - s.bloom);
-            s.phenoOp = floor + (1 - floor) * align;
+            // El peso regional entra como un multiplicador SUAVE (0.55–1.0):
+            // subir o bajar una región inclina la presencia de su estrato sin
+            // vaciarlo, que es la lectura sutil que se pidió — y sin
+            // reconstruir la escena, a diferencia de la densidad.
+            const reg = 0.55 + ((rw[s.zone] !== undefined ? rw[s.zone] : 0.5) * 0.45);
+            s.phenoOp = (floor + (1 - floor) * align) * reg;
             s.obj.material.opacity = s.phenoOp;
         });
         if (force || this._tintApplied === null || Math.abs(view.hue - this._tintApplied) > 1e-4) {

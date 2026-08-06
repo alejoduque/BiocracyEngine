@@ -87,6 +87,14 @@
             background: #000402;
             overflow: hidden;
         }
+        #spectro-src-btn {
+            cursor: pointer;
+            user-select: none;
+            letter-spacing: 0.5px;
+        }
+        #spectro-src-btn:hover { color: var(--text-bright, #fff); }
+        #spectro-src-btn.live { color: #39d98a; }
+        #spectro-src-btn.denied { color: #ff5d73; }
         #spectrogram-canvas {
             width: 100%;
             height: 100%;
@@ -193,57 +201,6 @@
             min-width: 30px;
             text-align: right;
             font-size: 14px;
-        }
-        /* ── Ritmo · escucha profunda: scheme toggles ────────────────────
-           Checkbox rows reuse .ctrl-row's flex layout. The label carries the
-           scheme name, a dim caption underneath says what it reads from the
-           chain — these are compositional decisions, not fine-tuning, so they
-           deserve the explanation a slider doesn't. */
-        .rhythm-row {
-            display: flex;
-            align-items: flex-start;
-            gap: 8px;
-            margin-bottom: 7px;
-            cursor: pointer;
-        }
-        .rhythm-row input[type="checkbox"] {
-            -webkit-appearance: none;
-            appearance: none;
-            flex: 0 0 auto;
-            width: 14px;
-            height: 14px;
-            margin: 2px 0 0 0;
-            border: 1px solid var(--text-dim);
-            background: transparent;
-            cursor: pointer;
-            position: relative;
-        }
-        .rhythm-row input[type="checkbox"]:checked {
-            background: var(--text-bright, #fff);
-            border-color: var(--text-bright, #fff);
-        }
-        .rhythm-row input[type="checkbox"]:checked::after {
-            content: "";
-            position: absolute;
-            inset: 3px;
-            background: #000;
-        }
-        .rhythm-row .rhythm-text { display: flex; flex-direction: column; gap: 1px; }
-        .rhythm-row .rhythm-name {
-            color: var(--text-dim);
-            font-size: 13px;
-            text-transform: uppercase;
-            letter-spacing: 0.4px;
-        }
-        .rhythm-row input[type="checkbox"]:checked ~ .rhythm-text .rhythm-name {
-            color: var(--text-bright, #fff);
-        }
-        .rhythm-row .rhythm-src {
-            color: var(--text-dim);
-            opacity: 0.55;
-            font-size: 11px;
-            text-transform: none;
-            letter-spacing: 0;
         }
         input[type="range"] {
             flex: 1;
@@ -656,68 +613,6 @@
                 </div>
             </div>
 
-            <!-- ─── Ritmo · escucha profunda (OSC /rhythm/*, CC 17–23) ─── -->
-            <!-- Seven generative schemes for deriving rhythm FROM the chain
-                 rather than decorating a fixed 16-step grid with it. Each is
-                 independent; all off = the engine's previous behaviour. They
-                 reach SC through the same registry as every slider, so they
-                 also ride MIDI CCs and are saved/restored with presets. -->
-            <div class="tele-section">
-                <div class="tele-section-title">
-                    Ritmo · Escucha Profunda → SC
-                    <span class="pheno-art">CC 17–23 · toggles</span>
-                </div>
-                <label class="rhythm-row">
-                    <input type="checkbox" data-osc="/rhythm/blockbar">
-                    <span class="rhythm-text">
-                        <span class="rhythm-name">Bloque = Compás</span>
-                        <span class="rhythm-src">el bloque (~12 s) marca el compás; el índice de la TX sitúa el golpe</span>
-                    </span>
-                </label>
-                <label class="rhythm-row">
-                    <input type="checkbox" data-osc="/rhythm/gasaccent">
-                    <span class="rhythm-text">
-                        <span class="rhythm-name">Acento por Gas</span>
-                        <span class="rhythm-src">cuánto pujó sobre la base fee → acento y dinámica</span>
-                    </span>
-                </label>
-                <label class="rhythm-row">
-                    <input type="checkbox" data-osc="/rhythm/entropy">
-                    <span class="rhythm-text">
-                        <span class="rhythm-name">Entropía</span>
-                        <span class="rhythm-src">la forma de las llegadas (no cuántas) → swing y subdivisión</span>
-                    </span>
-                </label>
-                <label class="rhythm-row">
-                    <input type="checkbox" data-osc="/rhythm/voices">
-                    <span class="rhythm-text">
-                        <span class="rhythm-name">Dirección = Voz</span>
-                        <span class="rhythm-src">cada contraparte vuelve con su propia voz; se la reconoce</span>
-                    </span>
-                </label>
-                <label class="rhythm-row">
-                    <input type="checkbox" data-osc="/rhythm/hashseed">
-                    <span class="rhythm-text">
-                        <span class="rhythm-name">Semilla de Hash</span>
-                        <span class="rhythm-src">el hash del bloque siembra su célula rítmica: distinta y reproducible</span>
-                    </span>
-                </label>
-                <label class="rhythm-row">
-                    <input type="checkbox" data-osc="/rhythm/polyclock">
-                    <span class="rhythm-text">
-                        <span class="rhythm-name">Tres Relojes</span>
-                        <span class="rhythm-src">bloque, llegada y decaimiento sin relación entera: nunca cierra el bucle</span>
-                    </span>
-                </label>
-                <label class="rhythm-row">
-                    <input type="checkbox" data-osc="/rhythm/silence">
-                    <span class="rhythm-text">
-                        <span class="rhythm-name">Silencio</span>
-                        <span class="rhythm-src">cadena callada = silencio real; el regreso vuelve a significar</span>
-                    </span>
-                </label>
-            </div>
-
             <!-- sonETH Ambient Controls (MIDI CC mirrors via OSC /soneth/*) -->
             <div class="tele-section">
                 <div class="tele-section-title">sonETH · Ambient → SC + VIZ</div>
@@ -920,7 +815,11 @@
                     <span>1kHz</span>
                     <span>4kHz</span>
                     <span>8kHz</span>
-                    <span>SPECTRUM</span>
+                    <!-- Live input: analyses what is ACTUALLY coming out of the
+                         speakers via the machine's microphone, instead of the
+                         synthetic bins derived from parliament state. Needs a
+                         user gesture (browser policy), hence a button. -->
+                    <span id="spectro-src-btn" title="Analyse real audio from the microphone">SPECTRUM ▸ MIC</span>
                 </div>
             </div>
         </div><!-- /center-col -->
