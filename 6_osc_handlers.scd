@@ -72,9 +72,22 @@ s.doWhenBooted({
     // growing without limit or lagging into the next bar.
     ~padQueue = ~padQueue ?? { List.new };
     ~padQueueMax = 24;
-    ~padSynthMax = 48;   // was 16 — the denser kick pattern pushed the total
-                         // synth count past it and the cap became the binding
-                         // constraint on the pad layer (measured cap:32 skips).
+    ~padSynthMax = 24;   // 16 -> 48 -> 24. At 48 the pad layer alone reached
+                         // 2-3x full scale (it sums LINEARLY with concurrency),
+                         // which is what pinned the limiter at 90-98% reduction.
+
+    // Live pad count, for polyphony compensation. Each spawn records when its
+    // envelope will have finished (atk+dec+sus+rel are all known here); expired
+    // entries are dropped before counting. No NodeWatcher, no server round-trip.
+    ~padLive = ~padLive ?? { List.new };
+    ~padPolyComp = {
+        var now = SystemClock.seconds, n;
+        while({ ~padLive.size > 0 and: { ~padLive[0] <= now } }, { ~padLive.removeAt(0) });
+        n = ~padLive.size.max(1);
+        // 1/sqrt(n): the correct law for uncorrelated sources. Bounds the sum
+        // as voices pile up without making one pad as loud as thirty together.
+        1 / n.sqrt
+    };
 
     if(~padDrainRoutine.notNil) { ~padDrainRoutine.stop };
     ~padDrainRoutine = Routine({
@@ -86,8 +99,17 @@ s.doWhenBooted({
             if(~padQueue.notNil and: { ~padQueue.size > 0 }) {
                 args = ~padQueue.removeAt(0);
                 if(s.numSynths < ~padSynthMax) {
-                    Synth(\elektronBell, args);
+                    var pc = ~padPolyComp.value;
+                    var life = 0;
+                    // Envelope end time, so the voice expires from ~padLive on
+                    // its own schedule rather than being guessed at.
+                    args.pairsDo { |k, v|
+                        if(#[\atk, \dec, \sus, \rel].includes(k)) { life = life + v };
+                    };
+                    ~padLive.add(SystemClock.seconds + (life * 2.2).clip(0.5, 20));
+                    Synth(\elektronBell, args ++ [\polyComp, pc]);
                     ~bellStats[\spawned] = ~bellStats[\spawned] + 1;
+                    ~bellStats[\lastPoly] = pc;
                 } {
                     ~bellStats[\skipCap] = ~bellStats[\skipCap] + 1;
                 };
@@ -130,6 +152,19 @@ s.doWhenBooted({
             // move with block cadence and density, and sit at the fixed-grid
             // value when the feed stops.
             ++ " int:" ++ (~beatParams !? { ~beatParams.lastInterval } ? 0).round(0.001)
+            // tide: which arc is running, its phase 0->1, and the swell value
+            // it currently yields; puls: the sub-bass heartbeat switch. Four
+            // toggles were added with the tidal rhythm and every one of them
+            // is legible here — the seven rhythm toggles removed earlier in
+            // this session failed largely because their effect could not be
+            // checked, which turned every question into rounds of guessing.
+            // If ticking an arc does not change tide: here, the control did
+            // not reach the engine and nothing about the sound will tell you.
+            ++ "  tide:" ++ (~beatParams !? { ~beatParams.tideArc } ? \none)
+                ++ "/" ++ (~beatParams !? { ~beatParams.tidePhase } ? 0).round(0.01)
+                ++ "=" ++ (~beatParams !? { ~beatParams.tideValue } ? 0).round(0.01)
+            ++ " puls:" ++ if((~beatParams !? { ~beatParams.tidePulse } ? 0) > 0.5, "on", "off")
+            ++ " padPoly:" ++ (~bellStats !? { ~bellStats[\lastPoly] } ? 1).round(0.01)
             // srv: is the AUDIO SERVER alive. Everything else on this line is
             // counted in sclang and keeps incrementing whether or not scsynth
             // exists — bells, kicks and perc all climbed happily through a

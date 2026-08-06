@@ -166,7 +166,7 @@ Four processes are managed by `start_ecosystem.sh`:
 
 ## 4. Control Matrix
 
-10 core parameters × 10 visual slots = 100 bindings. Every slider/knob/CC drives both SC audio buses and all visualizations simultaneously.
+10 core parameters × 10 visual slots = 100 bindings. Every slider/knob/CC drives both SC audio buses and all visualizations simultaneously. 32 parameters in total, all generated from one registry entry each (`~paramDefs` in `0_parameters.scd`).
 
 ### Row 1–2: Core Performance + Ambient Processing (all slots)
 
@@ -201,6 +201,47 @@ Four processes are managed by `start_ecosystem.sh`:
 > Six of these (CC 5, 6, 9, 37, 38, 39) previously wrote to control buses that
 > **no UGen read** — `\opalDrone` did not declare them and `\elektronBell` read
 > them into variables it discarded. They now shape the drone.
+
+### Marea — the density arc
+
+The rhythm is not a grid. There is no step pattern deciding what sounds; a slow
+swell decides how *likely* any onset is, and events are placed by probability
+with ±45% of a tick of jitter so nothing lands on an audible pulse. The kick can
+only occur where the chain itself has a seam — a new block — and even there only
+with probability `tide²`, so the low end is present at the crest and absent
+through the trough.
+
+The arc is measured in **blocks**, not seconds, so it stays locked to the
+chain's own cadence rather than drifting against it when the network speeds up
+or stalls.
+
+| Control | OSC | MIDI CC | Effect |
+|---|---|---|---|
+| **ARCO CORTO** | `/tide/short` | CC 17 | ~3.5 blocks (40–50 s) |
+| **ARCO MEDIO** | `/tide/media` | CC 18 | ~8 blocks (1.5–2 min) — default |
+| **ARCO LARGO** | `/tide/larga` | CC 19 | ~25 blocks (4–6 min) |
+| **PULSO** | `/tide/pulse` | CC 20 | sub-bass heartbeat, one per block, crosses the troughs |
+
+The three arcs are **mutually exclusive, and SC owns that rule** — it is
+enforced once in `~setParam` (`exclusiveGroup`), the single write path every
+surface already shares, so ticking one in the browser also unticks the others
+on the SC GUI and under MIDI. The browser only reflects the echo; it never
+enforces. All three off is a legal state: flat density, no swell.
+
+Watch it on `[MON]`: `tide:<arc>/<phase>=<swell>` and `puls:`.
+
+### Gain staging
+
+The master bus previously ran at `outPk` 3–6 against a full scale of 1.0 with
+the limiter holding back 90–98% *continuously* — a compressor, not a limiter,
+which is why the level barely responded to `masterVolume` or `masterAmp`. The
+cause was singular: the pad layer summed **linearly** with concurrency (20 pads
+= 1.96) while every other layer was ≤ 0.17.
+
+Pads now get polyphony compensation (`1/√n`, so the layer grows as `√n`), the
+per-layer trims set the balance around the drone as reference, and a single
+`~trimMaster` sets the absolute level. Measured across a full arc at
+`vol/amp 0.70`: `outPk` p90 **0.78**, `gr` median **1.00**.
 
 ---
 

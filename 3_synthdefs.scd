@@ -33,6 +33,67 @@ s.doWhenBooted({
     // needs a literal integer; passing it as a SynthDef arg makes it an
     // OutputProxy and the def fails to compile ("numChannels must be a
     // nonzero positive integer"). Read once from the booted server.
+    // ── Gain budget ─────────────────────────────────────────────────────
+    // Measured before this: the master bus ran at outPk 3-6 against a full
+    // scale of 1.0, with the limiter holding back 90-98% continuously (gr
+    // 0.02-0.11) — compressing constantly instead of catching peaks, which is
+    // why the mix read squashed however the layers were balanced.
+    //
+    // The cause was singular: the pad layer sums LINEARLY with concurrency
+    // (20 pads = 1.96, 30 = 2.93) while every other layer was <= 0.17. Pads
+    // now get polyphony compensation in sclang (1/sqrt(n), so the layer grows
+    // as sqrt(n) instead of n) and the trim below finishes the job.
+    //
+    // These are MULTIPLIERS on layers that already had a level, not target
+    // levels — the distinction matters and the first attempt got it wrong.
+    // Writing 0.18 beside a kick measured at 0.10 gives 0.018, which is
+    // inaudible under a drone at 0.10; the whole mix came to 0.224 and only
+    // the pads could be heard. Each value here is therefore
+    // allowance / measured_peak:
+    //
+    //   drone  0.10 measured -> 1.00  the REFERENCE. The performer has said
+    //                                 this layer sounds right, so it is the
+    //                                 one thing that must not move; unity is
+    //                                 deliberate, not a placeholder.
+    //   pads   1.96/20 each  -> 0.30  0.098 * sqrt(24) * 0.30 = 0.144 at the
+    //                                 cap, i.e. just above the drone
+    //   kick   0.10 measured -> 1.00  unchanged; it now fires once per block,
+    //                                 so it has to land when it does
+    //   perc   0.17 measured -> 0.45  sits under the drone
+    //   dust   0.085 measured-> 0.60  texture, under everything
+    //
+    // Those ratios set the BALANCE. ~trimMaster sets the absolute level, and
+    // it is a separate number because the two were measured separately and
+    // fail separately: a wrong ratio makes a layer inaudible, a wrong master
+    // makes the limiter a compressor.
+    //
+    // Measured live, sweeping both performer controls:
+    //     vol/amp 0.376  outPk max 1.79      vol/amp 0.70   max 24.3
+    //     vol/amp 0.50   outPk max 5.98      vol 1.0/0.85   max 25.8
+    // with gr at 0.00-0.04 throughout, i.e. the limiter holding back 96-100%
+    // continuously. That is why the level barely responded to the controls:
+    // everything above the ceiling was flattened to the same output, so
+    // masterVolume and masterAmp had almost no audible range to work in.
+    //
+    // Calibrated against the CREST, not the average. With a tidal rhythm most
+    // samples sit in a trough where little is playing, so the median describes
+    // the quiet part of the arc and says nothing about whether the loud part
+    // clips — an average-based calibration reads "fine" while the crests are
+    // still 4x over. Measured across a full medio arc at vol/amp 0.70:
+    //     trimMaster 0.15 -> p90 1.64, max 3.55, gr >= 0.9 only 33% of the time
+    // p90 scales linearly with this constant, so 0.15 * (0.8 / 1.64) = 0.073.
+    //
+    // The absolute output drops relative to what was previously heard — that
+    // was a clamped signal pinned near full scale — and the performer takes it
+    // back with the level controls, which now actually do something.
+    ~trimMaster = 0.07;
+
+    ~trimDrone = 1.00 * ~trimMaster;   // reference layer
+    ~trimPad   = 0.30 * ~trimMaster;
+    ~trimKick  = 1.00 * ~trimMaster;
+    ~trimPerc  = 0.45 * ~trimMaster;
+    ~trimDust  = 0.60 * ~trimMaster;
+
     ~limiterChans = s.options.numOutputBusChannels;
     SynthDef(\masterLimiter, { |ceiling = 0.92|
         var sig = In.ar(0, ~limiterChans);
@@ -69,7 +130,7 @@ s.doWhenBooted({
         // susLvl. Defaults keep any caller that does not pass them sounding
         // close to the previous three-stage shape.
         atk=2.0, dec=1.0, sus=0.8, susLvl=0.6, rel=1.5,
-        tone=0.3, res=0.4, pan=0,
+        tone=0.3, res=0.4, pan=0, polyComp=1.0,
         // Bus indices for real-time MIDI control (merged parameter set)
         masterVolBus=(-1), pitchBus=(-1), timeBus=(-1), spectralBus=(-1), spatialBus=(-1),
         textureBus=(-1), atmosphereBus=(-1), memoryBus=(-1), harmonicBus=(-1), resonantBus=(-1),
@@ -208,8 +269,12 @@ s.doWhenBooted({
         // settings. masterAmp rides on top as the pad-layer trim (also previously
         // read and dropped) — it is the same control the beat engine scales its
         // percussion with, so the two layers now balance from one slider.
+        // polyComp is 1/sqrt(live pad count), computed in sclang at spawn —
+        // pads are the one layer that sums linearly with concurrency, and at
+        // 20-30 voices they alone reached 2-3x full scale while every other
+        // layer sat under 0.17.
         sig = sig * (amp * masterVol.clip(0.01, 1) * distanceAmp.clip(0.1, 1)
-            * Lag.kr(legacyAmp, 0.3).linlin(0, 1, 0.05, 1.4));
+            * Lag.kr(legacyAmp, 0.3).linlin(0, 1, 0.05, 1.4)) * polyComp * ~trimPad;
         
         // Quadraphonic spatial positioning
         // Panner chosen from the REAL output channel count, at graph-build time
@@ -260,7 +325,7 @@ s.doWhenBooted({
         // Reverb tail
         sig = sig + FreeVerb.ar(sig, revM * 0.5, 0.7, 0.2);
 
-        sig = sig * env * amp * vol;
+        sig = sig * env * amp * vol * ~trimKick;
         
         // Quadraphonic spatial positioning
         // PanAz's position is already a -1..1 traversal of the ring, which is
@@ -343,7 +408,7 @@ s.doWhenBooted({
         sig = sig + wet;
         sig = sig + FreeVerb.ar(sig, revM, 0.8, 0.5);
 
-        sig = sig * amp * vol;
+        sig = sig * amp * vol * ~trimPerc;
         
         // PanAz's position is already a -1..1 traversal of the ring, which is
         // exactly the range spatialSpread has. The old atan2(x, 0) collapsed
@@ -472,7 +537,7 @@ s.doWhenBooted({
             1
         );
 
-        sig = sig * env * amp * vol * Lag.kr(mAmp, dFade).linlin(0, 1, 0.05, 1.4) * 0.4;
+        sig = sig * env * amp * vol * Lag.kr(mAmp, dFade).linlin(0, 1, 0.05, 1.4) * ~trimDrone;
         
         // Same fix as the other voices; the slow LFNoise wander stays on top.
         // Panner chosen from the REAL output channel count, at graph-build time.
@@ -525,7 +590,11 @@ s.doWhenBooted({
         sig = sig + wet;
         sig = sig + FreeVerb.ar(sig, revM, 0.8, 0.5);
 
-        sig = sig * env * amp * vol * 2.0; // Volume compensation
+        // The "* 2.0 volume compensation" is gone. Dust is the brightest layer
+        // in the mix and this doubled it on the way out, against a master bus
+        // that was already running 3-6x over full scale. Gain budget for this
+        // layer is 0.08 — crackle as occasional texture, not a constant rain.
+        sig = sig * env * amp * vol * ~trimDust;
         
         // PanAz's position is already a -1..1 traversal of the ring, which is
         // exactly the range spatialSpread has. The old atan2(x, 0) collapsed

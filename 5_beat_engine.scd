@@ -37,7 +37,31 @@
     // Transaction-influenced parameters
     transactionInfluence: 0.3,
     lastTransactionTime: 0,
-    transactionDensity: 0
+    transactionDensity: 0,
+
+    // ── Marea · tidal rhythm state ──────────────────────────────────────
+    // The rhythm is no longer a 16-step grid deciding what sounds; it is a
+    // slow swell deciding how LIKELY anything is to sound. These four are
+    // mirrored from the registry (\tideShort/\tideMedia/\tideLarga/
+    // \tidePulse via beatParam:), so every surface — browser checkbox,
+    // MIDI CC 17–20, SC GUI button — lands here through ~setParam.
+    tideShort: 0,
+    tideMedia: 1,
+    tideLarga: 0,
+    tidePulse: 1,
+    // Derived each tick, read by the [MON] line. A toggle whose effect
+    // cannot be observed is a toggle that cannot be debugged — that is the
+    // lesson the seven removed rhythm toggles paid for.
+    // nil, not 0: SystemClock.seconds is measured from sclang start, so 0 is a
+    // perfectly legal epoch (it is the value during the first moments of a
+    // session). Using 0 as the "unset" sentinel re-seeded the phase on every
+    // tick until the clock had run a while, which held the tide at its trough
+    // exactly when the piece is starting.
+    tideEpoch: nil,
+    tidePhase: 0,
+    tideValue: 0.65,
+    tideArc: \media,
+    lastKickBlock: 0
 );
 
 // Note: control buses for beat params are allocated here but only after the server is running.
@@ -91,6 +115,63 @@
 };
 
 // Enhanced Beat Engine with transaction influence
+// ─── Marea: the density arc ──────────────────────────────────────────────
+// Which arc is active, and how many BLOCKS it spans. Blocks rather than
+// seconds because the whole engine is already locked to the chain's measured
+// cadence (~rhythmState[\blockPeriod]) — an arc counted in wall-clock seconds
+// would drift against the bar the moment the chain sped up or stalled.
+//   corto ~3.5 blocks ~ 40-50 s   ·   medio ~8 ~ 1.5-2 min
+//   largo ~25 blocks ~ 4-6 min
+// Exclusivity is guaranteed upstream by ~setParam's \exclusiveGroup, so at
+// most one of the three is ever set; the ordering here is only a tiebreak for
+// a hand-edited state.
+~tideArc = {
+    var p = ~beatParams;
+    case
+    { (p.tideShort ? 0) > 0.5 } { [\corto, 3.5]  }
+    { (p.tideMedia ? 0) > 0.5 } { [\medio, 8.0]  }
+    { (p.tideLarga ? 0) > 0.5 } { [\largo, 25.0] }
+    { [\plano, 0] };            // all off - flat, no swell
+};
+
+// Phase 0->1 over one arc, and the swell itself. A raised cosine is used
+// rather than a ramp so the crest and the trough are both plateaus and the
+// motion between them is gradual - the difference between weather and a
+// sawtooth. Flat mode holds a constant mid-high value so "no arc" still
+// plays steadily instead of going quiet.
+~tideCompute = { |blockPeriod = 12.0|
+    var arc = ~tideArc.value, span, phase, tide, now;
+    if(arc[1] <= 0) {
+        ~beatParams.tidePhase = 0;
+        ~beatParams.tideValue = 0.65;
+        ~beatParams.tideArc = arc[0];
+        0.65
+    } {
+        now = SystemClock.seconds;
+        if(~beatParams.tideEpoch.isNil) { ~beatParams.tideEpoch = now };
+        // blockPeriod is clamped because a single late or duplicated block
+        // timestamp must not stretch the arc to something that never
+        // completes inside a set, nor collapse it into a tremolo.
+        span  = arc[1] * blockPeriod.clip(4.0, 30.0);
+        phase = ((now - ~beatParams.tideEpoch) / span).mod(1.0);
+        tide  = (1 - cos(2pi * phase)) * 0.5;
+        ~beatParams.tidePhase = phase;
+        ~beatParams.tideValue = tide;
+        ~beatParams.tideArc = arc[0];
+        tide
+    };
+};
+
+// Per-event timing jitter, +/-45% of a tick, delivered as a timestamped
+// bundle so it displaces the EVENT without displacing the clock. Nothing
+// lands on an audible grid even though the scheduler still ticks regularly.
+// The base offset is half a tick, which keeps the jittered time strictly
+// positive - a negative bundle time is in the past and plays immediately,
+// which is exactly the grid we are trying to leave.
+~tideJitter = { |interval = 0.5|
+    (interval * 0.5) + rrand(interval.neg * 0.45, interval * 0.45)
+};
+
 ~beatEngine = {
     if(~beatRoutine.notNil) { ~beatRoutine.stop };
     if(~opalDroneSynth.notNil) { ~opalDroneSynth.set(\gate, 0) };
@@ -140,7 +221,6 @@
         // 4 per bar, not 2: the old two-hit pattern was too sparse to read as
         // a pulse. Four gives a low beat you can lean on while staying far
         // from beat-machine motion.
-        var kickPattern   = #[1,0,0,0, 1,0,0,0, 1,0,0,0, 1,0,0,0];
         var percDivisor   = 8;    // polyrhythmic divisor — shifts each phrase
         var dustProb      = 0.12; // base probability for dust hits
         var droneBaseFreq = 55;   // drone pitch — drifts over time
@@ -166,6 +246,7 @@
             var bMVol, bPitch, bTime, bSpec, bSpat, bText, bAtmo, bMem, bHarm, bRes;
             var elapsed = now % 300; // 5-minute macro cycle
             var rs, priorityRatio, accent;
+            var tide, tideDensity, jitTick, blockEdge, percProb;
 
             // ⚠ An uncaught error inside a Routine STOPS IT, permanently and
             // silently. That is how a single nil read killed the kick and
@@ -235,6 +316,25 @@
 
             density = ~beatParams.transactionDensity ? 0;
 
+            // ── Marea ── the swell that replaces the grid.
+            // Everything below asks "how likely is an onset right now" rather
+            // than "which step are we on". tideDensity never reaches zero: a
+            // trough thins the texture to a trickle, it does not mute it, so
+            // the piece cannot arrive at a silence it has no way out of.
+            tide = ~tideCompute.(if(rs.notNil and: { rs[\blockPeriod] > 0 }) {
+                rs[\blockPeriod]
+            } { 12.0 });
+            tideDensity = tide.linlin(0, 1, 0.15, 1.0);
+            // The previous tick's interval is the tick length; jitter is scaled
+            // to it so it stays musical whether the chain is fast or slow.
+            jitTick = ~tideJitter.(~beatParams.lastInterval ? 0.5);
+            // A block boundary is the only place the kick may land. blockAt is
+            // the arrival timestamp maintained by the /eth/block handler, so
+            // this is true exactly once per block regardless of tick rate.
+            blockEdge = rs.notNil and: { rs[\blockAt] > 0 }
+                and: { rs[\blockAt] != (~beatParams.lastKickBlock ? 0) };
+            if(blockEdge) { ~beatParams.lastKickBlock = rs[\blockAt] };
+
             // ── (7) Silence as material ──  [needs `density`, hence its place]
             // Deep listening needs the floor to drop out. The rest is RELATIVE
             // to the chain's own recent rate: an absolute "8 s with no
@@ -272,18 +372,9 @@
                 bar = bar + 1;
                 if(bar % 4 == 0) {
                     phrase = phrase + 1;
-                    // Rotate kick pattern: shift downbeat, add/remove ghost hits
-                    kickPattern = Array.fill(16, { |i|
-                        if(i == 0, { 1 }, {          // downbeat always
-                        if(i == (8 + (phrase % 5)),   // moving secondary hit
-                            { 1 },
-                            { if((density > 0.4) and: { (i % (3 + (phrase % 3))) == 0 },
-                                { 0.6.coin.asInteger },  // density-gated fills
-                                { 0 })
-                            })
-                        })
-                    });
-                    // Shift polyrhythmic divisor — sparse, drone-friendly cadence
+                    // (the 16-step kickPattern that used to be rotated here is
+                    //  gone with the grid — the kick now follows block seams)
+                    // Shift the percussion base rate — sparse, drone-friendly
                     percDivisor = #[6, 8, 12, 7, 10].wrapAt(phrase);
                     // Evolve dust probability with density (kept low: crackle
                     // as occasional texture, not a constant rain)
@@ -300,12 +391,22 @@
             // Gas deviation → accent: how far this actor bid over base fee.
             accent = if(priorityRatio > 0) { 0.85 + (priorityRatio * 0.9) } { 1.0 };
 
-            // ── 1. KICK — evolving pattern instead of fixed 0,8 ──────────────────
-            if(kickPattern.wrapAt(step) == 1) {
+            // ── 1. KICK — one per block at most, gated by the tide ───────────────
+            // The 16-step kickPattern is gone. A kick on a grid is the single
+            // loudest tell that a machine is counting, and it is the opposite
+            // of the register asked for. Now the low end can only occur where
+            // the chain itself has a seam — a new block — and even there it is
+            // probabilistic: tide.squared, so it is near-certain at the crest
+            // and effectively absent through the trough.
+            //
+            // PULSO overrides that: one hit per block regardless of phase, a
+            // heartbeat that survives the troughs. It is the anchor to switch
+            // on when the tide alone leaves the piece too unmoored.
+            if(blockEdge and: { (~beatParams.tidePulse ? 0) > 0.5 or: { tide.squared.coin } }) {
                 // Subtle frequency drift: ±5Hz per bar for organic feel
                 var kickFreq = 50 + ((bar % 7) - 3 * 1.5);
                 ~beatParams.kickCount = (~beatParams.kickCount ? 0) + 1;
-                Synth(\opalKick, [
+                s.makeBundle(jitTick, { Synth(\opalKick, [
                     \out,         0,
                     \freq,        kickFreq,
                     \amp,         ~beatParams.masterAmp * (~beatParams.transportGain ? 1) *(0.5 + (density * 0.2)) * accent,
@@ -317,12 +418,20 @@
                     \spectralBus,  bSpec,
                     \atmosphereBus, bAtmo,
                     \spatialBus,   bSpat
-                ], targetGrp);
+                ], targetGrp) });
             };
 
-            // ── 2. PERC — shifting polyrhythm + melodic variation ────────────────
-            if((step % percDivisor == 0) or: {
-                (step % 10 == 0) and: { transactionInfluence > 0.6 } and: { 0.3.coin }
+            // ── 2. PERC — tidal probability, not a polyrhythmic divisor ──────────
+            // percDivisor survives as the BASE RATE (it is still rotated each
+            // phrase, so the average spacing keeps moving) but it no longer
+            // picks the moment: 1.6/divisor is the crest probability per tick,
+            // scaled by the tide. At divisor 8 that runs ~0.20 at the crest and
+            // ~0.03 in the trough, which is the swell-and-thin the arcs exist
+            // to produce. The transaction clause is kept — a burst of chain
+            // activity should still be able to push through a trough.
+            percProb = ((1.6 / percDivisor) * tideDensity).clip(0.0, 0.9);
+            if(percProb.coin or: {
+                (transactionInfluence > 0.6) and: { (0.12 * tideDensity).coin }
             }) {
                 // Degree selection. Stepping +1 through an ordered pool is a
                 // scale run whatever the pool contains — that was the other
@@ -352,6 +461,9 @@
                 ~beatParams.percCount = (~beatParams.percCount ? 0) + 1;
 
                 // ─ Voicing: single note, dyad, or triad based on texture control ─
+                // ONE bundle for the whole case: every voice of a dyad or triad
+                // must share the same jitter, or the chord arpeggiates itself.
+                s.makeBundle(jitTick, {
                 case
                 { voicingMode == \single } {
                     // Single pitched note
@@ -415,11 +527,12 @@
                         ], targetGrp);
                     };
                 };
+                });
             };
 
             // ── 3. DUST — probability-based, not grid-locked ─────────────────────
-            if(dustProb.coin) {
-                Synth(\opalDust, [
+            if((dustProb * tideDensity).coin) {
+                s.makeBundle(jitTick, { Synth(\opalDust, [
                     \out,         0,
                     \amp,         ~beatParams.masterAmp * (~beatParams.transportGain ? 1) *(0.3 + (density * 0.35)) * accent,
                     \masterVolBus, bMVol,
@@ -430,7 +543,7 @@
                     \memoryBus,    bMem,
                     \atmosphereBus, bAtmo,
                     \spatialBus,   bSpat
-                ], targetGrp);
+                ], targetGrp) });
             };
 
             // Broadcast current state to visuals bridge

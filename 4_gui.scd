@@ -15,7 +15,7 @@
 (
 // Defer all GUI creation to AppClock to avoid Qt threading issues
 {
-    var statusView, counterView, controlView, controlViewRow2, controlViewRow3, controlViewRow4, controlViewRow5;
+    var statusView, counterView, controlView, controlViewRow2, controlViewRow3, controlViewRow4, controlViewRow5, controlViewRow6;
     var sampleView, sampleControlView, sampleHeader, sampleButtonView, stopButton;
     var container, recordingView, presetView;
     var mainTheme, accentColor, backgroundColor, textColor;
@@ -93,6 +93,11 @@
         // sonETH performance.
         controlViewRow5 = View().background_(Color.black)
             .layout_(HLayout().margins_(6).spacing_(20));
+        // Row 6: Marea. Booleans, so these are toggle buttons rather than
+        // knobs — a Knob on a stepped 0/1 spec is unreadable at a glance and
+        // this row has to be checkable mid-performance.
+        controlViewRow6 = View().background_(backgroundColor.blend(mainTheme.accent, 0.06))
+            .layout_(HLayout().margins_(6).spacing_(14));
 
         // Create sample views
         sampleView = View().background_(backgroundColor.blend(mainTheme.accent, 0.04))
@@ -106,6 +111,7 @@
             view.fixedHeight = 120;
         };
         controlViewRow5.fixedHeight = 120;
+        controlViewRow6.fixedHeight = 62;
         sampleView.fixedHeight = 180;
         sampleControlView.fixedHeight = 120;
 
@@ -222,7 +228,11 @@
             // surfaces were not at parity. Everything else appears on both.
             [\droneFade, \droneSpace, \droneMix, \delayFeedback, \transactionInfluence, \beatTempo],
             // Row 5: Cámara Fenológica de lo Vivo (1-bit white palette)
-            [\activityThreshold, \windowWidth, \seasonalBias, \absenceWeight, \pulseGain, \opacityFloor, \bancada]
+            [\activityThreshold, \windowWidth, \seasonalBias, \absenceWeight, \pulseGain, \opacityFloor, \bancada],
+            // Row 6: Marea — the density arc. Stepped specs, so the knobs snap
+            // 0/1; the browser checkboxes are the comfortable surface and these
+            // mirror them so both control surfaces stay at parity.
+            [\tideShort, \tideMedia, \tideLarga, \tidePulse]
         ];
 
         // Enhanced knob function with oscilloscope aesthetics
@@ -365,6 +375,63 @@
                 ~controlLabels[key].font_(Font("Courier New", 10, true));
             };
             controlViewRow5.layout.add(knobContainer);
+        };
+
+        // ─── Row 6: Marea — arco de densidad ──────────────────────────────
+        // Toggles, not knobs. They register into ~knobViews / ~controlLabels
+        // exactly like ~makeKnob does, so ~setParam's deferred GUI update
+        // (0_parameters.scd step 4) drives them with no special-casing:
+        // Button:value_ accepts the 0.0/1.0 that spec.unmap returns. That is
+        // what makes the radio behaviour visible here when the browser or a
+        // MIDI CC is the surface that moved.
+        ~makeToggle = { |key, caption|
+            var container, button, valueLabel, spec;
+            spec = ~controlSpecs[key];
+            container = View().background_(backgroundColor);
+            container.layout_(VLayout().margins_(3).spacing_(3));
+
+            button = Button()
+                .states_([
+                    [caption, mainTheme.dim,    backgroundColor],
+                    [caption, backgroundColor, mainTheme.accent]
+                ])
+                .font_(Font("Monaco", 11, true))
+                .maxHeight_(28)
+                .value_((~controlValues[key] ? 0).asInteger);
+
+            valueLabel = StaticText()
+                .string_(~labelCase.(key) ++ ": " ++ (~controlValues[key] ? 0))
+                .stringColor_(mainTheme.foreground)
+                .font_(Font("Monaco", 9))
+                .align_(\center);
+
+            // Route through the single write path so exclusivity, the beat
+            // mirror and the browser echo all happen; value_ from ~setParam
+            // does not re-fire this action, so there is no feedback loop.
+            button.action = { |b| ~setParam.(key, b.value, \gui) };
+
+            container.layout.add(button);
+            container.layout.add(valueLabel);
+
+            ~knobViews = ~knobViews ?? ();
+            ~knobViews[key] = button;
+            ~controlLabels = ~controlLabels ?? ();
+            ~controlLabels[key] = valueLabel;
+            container;
+        };
+
+        // The button carries the caption; the StaticText under it is the same
+        // value readout every other row has (~setParam rewrites it as
+        // "TideShort: 1.0"). Captions are Spanish, matching the HTML surface.
+        ~tideCaptions = (
+            tideShort: "ARCO CORTO",
+            tideMedia: "ARCO MEDIO",
+            tideLarga: "ARCO LARGO",
+            tidePulse: "PULSO"
+        );
+        ~knobParameters[5].do { |key|
+            ~knobs[key] = ~makeToggle.value(key, ~tideCaptions[key] ? key.asString);
+            controlViewRow6.layout.add(~knobs[key]);
         };
 
         // MIDI/OSC → GUI sync is event-driven: every surface goes through
@@ -712,6 +779,7 @@
         ~scrollCanvas.layout.add(controlViewRow3);
         ~scrollCanvas.layout.add(controlViewRow4);
         ~scrollCanvas.layout.add(controlViewRow5);
+        ~scrollCanvas.layout.add(controlViewRow6);
         ~scrollCanvas.layout.add(sampleView);
         ~scrollCanvas.layout.add(recordingView);
         ~scrollCanvas.layout.add(presetView);

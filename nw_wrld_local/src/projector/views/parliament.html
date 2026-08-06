@@ -202,6 +202,56 @@
             text-align: right;
             font-size: 14px;
         }
+        /* ── Marea · arco de densidad ────────────────────────────────────
+           Recovered from the removed /rhythm/ toggles (9f7b51d7). The four
+           tide controls are booleans, and a checkbox reads as a boolean at a
+           glance in a way a 0–1 slider does not. */
+        .rhythm-row {
+            display: flex;
+            align-items: flex-start;
+            gap: 8px;
+            margin-bottom: 7px;
+            cursor: pointer;
+        }
+        .rhythm-row input[type="checkbox"] {
+            -webkit-appearance: none;
+            appearance: none;
+            flex: 0 0 auto;
+            width: 14px;
+            height: 14px;
+            margin: 2px 0 0 0;
+            border: 1px solid var(--text-dim);
+            background: transparent;
+            cursor: pointer;
+            position: relative;
+        }
+        .rhythm-row input[type="checkbox"]:checked {
+            background: var(--text-bright, #fff);
+            border-color: var(--text-bright, #fff);
+        }
+        .rhythm-row input[type="checkbox"]:checked::after {
+            content: "";
+            position: absolute;
+            inset: 3px;
+            background: #000;
+        }
+        .rhythm-row .rhythm-text { display: flex; flex-direction: column; gap: 1px; }
+        .rhythm-row .rhythm-name {
+            color: var(--text-dim);
+            font-size: 13px;
+            text-transform: uppercase;
+            letter-spacing: 0.4px;
+        }
+        .rhythm-row input[type="checkbox"]:checked ~ .rhythm-text .rhythm-name {
+            color: var(--text-bright, #fff);
+        }
+        .rhythm-row .rhythm-src {
+            color: var(--text-dim);
+            opacity: 0.55;
+            font-size: 11px;
+            text-transform: none;
+            letter-spacing: 0;
+        }
         input[type="range"] {
             flex: 1;
             -webkit-appearance: none;
@@ -752,6 +802,47 @@
                         data-osc="/soneth/txInfluence">
                     <span class="ctrl-val" id="disp-soneth-txInfluence">0.50</span>
                 </div>
+                <!-- Marea · arco de densidad. The rhythm is probabilistic, not
+                     gridded: a slow swell raises and lowers how likely any
+                     onset is. These pick how long one swell takes, measured in
+                     BLOCKS so the arc stays locked to the chain's cadence.
+                     The three arcs are mutually exclusive and SC owns that
+                     rule (~setParam's exclusiveGroup) — ticking one here
+                     unticks the others via the echo, so this panel, the SC GUI
+                     and MIDI CC 17–19 can never disagree. All three off is a
+                     legal state: flat density, no swell. -->
+                <div class="tele-section-title" style="font-size:12px;opacity:0.5;margin-top:8px">
+                    MAREA · ARCO DE DENSIDAD
+                    <span class="pheno-art">CC 17–20 · toggles</span>
+                </div>
+                <label class="rhythm-row">
+                    <input type="checkbox" data-osc="/tide/short">
+                    <span class="rhythm-text">
+                        <span class="rhythm-name">Arco Corto</span>
+                        <span class="rhythm-src">~3.5 bloques (40–50 s) · la marea sube y baja rápido</span>
+                    </span>
+                </label>
+                <label class="rhythm-row">
+                    <input type="checkbox" data-osc="/tide/media" checked>
+                    <span class="rhythm-text">
+                        <span class="rhythm-name">Arco Medio</span>
+                        <span class="rhythm-src">~8 bloques (1.5–2 min) · respiración media</span>
+                    </span>
+                </label>
+                <label class="rhythm-row">
+                    <input type="checkbox" data-osc="/tide/larga">
+                    <span class="rhythm-text">
+                        <span class="rhythm-name">Arco Largo</span>
+                        <span class="rhythm-src">~25 bloques (4–6 min) · el movimiento de una obra entera</span>
+                    </span>
+                </label>
+                <label class="rhythm-row">
+                    <input type="checkbox" data-osc="/tide/pulse" checked>
+                    <span class="rhythm-text">
+                        <span class="rhythm-name">Pulso</span>
+                        <span class="rhythm-src">un golpe grave por bloque, atraviesa los valles de la marea</span>
+                    </span>
+                </label>
             </div>
 
             <!-- Configs: save/load the full control state. SC owns the JSON

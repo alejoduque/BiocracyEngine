@@ -87,7 +87,27 @@
 
     // ── Beat engine (no control bus — lives in ~beatParams) ─────────────
     (name: \beatTempo, spec: ControlSpec(0.5, 2.0, \exp), default: 1.0, path: "/soneth/beatTempo",
-        hasBus: false, beatParam: \beatTempo)
+        hasBus: false, beatParam: \beatTempo),
+
+    // ── Marea · arco de densidad (toggles 0/1) ──────────────────────────
+    // The rhythm is tidal rather than gridded: onsets are probabilistic and
+    // their likelihood follows a slow swell. These pick how long that swell
+    // takes. The three arcs are MUTUALLY EXCLUSIVE — enforced in one place,
+    // the /tide/ handler in 6_osc_handlers.scd, which unticks the others and
+    // echoes all four back. The previous seven rhythm toggles were independent
+    // booleans with undefined interactions and no single owner of the state,
+    // which is a large part of why they had to be removed.
+    // All three off = no arc, flat density.
+    (name: \tideShort, exclusiveGroup: \tideArc, spec: ControlSpec(0, 1, \lin, 1), default: 0, path: "/tide/short",
+        hasBus: false, beatParam: \tideShort, cc: 17),
+    (name: \tideMedia, exclusiveGroup: \tideArc, spec: ControlSpec(0, 1, \lin, 1), default: 1, path: "/tide/media",
+        hasBus: false, beatParam: \tideMedia, cc: 18),
+    (name: \tideLarga, exclusiveGroup: \tideArc, spec: ControlSpec(0, 1, \lin, 1), default: 0, path: "/tide/larga",
+        hasBus: false, beatParam: \tideLarga, cc: 19),
+    // Independent axis: the sub-bass heartbeat, one per block, surviving the
+    // troughs the tide would otherwise empty.
+    (name: \tidePulse, spec: ControlSpec(0, 1, \lin, 1), default: 1, path: "/tide/pulse",
+        hasBus: false, beatParam: \tidePulse, cc: 20)
 ];
 
 // ─── Derived lookup tables ──────────────────────────────────────────────────
@@ -141,6 +161,25 @@
         // 2 · beat-engine mirror (routine reads ~beatParams directly)
         if(def[\beatParam].notNil and: { ~beatParams.notNil }) {
             ~beatParams[def[\beatParam]] = val;
+        };
+
+        // 2b · exclusive group (radio behaviour)
+        //     Enforced HERE rather than in the OSC handler because ~setParam is
+        //     the one path every surface already shares — OSC from the browser,
+        //     MIDI CC, and the SC GUI button all land here. Enforcing it in the
+        //     handler would leave MIDI and the GUI able to tick two arcs at
+        //     once. Turning one ON turns its siblings OFF (which recurses once,
+        //     harmlessly: val is 0 there, so the branch is not re-entered) and
+        //     each sibling echoes its own new state to the browser and the GUI.
+        //     Turning one OFF is unconstrained — all-off is a legal state.
+        if(def[\exclusiveGroup].notNil and: { val > 0.5 }) {
+            ~paramDefs.do { |other|
+                if(other[\exclusiveGroup] == def[\exclusiveGroup]
+                    and: { other[\name] != name }
+                    and: { (~controlValues[other[\name]] ? 0) > 0.5 }) {
+                    ~setParam.(other[\name], 0, source);
+                };
+            };
         };
 
         // 3 · language-side cache

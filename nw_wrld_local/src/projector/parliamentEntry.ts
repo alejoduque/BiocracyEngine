@@ -136,6 +136,24 @@ function connectControlWS() {
       //      (instance setters clamp + persist state)
       //   3. The reverse-breath loop in breath.ts picks up the new state
       //      on its next 320ms tick → harmonicrich/texturedepth follow
+      // ── Marea · arco de densidad (/tide/*) ──────────────────────────
+      // SC echoes the normalized value on the canonical path after ANY origin
+      // changes it — MIDI CC 17–20, the SC GUI button, or a preset load — AND
+      // after it enforces arc exclusivity, which emits a 0 for each sibling it
+      // unticked. Ticking a box here is therefore what makes the other two
+      // visibly clear themselves. Setting .checked fires no change event, so a
+      // browser-origin toggle echoes back harmlessly.
+      if (address.startsWith("/tide/")) {
+        const v = args[0];
+        if (typeof v === "number" && isFinite(v)) {
+          const box = document.querySelector<HTMLInputElement>(
+            `input[type='checkbox'][data-osc='${address}']`
+          );
+          if (box) box.checked = v >= 0.5;
+        }
+        return;
+      }
+
       if (address.startsWith("/pheno/")) {
         const key = address.slice("/pheno/".length);
 
@@ -1390,8 +1408,27 @@ async function init() {
     });
   }
 
+  // ── Marea · arco de densidad: tide toggles (/tide/*) ────────────────────
+  // Same contract as wireSlider, but the value is 0/1. SC's registry entries
+  // use a stepped ControlSpec(0,1,\lin,1), so ~setParamNorm snaps whatever it
+  // receives — MIDI CC, preset load or this checkbox — to one of two states.
+  //
+  // Note what this deliberately does NOT do: it does not untick the sibling
+  // arcs. Mutual exclusion is SC's rule, enforced once in ~setParam, and the
+  // browser only reflects the echo. Implementing it here as well would give
+  // the same rule two owners that could disagree — which is precisely the
+  // failure the seven removed /rhythm/ toggles had.
+  function wireToggle(el: HTMLInputElement) {
+    const addr = el.dataset.osc;
+    if (!addr) return;
+    el.addEventListener("change", () => {
+      sendOSC(addr, el.checked ? 1 : 0);
+    });
+  }
+
   // Wire all currently-present range sliders (includes static HTML ones)
   document.querySelectorAll<HTMLInputElement>("input[type='range'][data-osc]").forEach(wireSlider);
+  document.querySelectorAll<HTMLInputElement>("input[type='checkbox'][data-osc]").forEach(wireToggle);
 
   // ── CONFIGS: save/load the full control state ──────────────────────────
   // SC owns the preset files (presets/*.json); loading routes every value
