@@ -108,6 +108,16 @@ s.doWhenBooted({
                     };
                     ~padLive.add(SystemClock.seconds + (life * 2.2).clip(0.5, 20));
                     Synth(\elektronBell, args ++ [\polyComp, pc]);
+        // Onset del pad hacia los visuales (slot 5 es el instrumento de esta
+        // voz). Se manda la amplitud efectiva y la frecuencia normalizada.
+        if(~visualsDest.notNil) {
+            var bf = 440, ba = 0.3;
+            args.pairsDo { |k, v|
+                if(k == \freq) { bf = v };
+                if(k == \amp)  { ba = v };
+            };
+            ~visualsDest.sendMsg('/voice/pad', (ba * pc).clip(0, 1), (bf / 900).clip(0, 1));
+        };
                     ~bellStats[\spawned] = ~bellStats[\spawned] + 1;
                     ~bellStats[\lastPoly] = pc;
                 } {

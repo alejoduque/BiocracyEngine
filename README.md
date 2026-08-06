@@ -143,6 +143,40 @@ nw_wrld Electron browser  (parliament.html)
 MIDI (Faderfox Micromodul LC2) ──► SC buses ──► OSC echo ──► bridge ──► browser
 ```
 
+### Slots 4–9 · the six instruments
+
+The six data-structure slots were flat diagrams on orthographic cameras that
+read control *values* and never the sound. They are now the **six voices of the
+engine, one each and no repeats** — the instrument laid out across six screens:
+
+| Slot | Instrument | SC voice | Register |
+|---|---|---|---|
+| 4 | **DRONE** | `\opalDrone` | the sustained bed |
+| 5 | **CAMPANAS** | `\elektronBell` | pads |
+| 6 | **PERCUSIÓN** | `\opalPerc` | pulse |
+| 7 | **BOMBO** | `\opalKick` | sub |
+| 8 | **POLVO** | `\opalDust` | granular |
+| 9 | **MUESTRAS** | `samplePlayer*` | field recordings |
+
+Each has a perspective camera the viewer can orbit, real depth in its geometry
+(the drone's traces recede by age, the bell lattice breathes on Z, the tree
+stands in layers, the kick radiates as a pressure front, the cache is a stack
+you could walk into, the hash table is a ring), and the same idle drift as every
+other slot.
+
+**They react to the sound, not to the intention.** `\masterScope` analyses the
+master bus *after* the limiter and sends 16 log-spaced bands at 20 Hz — that had
+been arriving all along with nothing listening, so the spectrogram was running on
+its synthetic fallback. It now feeds `window.__scAudio`, and SC additionally
+broadcasts `/voice/*` at the moment each note starts. Energy in a band tells you
+a bell is ringing; the onset tells you it was struck, and without it every
+visual is late and smeared.
+
+Each slot reads **its own register**, normalised against its own recent peak — a
+kick visual must not brighten because a bell rang, and measured on a live engine
+the low band runs ~40× hotter than the high one, so a raw reading leaves the
+treble slots looking dead while they work.
+
 ### Idle auto-rotation · ROTATION SPD
 
 The slider reaches **all sixteen slots** now. It reached exactly one before —

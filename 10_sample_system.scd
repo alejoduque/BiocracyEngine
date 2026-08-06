@@ -260,6 +260,14 @@ s.doWhenBooted({
                 };
 
                 "Triggering sample: % (%, % ch)".format(sampleName, defName, buf.numChannels).postln;
+                // Onset de muestra hacia los visuales — slot 9 es el
+                // instrumento de esta voz. Se manda el índice para que el
+                // visual pueda distinguir aullador de avión.
+                if(~visualsDest.notNil) {
+                    ~visualsDest.sendMsg('/voice/sample',
+                        (ov[\sampleAmp] ? 0.7).asFloat.clip(0, 1),
+                        index.asFloat / 7);
+                };
                 newSynth = Synth(defName, synthArgs, ~defaultGroup);
                 
                 // Add to active synths list for tracking

@@ -406,6 +406,16 @@
                 // Subtle frequency drift: ±5Hz per bar for organic feel
                 var kickFreq = 50 + ((bar % 7) - 3 * 1.5);
                 ~beatParams.kickCount = (~beatParams.kickCount ? 0) + 1;
+                // ── Onset → visuals ──────────────────────────────────────
+                // Los slots 4-9 son ahora los seis instrumentos del motor, uno
+                // cada uno, y necesitan saber CUÁNDO suena el suyo — no sólo
+                // cuánta energía hay en su banda. El espectro dice qué se está
+                // oyendo; esto dice qué acaba de empezar. Sin el ataque, un
+                // visual reacciona siempre tarde y difuso.
+                if(~visualsDest.notNil) {
+                    ~visualsDest.sendMsg('/voice/kick',
+                        (~beatParams.masterAmp * (0.5 + (density * 0.2)) * accent).clip(0, 1));
+                };
                 s.makeBundle(jitTick, { Synth(\opalKick, [
                     \out,         0,
                     \freq,        kickFreq,
@@ -459,6 +469,13 @@
                     (poolIdx + rrand(2, pitchPool.size - 1)) % pitchPool.size
                 };
                 ~beatParams.percCount = (~beatParams.percCount ? 0) + 1;
+                if(~visualsDest.notNil) {
+                    // freq normalizada además del ataque: la percusión cambia
+                    // de registro con la melodía y el visual debe seguirla.
+                    ~visualsDest.sendMsg('/voice/perc',
+                        (0.2 + (transactionInfluence * 0.15)).clip(0, 1),
+                        (pitchPool.wrapAt(poolIdx) / 900).clip(0, 1));
+                };
 
                 // ─ Voicing: single note, dyad, or triad based on texture control ─
                 // ONE bundle for the whole case: every voice of a dyad or triad
@@ -532,6 +549,10 @@
 
             // ── 3. DUST — probability-based, not grid-locked ─────────────────────
             if((dustProb * tideDensity).coin) {
+                if(~visualsDest.notNil) {
+                    ~visualsDest.sendMsg('/voice/dust',
+                        (0.3 + (density * 0.35)).clip(0, 1));
+                };
                 s.makeBundle(jitTick, { Synth(\opalDust, [
                     \out,         0,
                     \amp,         ~beatParams.masterAmp * (~beatParams.transportGain ? 1) *(0.3 + (density * 0.35)) * accent,

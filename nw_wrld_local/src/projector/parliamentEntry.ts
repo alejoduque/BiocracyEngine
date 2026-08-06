@@ -12,6 +12,7 @@ import {
 import { initSwitcher, getActiveThreeStage, updateSpeciesRoster } from "./visualizationSwitcher";
 import { initLaserTap } from "./laserTap";
 import { startVizMotion } from "./vizMotion";
+import { publishScAudio, noteVoiceOnset, tickScAudio, type ScAudio } from "./scAudio";
 import { fetchSpeciesRoster, computeIUCNMults } from "./speciesFetcher";
 import * as THREE from "three";
 
@@ -144,6 +145,36 @@ function connectControlWS() {
       // the browser reflects rather than recomputes. A module that derived its
       // own envelope would drift against the sound within one arc, and the
       // whole point of slot A's crossfade is that the two agree.
+      // ── The engine's own sound (/spectrum, /voice/*) ─────────────────
+      // SC's \masterScope analyses the master bus AFTER the limiter and sends
+      // 16 log-spaced band amplitudes at 20 Hz. That has been arriving all
+      // along and NOTHING was listening: __onScSpectrum was defined further
+      // down and never called from anywhere, so the spectrogram fell through
+      // to its synthetic fallback and no slot could reach the real sound at
+      // all. Hooked up here, and published as a global so the six instrument
+      // slots can each read their own register.
+      if (address === "/spectrum") {
+        const bands = args.filter((a: unknown) => typeof a === "number") as number[];
+        if (bands.length >= 8) {
+          const w = window as unknown as {
+            __onScSpectrum?: (v: number[]) => void;
+            __scAudio?: ScAudio;
+          };
+          if (typeof w.__onScSpectrum === "function") w.__onScSpectrum(bands);
+          publishScAudio(bands);
+        }
+        return;
+      }
+      // Per-voice ONSETS. The spectrum says what is being heard; these say
+      // what has just begun. Without the attack a visual is always late and
+      // smeared — energy in a band tells you a bell is ringing, not that it
+      // was struck.
+      if (address.startsWith("/voice/")) {
+        const name = address.slice("/voice/".length);
+        noteVoiceOnset(name, Number(args[0]) || 0, Number(args[1]) || 0);
+        return;
+      }
+
       if (address === "/tide/state") {
         const v = args[0];
         const ph = args[1];
@@ -653,6 +684,15 @@ async function init() {
   // Keys 0–9 swap center stage. Left/right panels + spectrogram stay.
   // getActiveThreeStage() returns the live ParliamentStage when slot 0 is active.
   initSwitcher(container, hudEl!, () => currentState);
+
+  // ── window.__scAudio ────────────────────────────────────────────────────
+  // The sound the machine is actually making, for whoever wants it. Mutated in
+  // place like __vizMotion and __ednaBio, so a slot can hold the reference and
+  // read it every frame without allocating.
+  //
+  // Slots 4-9 are the six voices of the engine, one each, so this carries both
+  // the continuous picture (bands, and three coarse registers) and the
+  // discrete one (when each voice last fired, and how hard).
 
   // Idle-driven auto-rotation + the shared vote-flash reader. Publishes
   // window.__vizMotion, which every slot reads for its own drift.
@@ -1676,6 +1716,9 @@ async function init() {
   // Animate loop: push spectrogram + update stage FFT exposure
   (function animLoop() {
     elapsed += 0.016;
+    // One place decays the voice envelopes; six slots reading their own would
+    // drift apart from each other and from the sound.
+    tickScAudio(0.016);
     // Source priority: real engine output > microphone > synthetic fallback.
     // Same bin count as buildFftBins' default, so the renderer sees one shape.
     const bins = scBins(256) ?? micBins(256) ?? buildFftBins(currentState, elapsed);

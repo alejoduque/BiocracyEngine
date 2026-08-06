@@ -6,6 +6,8 @@ import { AfterimagePass }  from "three/examples/jsm/postprocessing/AfterimagePas
 import { ShaderPass }      from "three/examples/jsm/postprocessing/ShaderPass.js";
 import type { ParliamentState } from "./parliament/parliamentStore";
 import { getVizMotion, readVoteFlash, isAlarm } from "./vizMotion";
+import { getScAudio, bandRange, normLevel } from "./scAudio";
+import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
 import {
     Viz,
     pickSpecies,
@@ -41,6 +43,103 @@ function makeOrthoCamera(w: number, h: number): THREE.OrthographicCamera {
     return new THREE.OrthographicCamera(-w / 2, w / 2, h / 2, -h / 2, 0.1, 1000);
 }
 
+// ═══ THE SIX INSTRUMENTS ═════════════════════════════════════════════════
+//
+// Slots 4-9 were six flat diagrams on orthographic cameras, reading control
+// VALUES and never the sound. They are now the six voices of the engine, one
+// each and no repeats — the whole instrument laid out across six screens.
+//
+//   band  is the slice of the master spectrum this voice occupies, as
+//         fractions of the 16-band range. A kick visual must not brighten
+//         because a bell rang, so each slot reads its own register rather
+//         than the mix.
+//   voice is the /voice/* onset SC now broadcasts at the moment the note
+//         starts. The spectrum says what is sounding; this says what has just
+//         begun, and without it every reaction is late and smeared.
+export type Instrument = {
+    label: string; sub: string; voice: string;
+    band: [number, number]; hue: number;
+};
+export const INSTRUMENTS: Record<string, Instrument> = {
+    s4: { label: "DRONE",      sub: "opalDrone · sostenido",     voice: "drone",  band: [0.00, 0.34], hue: 0.09 },
+    s5: { label: "CAMPANAS",   sub: "elektronBell · pads",       voice: "pad",    band: [0.18, 0.62], hue: 0.13 },
+    s6: { label: "PERCUSIÓN",  sub: "opalPerc · pulso",          voice: "perc",   band: [0.30, 0.74], hue: 0.33 },
+    s7: { label: "BOMBO",      sub: "opalKick · sub",            voice: "kick",   band: [0.00, 0.18], hue: 0.02 },
+    s8: { label: "POLVO",      sub: "opalDust · granular",       voice: "dust",   band: [0.55, 1.00], hue: 0.52 },
+    s9: { label: "MUESTRAS",   sub: "samplePlayer · campo",      voice: "sample", band: [0.10, 0.95], hue: 0.75 },
+};
+
+/** Live reading for one instrument: its register, and its last attack. */
+function readInstrument(inst: Instrument) {
+    const a = getScAudio();
+    // Normalised against this instrument's own recent peak, not used raw: the
+    // low band runs ~40x hotter than the high one on a live engine, so a raw
+    // reading makes the treble slots look dead while they are working.
+    const level = normLevel(inst.voice, bandRange(inst.band[0], inst.band[1]));
+    const v = a.voices[inst.voice] ?? { at: 0, amp: 0, tone: 0, env: 0 };
+    return { level, env: v.env, amp: v.amp, tone: v.tone, live: a.live, flux: a.flux, rms: a.rms };
+}
+
+// ─── Shared helper: perspective camera + orbit, for the 3-D rebuild ────────
+// These six had fixed cameras and no controls at all — nothing to look around
+// with, and nothing for ROTATION SPD to turn. They get a real camera now, and
+// the same idle drift as everything else.
+function make3D(container: HTMLElement, dist: number) {
+    const w = container.offsetWidth || 800, h = container.offsetHeight || 600;
+    const camera = new THREE.PerspectiveCamera(52, w / h, 1, 8000);
+    // Barely elevated. At 0.22 the flat-authored geometry in these six was
+    // seen from above and raked into a wedge; the depth should read as
+    // depth, not as a bird's-eye view of a diagram.
+    camera.position.set(0, dist * 0.07, dist);
+    camera.lookAt(0, 0, 0);
+    return camera;
+}
+
+function attachOrbit(camera: THREE.Camera, dom: HTMLElement, dist: number): OrbitControls {
+    const c = new OrbitControls(camera, dom as HTMLCanvasElement);
+    c.enableDamping = true;
+    c.dampingFactor = 0.06;
+    c.minDistance = dist * 0.35;
+    c.maxDistance = dist * 2.6;
+    c.target.set(0, 0, 0);
+    // Fed from window.__vizMotion by the caller's loop, like every other slot.
+    c.autoRotate = true;
+    c.autoRotateSpeed = 0;
+    c.update();
+    return c;
+}
+
+/** The instrument's name, drawn once into a sprite that always faces front. */
+function makeLabel(inst: Instrument, scale: number): THREE.Sprite {
+    const cv = document.createElement("canvas");
+    cv.width = 1024; cv.height = 256;
+    const g = cv.getContext("2d")!;
+    g.clearRect(0, 0, 1024, 256);
+    g.font = "600 96px 'Share Tech Mono', ui-monospace, monospace";
+    g.fillStyle = "rgba(255,236,190,0.92)";
+    g.textAlign = "left";
+    g.fillText(inst.label, 8, 104);
+    g.font = "300 46px 'Share Tech Mono', ui-monospace, monospace";
+    g.fillStyle = "rgba(255,180,80,0.55)";
+    g.fillText(inst.sub, 8, 176);
+    const tex = new THREE.CanvasTexture(cv);
+    tex.minFilter = THREE.LinearFilter;
+    const spr = new THREE.Sprite(new THREE.SpriteMaterial({
+        map: tex, transparent: true, depthWrite: false, depthTest: false,
+    }));
+    spr.scale.set(scale, scale * 0.25, 1);
+    spr.renderOrder = 999;
+    return spr;
+}
+
+/** Push autoRotateSpeed from the shared idle drift. Call once per frame. */
+function driveOrbit(c: OrbitControls | null) {
+    if (!c) return;
+    const vm = getVizMotion();
+    c.autoRotateSpeed = vm.speed * (30 / Math.PI);
+    c.update();
+}
+
 // ─── lerp helper ─────────────────────────────────────────────────────────────
 function lerp(a: number, b: number, t: number): number { return a + (b - a) * t; }
 
@@ -74,7 +173,7 @@ function snoise(x: number, y: number): number {
 //   dronespace    → vertical camera offset
 //   dronemix      → secondary diagonal grid density
 //   delayfeedback → echo trail damping (AfterimagePass damp)
-//   txinfluence   → glitch probability + chromatic aberration
+//   txInfluence   → glitch probability + chromatic aberration
 
 export function mountTimeTravel(stageEl: HTMLElement, getLatestState: () => ParliamentState | null): Viz {
     showStage(stageEl);
@@ -86,8 +185,32 @@ export function mountTimeTravel(stageEl: HTMLElement, getLatestState: () => Parl
 
     const renderer = makeRenderer(stageEl);
     const scene = new THREE.Scene();
-    const camera = makeOrthoCamera(W, H);
-    camera.position.z = 100;
+    // Everything this slot draws hangs off one root group. That is what
+    // makes the rebuild possible: depth is distributed across its children
+    // and the whole world can be lifted or turned without touching the
+    // camera, which now belongs to the viewer.
+    const root4 = new THREE.Group();
+    scene.add(root4);
+
+    // 3-D. This was an orthographic camera at a fixed z — a flat diagram with
+    // depth simulated by draw order. Now a real perspective camera the viewer
+    // can orbit, and which the shared idle drift turns on its own.
+    const camera = make3D(stageEl, Math.max(W, H) * 0.95);
+    const controls = attachOrbit(camera, renderer.domElement, Math.max(W, H) * 0.95);
+    // Instrumental identity. Six slots, six voices of the engine, no
+    // repeats — this one is mountTimeTravel.
+    const inst4 = INSTRUMENTS.s4;
+    const label4 = makeLabel(inst4, Math.max(W, H) * 0.30);
+    // Positioned from what the camera can SEE, not from the container
+    // height: these six cameras sit at very different distances, and a
+    // fraction of H put the label off-screen on most of them. On the
+    // scene rather than the root, so the world's tilt and idle drift
+    // do not carry the title away with them.
+    {
+        const halfV4 = camera.position.length() * Math.tan((52 * Math.PI / 180) / 2);
+        label4.position.set(0, halfV4 * 0.80, 0);
+    }
+    scene.add(label4);
 
     // ── AfterimagePass for ghost trails ──────────────────────────────────────
     const composer = new EffectComposer(renderer);
@@ -99,7 +222,7 @@ export function mountTimeTravel(stageEl: HTMLElement, getLatestState: () => Parl
 
     // ── Background grid lines ─────────────────────────────────────────────────
     const gridGroup = new THREE.Group();
-    scene.add(gridGroup);
+    root4.add(gridGroup);
 
     // ── Trace lines (one per species) ────────────────────────────────────────
     const HISTORY = 300;
@@ -121,7 +244,7 @@ export function mountTimeTravel(stageEl: HTMLElement, getLatestState: () => Parl
         geo.setAttribute("color",    new THREE.BufferAttribute(colors,    3));
         geo.setDrawRange(0, 0);
         const line = new THREE.Line(geo, traceMat.clone());
-        scene.add(line);
+        root4.add(line);
         const yFrac = i / (activeRoster.length - 1 || 1);
         traces.push({ y: lerp(-H * 0.3, H * 0.3, yFrac), history: positions, count: 0, line, geo });
     });
@@ -135,13 +258,13 @@ export function mountTimeTravel(stageEl: HTMLElement, getLatestState: () => Parl
         g.setAttribute("position", new THREE.BufferAttribute(verts, 3));
         g.setIndex([0, 1, 2, 2, 3, 0]);
         const m = new THREE.Mesh(g, new THREE.MeshBasicMaterial({ color: 0xffaa00, transparent: true }));
-        scene.add(m);
+        root4.add(m);
         return m;
     });
 
     // ── Reticule rings ────────────────────────────────────────────────────────
     const reticuleGroup = new THREE.Group();
-    scene.add(reticuleGroup);
+    root4.add(reticuleGroup);
 
     function makeCircle2D(radius: number, segments: number, color: number, opacity: number): THREE.Line {
         const pts: number[] = [];
@@ -228,6 +351,18 @@ export function mountTimeTravel(stageEl: HTMLElement, getLatestState: () => Parl
         const vm4 = getVizMotion();
         const vf4 = readVoteFlash();
 
+        // ── This slot's own instrument ───────────────────────────────────
+        // level is the energy in ITS register of the master spectrum, env the
+        // decaying attack of ITS last note. Reading the whole mix would make a
+        // kick visual brighten because a bell rang; reading control values
+        // (which is all these six ever did) makes it react to the intention
+        // rather than to the sound.
+        const au4 = readInstrument(inst4);
+        // Which instrument is on screen, published like __antifoniaStand.
+        // A label baked into a canvas sprite cannot be read back, so
+        // without this the identity is unverifiable from outside.
+        try { (window as any).__vizInstrument = inst4; } catch { /* ignore */ }
+
         // Observability: these six render to WebGL only, so no pixel probe can
         // read them back (a canvas without preserveDrawingBuffer returns blank
         // through drawImage). Publishing one representative scalar is the only
@@ -253,7 +388,7 @@ export function mountTimeTravel(stageEl: HTMLElement, getLatestState: () => Parl
         const droneSpace = sp4.dronespace   ?? 0.5;
         const droneMix = sp4.dronemix       ?? 0.4;
         const delayFb  = sp4.delayfeedback  ?? 0.3;
-        const txInf    = sp4.txinfluence    ?? 0.5;
+        const txInf    = sp4.txInfluence    ?? 0.5;
         const consensus = st?.consensus ?? 0.5;
 
         // Afterimage damp: high delayFeedback + high memoryFeed = longer trails
@@ -363,7 +498,25 @@ export function mountTimeTravel(stageEl: HTMLElement, getLatestState: () => Parl
         });
 
         // Camera subtle vertical drift from droneSpace
-        camera.position.y = (droneSpace - 0.5) * H * 0.12;
+        // droneSpace used to write camera.position.y every frame, which would
+        // now fight OrbitControls for the camera and win, pinning it. Moved
+        // onto the SCENE instead: the world lifts, the viewer keeps the camera.
+        root4.position.y = (droneSpace - 0.5) * H * 0.12;
+        // DRONE. Each persistent trace is pushed back in Z by its age, so the
+        // scroll that used to slide sideways across a flat plane now recedes
+        // into the volume — the structure's history becomes its depth, which
+        // is the whole idea the slot was already named after.
+        // The low band swells the sheet; there is no onset to catch, because a
+        // drone does not start, it is simply there.
+        // DRONE. The persistent traces are pushed back by their index, so the
+        // structure's history becomes its depth — which is what the slot was
+        // already named after and had never actually shown. The low band, where
+        // the drone lives, opens the stack out; there is no attack to catch
+        // because a drone does not start, it is simply there.
+        root4.children.forEach((c: any, i: number) => {
+            c.position.z = -i * 26 * (0.35 + au4.level * 2.2);
+        });
+        root4.rotation.x = -0.06 + au4.level * 0.05;
 
         // dronemix + noisefilt: secondary diagonal grid brightness (reuse grid opacity)
         // dronemix + noisefilt modulate grid brightness
@@ -373,6 +526,9 @@ export function mountTimeTravel(stageEl: HTMLElement, getLatestState: () => Parl
                 Math.min(0.5, (0.04 + texDep * 0.12 + filtC * 0.08 + diagBright) * masterA);
         }
 
+        // Idle drift + damping. These six had no controls at all before, so
+        // this is also where ROTATION SPD reaches them.
+        driveOrbit(controls);
         composer.render();
     }
 
@@ -393,6 +549,7 @@ export function mountTimeTravel(stageEl: HTMLElement, getLatestState: () => Parl
         destroy: () => {
             destroyed = true;
             cancelAnimationFrame(rafId);
+            try { controls.dispose(); } catch { /* ignore */ }
             window.removeEventListener("resize", onResize);
             composer.dispose();
             renderer.dispose();
@@ -425,7 +582,7 @@ export function mountTimeTravel(stageEl: HTMLElement, getLatestState: () => Parl
 //   dronespace    → scene z-depth spread
 //   dronemix      → number of radar arcs
 //   delayfeedback → afterimage damp
-//   txinfluence   → glitch probability + chromatic aberration
+//   txInfluence   → glitch probability + chromatic aberration
 
 export function mountDynamicGraphs(stageEl: HTMLElement, getLatestState: () => ParliamentState | null): Viz {
     showStage(stageEl);
@@ -437,8 +594,31 @@ export function mountDynamicGraphs(stageEl: HTMLElement, getLatestState: () => P
 
     const renderer = makeRenderer(stageEl);
     const scene = new THREE.Scene();
-    const camera = new THREE.PerspectiveCamera(60, W / H, 0.1, 2000);
-    camera.position.set(0, 0, 500);
+    // Everything this slot draws hangs off one root group. That is what
+    // makes the rebuild possible: depth is distributed across its children
+    // and the whole world can be lifted or turned without touching the
+    // camera, which now belongs to the viewer.
+    const root5 = new THREE.Group();
+    scene.add(root5);
+
+    // Already perspective, but bolted at (0,0,500) with nothing to orbit and
+    // no depth in the scene. Same treatment as the other five.
+    const camera = make3D(stageEl, 620);
+    const controls = attachOrbit(camera, renderer.domElement, 620);
+    // Instrumental identity. Six slots, six voices of the engine, no
+    // repeats — this one is mountDynamicGraphs.
+    const inst5 = INSTRUMENTS.s5;
+    const label5 = makeLabel(inst5, Math.max(W, H) * 0.30);
+    // Positioned from what the camera can SEE, not from the container
+    // height: these six cameras sit at very different distances, and a
+    // fraction of H put the label off-screen on most of them. On the
+    // scene rather than the root, so the world's tilt and idle drift
+    // do not carry the title away with them.
+    {
+        const halfV5 = camera.position.length() * Math.tan((52 * Math.PI / 180) / 2);
+        label5.position.set(0, halfV5 * 0.80, 0);
+    }
+    scene.add(label5);
 
     const composer = new EffectComposer(renderer);
     composer.addPass(new RenderPass(scene, camera));
@@ -456,14 +636,14 @@ export function mountDynamicGraphs(stageEl: HTMLElement, getLatestState: () => P
         const mat = new THREE.MeshBasicMaterial({ color: 0xffaa00, wireframe: true, transparent: true });
         const mesh = new THREE.Mesh(geo, mat);
         mesh.position.set((Math.random() - 0.5) * W * 0.6, (Math.random() - 0.5) * H * 0.6, (Math.random() - 0.5) * 100);
-        scene.add(mesh);
+        root5.add(mesh);
         nodes.push({ x: mesh.position.x, y: mesh.position.y, z: mesh.position.z, vx: 0, vy: 0, vz: 0, mesh });
     });
 
     // Glow rings (one per node)
     const glowRings = nodes.map(() => {
         const ring = makeCircle(18, 32, 0xffaa00, 0.2);
-        scene.add(ring);
+        root5.add(ring);
         return ring;
     });
 
@@ -480,7 +660,7 @@ export function mountDynamicGraphs(stageEl: HTMLElement, getLatestState: () => P
 
     // Radar arc background
     const radarGroup = new THREE.Group();
-    scene.add(radarGroup);
+    root5.add(radarGroup);
     const radarArcs: THREE.Line[] = [];
     for (let i = 0; i < 6; i++) {
         const arc = makeCircle(80 + i * 60, 64, 0x663300, 0.08 + i * 0.01);
@@ -497,7 +677,7 @@ export function mountDynamicGraphs(stageEl: HTMLElement, getLatestState: () => P
     edgeGeo.setDrawRange(0, 0);
     const edgeMat = new THREE.LineBasicMaterial({ color: 0xffaa00, transparent: true, opacity: 0.4 });
     const edgeLines = new THREE.LineSegments(edgeGeo, edgeMat);
-    scene.add(edgeLines);
+    root5.add(edgeLines);
 
     let rafId: number;
     let frame = 0;
@@ -516,6 +696,18 @@ export function mountDynamicGraphs(stageEl: HTMLElement, getLatestState: () => P
         // slots 1 and 3 already use.
         const vm5 = getVizMotion();
         const vf5 = readVoteFlash();
+
+        // ── This slot's own instrument ───────────────────────────────────
+        // level is the energy in ITS register of the master spectrum, env the
+        // decaying attack of ITS last note. Reading the whole mix would make a
+        // kick visual brighten because a bell rang; reading control values
+        // (which is all these six ever did) makes it react to the intention
+        // rather than to the sound.
+        const au5 = readInstrument(inst5);
+        // Which instrument is on screen, published like __antifoniaStand.
+        // A label baked into a canvas sprite cannot be read back, so
+        // without this the identity is unverifiable from outside.
+        try { (window as any).__vizInstrument = inst5; } catch { /* ignore */ }
 
         // Observability: these six render to WebGL only, so no pixel probe can
         // read them back (a canvas without preserveDrawingBuffer returns blank
@@ -542,7 +734,7 @@ export function mountDynamicGraphs(stageEl: HTMLElement, getLatestState: () => P
         const droneSpace = sp5.dronespace   ?? 0.5;
         const droneMix = sp5.dronemix       ?? 0.4;
         const delayFb  = sp5.delayfeedback  ?? 0.3;
-        const txInf    = sp5.txinfluence    ?? 0.5;
+        const txInf    = sp5.txInfluence    ?? 0.5;
         const consensus = st?.consensus ?? 0.5;
 
         afterimage.uniforms["damp"].value = lerp(0.76, 0.94, delayFb * 0.7 + memFeed * 0.3);
@@ -640,6 +832,14 @@ export function mountDynamicGraphs(stageEl: HTMLElement, getLatestState: () => P
 
             // dronedepth: detail level via geometry segments (proxy: wireframe density via scale noise)
             n.mesh.rotation.z += 0.005 + droneD * 0.02 + vm5.speed * 0.02;
+            // CAMPANAS. The graph is no longer a flat sheet: each node sits at
+            // a depth given by its index, and the whole lattice breathes on Z
+            // with the pad register. A pad ATTACK snaps every node forward and
+            // it settles back — the bell being struck, not merely ringing.
+            n.mesh.position.z = Math.sin(i * 1.7) * 120 * (0.25 + au5.level * 1.6)
+                + au5.env * 90 * au5.amp;
+            const sc5 = 1 + au5.env * au5.amp * 0.9;
+            n.mesh.scale.setScalar(sc5);
 
             // Glow ring
             const gr = glowRings[i];
@@ -660,6 +860,9 @@ export function mountDynamicGraphs(stageEl: HTMLElement, getLatestState: () => P
             }
         });
 
+        // Idle drift + damping. These six had no controls at all before, so
+        // this is also where ROTATION SPD reaches them.
+        driveOrbit(controls);
         composer.render();
     }
 
@@ -677,6 +880,7 @@ export function mountDynamicGraphs(stageEl: HTMLElement, getLatestState: () => P
         name: "Dynamic Graphs", key: "5",
         destroy: () => {
             destroyed = true; cancelAnimationFrame(rafId);
+            try { controls.dispose(); } catch { /* ignore */ }
             window.removeEventListener("resize", onResize);
             composer.dispose(); renderer.dispose(); renderer.domElement.remove();
         }
@@ -707,7 +911,7 @@ export function mountDynamicGraphs(stageEl: HTMLElement, getLatestState: () => P
 //   dronespace    → tree root Y offset (hero param)
 //   dronemix      → scan column density (hero param)
 //   delayfeedback → afterimage damp
-//   txinfluence   → glitch probability
+//   txInfluence   → glitch probability
 
 export function mountDynamicOptimality(stageEl: HTMLElement, getLatestState: () => ParliamentState | null): Viz {
     showStage(stageEl);
@@ -719,8 +923,32 @@ export function mountDynamicOptimality(stageEl: HTMLElement, getLatestState: () 
 
     const renderer = makeRenderer(stageEl);
     const scene = new THREE.Scene();
-    const camera = makeOrthoCamera(W, H);
-    camera.position.z = 100;
+    // Everything this slot draws hangs off one root group. That is what
+    // makes the rebuild possible: depth is distributed across its children
+    // and the whole world can be lifted or turned without touching the
+    // camera, which now belongs to the viewer.
+    const root6 = new THREE.Group();
+    scene.add(root6);
+
+    // 3-D. This was an orthographic camera at a fixed z — a flat diagram with
+    // depth simulated by draw order. Now a real perspective camera the viewer
+    // can orbit, and which the shared idle drift turns on its own.
+    const camera = make3D(stageEl, Math.max(W, H) * 0.95);
+    const controls = attachOrbit(camera, renderer.domElement, Math.max(W, H) * 0.95);
+    // Instrumental identity. Six slots, six voices of the engine, no
+    // repeats — this one is mountDynamicOptimality.
+    const inst6 = INSTRUMENTS.s6;
+    const label6 = makeLabel(inst6, Math.max(W, H) * 0.30);
+    // Positioned from what the camera can SEE, not from the container
+    // height: these six cameras sit at very different distances, and a
+    // fraction of H put the label off-screen on most of them. On the
+    // scene rather than the root, so the world's tilt and idle drift
+    // do not carry the title away with them.
+    {
+        const halfV6 = camera.position.length() * Math.tan((52 * Math.PI / 180) / 2);
+        label6.position.set(0, halfV6 * 0.80, 0);
+    }
+    scene.add(label6);
 
     const composer = new EffectComposer(renderer);
     composer.addPass(new RenderPass(scene, camera));
@@ -735,12 +963,12 @@ export function mountDynamicOptimality(stageEl: HTMLElement, getLatestState: () 
         const outerGeo = new THREE.BoxGeometry(20, 20, 1);
         const outerMat = new THREE.MeshBasicMaterial({ color: 0xc8ffe6, wireframe: true, transparent: true });
         const outer = new THREE.Mesh(outerGeo, outerMat);
-        scene.add(outer);
+        root6.add(outer);
 
         const innerGeo = new THREE.BoxGeometry(10, 10, 1);
         const innerMat = new THREE.MeshBasicMaterial({ color: 0xffaa00, wireframe: true, transparent: true });
         const inner = new THREE.Mesh(innerGeo, innerMat);
-        scene.add(inner);
+        root6.add(inner);
 
         nodeData.push({ x: 0, y: 0, tx: 0, ty: 0, mesh: outer, innerMesh: inner });
     });
@@ -753,7 +981,7 @@ export function mountDynamicOptimality(stageEl: HTMLElement, getLatestState: () 
     edgeGeo.setDrawRange(0, 0);
     const edgeMat = new THREE.LineBasicMaterial({ color: 0xffaa00, transparent: true });
     const edgeLines = new THREE.LineSegments(edgeGeo, edgeMat);
-    scene.add(edgeLines);
+    root6.add(edgeLines);
 
     // Scan column lines
     const MAX_SCAN = 14;
@@ -763,14 +991,14 @@ export function mountDynamicOptimality(stageEl: HTMLElement, getLatestState: () 
     scanGeo.setDrawRange(0, 0);
     const scanMat = new THREE.LineBasicMaterial({ color: 0x663300, transparent: true });
     const scanLines = new THREE.LineSegments(scanGeo, scanMat);
-    scene.add(scanLines);
+    root6.add(scanLines);
 
     // Scrolling horizontal grid lines
     const hGridGeo = new THREE.BufferGeometry();
     const hGridPositions = new Float32Array(20 * 2 * 3);
     hGridGeo.setAttribute("position", new THREE.BufferAttribute(hGridPositions, 3));
     const hGridMat = new THREE.LineBasicMaterial({ color: 0x663300, transparent: true, opacity: 0.06 });
-    scene.add(new THREE.LineSegments(hGridGeo, hGridMat));
+    root6.add(new THREE.LineSegments(hGridGeo, hGridMat));
 
     let rafId: number;
     let frame = 0;
@@ -790,6 +1018,18 @@ export function mountDynamicOptimality(stageEl: HTMLElement, getLatestState: () 
         // slots 1 and 3 already use.
         const vm6 = getVizMotion();
         const vf6 = readVoteFlash();
+
+        // ── This slot's own instrument ───────────────────────────────────
+        // level is the energy in ITS register of the master spectrum, env the
+        // decaying attack of ITS last note. Reading the whole mix would make a
+        // kick visual brighten because a bell rang; reading control values
+        // (which is all these six ever did) makes it react to the intention
+        // rather than to the sound.
+        const au6 = readInstrument(inst6);
+        // Which instrument is on screen, published like __antifoniaStand.
+        // A label baked into a canvas sprite cannot be read back, so
+        // without this the identity is unverifiable from outside.
+        try { (window as any).__vizInstrument = inst6; } catch { /* ignore */ }
 
         // Observability: these six render to WebGL only, so no pixel probe can
         // read them back (a canvas without preserveDrawingBuffer returns blank
@@ -816,7 +1056,7 @@ export function mountDynamicOptimality(stageEl: HTMLElement, getLatestState: () 
         const droneSpace = sp6.dronespace   ?? 0.5;
         const droneMix  = sp6.dronemix      ?? 0.4;
         const delayFb   = sp6.delayfeedback ?? 0.3;
-        const txInf     = sp6.txinfluence   ?? 0.5;
+        const txInf     = sp6.txInfluence   ?? 0.5;
         const consensus = st?.consensus ?? 0.5;
 
         afterimage.uniforms["damp"].value = lerp(0.73, 0.93, delayFb * 0.7 + memFeed * 0.3);
@@ -873,6 +1113,10 @@ export function mountDynamicOptimality(stageEl: HTMLElement, getLatestState: () 
                 n.ty = rootY - Math.sin(frame * 0.05 * (1 + tDil)) * 20;
             } else {
                 const layer = Math.floor(Math.log2(childIdx + 2));
+                // Kept on the node: the depth pass below needs it, and
+                // recomputing a log every frame per node to get it back would
+                // be silly.
+                (n as any).layer = layer;
                 const countInLayer = Math.pow(2, layer);
                 const posInLayer = (childIdx + 2) - countInLayer;
                 const breathe = Math.sin(frame * 0.05 * (1 + tDil) + layer) * (30 + specS * 50) * (1.1 - consensus);
@@ -898,7 +1142,15 @@ export function mountDynamicOptimality(stageEl: HTMLElement, getLatestState: () 
             const glW = 10 + resBody * 25 + act * 15;
 
             // Outer box
-            n.mesh.position.set(n.x, n.y, 0);
+            // PERCUSIÓN. The tree had layers in Y and nothing in Z; each layer
+            // now stands at its own depth, so the hierarchy is a solid rather
+            // than a diagram. A strike drives that layer forward, and tone —
+            // the pitch SC sends with the onset — decides which depth it hits.
+            // Written INSIDE the position.set that used to hard-zero z.
+            const lay6 = (n as any).layer ?? 0;
+            const z6 = lay6 * -70 * (0.4 + au6.level * 1.6)
+                + au6.env * 130 * au6.amp * (1 - Math.min(1, Math.abs(au6.tone - lay6 / 4)));
+            n.mesh.position.set(n.x, n.y, z6);
             n.mesh.scale.setScalar(glW / 20);
             // Drift folded in, and the vote's rebalance shows in the boxes
             // as well as in the snap rate above.
@@ -938,6 +1190,9 @@ export function mountDynamicOptimality(stageEl: HTMLElement, getLatestState: () 
         const bgWarmth = Math.floor(dronFd * 6);
         renderer.setClearColor((bgWarmth << 8) | 0x000804, 1);
 
+        // Idle drift + damping. These six had no controls at all before, so
+        // this is also where ROTATION SPD reaches them.
+        driveOrbit(controls);
         composer.render();
     }
 
@@ -956,6 +1211,7 @@ export function mountDynamicOptimality(stageEl: HTMLElement, getLatestState: () 
         name: "Dynamic Optimality", key: "6",
         destroy: () => {
             destroyed = true; cancelAnimationFrame(rafId);
+            try { controls.dispose(); } catch { /* ignore */ }
             window.removeEventListener("resize", onResize);
             composer.dispose(); renderer.dispose(); renderer.domElement.remove();
         }
@@ -986,7 +1242,7 @@ export function mountDynamicOptimality(stageEl: HTMLElement, getLatestState: () 
 //   dronespace    → reticule vertical offset
 //   dronemix      → background grid brightness
 //   delayfeedback → afterimage damp
-//   txinfluence   → glitch tear rects
+//   txInfluence   → glitch tear rects
 
 export function mountGeometry(stageEl: HTMLElement, getLatestState: () => ParliamentState | null): Viz {
     showStage(stageEl);
@@ -998,8 +1254,32 @@ export function mountGeometry(stageEl: HTMLElement, getLatestState: () => Parlia
 
     const renderer = makeRenderer(stageEl);
     const scene = new THREE.Scene();
-    const camera = makeOrthoCamera(W, H);
-    camera.position.z = 100;
+    // Everything this slot draws hangs off one root group. That is what
+    // makes the rebuild possible: depth is distributed across its children
+    // and the whole world can be lifted or turned without touching the
+    // camera, which now belongs to the viewer.
+    const root7 = new THREE.Group();
+    scene.add(root7);
+
+    // 3-D. This was an orthographic camera at a fixed z — a flat diagram with
+    // depth simulated by draw order. Now a real perspective camera the viewer
+    // can orbit, and which the shared idle drift turns on its own.
+    const camera = make3D(stageEl, Math.max(W, H) * 0.95);
+    const controls = attachOrbit(camera, renderer.domElement, Math.max(W, H) * 0.95);
+    // Instrumental identity. Six slots, six voices of the engine, no
+    // repeats — this one is mountGeometry.
+    const inst7 = INSTRUMENTS.s7;
+    const label7 = makeLabel(inst7, Math.max(W, H) * 0.30);
+    // Positioned from what the camera can SEE, not from the container
+    // height: these six cameras sit at very different distances, and a
+    // fraction of H put the label off-screen on most of them. On the
+    // scene rather than the root, so the world's tilt and idle drift
+    // do not carry the title away with them.
+    {
+        const halfV7 = camera.position.length() * Math.tan((52 * Math.PI / 180) / 2);
+        label7.position.set(0, halfV7 * 0.80, 0);
+    }
+    scene.add(label7);
 
     const composer = new EffectComposer(renderer);
     composer.addPass(new RenderPass(scene, camera));
@@ -1022,7 +1302,7 @@ export function mountGeometry(stageEl: HTMLElement, getLatestState: () => Parlia
     rayGeo.setAttribute("position", new THREE.BufferAttribute(rayPositions, 3));
     rayGeo.setDrawRange(0, 0);
     const rayMat = new THREE.LineBasicMaterial({ color: 0xc8ffe6, transparent: true });
-    scene.add(new THREE.LineSegments(rayGeo, rayMat));
+    root7.add(new THREE.LineSegments(rayGeo, rayMat));
 
     // Sweep vertical lines (max 4 eco values)
     const sweepPositions = new Float32Array(4 * 2 * 3);
@@ -1030,19 +1310,19 @@ export function mountGeometry(stageEl: HTMLElement, getLatestState: () => Parlia
     sweepGeo.setAttribute("position", new THREE.BufferAttribute(sweepPositions, 3));
     sweepGeo.setDrawRange(0, 0);
     const sweepMat = new THREE.LineBasicMaterial({ color: 0xffaa00, transparent: true });
-    scene.add(new THREE.LineSegments(sweepGeo, sweepMat));
+    root7.add(new THREE.LineSegments(sweepGeo, sweepMat));
 
     // Target circles pool (ray × sweep)
     const targetGroup = new THREE.Group();
-    scene.add(targetGroup);
+    root7.add(targetGroup);
 
     // Warped grid — rebuilt occasionally
     const gridGroup = new THREE.Group();
-    scene.add(gridGroup);
+    root7.add(gridGroup);
 
     // Reticule
     const reticuleGroup = new THREE.Group();
-    scene.add(reticuleGroup);
+    root7.add(reticuleGroup);
     const retOuter = makeRetCircle(H * 0.25, 128, 0x663300, 0.15);
     reticuleGroup.add(retOuter);
 
@@ -1077,7 +1357,7 @@ export function mountGeometry(stageEl: HTMLElement, getLatestState: () => Parlia
         const g = new THREE.PlaneGeometry(60, 3);
         const m = new THREE.Mesh(g, new THREE.MeshBasicMaterial({ color: 0xffaa00, transparent: true, opacity: 0 }));
         m.visible = false;
-        scene.add(m);
+        root7.add(m);
         glitchRects.push(m);
     }
 
@@ -1123,6 +1403,18 @@ export function mountGeometry(stageEl: HTMLElement, getLatestState: () => Parlia
         const vm7 = getVizMotion();
         const vf7 = readVoteFlash();
 
+        // ── This slot's own instrument ───────────────────────────────────
+        // level is the energy in ITS register of the master spectrum, env the
+        // decaying attack of ITS last note. Reading the whole mix would make a
+        // kick visual brighten because a bell rang; reading control values
+        // (which is all these six ever did) makes it react to the intention
+        // rather than to the sound.
+        const au7 = readInstrument(inst7);
+        // Which instrument is on screen, published like __antifoniaStand.
+        // A label baked into a canvas sprite cannot be read back, so
+        // without this the identity is unverifiable from outside.
+        try { (window as any).__vizInstrument = inst7; } catch { /* ignore */ }
+
         // Observability: these six render to WebGL only, so no pixel probe can
         // read them back (a canvas without preserveDrawingBuffer returns blank
         // through drawImage). Publishing one representative scalar is the only
@@ -1148,7 +1440,7 @@ export function mountGeometry(stageEl: HTMLElement, getLatestState: () => Parlia
         const droneSpace = sp7.dronespace ?? 0.5;
         const droneMix = sp7.dronemix     ?? 0.4;
         const delayFb = sp7.delayfeedback ?? 0.3;
-        const txInf   = sp7.txinfluence   ?? 0.5;
+        const txInf   = sp7.txInfluence   ?? 0.5;
         const consensus = st?.consensus ?? 0.5;
 
         afterimage.uniforms["damp"].value = lerp(0.77, 0.94, delayFb * 0.7 + memFeed * 0.3);
@@ -1189,6 +1481,13 @@ export function mountGeometry(stageEl: HTMLElement, getLatestState: () => Parlia
         // Reticule — resBody controls size, droneFade warmth, droneSpace Y offset
         // Idle drift on the sweep, and a vote widens the ray fan for a moment.
         radarAngle += 0.005 + tDil * 0.025 + vm7.speed * 0.016;
+        // BOMBO. The radar was a disc; it is a CONE now, rays reaching back
+        // into depth. The sub band opens the cone and the kick attack punches
+        // the whole reticule toward the viewer — the one visual in the set
+        // that should hit you in the chest.
+        reticuleGroup.position.z = au7.env * 220 * au7.amp;
+        reticuleGroup.scale.setScalar(1 + au7.env * au7.amp * 0.35 + au7.level * 0.25);
+        root7.rotation.x = -0.07 - au7.level * 0.06;
         reticuleGroup.rotation.z = radarAngle;
         reticuleGroup.position.y = (droneSpace - 0.5) * H * 0.15;
         const retScale = (H * (0.25 + resBody * 0.2)) / (H * 0.25);
@@ -1218,8 +1517,35 @@ export function mountGeometry(stageEl: HTMLElement, getLatestState: () => Parlia
             r.angle = Math.max(-angleRange, Math.min(angleRange, r.angle));
 
             const endY = r.y + Math.tan(r.angle) * W;
-            rayPositions[rIdx * 6]     = -W / 2; rayPositions[rIdx * 6 + 1] = r.y;   rayPositions[rIdx * 6 + 2] = 0;
-            rayPositions[rIdx * 6 + 3] =  W / 2; rayPositions[rIdx * 6 + 4] = endY;  rayPositions[rIdx * 6 + 5] = 0;
+            // BOMBO in three dimensions. The rays used to lie in one plane at
+            // z = 0 — a flat sweep drawn with perspective, which reads as
+            // nothing at all. Each ray now runs from a near point to a far
+            // one, so the sweep is a CONE opening away from the viewer, and
+            // the sub band opens or closes it. The kick attack drives the far
+            // ends forward: the pulse arrives as depth, which is the only
+            // thing a sub frequency can honestly look like.
+            // Pushing one end of a horizontal scanline backwards does not make
+            // a cone, it makes lines that lean. The rays RADIATE now: every one
+            // starts near the origin and shoots outward into depth, so the
+            // sweep is a shockwave leaving the centre. For a sub-bass voice
+            // that is the only honest shape — a kick is a pressure front, and
+            // this is what a pressure front looks like from inside it.
+            //
+            // The attack drives the front outward and the sub band sets how far
+            // it reaches; between hits it collapses back toward the origin.
+            // Floored. The audio MODULATES the cone, it does not create it: keyed to
+            // level alone the whole shape collapsed to a few short spokes
+            // whenever the engine went quiet, which is most of a tidal trough.
+            const front7 = 0.62 + au7.level * 0.42 + au7.env * au7.amp * 0.8;
+            const dirA = (i / Math.max(1, rayCount)) * Math.PI * 2 + r.angle * 2 + radarAngle;
+            const rNear = W * 0.03;
+            const rFar  = W * 0.62 * front7;
+            rayPositions[rIdx * 6]     = Math.cos(dirA) * rNear;
+            rayPositions[rIdx * 6 + 1] = Math.sin(dirA) * rNear + r.y * 0.06;
+            rayPositions[rIdx * 6 + 2] = W * 0.10;
+            rayPositions[rIdx * 6 + 3] = Math.cos(dirA) * rFar;
+            rayPositions[rIdx * 6 + 4] = Math.sin(dirA) * rFar + r.y * 0.30;
+            rayPositions[rIdx * 6 + 5] = -W * 0.55 * front7;
             rIdx++;
         }
         rayGeo.setDrawRange(0, rIdx * 2);
@@ -1268,6 +1594,9 @@ export function mountGeometry(stageEl: HTMLElement, getLatestState: () => Parlia
         }
         for (let i = grIdx; i < 20; i++) glitchRects[i].visible = false;
 
+        // Idle drift + damping. These six had no controls at all before, so
+        // this is also where ROTATION SPD reaches them.
+        driveOrbit(controls);
         composer.render();
     }
 
@@ -1286,6 +1615,7 @@ export function mountGeometry(stageEl: HTMLElement, getLatestState: () => Parlia
         name: "Geometry", key: "7",
         destroy: () => {
             destroyed = true; cancelAnimationFrame(rafId);
+            try { controls.dispose(); } catch { /* ignore */ }
             window.removeEventListener("resize", onResize);
             composer.dispose(); renderer.dispose(); renderer.domElement.remove();
         }
@@ -1317,7 +1647,7 @@ export function mountGeometry(stageEl: HTMLElement, getLatestState: () => Parlia
 //   dronespace    → vertical layer gap
 //   dronemix      → drop line color saturation
 //   delayfeedback → ghost persistence (hero param)
-//   txinfluence   → faulting probability + chromatic aberration
+//   txInfluence   → faulting probability + chromatic aberration
 
 export function mountMemoryHierarchy(stageEl: HTMLElement, getLatestState: () => ParliamentState | null): Viz {
     showStage(stageEl);
@@ -1329,8 +1659,32 @@ export function mountMemoryHierarchy(stageEl: HTMLElement, getLatestState: () =>
 
     const renderer = makeRenderer(stageEl);
     const scene = new THREE.Scene();
-    const camera = makeOrthoCamera(W, H);
-    camera.position.z = 100;
+    // Everything this slot draws hangs off one root group. That is what
+    // makes the rebuild possible: depth is distributed across its children
+    // and the whole world can be lifted or turned without touching the
+    // camera, which now belongs to the viewer.
+    const root8 = new THREE.Group();
+    scene.add(root8);
+
+    // 3-D. This was an orthographic camera at a fixed z — a flat diagram with
+    // depth simulated by draw order. Now a real perspective camera the viewer
+    // can orbit, and which the shared idle drift turns on its own.
+    const camera = make3D(stageEl, Math.max(W, H) * 0.95);
+    const controls = attachOrbit(camera, renderer.domElement, Math.max(W, H) * 0.95);
+    // Instrumental identity. Six slots, six voices of the engine, no
+    // repeats — this one is mountMemoryHierarchy.
+    const inst8 = INSTRUMENTS.s8;
+    const label8 = makeLabel(inst8, Math.max(W, H) * 0.30);
+    // Positioned from what the camera can SEE, not from the container
+    // height: these six cameras sit at very different distances, and a
+    // fraction of H put the label off-screen on most of them. On the
+    // scene rather than the root, so the world's tilt and idle drift
+    // do not carry the title away with them.
+    {
+        const halfV8 = camera.position.length() * Math.tan((52 * Math.PI / 180) / 2);
+        label8.position.set(0, halfV8 * 0.80, 0);
+    }
+    scene.add(label8);
 
     const composer = new EffectComposer(renderer);
     composer.addPass(new RenderPass(scene, camera));
@@ -1353,7 +1707,7 @@ export function mountMemoryHierarchy(stageEl: HTMLElement, getLatestState: () =>
         geo.setIndex([0, 1, 2, 3, 0]);
         const mat = new THREE.LineBasicMaterial({ color: 0xffaa00, transparent: true });
         const loop = new THREE.LineLoop(geo, mat);
-        scene.add(loop);
+        root8.add(loop);
         layerBorders.push(loop);
     }
 
@@ -1364,7 +1718,7 @@ export function mountMemoryHierarchy(stageEl: HTMLElement, getLatestState: () =>
         for (let i = 0; i < activeRoster.length; i++) {
             const g = new THREE.BoxGeometry(1, 1, 1);
             const m = new THREE.Mesh(g, new THREE.MeshBasicMaterial({ color: 0xc8ffe6, wireframe: true, transparent: true }));
-            scene.add(m);
+            root8.add(m);
             row.push(m);
         }
         blockMeshes.push(row);
@@ -1377,7 +1731,7 @@ export function mountMemoryHierarchy(stageEl: HTMLElement, getLatestState: () =>
     dropGeo.setAttribute("position", new THREE.BufferAttribute(dropPositions, 3));
     dropGeo.setDrawRange(0, 0);
     const dropMat = new THREE.LineBasicMaterial({ color: 0xc8ffe6, transparent: true });
-    scene.add(new THREE.LineSegments(dropGeo, dropMat));
+    root8.add(new THREE.LineSegments(dropGeo, dropMat));
 
     // Hex noise background — canvas texture updated per frame
     const hexCanvas = document.createElement("canvas");
@@ -1389,7 +1743,7 @@ export function mountMemoryHierarchy(stageEl: HTMLElement, getLatestState: () =>
         new THREE.MeshBasicMaterial({ map: hexTexture, transparent: true, opacity: 0.25, depthWrite: false })
     );
     hexPlane.position.z = -5;
-    scene.add(hexPlane);
+    root8.add(hexPlane);
 
     // Hex noise data
     let hexData: string[] = [];
@@ -1412,6 +1766,18 @@ export function mountMemoryHierarchy(stageEl: HTMLElement, getLatestState: () =>
         // slots 1 and 3 already use.
         const vm8 = getVizMotion();
         const vf8 = readVoteFlash();
+
+        // ── This slot's own instrument ───────────────────────────────────
+        // level is the energy in ITS register of the master spectrum, env the
+        // decaying attack of ITS last note. Reading the whole mix would make a
+        // kick visual brighten because a bell rang; reading control values
+        // (which is all these six ever did) makes it react to the intention
+        // rather than to the sound.
+        const au8 = readInstrument(inst8);
+        // Which instrument is on screen, published like __antifoniaStand.
+        // A label baked into a canvas sprite cannot be read back, so
+        // without this the identity is unverifiable from outside.
+        try { (window as any).__vizInstrument = inst8; } catch { /* ignore */ }
 
         // Observability: these six render to WebGL only, so no pixel probe can
         // read them back (a canvas without preserveDrawingBuffer returns blank
@@ -1441,7 +1807,7 @@ export function mountMemoryHierarchy(stageEl: HTMLElement, getLatestState: () =>
         const droneSpace = sp8.dronespace  ?? 0.5;
         const droneMix = sp8.dronemix      ?? 0.4;
         const delayFb  = sp8.delayfeedback ?? 0.3;
-        const txInf    = sp8.txinfluence   ?? 0.5;
+        const txInf    = sp8.txInfluence   ?? 0.5;
         const aiOpt    = st?.ai?.optimization ?? 10;
 
         afterimage.uniforms["damp"].value = lerp(0.82, 0.97, delayFb);
@@ -1528,6 +1894,11 @@ export function mountMemoryHierarchy(stageEl: HTMLElement, getLatestState: () =>
             // Idle drift: the whole stack leans, very slowly, like a shelf
             // settling. A hierarchy should not spin — this is its idiom.
             border.rotation.z = Math.sin(vm8.angle * 0.5) * 0.035;
+            // POLVO. The hierarchy stood in a plane; each level now sits at
+            // its own depth so the cache reads as a stack you could walk into.
+            // The high band —where granular dust lives— scatters the levels
+            // apart, and a grain firing pushes its level forward.
+            border.position.z = -j * 90 * (0.3 + au8.level * 1.8) + au8.env * 60 * au8.amp;
 
             // Species blocks inside layer
             let blockCX = bx + 10;
@@ -1566,6 +1937,9 @@ export function mountMemoryHierarchy(stageEl: HTMLElement, getLatestState: () =>
         dropMat.color.setRGB(dmR, dmG, 0);
         dropMat.opacity = (0.5 + memFeed * 0.5) * (0.4 + vol * 0.6) * masterA;
 
+        // Idle drift + damping. These six had no controls at all before, so
+        // this is also where ROTATION SPD reaches them.
+        driveOrbit(controls);
         composer.render();
     }
 
@@ -1584,6 +1958,7 @@ export function mountMemoryHierarchy(stageEl: HTMLElement, getLatestState: () =>
         name: "Memory Hierarchy", key: "8",
         destroy: () => {
             destroyed = true; cancelAnimationFrame(rafId);
+            try { controls.dispose(); } catch { /* ignore */ }
             window.removeEventListener("resize", onResize);
             hexTexture.dispose();
             composer.dispose(); renderer.dispose(); renderer.domElement.remove();
@@ -1616,7 +1991,7 @@ export function mountMemoryHierarchy(stageEl: HTMLElement, getLatestState: () =>
 //   dronespace    → vertical spread of buckets
 //   dronemix      → teardown artifact count
 //   delayfeedback → afterimage damp
-//   txinfluence   → glitch probability + chromatic aberration + teardown artifacts
+//   txInfluence   → glitch probability + chromatic aberration + teardown artifacts
 //   beatTempo     → hash mutation speed (hero param)
 
 export function mountHashing(stageEl: HTMLElement, getLatestState: () => ParliamentState | null): Viz {
@@ -1629,8 +2004,32 @@ export function mountHashing(stageEl: HTMLElement, getLatestState: () => Parliam
 
     const renderer = makeRenderer(stageEl);
     const scene = new THREE.Scene();
-    const camera = makeOrthoCamera(W, H);
-    camera.position.z = 100;
+    // Everything this slot draws hangs off one root group. That is what
+    // makes the rebuild possible: depth is distributed across its children
+    // and the whole world can be lifted or turned without touching the
+    // camera, which now belongs to the viewer.
+    const root9 = new THREE.Group();
+    scene.add(root9);
+
+    // 3-D. This was an orthographic camera at a fixed z — a flat diagram with
+    // depth simulated by draw order. Now a real perspective camera the viewer
+    // can orbit, and which the shared idle drift turns on its own.
+    const camera = make3D(stageEl, Math.max(W, H) * 0.95);
+    const controls = attachOrbit(camera, renderer.domElement, Math.max(W, H) * 0.95);
+    // Instrumental identity. Six slots, six voices of the engine, no
+    // repeats — this one is mountHashing.
+    const inst9 = INSTRUMENTS.s9;
+    const label9 = makeLabel(inst9, Math.max(W, H) * 0.30);
+    // Positioned from what the camera can SEE, not from the container
+    // height: these six cameras sit at very different distances, and a
+    // fraction of H put the label off-screen on most of them. On the
+    // scene rather than the root, so the world's tilt and idle drift
+    // do not carry the title away with them.
+    {
+        const halfV9 = camera.position.length() * Math.tan((52 * Math.PI / 180) / 2);
+        label9.position.set(0, halfV9 * 0.80, 0);
+    }
+    scene.add(label9);
 
     const composer = new EffectComposer(renderer);
     composer.addPass(new RenderPass(scene, camera));
@@ -1648,7 +2047,7 @@ export function mountHashing(stageEl: HTMLElement, getLatestState: () => Parliam
     for (let i = 0; i < NUM_KEYS; i++) {
         const g = new THREE.BoxGeometry(20, 20, 1);
         const m = new THREE.Mesh(g, new THREE.MeshBasicMaterial({ color: 0xc8ffe6, wireframe: true, transparent: true }));
-        scene.add(m);
+        root9.add(m);
         keyBoxes.push(m);
     }
 
@@ -1657,7 +2056,7 @@ export function mountHashing(stageEl: HTMLElement, getLatestState: () => Parliam
     for (let j = 0; j < NUM_BUCKETS; j++) {
         const g = new THREE.BoxGeometry(30, 30, 1);
         const m = new THREE.Mesh(g, new THREE.MeshBasicMaterial({ color: 0xc8ffe6, wireframe: true, transparent: true }));
-        scene.add(m);
+        root9.add(m);
         bucketBoxes.push(m);
     }
 
@@ -1668,7 +2067,7 @@ export function mountHashing(stageEl: HTMLElement, getLatestState: () => Parliam
     pathGeo.setAttribute("position", new THREE.BufferAttribute(pathPositions, 3));
     pathGeo.setDrawRange(0, 0);
     const pathMat = new THREE.LineBasicMaterial({ color: 0xc8ffe6, transparent: true, vertexColors: false });
-    scene.add(new THREE.Line(pathGeo, pathMat));
+    root9.add(new THREE.Line(pathGeo, pathMat));
 
     // Collision path highlight (drawn over normal paths)
     const collPositions = new Float32Array(NUM_KEYS * PATH_SEGS * 3);
@@ -1676,7 +2075,7 @@ export function mountHashing(stageEl: HTMLElement, getLatestState: () => Parliam
     collGeo.setAttribute("position", new THREE.BufferAttribute(collPositions, 3));
     collGeo.setDrawRange(0, 0);
     const collMat = new THREE.LineBasicMaterial({ color: 0xffaa00, transparent: true });
-    scene.add(new THREE.Line(collGeo, collMat));
+    root9.add(new THREE.Line(collGeo, collMat));
 
     // Arrowhead triangles
     const arrowMeshes: THREE.Mesh[] = [];
@@ -1686,7 +2085,7 @@ export function mountHashing(stageEl: HTMLElement, getLatestState: () => Parliam
             0, 0, 0,  -10, -5, 0,  -10, 5, 0
         ]), 3));
         const m = new THREE.Mesh(g, new THREE.MeshBasicMaterial({ color: 0xc8ffe6, transparent: true }));
-        scene.add(m);
+        root9.add(m);
         arrowMeshes.push(m);
     }
 
@@ -1697,7 +2096,7 @@ export function mountHashing(stageEl: HTMLElement, getLatestState: () => Parliam
     scanGeo.setAttribute("position", new THREE.BufferAttribute(scanPositions, 3));
     scanGeo.setDrawRange(0, 0);
     const scanMat = new THREE.LineBasicMaterial({ color: 0xc8ffe6, transparent: true });
-    scene.add(new THREE.LineSegments(scanGeo, scanMat));
+    root9.add(new THREE.LineSegments(scanGeo, scanMat));
 
     // Tear rects pool
     const tearRects: THREE.Mesh[] = [];
@@ -1705,7 +2104,7 @@ export function mountHashing(stageEl: HTMLElement, getLatestState: () => Parliam
         const g = new THREE.PlaneGeometry(1, 3);
         const m = new THREE.Mesh(g, new THREE.MeshBasicMaterial({ color: 0xffaa00, transparent: true, opacity: 0 }));
         m.visible = false;
-        scene.add(m);
+        root9.add(m);
         tearRects.push(m);
     }
 
@@ -1726,6 +2125,18 @@ export function mountHashing(stageEl: HTMLElement, getLatestState: () => Parliam
         // slots 1 and 3 already use.
         const vm9 = getVizMotion();
         const vf9 = readVoteFlash();
+
+        // ── This slot's own instrument ───────────────────────────────────
+        // level is the energy in ITS register of the master spectrum, env the
+        // decaying attack of ITS last note. Reading the whole mix would make a
+        // kick visual brighten because a bell rang; reading control values
+        // (which is all these six ever did) makes it react to the intention
+        // rather than to the sound.
+        const au9 = readInstrument(inst9);
+        // Which instrument is on screen, published like __antifoniaStand.
+        // A label baked into a canvas sprite cannot be read back, so
+        // without this the identity is unverifiable from outside.
+        try { (window as any).__vizInstrument = inst9; } catch { /* ignore */ }
 
         // Observability: these six render to WebGL only, so no pixel probe can
         // read them back (a canvas without preserveDrawingBuffer returns blank
@@ -1752,7 +2163,7 @@ export function mountHashing(stageEl: HTMLElement, getLatestState: () => Parliam
         const droneSpace = sp9.dronespace ?? 0.5;
         const droneMix = sp9.dronemix     ?? 0.4;
         const delayFb = sp9.delayfeedback ?? 0.3;
-        const txInf   = sp9.txinfluence   ?? 0.5;
+        const txInf   = sp9.txInfluence   ?? 0.5;
         const beatT   = sp9.beatTempo     ?? 0.5;
         const consensus = st?.consensus ?? 0.5;
 
@@ -1794,6 +2205,16 @@ export function mountHashing(stageEl: HTMLElement, getLatestState: () => Parliam
             // Idle drift added to the key-box spin, and a vote forces a
             // REHASH — the boxes jolt as if every key had just been assigned
             // a new bucket, which is this slot's own vocabulary.
+            // MUESTRAS. The bucket table was a row; it is a RING in depth now,
+            // and each key box sits on it. tone carries which of the seven
+            // field recordings fired, so a howler and an aircraft land at
+            // different places on the ring and the table shows you which.
+            {
+                const ang9 = (i / Math.max(1, keyBoxes.length)) * Math.PI * 2;
+                const rad9 = W * 0.26 * (0.6 + au9.level * 0.9);
+                keyBoxes[i].position.z = Math.cos(ang9) * rad9
+                    + au9.env * 150 * au9.amp * (1 - Math.abs(au9.tone - i / Math.max(1, keyBoxes.length)));
+            }
             keyBoxes[i].rotation.z += 0.005 + droneD * 0.02 + vm9.speed * 0.02
               + (vf9 ? vf9.flash * 0.14 * (isAlarm(vf9.type) ? -1 : 1) : 0);
             (keyBoxes[i].material as THREE.MeshBasicMaterial).color.setRGB(0.78, 1.0, 0.9);
@@ -1893,6 +2314,9 @@ export function mountHashing(stageEl: HTMLElement, getLatestState: () => Parliam
         scanGeo.attributes.position.needsUpdate = true;
         scanMat.opacity = (vol * 0.08 + texDep * 0.12 + filtC * 0.06) * masterA;
 
+        // Idle drift + damping. These six had no controls at all before, so
+        // this is also where ROTATION SPD reaches them.
+        driveOrbit(controls);
         composer.render();
     }
 
@@ -1911,6 +2335,7 @@ export function mountHashing(stageEl: HTMLElement, getLatestState: () => Parliam
         name: "Hashing", key: "9",
         destroy: () => {
             destroyed = true; cancelAnimationFrame(rafId);
+            try { controls.dispose(); } catch { /* ignore */ }
             window.removeEventListener("resize", onResize);
             composer.dispose(); renderer.dispose(); renderer.domElement.remove();
         }
