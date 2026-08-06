@@ -221,12 +221,16 @@ howler from the emergent crowns, the frog from the understory, the bat crossing
 the canopy. A call at 20 m lands in the canopy in all three slots, and a check
 asserts the stack has not drifted apart between them.
 
-**The stand is a simulated LiDAR sweep**, not scenery: a ceiba (*Ceiba
+**The stand is a simulated LiDAR sweep**, not scenery: one ceiba (*Ceiba
 pentandra*) with a clean bole and a flat tiered crown, four campanos (*Albizia
-saman*) in umbrella domes wider than they are tall, fourteen ordinary dry-forest
-canopy trees, and exactly two wine palms (*Attalea butyracea*). They grow in
-**cohorts, not a scatter** — an emergent drags a retinue of smaller trees into
-its shade, and the palms punctuate the stand rather than populating it. An
+saman*) in umbrella domes wider than they are tall, ~53 ordinary dry-forest
+canopy trees, and exactly two wine palms (*Attalea butyracea*) — 60 trees,
+counted at runtime and published on `window.__antifoniaStand`. They are **sown,
+not placed**: regeneration nuclei scattered through the lobe, cohorts crowding
+inward, and a minimum-exclusion test so no two crowns occupy the same cubic
+metre. A hand-written list of positions read as a maquette — even spacing, and
+the ceiba alone in a clearing nobody planted. It now stands off-centre with its
+retinue touching it, because an emergent lives surrounded. An
 aerial flight is simulated (canopy returns strongly, ground moderately, vertical
 boles barely), because that asymmetry is what makes an aerial cloud look the way
 it does. The ground boundary is **amorphous** — polar sampling with an angular
@@ -253,11 +257,22 @@ and putting the forest into the same instrument a currency is quoted with says
 out loud what the whole apparatus does — try to measure nature in real time,
 with the wrong tool, leaving the seam visible.
 
-The candles are **immersed**: each animal sings from a real perch, a tree in
-this stand tall enough to reach its stratum. The howler can only be in the
-ceiba, because it is the one emergent. The aircraft has no perch — it is in the
-atmosphere, which is what it is. The strip along the bottom draws the same
+The candles are **immersed**. Canopy sources sing from a **bird actually
+crossing the stand** — seven of them fly at canopy and emergent height, wings
+beating, and the sky empties outside their hours. First you see who is
+speaking, then what they said. Failing a bird, the call takes a **perch**: a
+tree in this stand tall enough to reach its stratum. The howler can only be in
+the ceiba, because it is the one emergent. The aircraft has no perch — it is in
+the atmosphere, which is what it is. The strip along the bottom draws the same
 reading as a full chart, time on x and frequency on y.
+
+**Mycelium** runs under the ground and keeps going past the plot and out of
+frame on every side. That it leaves is the claim, not a framing slip: the
+network does not recognise the parcel boundary or the viewport. The unit the
+eye thinks it is looking at — this stand, this rectangle — is an administrative
+cut across something continuous. The forest above can be framed; the one below
+cannot. It breathes with the mycorrhizal stratum's own weight, one opacity
+write for ~7 000 segments.
 
 **Frequency does not fight for that axis.** Each call is a glyph whose length is
 its bandwidth; the spectrum reads as morphology. A separate strip along the

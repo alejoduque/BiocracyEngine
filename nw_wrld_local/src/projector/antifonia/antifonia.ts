@@ -20,8 +20,10 @@
 //   surface  · the module reads window.__sonethParams / __phenoParams /
 //              __ednaBio itself, every frame, like DarkForest does
 //   reverse  · chorus density → texturedepth, spread → spatialspread,
-//              machine share → noiselevel. None of these three are claimed by
-//              F, B, R or P, so no slot fights another over the same address.
+//              machine share → memoryfeed. NOT noiselevel: that belongs to the
+//              Master Amp / Noise Level / Drone Depth block the performer has
+//              called finished, and a slot writing into it is a regression
+//              wearing the costume of a coupling.
 //   events   · calls → /sample/trigger [idx, amp, rate, hpf, lpf, pan, dur]
 
 import * as THREE from "three";
@@ -78,12 +80,20 @@ let _voteTimer: ReturnType<typeof setInterval> | null = null;
 let _reverseTimer: ReturnType<typeof setInterval> | null = null;
 let _callTimer: ReturnType<typeof setInterval> | null = null;
 let _lastVoteTime = 0;
-let _lastPush = { texture: -1, spatial: -1, noise: -1 };
+let _lastPush = { texture: -1, spatial: -1, memory: -1 };
 
-// Calls per drain. A dawn chorus at the tide crest can outrun any transport;
-// SC caps concurrent voices at ~sampleMaxVoices anyway, so flooding the socket
-// only adds latency to the ones that do sound.
-const MAX_CALLS_PER_TICK = 4;
+// Calls per drain, and the floor between two triggers.
+//
+// The cap alone was not enough: 4 per 120 ms tick is up to 33 field recordings
+// a second, each several seconds long, overlapping into a permanent wash that
+// masked the drone, the pads and the beat engine underneath it. A recording is
+// an EVENT — one bird, once — not a texture generator. The interval is what
+// makes it read as a call, and it follows the tide, so the crest is a chorus
+// and the trough is a single voice at a time.
+const MAX_CALLS_PER_TICK = 2;
+const GAP_CREST = 420;    // ms, tide high
+const GAP_TROUGH = 2600;  // ms, tide low
+let _lastSampleAt = 0;
 
 async function ensureConstructor() {
   if (_ctor) return _ctor;
@@ -144,8 +154,9 @@ export function destroyAntifonia() {
   if (_voteTimer) { clearInterval(_voteTimer); _voteTimer = null; }
   if (_reverseTimer) { clearInterval(_reverseTimer); _reverseTimer = null; }
   if (_callTimer) { clearInterval(_callTimer); _callTimer = null; }
+  _lastSampleAt = 0;
   if (_unsubscribeStore) { _unsubscribeStore(); _unsubscribeStore = null; }
-  _lastPush = { texture: -1, spatial: -1, noise: -1 };
+  _lastPush = { texture: -1, spatial: -1, memory: -1 };
   if (_instance) {
     try { _instance.destroy(); } catch { /* ignore */ }
     _instance = null;
@@ -210,13 +221,19 @@ function startCallDrain() {
 
     const queued = _instance.getPendingCalls?.() ?? null;
     if (queued && queued.length && typeof send === "function") {
-      const n = Math.min(MAX_CALLS_PER_TICK, queued.length);
-      for (let i = 0; i < n; i++) {
+      const tv = tide && typeof tide.value === "number" ? clamp01(tide.value) : 0.65;
+      const gap = GAP_TROUGH + (GAP_CREST - GAP_TROUGH) * tv;
+      const now = Date.now();
+      let fired = 0;
+      for (let i = 0; i < queued.length && fired < MAX_CALLS_PER_TICK; i++) {
         const c = queued[i];
-        if (!c || c.smp < 0) continue;   // geophony has no recording yet
+        if (!c || c.smp < 0) continue;         // geophony has no recording yet
+        if (now - _lastSampleAt < gap) break;  // the rest of this batch is dropped
+        _lastSampleAt = now;
         try {
           send("/sample/trigger", [c.smp, c.amp, c.rate, c.hpf, c.lpf, c.pan, c.dur]);
         } catch { /* ignore */ }
+        fired++;
       }
     }
 
@@ -239,11 +256,24 @@ function startReverseBreath() {
     const machine = clamp01(_instance.getMachineShare?.() ?? 0);
 
     // A fuller chorus thickens the grain; the room's width becomes the spatial
-    // spread; and the share of the mix that is machine raises the noise bed —
-    // the electronic voice growing into ambient rather than sitting beside it.
-    push("texturedepth", 0.18 + dens * 0.62, "texture");
-    push("spatialspread", 0.20 + spread * 0.60, "spatial");
-    push("noiselevel", 0.05 + machine * 0.45, "noise");
+    // spread; the machine's share of the room feeds the delay, so the
+    // electronic voice grows into ambient by SMEARING rather than by adding a
+    // separate noise bed.
+    //
+    // ⚠ THIS SLOT MUST NOT WRITE noiselevel. It did, pinning it to 0.05
+    // whenever no aircraft or tape was sounding — and noiselevel belongs to
+    // the Master Amp / Filt Cutoff / Noise Level / Noise Filt / Drone Depth
+    // block that the performer has explicitly called finished. A visualization
+    // reaching into a block that is already right is not a coupling, it is a
+    // regression with an alibi. That is most of where the richness went.
+    //
+    // The floors are deliberately generous. A reverse-breath value does not
+    // modulate the performer's setting, it REPLACES it, so a range starting at
+    // 0.18 means an idle chorus drags the whole timbre down to near nothing
+    // and holds it there. These start where the sound is already alive.
+    push("texturedepth", 0.30 + dens * 0.48, "texture");
+    push("spatialspread", 0.28 + spread * 0.50, "spatial");
+    push("memoryfeed", 0.24 + machine * 0.40, "memory");
   }, 280);
 }
 

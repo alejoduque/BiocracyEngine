@@ -190,7 +190,8 @@ class Antifonia extends BaseThreeJsModule {
   // La parcela son 100 m ↔ PLOT*2 unidades.
   static M = (9.0 * 2) / 100;
 
-  static GLYPH_POOL = 220;      // techo duro de glifos vivos
+  static BIRDS = 7;             // aves en vuelo — ocupan el estrato de las velas
+  static GLYPH_POOL = 220;      // techo duro de velas vivas
   static NICHE_KEEP = 260;      // llamadas retenidas en la franja del nicho
   static PLOT = 9.0;            // media anchura de la parcela, en unidades de escena
 
@@ -278,6 +279,7 @@ class Antifonia extends BaseThreeJsModule {
     this.scene.add(key);
 
     this._buildCloud();
+    this._buildBirds();
     this._buildStrata();
     this._buildGlyphs();
     this._buildNiche();
@@ -441,45 +443,102 @@ class Antifonia extends BaseThreeJsModule {
     }
 
     // ── árboles ──────────────────────────────────────────────────────────
-    // Posiciones a mano: un rodal compuesto, no una dispersión aleatoria. La
-    // ceiba domina el centro-izquierda; los campanos abren a la derecha; las
-    // palmas rellenan los bordes, que es como se reparten de verdad cuando el
-    // dosel alto ya está ocupado.
-    // Los árboles NO se dispersan uniformemente: crecen juntos. La ceiba tenía
-    // un claro alrededor, que es exactamente lo que no ocurre en el bosque —
-    // una emergente arrastra un cortejo de árboles menores a su sombra y los
-    // campanos se agrupan. Aquí hay tres cohortes, y sólo DOS palmas: la
-    // palma de vino puntúa el rodal, no lo puebla.
+    // SEMBRADO, no colocado. La lista a mano de veintiún árboles se leía como
+    // una maqueta: separaciones parejas, la ceiba sola en el centro de un
+    // claro que nadie plantó, y el ojo encontraba la retícula debajo. Un
+    // bosque no se compone, se llena.
+    //
+    // Ahora crecen por reclutamiento: núcleos de regeneración repartidos en el
+    // lóbulo, y alrededor de cada uno un grupo que se aprieta hacia el centro
+    // (raíz cuadrada del radio → densidad mayor adentro, como un claro que se
+    // cierra desde los bordes). Se rechazan las posiciones demasiado juntas —
+    // exclusión mínima, que es lo que impide que dos copas ocupen el mismo
+    // metro cúbico— y el resto queda irregular porque lo es.
+    //
+    // La ceiba NO va en el centro y NO va sola: entra desplazada y sus
+    // vecinos se siembran encima de ella, tocándola. Una emergente vive
+    // rodeada; el claro alrededor era el rasgo más artificial de todo esto.
     this._trees = [];
+    const placed = [];
+    const tooClose = (x, z, minD) => {
+      for (const p of placed) {
+        const dx = p[0] - x, dz = p[1] - z;
+        if (dx * dx + dz * dz < minD * minD) return true;
+      }
+      return false;
+    };
+    const claim = (x, z, minD) => {
+      if (Math.hypot(x, z) > W * lobe(Math.atan2(z, x)) * 1.02) return false;
+      if (tooClose(x, z, minD)) return false;
+      placed.push([x, z]);
+      return true;
+    };
 
-    // cohorte de la ceiba — la giganta y su séquito, apretados
-    this._tree_ceiba(rnd, -1.2, 0.6, 1.0);
-    this._tree_arbol(rnd, 0.9, 1.9, 0.82);
-    this._tree_arbol(rnd, -2.9, 2.1, 0.70);
-    this._tree_arbol(rnd, -3.1, -1.2, 0.88);
-    this._tree_arbol(rnd, 1.3, -1.4, 0.64);
-    this._tree_campano(rnd, 2.6, 0.4, 0.68);
+    // la giganta, descentrada
+    const ceibaX = -2.35, ceibaZ = 1.15;
+    this._tree_ceiba(rnd, ceibaX, ceibaZ, 1.0);
+    placed.push([ceibaX, ceibaZ]);
 
-    // cohorte de campanos — abre a la derecha
-    this._tree_campano(rnd, 5.4, -2.2, 0.94);
-    this._tree_campano(rnd, 6.6, 1.8, 0.80);
-    this._tree_arbol(rnd, 4.4, 3.4, 0.74);
-    this._tree_arbol(rnd, 7.2, -0.4, 0.60);
-    this._tree_arbol(rnd, 4.9, -4.4, 0.68);
+    // su cortejo inmediato: pegado, tocándola
+    for (let i = 0; i < 7; i++) {
+      const a = rnd() * Math.PI * 2;
+      const r = 0.75 + rnd() * 2.1;
+      const x = ceibaX + Math.cos(a) * r, z = ceibaZ + Math.sin(a) * r;
+      if (!claim(x, z, 0.62)) continue;
+      this._tree_arbol(rnd, x, z, 0.5 + rnd() * 0.45);
+    }
 
-    // cohorte baja, al frente y a la izquierda
-    this._tree_campano(rnd, -5.9, -3.6, 0.72);
-    this._tree_arbol(rnd, -6.8, -0.8, 0.66);
-    this._tree_arbol(rnd, -4.6, -5.0, 0.58);
-    this._tree_arbol(rnd, -2.0, -4.6, 0.72);
-    this._tree_arbol(rnd, 1.9, -5.2, 0.62);
-    this._tree_arbol(rnd, -6.2, 3.4, 0.60);
-    this._tree_arbol(rnd, 0.2, 4.6, 0.66);
-    this._tree_arbol(rnd, 3.1, 5.4, 0.54);
+    // núcleos de regeneración por todo el lóbulo
+    const nuclei = [];
+    for (let k = 0; k < 7; k++) {
+      const a = rnd() * Math.PI * 2;
+      const r = (0.25 + rnd() * 0.68) * W;
+      nuclei.push([Math.cos(a) * r, Math.sin(a) * r]);
+    }
+    for (const [nx, nz] of nuclei) {
+      const n = 5 + ((rnd() * 7) | 0);
+      // Un campano ancla la mayoría de los núcleos, y si el punto exacto está
+      // ocupado busca al lado en vez de rendirse. Con un solo intento salían
+      // dos campanos en todo el rodal —la exclusión mínima los rechazaba
+      // contra árboles ya sembrados— y su cúpula en paraguas, una de las tres
+      // siluetas que este slot existe para hacer legibles, no se veía.
+      if (rnd() < 0.72) {
+        for (let att = 0; att < 6; att++) {
+          const jx = nx + (rnd() - 0.5) * att * 0.7;
+          const jz = nz + (rnd() - 0.5) * att * 0.7;
+          if (claim(jx, jz, 0.9)) {
+            this._tree_campano(rnd, jx, jz, 0.62 + rnd() * 0.38);
+            break;
+          }
+        }
+      }
+      for (let i = 0; i < n; i++) {
+        const a = rnd() * Math.PI * 2;
+        const rr = Math.sqrt(rnd()) * (1.4 + rnd() * 2.4);
+        const x = nx + Math.cos(a) * rr, z = nz + Math.sin(a) * rr;
+        if (!claim(x, z, 0.58)) continue;
+        this._tree_arbol(rnd, x, z, 0.42 + rnd() * 0.62);
+      }
+    }
 
-    // dos palmas, nada más
-    this._tree_palma(rnd, -4.4, 4.6, 1.0);
-    this._tree_palma(rnd, 6.4, 4.6, 0.88);
+    // relleno disperso: los que crecieron donde cupieron
+    for (let i = 0; i < 46; i++) {
+      const a = rnd() * Math.PI * 2;
+      const r = Math.sqrt(rnd()) * W * lobe(a) * 0.97;
+      const x = Math.cos(a) * r, z = Math.sin(a) * r;
+      if (!claim(x, z, 0.66)) continue;
+      this._tree_arbol(rnd, x, z, 0.34 + rnd() * 0.6);
+    }
+
+    // dos palmas, nada más: puntúan el rodal, no lo pueblan
+    for (let k = 0, tries = 0; k < 2 && tries < 60; tries++) {
+      const a = rnd() * Math.PI * 2;
+      const r = (0.42 + rnd() * 0.5) * W;
+      const x = Math.cos(a) * r, z = Math.sin(a) * r;
+      if (!claim(x, z, 1.5)) continue;
+      this._tree_palma(rnd, x, z, 0.88 + rnd() * 0.24);
+      k++;
+    }
 
     // ── sotobosque ───────────────────────────────────────────────────────
     const nShrub = Math.round(Antifonia.CLOUD.shrub * Antifonia.CLOUD.scale);
@@ -536,7 +595,30 @@ class Antifonia extends BaseThreeJsModule {
       this._cloudMats.push(m);
     }
     this.scene.add(this._cloudGroup);
+    this._buildMycelium(rnd, W);
+
     this._cloudTotal = this._cloudPoints.reduce((a, p) => a + (p ? p.userData.total : 0), 0);
+
+    // Composición del rodal, publicada. Los árboles ya no se enumeran a mano
+    // sino que se siembran en bucles, así que contar líneas del fuente dejó de
+    // decir nada — lo que hay que poder mirar es lo que CRECIÓ. Se publica en
+    // la misma forma en que btransito publica __transitoDrone, y sirve tanto
+    // para las pruebas como para saber, en vivo, qué bosque se está mirando.
+    try {
+      const kinds = {};
+      for (const t of this._trees) kinds[t.kind] = (kinds[t.kind] || 0) + 1;
+      if (typeof window !== "undefined") {
+        window.__antifoniaStand = {
+          trees: kinds,
+          treeTotal: this._trees.length,
+          points: this._cloudTotal,
+          mycoSegments: this._mycoSegs,
+          birds: Antifonia.BIRDS,
+          seed: 20221109,
+        };
+      }
+    } catch (e) { /* ignore */ }
+
     this._lod = 1.0;
   }
 
@@ -641,6 +723,221 @@ class Antifonia extends BaseThreeJsModule {
       put(cx + Math.cos(a) * r, h, cz + Math.sin(a) * r, 0.18 + rnd() * 0.30);
     }
     this._trees.push({ kind: "campano", x: cx, z: cz, h: H, r: R });
+  }
+
+  // ══ aves en vuelo ══════════════════════════════════════════════════════
+  //
+  // Las velas altas quedaban colgadas en el aire sin causa: un registro a 30 m
+  // sobre un hueco entre copas no lo explica nada. Ahora ese estrato está
+  // OCUPADO. Media docena de aves cruzan el rodal a altura de dosel y de
+  // emergentes, y cuando una fuente de dosel canta, la vela sale PREFERENTE-
+  // MENTE del ave que esté pasando: primero se ve al que habla, después se ve
+  // lo que dijo. Eso es lo que justifica la capa.
+  //
+  // Cada ave son dos segmentos en V —las alas— que baten. No hace falta más:
+  // a esta escala una V que se abre y se cierra mientras se desplaza se lee
+  // como vuelo inequívocamente, y cuesta doce vértices por ave.
+  _buildBirds() {
+    const N = Antifonia.BIRDS;
+    const pos = new Float32Array(N * 4 * 3);   // 2 segmentos = 4 vértices
+    const col = new Float32Array(N * 4 * 3);
+    const g = new THREE.BufferGeometry();
+    g.setAttribute("position", new THREE.BufferAttribute(pos, 3));
+    g.setAttribute("color", new THREE.BufferAttribute(col, 3));
+    this._birdGeo = g;
+    this._birdMesh = new THREE.LineSegments(g, new THREE.LineBasicMaterial({
+      vertexColors: true, transparent: true, opacity: 0.9,
+      depthWrite: false, blending: THREE.AdditiveBlending,
+    }));
+    this._birdMesh.frustumCulled = false;
+    this.scene.add(this._birdMesh);
+
+    this.birds = [];
+    for (let i = 0; i < N; i++) this.birds.push(this._spawnBird(true));
+  }
+
+  _spawnBird(initial) {
+    const W = Antifonia.PLOT;
+    const a = Math.random() * Math.PI * 2;
+    const R = W * (1.25 + Math.random() * 0.5);
+    // entra por un lado y sale por el otro, con una desviación lateral
+    const from = { x: Math.cos(a) * R, z: Math.sin(a) * R };
+    const off = (Math.random() * 2 - 1) * W * 0.55;
+    const to = { x: -from.x + Math.cos(a + Math.PI / 2) * off,
+                 z: -from.z + Math.sin(a + Math.PI / 2) * off };
+    const agl = 14 + Math.random() * 26;          // dosel a emergentes
+    return {
+      x: from.x, z: from.z, tx: to.x, tz: to.z,
+      agl, y: this._yFromAGL(agl),
+      t: initial ? Math.random() : 0,
+      speed: 0.028 + Math.random() * 0.036,
+      flap: Math.random() * 6.28,
+      flapRate: 7 + Math.random() * 5,
+      size: 0.16 + Math.random() * 0.13,
+      lit: 0,
+    };
+  }
+
+  _updateBirds(dt) {
+    if (!this.birds || !this._birdGeo) return;
+    const pos = this._birdGeo.attributes.position.array;
+    const col = this._birdGeo.attributes.color.array;
+    const P = Antifonia.PALETTE;
+    const base = new THREE.Color(P.ivory);
+    const hot = new THREE.Color(P.bioHi);
+    const cam = this.camera;
+
+    // Sólo vuelan cuando hay aves en su hora: al mediodía y de noche el cielo
+    // se vacía, que es la mitad del sentido de tener un reloj circadiano.
+    let birdHour = 0;
+    for (const src of Antifonia.SOURCES) {
+      if (src.cls !== "biofonia") continue;
+      if (src.stratum !== "dosel" && src.stratum !== "emergentes") continue;
+      birdHour = Math.max(birdHour, this._circadian(src, this.hour));
+    }
+
+    for (let i = 0; i < this.birds.length; i++) {
+      const b = this.birds[i];
+      b.t += dt * b.speed * (0.45 + birdHour * 1.1);
+      b.flap += dt * b.flapRate;
+      b.lit *= Math.exp(-dt * 2.2);
+      if (b.t >= 1) { this.birds[i] = this._spawnBird(false); continue; }
+
+      const x = b.x + (b.tx - b.x) * b.t;
+      const z = b.z + (b.tz - b.z) * b.t;
+      // sube y baja en el trayecto, como cualquier vuelo real
+      const y = b.y + Math.sin(b.t * Math.PI) * 0.35 + Math.sin(b.flap * 0.31) * 0.06;
+      b.px = x; b.pz = z; b.py = y;
+
+      // las alas se abren y cierran; de canto a la cámara
+      const yaw = Math.atan2(cam.position.x - x, cam.position.z - z);
+      const ux = Math.cos(yaw), uz = -Math.sin(yaw);
+      const beat = Math.sin(b.flap);
+      const wx = b.size, wy = b.size * 0.72 * beat;
+
+      const o = i * 12;
+      // ala izquierda: punta → cuerpo
+      pos[o + 0] = x - ux * wx; pos[o + 1] = y + wy; pos[o + 2] = z - uz * wx;
+      pos[o + 3] = x;           pos[o + 4] = y;      pos[o + 5] = z;
+      // ala derecha: cuerpo → punta
+      pos[o + 6] = x;           pos[o + 7] = y;      pos[o + 8] = z;
+      pos[o + 9] = x + ux * wx; pos[o + 10] = y + wy; pos[o + 11] = z + uz * wx;
+
+      const vis = Math.sin(Math.min(1, b.t) * Math.PI) ** 0.35;   // entra y sale
+      const c = base.clone().lerp(hot, Math.min(1, b.lit));
+      const k = (0.62 + birdHour * 0.75 + b.lit * 1.5) * vis;
+      for (let v = 0; v < 4; v++) {
+        col[o + v * 3 + 0] = c.r * k;
+        col[o + v * 3 + 1] = c.g * k;
+        col[o + v * 3 + 2] = c.b * k;
+      }
+    }
+    this._birdGeo.attributes.position.needsUpdate = true;
+    this._birdGeo.attributes.color.needsUpdate = true;
+  }
+
+  // Un ave que esté cruzando y sea plausible para esta fuente. Es lo que hace
+  // que la vela tenga de dónde salir en vez de aparecer en el vacío.
+  _birdFor(src) {
+    if (!this.birds || src.cls !== "biofonia") return null;
+    if (src.stratum !== "dosel" && src.stratum !== "emergentes") return null;
+    const cand = this.birds.filter((b) => b.px !== undefined && b.t > 0.12 && b.t < 0.88);
+    if (cand.length === 0) return null;
+    const b = cand[(Math.random() * cand.length) | 0];
+    b.lit = 1;
+    return b;
+  }
+
+  // ══ micelio ════════════════════════════════════════════════════════════
+  //
+  // La RED MICORRÍCICA era el único estrato rotulado y vacío: un nombre
+  // colgando bajo un suelo donde no pasaba nada. Ahora corre por debajo una
+  // red de hifas que enlaza los árboles entre sí y SIGUE MÁS ALLÁ del rodal,
+  // saliéndose del encuadre por los cuatro lados.
+  //
+  // Que se salga no es un descuido de composición: es la afirmación. El
+  // micelio no reconoce el límite de la parcela ni el del viewport — la
+  // unidad que el ojo cree estar mirando (este rodal, este cuadro) es un
+  // recorte administrativo sobre algo continuo. El bosque de arriba se puede
+  // enmarcar; el de abajo, no. Por eso los filamentos no se detienen en el
+  // borde amorfo del suelo: lo atraviesan y se van.
+  //
+  // Se dibuja como LineSegments con mezcla aditiva: una sola geometría, un
+  // draw call, y el pulso se hace moviendo la opacidad del material — nada
+  // por vértice.
+  _buildMycelium(rnd, W) {
+    const pos = [];
+    const col = [];
+    const yOf = (agl) => this._yFromAGL(agl);
+    const P = Antifonia.PALETTE;
+    const warm = new THREE.Color(P.fungal ?? "#B5733C");
+    const cool = new THREE.Color(P.term);
+
+    // Cada hifa parte de la base de un árbol —el simbionte tiene con quién
+    // asociarse— o de un punto al azar, y camina con giro browniano,
+    // ramificándose. Se le deja rebasar el radio del rodal a propósito.
+    // Una de cada cuatro raíces, no todas. Con un árbol por hifa la red salía
+    // tan tupida que se volvía el sujeto del cuadro y el bosque quedaba de
+    // fondo — al revés de lo que debe leerse. Lo que importa del micelio aquí
+    // es que ALCANCE, no que llene.
+    const roots = [];
+    for (let i = 0; i < this._trees.length; i += 4) {
+      roots.push([this._trees[i].x, this._trees[i].z]);
+    }
+    for (let i = 0; i < 5; i++) {
+      const a = rnd() * Math.PI * 2;
+      roots.push([Math.cos(a) * rnd() * W * 0.7, Math.sin(a) * rnd() * W * 0.7]);
+    }
+
+    const walk = (x, z, ang, life, depth) => {
+      let cx = x, cz = z, ca = ang;
+      const step = 0.16 + rnd() * 0.13;
+      for (let i = 0; i < life; i++) {
+        // giro browniano con una leve deriva hacia afuera: la red se expande
+        const outward = Math.atan2(cz, cx);
+        ca += (rnd() - 0.5) * 0.85 + Math.sin(outward - ca) * 0.045;
+        const nx = cx + Math.cos(ca) * step;
+        const nz = cz + Math.sin(ca) * step;
+        // profundidad: justo bajo la hojarasca, ondulando en el subsuelo
+        const d0 = -0.25 - Math.sin(i * 0.31 + x) * 0.35;
+        const d1 = -0.25 - Math.sin((i + 1) * 0.31 + x) * 0.35;
+        pos.push(cx, yOf(d0), cz, nx, yOf(d1), nz);
+        // Se apaga con la distancia al centro, PERO nunca del todo: el trozo
+        // que sale del cuadro tiene que seguir visible al borde, o el efecto
+        // se convierte en un disco recortado y se pierde el sentido.
+        const rr = Math.hypot(nx, nz) / W;
+        const fade = Math.max(0.10, 1 - rr * 0.68) * (depth === 0 ? 1 : 0.55);
+        const c = warm.clone().lerp(cool, Math.min(1, rr * 0.5));
+        col.push(c.r * fade, c.g * fade, c.b * fade,
+                 c.r * fade, c.g * fade, c.b * fade);
+        cx = nx; cz = nz;
+        // ramificación
+        if (depth < 2 && rnd() < 0.055) {
+          walk(cx, cz, ca + (rnd() < 0.5 ? 1 : -1) * (0.5 + rnd() * 0.7),
+               Math.round(life * 0.55), depth + 1);
+        }
+        // se deja correr bien más allá del rodal antes de rendirse
+        if (Math.hypot(cx, cz) > W * 1.85) break;
+      }
+    };
+
+    for (const [rx, rz] of roots) {
+      const n = 1 + ((rnd() * 2) | 0);
+      for (let k = 0; k < n; k++) {
+        walk(rx, rz, rnd() * Math.PI * 2, 40 + ((rnd() * 46) | 0), 0);
+      }
+    }
+
+    const g = new THREE.BufferGeometry();
+    g.setAttribute("position", new THREE.Float32BufferAttribute(pos, 3));
+    g.setAttribute("color", new THREE.Float32BufferAttribute(col, 3));
+    this._myco = new THREE.LineSegments(g, new THREE.LineBasicMaterial({
+      vertexColors: true, transparent: true, opacity: 0.15,
+      depthWrite: false, blending: THREE.AdditiveBlending,
+    }));
+    this._myco.frustumCulled = false;
+    this.scene.add(this._myco);
+    this._mycoSegs = pos.length / 6;
   }
 
   // El árbol común del bosque seco: gusanero, indio desnudo, guayacán,
@@ -991,6 +1288,7 @@ class Antifonia extends BaseThreeJsModule {
     this._smooth(dt);
     this._advanceClock(dt);
     this._spawn(dt);
+    this._updateBirds(dt);
     this._updateCalls(dt);
     this._updateCloud(dt);
     this._drawNiche();
@@ -1145,13 +1443,18 @@ class Antifonia extends BaseThreeJsModule {
     if (this.calls.length >= Antifonia.GLYPH_POOL) return;
     const S = Antifonia.STRATA;
     const spread = 0.35 + this.ctl.spread * 0.65;
-    const perch = scored ? null : this._perchFor(src);
+    // Primero un ave en vuelo (si la fuente es de dosel y hay alguna cruzando),
+    // luego una percha, y sólo si no hay ninguna de las dos, aire abierto.
+    // Ese orden es el que hace que se vea primero quién habla.
+    const bird = scored ? null : this._birdFor(src);
+    const perch = (scored || bird) ? null : this._perchFor(src);
     const agl = scored ? scored.heightAGL
-      : (perch ? perch.agl : this._stratumMeters(src.stratum) * (0.75 + Math.random() * 0.5));
-    const x = perch ? perch.x
-      : (scored ? scored.x : (Math.random() * 2 - 1)) * Antifonia.PLOT * spread;
-    const z = perch ? perch.z
-      : (scored ? scored.z : (Math.random() * 2 - 1)) * Antifonia.PLOT * spread;
+      : (bird ? bird.agl : (perch ? perch.agl
+        : this._stratumMeters(src.stratum) * (0.75 + Math.random() * 0.5)));
+    const x = bird ? bird.px : (perch ? perch.x
+      : (scored ? scored.x : (Math.random() * 2 - 1)) * Antifonia.PLOT * spread);
+    const z = bird ? bird.pz : (perch ? perch.z
+      : (scored ? scored.z : (Math.random() * 2 - 1)) * Antifonia.PLOT * spread);
     const lo = scored ? scored.lo : src.lo;
     const hi = scored ? scored.hi : src.hi;
     const dur = scored ? scored.dur : (0.5 + Math.random() * 2.2);
@@ -1173,7 +1476,7 @@ class Antifonia extends BaseThreeJsModule {
     const call = {
       key: src.key, cls: src.cls, smp: src.smp,
       lo, hi, agl, x, z, dur,
-      y: this._yFromAGL(agl),
+      y: bird ? bird.py : this._yFromAGL(agl),
       age: 0,
       life: Math.max(1.2, dur * 1.8),
       hour: this.hour,
@@ -1365,6 +1668,15 @@ class Antifonia extends BaseThreeJsModule {
                    + Math.sin(tNow * 1.13 + si * 1.9) * amp * 0.35;
       p.position.z = Math.cos(tNow * 0.37 + si * 1.2) * amp * 0.8;
       p.position.y = Math.sin(tNow * 0.61 + si * 0.4) * amp * 0.22;
+    }
+
+    // El micelio respira con el peso del estrato micorrícico: una sola
+    // escritura de opacidad, sin tocar sus miles de segmentos.
+    if (this._myco) {
+      const wMic = this.stratumW[Antifonia.STRATA.length - 1];
+      const pulse = 0.5 + 0.5 * Math.sin((this._last - this._t0) * 0.35);
+      this._myco.material.opacity = 0.09 + wMic * 0.13 + pulse * 0.045
+        + Math.min(0.14, (this._stratumLit ? this._stratumLit[Antifonia.STRATA.length - 1] : 0) * 0.22);
     }
 
     // ── LOD adaptativo ───────────────────────────────────────────────────
