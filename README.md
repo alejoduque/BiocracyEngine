@@ -164,6 +164,14 @@ stands in layers, the kick radiates as a pressure front, the cache is a stack
 you could walk into, the hash table is a ring), and the same idle drift as every
 other slot.
 
+The instrument's name used to be **drawn into the scene** as a sprite floating
+over each one. That is gone. The name was a caption on a projection surface —
+the one element in six otherwise wordless slots that addressed the viewer
+instead of the room, and it sat in the same upper third the performance
+projects into. The binding it announced is the real one and it survives
+untouched: each slot still reads its own band of the spectrum and its own
+voice's onsets, per the table above.
+
 **They react to the sound, not to the intention.** `\masterScope` analyses the
 master bus *after* the limiter and sends 16 log-spaced bands at 20 Hz — that had
 been arriving all along with nothing listening, so the spectrogram was running on
@@ -296,10 +304,14 @@ the canopy. A call at 20 m lands in the canopy in all three slots, and a check
 asserts the stack has not drifted apart between them.
 
 **The stand is a simulated LiDAR sweep**, not scenery: one ceiba (*Ceiba
-pentandra*) with a clean bole and a flat tiered crown, four campanos (*Albizia
-saman*) in umbrella domes wider than they are tall, ~53 ordinary dry-forest
-canopy trees, and exactly two wine palms (*Attalea butyracea*) — 60 trees,
-counted at runtime and published on `window.__antifoniaStand`. They are **sown,
+pentandra*) with a clean bole and a flat tiered crown, campanos (*Albizia
+saman*) in umbrella domes wider than they are tall, ~50 ordinary dry-forest
+canopy trees, and exactly two wine palms (*Attalea butyracea*) — ~57 trees,
+counted at runtime and published on `window.__antifoniaStand`. The exact
+composition shifts when anything upstream changes how many numbers the seeded
+generator has drawn, which is why it is *counted* and asserted rather than
+declared: that is how a change to the ceiba silently took the palms to zero
+once already. They are **sown,
 not placed**: regeneration nuclei scattered through the lobe, cohorts crowding
 inward, and a minimum-exclusion test so no two crowns occupy the same cubic
 metre. A hand-written list of positions read as a maquette — even spacing, and
@@ -310,6 +322,20 @@ boles barely), because that asymmetry is what makes an aerial cloud look the way
 it does. The ground boundary is **amorphous** — polar sampling with an angular
 lobe, thinned at the rim so the plot fades out instead of ending on a cartesian
 edge.
+
+**The ceiba's crown is asymmetric, and that is load-bearing.** Its tiers were
+built as wheels — *N* branches at exact angular steps, all the same length, all
+concentric on the axis. From above, a radar sweep; from the front, five
+concentric discs. No emergent looks like that: a forty-metre ceiba has lost
+limbs, the ones left are of very different lengths, and each tier leans toward
+the light it found. Every branch is now described before it is sown — irregular
+angular step, its own length, its own droop, its own curve in plan, and a one-in-
+six chance it is simply missing — and points are distributed by branch *length*,
+because distributing them per branch would make a short limb as dense as one
+twice its size, which is the same symmetry wearing a disguise. Measured on the
+points rather than on the source: the old crown reached 0.74–0.93 R in all 24
+azimuth sectors (CV 0.06); it now reaches 0.00–1.09 R (CV 0.41), with sky
+through the gaps.
 
 The cloud is deliberately **sparse and small-pointed**: not a survey, but what
 the machine manages to see of the forest — a spectral presence rather than a
@@ -334,8 +360,13 @@ with the wrong tool, leaving the seam visible.
 The candles are **immersed**. The fauna are drawn as **LiDAR returns like
 everything else** — denser clusters of the same white phosphor, not painted
 silhouettes: every mark in this scene comes from the same scan. The howler sings
-from **one of two howlers (*Alouatta seniculus*) moving through the ceiba's
-branches** — body, head and
+from **a howler (*Alouatta seniculus*) moving through the ceiba's branches** —
+one animal, not two. Two of the same size moving through the same crown read as
+a matched pair, which is a decorative relation; one is a presence. It is drawn
+at 0.85 of the size it was, and because `PointsMaterial` attenuates by distance
+and not by object transform, shrinking the animal does **not** shrink its
+returns: a smaller cluster of the same dots, which is what a real scan would
+give. — body, head and
 prehensile tail, pausing long between moves as the animal does. They can only
 be in the ceiba, because it is the one emergent: the same confinement that
 already governed the call, now visible. Other canopy sources sing from a **bird

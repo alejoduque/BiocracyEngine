@@ -115,29 +115,6 @@ function attachOrbit(camera: THREE.Camera, dom: HTMLElement, dist: number): Orbi
     return c;
 }
 
-/** The instrument's name, drawn once into a sprite that always faces front. */
-function makeLabel(inst: Instrument, scale: number): THREE.Sprite {
-    const cv = document.createElement("canvas");
-    cv.width = 1024; cv.height = 256;
-    const g = cv.getContext("2d")!;
-    g.clearRect(0, 0, 1024, 256);
-    g.font = "600 96px 'Share Tech Mono', ui-monospace, monospace";
-    g.fillStyle = "rgba(255,236,190,0.92)";
-    g.textAlign = "left";
-    g.fillText(inst.label, 8, 104);
-    g.font = "300 46px 'Share Tech Mono', ui-monospace, monospace";
-    g.fillStyle = "rgba(255,180,80,0.55)";
-    g.fillText(inst.sub, 8, 176);
-    const tex = new THREE.CanvasTexture(cv);
-    tex.minFilter = THREE.LinearFilter;
-    const spr = new THREE.Sprite(new THREE.SpriteMaterial({
-        map: tex, transparent: true, depthWrite: false, depthTest: false,
-    }));
-    spr.scale.set(scale, scale * 0.25, 1);
-    spr.renderOrder = 999;
-    return spr;
-}
-
 /** Push autoRotateSpeed from the shared idle drift. Call once per frame. */
 function driveOrbit(c: OrbitControls | null) {
     if (!c) return;
@@ -204,19 +181,10 @@ export function mountTimeTravel(stageEl: HTMLElement, getLatestState: () => Parl
     const camera = make3D(stageEl, Math.max(W, H) * 0.95);
     const controls = attachOrbit(camera, renderer.domElement, Math.max(W, H) * 0.95);
     // Instrumental identity. Six slots, six voices of the engine, no
-    // repeats — this one is mountTimeTravel.
+    // repeats — this one is mountTimeTravel. The name was drawn into the scene as
+    // a sprite; it is gone. The binding it announced is the real one and
+    // survives: this slot reads inst4's band and its voice's onsets.
     const inst4 = INSTRUMENTS.s4;
-    const label4 = makeLabel(inst4, Math.max(W, H) * 0.30);
-    // Positioned from what the camera can SEE, not from the container
-    // height: these six cameras sit at very different distances, and a
-    // fraction of H put the label off-screen on most of them. On the
-    // scene rather than the root, so the world's tilt and idle drift
-    // do not carry the title away with them.
-    {
-        const halfV4 = camera.position.length() * Math.tan((52 * Math.PI / 180) / 2);
-        label4.position.set(0, halfV4 * 0.80, 0);
-    }
-    scene.add(label4);
 
     // ── AfterimagePass for ghost trails ──────────────────────────────────────
     const composer = new EffectComposer(renderer);
@@ -612,19 +580,10 @@ export function mountDynamicGraphs(stageEl: HTMLElement, getLatestState: () => P
     const camera = make3D(stageEl, 620);
     const controls = attachOrbit(camera, renderer.domElement, 620);
     // Instrumental identity. Six slots, six voices of the engine, no
-    // repeats — this one is mountDynamicGraphs.
+    // repeats — this one is mountDynamicGraphs. The name was drawn into the scene as
+    // a sprite; it is gone. The binding it announced is the real one and
+    // survives: this slot reads inst5's band and its voice's onsets.
     const inst5 = INSTRUMENTS.s5;
-    const label5 = makeLabel(inst5, Math.max(W, H) * 0.30);
-    // Positioned from what the camera can SEE, not from the container
-    // height: these six cameras sit at very different distances, and a
-    // fraction of H put the label off-screen on most of them. On the
-    // scene rather than the root, so the world's tilt and idle drift
-    // do not carry the title away with them.
-    {
-        const halfV5 = camera.position.length() * Math.tan((52 * Math.PI / 180) / 2);
-        label5.position.set(0, halfV5 * 0.80, 0);
-    }
-    scene.add(label5);
 
     const composer = new EffectComposer(renderer);
     composer.addPass(new RenderPass(scene, camera));
@@ -942,19 +901,10 @@ export function mountDynamicOptimality(stageEl: HTMLElement, getLatestState: () 
     const camera = make3D(stageEl, Math.max(W, H) * 0.95);
     const controls = attachOrbit(camera, renderer.domElement, Math.max(W, H) * 0.95);
     // Instrumental identity. Six slots, six voices of the engine, no
-    // repeats — this one is mountDynamicOptimality.
+    // repeats — this one is mountDynamicOptimality. The name was drawn into the scene as
+    // a sprite; it is gone. The binding it announced is the real one and
+    // survives: this slot reads inst6's band and its voice's onsets.
     const inst6 = INSTRUMENTS.s6;
-    const label6 = makeLabel(inst6, Math.max(W, H) * 0.30);
-    // Positioned from what the camera can SEE, not from the container
-    // height: these six cameras sit at very different distances, and a
-    // fraction of H put the label off-screen on most of them. On the
-    // scene rather than the root, so the world's tilt and idle drift
-    // do not carry the title away with them.
-    {
-        const halfV6 = camera.position.length() * Math.tan((52 * Math.PI / 180) / 2);
-        label6.position.set(0, halfV6 * 0.80, 0);
-    }
-    scene.add(label6);
 
     const composer = new EffectComposer(renderer);
     composer.addPass(new RenderPass(scene, camera));
@@ -1273,19 +1223,10 @@ export function mountGeometry(stageEl: HTMLElement, getLatestState: () => Parlia
     const camera = make3D(stageEl, Math.max(W, H) * 0.95);
     const controls = attachOrbit(camera, renderer.domElement, Math.max(W, H) * 0.95);
     // Instrumental identity. Six slots, six voices of the engine, no
-    // repeats — this one is mountGeometry.
+    // repeats — this one is mountGeometry. The name was drawn into the scene as
+    // a sprite; it is gone. The binding it announced is the real one and
+    // survives: this slot reads inst7's band and its voice's onsets.
     const inst7 = INSTRUMENTS.s7;
-    const label7 = makeLabel(inst7, Math.max(W, H) * 0.30);
-    // Positioned from what the camera can SEE, not from the container
-    // height: these six cameras sit at very different distances, and a
-    // fraction of H put the label off-screen on most of them. On the
-    // scene rather than the root, so the world's tilt and idle drift
-    // do not carry the title away with them.
-    {
-        const halfV7 = camera.position.length() * Math.tan((52 * Math.PI / 180) / 2);
-        label7.position.set(0, halfV7 * 0.80, 0);
-    }
-    scene.add(label7);
 
     const composer = new EffectComposer(renderer);
     composer.addPass(new RenderPass(scene, camera));
@@ -1678,19 +1619,10 @@ export function mountMemoryHierarchy(stageEl: HTMLElement, getLatestState: () =>
     const camera = make3D(stageEl, Math.max(W, H) * 0.95);
     const controls = attachOrbit(camera, renderer.domElement, Math.max(W, H) * 0.95);
     // Instrumental identity. Six slots, six voices of the engine, no
-    // repeats — this one is mountMemoryHierarchy.
+    // repeats — this one is mountMemoryHierarchy. The name was drawn into the scene as
+    // a sprite; it is gone. The binding it announced is the real one and
+    // survives: this slot reads inst8's band and its voice's onsets.
     const inst8 = INSTRUMENTS.s8;
-    const label8 = makeLabel(inst8, Math.max(W, H) * 0.30);
-    // Positioned from what the camera can SEE, not from the container
-    // height: these six cameras sit at very different distances, and a
-    // fraction of H put the label off-screen on most of them. On the
-    // scene rather than the root, so the world's tilt and idle drift
-    // do not carry the title away with them.
-    {
-        const halfV8 = camera.position.length() * Math.tan((52 * Math.PI / 180) / 2);
-        label8.position.set(0, halfV8 * 0.80, 0);
-    }
-    scene.add(label8);
 
     const composer = new EffectComposer(renderer);
     composer.addPass(new RenderPass(scene, camera));
@@ -2023,19 +1955,10 @@ export function mountHashing(stageEl: HTMLElement, getLatestState: () => Parliam
     const camera = make3D(stageEl, Math.max(W, H) * 0.95);
     const controls = attachOrbit(camera, renderer.domElement, Math.max(W, H) * 0.95);
     // Instrumental identity. Six slots, six voices of the engine, no
-    // repeats — this one is mountHashing.
+    // repeats — this one is mountHashing. The name was drawn into the scene as
+    // a sprite; it is gone. The binding it announced is the real one and
+    // survives: this slot reads inst9's band and its voice's onsets.
     const inst9 = INSTRUMENTS.s9;
-    const label9 = makeLabel(inst9, Math.max(W, H) * 0.30);
-    // Positioned from what the camera can SEE, not from the container
-    // height: these six cameras sit at very different distances, and a
-    // fraction of H put the label off-screen on most of them. On the
-    // scene rather than the root, so the world's tilt and idle drift
-    // do not carry the title away with them.
-    {
-        const halfV9 = camera.position.length() * Math.tan((52 * Math.PI / 180) / 2);
-        label9.position.set(0, halfV9 * 0.80, 0);
-    }
-    scene.add(label9);
 
     const composer = new EffectComposer(renderer);
     composer.addPass(new RenderPass(scene, camera));

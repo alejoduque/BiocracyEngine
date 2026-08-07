@@ -215,7 +215,10 @@ class Antifonia extends BaseThreeJsModule {
   // voz más reconocible del bosque seco tiene por fin un cuerpo que se mueve.
   // Y sólo pueden estar en la ceiba, porque es la única emergente del rodal:
   // el mismo confinamiento que ya regía sus llamadas, ahora visible.
-  static HOWLERS = 2;
+  // UNO. Eran dos, y dos aulladores del mismo tamaño moviéndose en la misma
+  // copa se leían como un par de adornos simétricos. Un solo animal en un
+  // rodal de sesenta y un árboles es una presencia; dos son un patrón.
+  static HOWLERS = 1;
   static PAUJILES = 2;         // Crax alberti — camina el suelo entre fustes
   static ANTS = 46;            // una fila de Atta, no cuarenta y seis bichos
   static GLYPH_POOL = 220;      // techo duro de velas vivas
@@ -734,8 +737,24 @@ class Antifonia extends BaseThreeJsModule {
       const a = rnd() * Math.PI * 2;
       put(cx + Math.cos(a) * r, h, cz + Math.sin(a) * r, 0.62 + rnd() * 0.3);
     }
-    // copa en pisos: 5 bandejas horizontales, la más ancha en el tercio bajo
+    // ── Copa en pisos, ASIMÉTRICA ────────────────────────────────────────
+    // Las bandejas eran ruedas de radar: N ramas a paso angular exacto
+    // (bi/branches)·2π, TODAS del mismo largo rr y todas centradas en el eje.
+    // Desde arriba, un radio perfecto; de frente, cinco discos concéntricos.
+    // Ninguna ceiba se parece a eso. Una emergente de cuarenta metros ha
+    // perdido ramas, las que le quedan son de largos muy distintos, y cada
+    // bandeja se recuesta hacia donde encontró luz.
+    //
+    // Ahora cada rama se DESCRIBE antes de sembrarle puntos —ángulo con paso
+    // irregular, largo propio, caída propia, curvatura en planta— y los puntos
+    // se reparten por LARGO, no por rama: si no, una rama corta acabaría tan
+    // densa como una del doble de longitud, que es la simetría de nuevo pero
+    // disimulada.
     const tiers = 5;
+    // El eje de la copa no es una plomada. Se recuesta, y cada piso se
+    // desplaza del anterior siguiendo esa inclinación.
+    const leanA = rnd() * Math.PI * 2;
+    const leanR = (0.5 + rnd() * 0.9) * scale * M;
     for (let ti = 0; ti < tiers; ti++) {
       const u = ti / (tiers - 1);
       const h = boleTop + u * (H - boleTop);
@@ -745,18 +764,47 @@ class Antifonia extends BaseThreeJsModule {
       // leen por su silueta, no por su densidad, y al aclararlas se ve el
       // fuste a través de ellas y el cielo entre piso y piso.
       const n = Math.round((800 - ti * 90) * S);
-      // ramas: radios que salen del eje en esta bandeja
-      const branches = 7 + ((rnd() * 4) | 0);
+      const tcx = cx + Math.cos(leanA + ti * 0.7) * leanR * u * 1.4;
+      const tcz = cz + Math.sin(leanA + ti * 0.7) * leanR * u * 1.4;
+
+      const branches = 6 + ((rnd() * 5) | 0);
+      const arms = [];
+      let acc = rnd() * Math.PI * 2;
+      let lenSum = 0;
+      for (let b = 0; b < branches; b++) {
+        // paso entre 0.45 y 1.75 veces el medio: se juntan por un lado y se
+        // abren claros por el otro
+        acc += (Math.PI * 2 / branches) * (0.45 + rnd() * 1.3);
+        // una de cada seis se perdió. El hueco es parte del árbol, no un fallo
+        // del barrido: así es como se ve el cielo a través de una emergente.
+        if (rnd() < 0.16) continue;
+        const len = rr * (0.42 + Math.pow(rnd(), 0.7) * 0.78);
+        arms.push({
+          a: acc,
+          len,
+          droop: (0.25 + rnd() * 0.75) * (len / rr),   // las largas se vencen
+          curve: (rnd() - 0.5) * 0.5,                  // no es recta en planta
+          thick: 0.10 + rnd() * 0.13,
+        });
+        lenSum += len;
+      }
+      if (arms.length === 0) continue;
       for (let i = 0; i < n; i++) {
-        const bi = (rnd() * branches) | 0;
-        const a = (bi / branches) * Math.PI * 2 + (rnd() - 0.5) * 0.55;
+        // reparto por largo: una rama del doble de largo recibe el doble
+        let pick = rnd() * lenSum, k = 0;
+        while (k < arms.length - 1 && (pick -= arms[k].len) > 0) k++;
+        const br = arms[k];
         const t = Math.pow(rnd(), 0.62);            // más denso hacia la punta
-        const r = t * rr;
-        // cada bandeja es una lámina delgada: poco espesor vertical
-        const dy = (rnd() - 0.5) * 1.9 * scale - t * 0.9 * scale;   // metros
-        put(cx + Math.cos(a) * r + (rnd() - 0.5) * 0.09,
+        const r = t * br.len;
+        // el follaje se abre a media rama y se cierra en la punta
+        const spread = br.thick * Math.sin(Math.PI * Math.min(1, t * 1.15));
+        const a = br.a + br.curve * t * t + (rnd() - 0.5) * spread * 2.4;
+        // cada bandeja es una lámina delgada: poco espesor vertical, más la
+        // caída de la rama, que es cuadrática y no lineal — se vence al final
+        const dy = (rnd() - 0.5) * 1.9 * scale - t * t * br.droop * 3.2 * scale;
+        put(tcx + Math.cos(a) * r + (rnd() - 0.5) * 0.09,
             h + dy,
-            cz + Math.sin(a) * r + (rnd() - 0.5) * 0.09,
+            tcz + Math.sin(a) * r + (rnd() - 0.5) * 0.09,
             0.20 + rnd() * 0.34);
       }
     }
@@ -952,10 +1000,6 @@ class Antifonia extends BaseThreeJsModule {
   // blanca desteñía el rojo hacia el blanco, que es por qué hubo que subir el
   // brillo base a 1.25 sólo para que se notara algo.
   //
-  // Un sprite con la silueta PINTADA sí tiene cuerpo. Se reutiliza la
-  // construcción de _textSprite (CanvasTexture → Sprite) y se conserva el
-  // idioma del archivo para "tiene que verse a través del dosel":
-  // depthTest false + renderOrder.
   // ── Fauna en puntos, como el resto del barrido ──────────────────────────
   // No una silueta rellena: un ANIMAL DE PUNTOS, en el mismo blanco fósforo
   // que los árboles. Todo lo que hay en esta escena es un retorno del mismo
@@ -1087,7 +1131,7 @@ class Antifonia extends BaseThreeJsModule {
       // separa un mono de un pájaro a simple vista.
       speed: 0.018 + Math.random() * 0.022,
       pause: Math.random() * 6,
-      lit: 0, side: i === 0 ? -1 : 1,
+      lit: 0,
       px: cx, pz: cz, py: 0,
     };
   }
@@ -1126,7 +1170,11 @@ class Antifonia extends BaseThreeJsModule {
       if (dx * dx + dz * dz > 1e-6) spr.rotation.y = Math.atan2(dx, dz) - Math.PI / 2;
       // Al aullar los retornos se avivan y el punto engorda: el rugido de un
       // Alouatta se oye a 3 km, conviene ver quién lo está haciendo.
-      const sc = 1 + h.lit * 0.22;
+      // 0.85: un 15 % más pequeño. La escala del OBJETO no toca el tamaño del
+      // punto (PointsMaterial atenúa por distancia, no por transform), así que
+      // el animal encoge pero sus retornos siguen midiendo lo mismo que los del
+      // rodal — que es justo como se comportaría un barrido real.
+      const sc = 0.85 * (1 + h.lit * 0.22);
       spr.scale.set(sc, sc, sc);
       spr.material.opacity = 0.72 + h.lit * 0.28;
       spr.material.size = 0.030 + h.lit * 0.022;
