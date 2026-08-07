@@ -216,7 +216,9 @@
         \droneSpaceBus,   ~bi.(\droneSpace),
         \droneMixBus,     ~bi.(\droneMix),
         // delayFeedback had no reader at all until now.
-        \delayFeedbackBus, ~bi.(\delayFeedback)
+        \delayFeedbackBus, ~bi.(\delayFeedback),
+        // Matrix mixer: this layer's live level.
+        \mixDroneBus, ~bi.(\mixDrone)
     ], target: if(~defaultGroup.notNil, { ~defaultGroup }, { s.defaultGroup }));
     
     ~beatRoutine = Routine({
@@ -452,7 +454,9 @@
                     \textureBus,   bText,
                     \spectralBus,  bSpec,
                     \atmosphereBus, bAtmo,
-                    \spatialBus,   bSpat
+                    \spatialBus,   bSpat,
+                    // Matrix mixer: this layer's live level.
+                    \mixKickBus, ~bi.(\mixKick)
                 ], targetGrp) });
             };
 
@@ -522,7 +526,9 @@
                         \timeBus,      bTime,
                         \memoryBus,    bMem,
                         \atmosphereBus, bAtmo,
-                        \spatialBus,   bSpat
+                        \spatialBus,   bSpat,
+                        // Matrix mixer: this layer's live level.
+                        \mixPercBus, ~bi.(\mixPerc)
                     ], targetGrp);
                 }
                 { voicingMode == \dyad } {
@@ -541,7 +547,9 @@
                             \timeBus,      bTime,
                             \memoryBus,    bMem,
                             \atmosphereBus, bAtmo,
-                            \spatialBus,   bSpat
+                            \spatialBus,   bSpat,
+                            // Matrix mixer: this layer's live level.
+                            \mixPercBus, ~bi.(\mixPerc)
                         ], targetGrp);
                     };
                 }
@@ -565,7 +573,9 @@
                             \timeBus,      bTime,
                             \memoryBus,    bMem,
                             \atmosphereBus, bAtmo,
-                            \spatialBus,   bSpat
+                            \spatialBus,   bSpat,
+                            // Matrix mixer: this layer's live level.
+                            \mixPercBus, ~bi.(\mixPerc)
                         ], targetGrp);
                     };
                 };
@@ -588,7 +598,9 @@
                     \pitchBus,     bPitch,
                     \memoryBus,    bMem,
                     \atmosphereBus, bAtmo,
-                    \spatialBus,   bSpat
+                    \spatialBus,   bSpat,
+                    // Matrix mixer: this layer's live level.
+                    \mixDustBus, ~bi.(\mixDust)
                 ], targetGrp) });
             };
 

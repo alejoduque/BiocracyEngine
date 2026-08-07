@@ -361,17 +361,28 @@
             margin-top: 2px;
         }
 
-        /* ─── BIOME MAP (text art) ─── */
-        #biome-map {
+        /* ─── CORPUS SITE + RING CURSOR (1-bit, cites the Cámara palette) ─── */
+        #corpus-site {
             font-size: 12px;
-            color: var(--text-dim);
-            line-height: 1.4;
+            color: #fff;
+            line-height: 1.45;
             letter-spacing: 0.3px;
-            padding: 4px;
-            border: 1px solid rgba(255,136,0,0.08);
-            margin-top: 4px;
+            padding: 5px 4px;
+            border: 1px solid rgba(255,255,255,0.18);
+            margin-bottom: 6px;
         }
-        #biome-map .biome-active { color: var(--amber); }
+        #corpus-site .corpus-site-dim {
+            color: rgba(255,255,255,0.45);
+            font-size: 11px;
+        }
+        #corpus-cursor {
+            font-size: 11px;
+            color: rgba(255,255,255,0.7);
+            letter-spacing: 0.4px;
+            padding: 4px;
+            margin-top: 4px;
+            border-top: 1px solid rgba(255,255,255,0.12);
+        }
 
         /* ─── VIZ SWITCHER HUD ─── */
         #viz-hud {
@@ -646,13 +657,20 @@
                         data-osc="/pheno/bancada">
                     <span class="ctrl-val" id="disp-pheno-bancada">0.00</span>
                 </div>
-                <!-- Bancada radio (Art. 43 §1): 5 discrete season-taxon groupings -->
+                <!-- Bancada radio (Art. 43). These were labelled by temporada,
+                     which duplicated the jump-season row below and named
+                     something the bancada bus does not select. Art. 43 defines
+                     the bancadas taxonomically (FLORA/AVES/AMPHIBIA/REPTILIA/
+                     MAMMALIA), but the AudioMoth corpus carries no taxonomy —
+                     the detector yields ecological roles. Those are what the
+                     filter can honestly act on. Dawn and dusk chorus share a
+                     seat: dawn alone is 6 events in 261. -->
                 <div class="pheno-bancada-row" id="pheno-bancada-row">
                     <button class="pheno-bancada-btn active" data-bancada="0">Todas</button>
-                    <button class="pheno-bancada-btn" data-bancada="1">Seca</button>
-                    <button class="pheno-bancada-btn" data-bancada="2">1as Lluv</button>
-                    <button class="pheno-bancada-btn" data-bancada="3">Med Seco</button>
-                    <button class="pheno-bancada-btn" data-bancada="4">2as Lluv</button>
+                    <button class="pheno-bancada-btn" data-bancada="1">Nocturna</button>
+                    <button class="pheno-bancada-btn" data-bancada="2">Insectos</button>
+                    <button class="pheno-bancada-btn" data-bancada="3">Coro</button>
+                    <button class="pheno-bancada-btn" data-bancada="4">Cambio</button>
                 </div>
                 <!-- Jump-to-season (Art. 42 §) -->
                 <div class="pheno-btn-row">
@@ -660,6 +678,59 @@
                     <button class="pheno-btn" data-season="primeras_lluvias">1as Lluv</button>
                     <button class="pheno-btn" data-season="medio_seco">Med Seco</button>
                     <button class="pheno-btn" data-season="segundas_lluvias">2as Lluv</button>
+                </div>
+            </div>
+
+            <!-- ─── Matrix mixer (CC 42–49 · /mix/*) ─── -->
+            <!-- The only controls on this surface that change how LOUD a layer
+                 is rather than how it sounds. Until these existed the balance
+                 between voices lived in the hardcoded gain budget of
+                 3_synthdefs.scd and could not be touched while playing.
+                 Unity is 1.0 at mid-throw, so 0.5 here is the boot state. -->
+            <div class="tele-section tele-section--pheno">
+                <div class="tele-section-title">
+                    Matrix Mixer · Layer Levels
+                    <span class="pheno-art">CC 42–49 · 0=mute 0.5=unity</span>
+                </div>
+                <div class="ctrl-row">
+                    <label>Drone</label>
+                    <input type="range" min="0" max="1" step="0.01" value="0.5" data-osc="/mix/drone">
+                    <span class="ctrl-val" id="disp-mix-drone">0.50</span>
+                </div>
+                <div class="ctrl-row">
+                    <label>Pad</label>
+                    <input type="range" min="0" max="1" step="0.01" value="0.5" data-osc="/mix/pad">
+                    <span class="ctrl-val" id="disp-mix-pad">0.50</span>
+                </div>
+                <div class="ctrl-row">
+                    <label>Kick</label>
+                    <input type="range" min="0" max="1" step="0.01" value="0.5" data-osc="/mix/kick">
+                    <span class="ctrl-val" id="disp-mix-kick">0.50</span>
+                </div>
+                <div class="ctrl-row">
+                    <label>Perc</label>
+                    <input type="range" min="0" max="1" step="0.01" value="0.5" data-osc="/mix/perc">
+                    <span class="ctrl-val" id="disp-mix-perc">0.50</span>
+                </div>
+                <div class="ctrl-row">
+                    <label>Dust</label>
+                    <input type="range" min="0" max="1" step="0.01" value="0.5" data-osc="/mix/dust">
+                    <span class="ctrl-val" id="disp-mix-dust">0.50</span>
+                </div>
+                <div class="ctrl-row">
+                    <label>Sample</label>
+                    <input type="range" min="0" max="1" step="0.01" value="0.5" data-osc="/mix/sample">
+                    <span class="ctrl-val" id="disp-mix-sample">0.50</span>
+                </div>
+                <div class="ctrl-row">
+                    <label>Corpus</label>
+                    <input type="range" min="0" max="1" step="0.01" value="0.5" data-osc="/mix/corpus">
+                    <span class="ctrl-val" id="disp-mix-corpus">0.50</span>
+                </div>
+                <div class="ctrl-row">
+                    <label>Ultra</label>
+                    <input type="range" min="0" max="1" step="0.01" value="0.5" data-osc="/mix/ultra">
+                    <span class="ctrl-val" id="disp-mix-ultra">0.50</span>
                 </div>
             </div>
 
@@ -963,7 +1034,7 @@
 
             <!-- eDNA Sites -->
             <div class="tele-section">
-                <div class="tele-section-title">eDNA Sites · Colombia</div>
+                <div class="tele-section-title">eDNA Site · Córdoba</div>
                 <div id="edna-tele"></div>
             </div>
 
@@ -1001,19 +1072,39 @@
                 </div>
             </div>
 
-            <!-- Colombian Biome Map -->
-            <div class="tele-section">
-                <div class="tele-section-title">Biome Network · Colombia</div>
-                <div id="biome-map">
-                    <div id="bm-CHO">CHO · Chocó Biogeog.</div>
-                    <div id="bm-AMZ">AMZ · Amazonia</div>
-                    <div id="bm-COR">COR · E.Cordillera</div>
-                    <div id="bm-CAR">CAR · Caribbean</div>
-                    <div id="bm-ORI">ORI · Orinoquía</div>
-                    <div id="bm-PAC">PAC · Pacific Coast</div>
-                    <div id="bm-MAG">MAG · Magdalena</div>
-                    <div id="bm-GUA">GUA · Guayana</div>
+            <!-- ─── Cámara Fenológica · Corpus (Capítulo VI, Art. 42) ─── -->
+            <!-- Replaces the eight-region "Biome Network · Colombia" text art.
+                 The Reserva is one biome in one place — bosque seco tropical
+                 of the Sinú valley, Córdoba — so a national biome map listed
+                 seven regions this instrument has never recorded and had no
+                 way to reach. The space now carries the field-recording layer:
+                 its transport and its fader, which is what the corpus needs to
+                 be playable and had nowhere to live. -->
+            <div class="tele-section tele-section--pheno">
+                <div class="tele-section-title">
+                    Cámara Fenológica · Corpus
+                    <span class="pheno-art">CC 21–22 · AudioMoth</span>
                 </div>
+                <div id="corpus-site">
+                    Bosque seco tropical · Córdoba<br>
+                    <span class="corpus-site-dim">Cabecera Planeta Rica · cuenca del Sinú · SN-26</span>
+                </div>
+                <div class="ctrl-row">
+                    <label>Corpus Lvl</label>
+                    <input type="range" min="0" max="1" step="0.01" value="0.5"
+                        data-osc="/pheno/corpusLevel">
+                    <span class="ctrl-val" id="disp-pheno-corpusLevel">0.50</span>
+                </div>
+                <!-- Art. 42: how fast the ring of 365 turns. Exponential spec,
+                     so 0.28 here is one day per minute (a 6h05m year) and the
+                     top of the fader scrubs the whole year in 91 s. -->
+                <div class="ctrl-row">
+                    <label>Ring Rate</label>
+                    <input type="range" min="0" max="1" step="0.01" value="0.28"
+                        data-osc="/pheno/rate">
+                    <span class="ctrl-val" id="disp-pheno-rate">0.28</span>
+                </div>
+                <div id="corpus-cursor">doy — · — · quórum —</div>
             </div>
 
         </div><!-- /right-panel -->

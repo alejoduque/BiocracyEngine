@@ -82,6 +82,26 @@ const AMBER_BRIGHT = 0xffcc44;
 const AMBER_PALE   = 0x331a00;
 const BG           = 0x000804;
 
+// White phosphorous. Everything in this chamber was one hue, which made the
+// image read as a single instrument panel rather than an assembly — nothing
+// could stand apart from the amber because nothing was allowed to. Two
+// elements now burn white: the outermost radar ring (the boundary of what the
+// instrument can see) and one orbiting body. A trace of green keeps it a
+// phosphor rather than a UI white, so it still belongs to the same screen.
+const PHOSPHOR        = 0xf2fff4;
+const PHOSPHOR_BRIGHT = 0xffffff;
+const PHOSPHOR_DIM    = 0x5a6b5e;
+
+// Which of the five species orbits in white. Index 3 is Alouatta, the howler —
+// Article 46 of the Cámara Fenológica gives it the one alert protocol in the
+// statute, obliging the Corporation to attend to its silence. The species the
+// instrument is bound to listen for is the species that is not amber.
+const PHOSPHOR_SPECIES = 3;
+// Index into RINGS. The outermost is the only one with real presence
+// (base opacity 0.28 against 0.06), so it is the one where a change of hue is
+// actually seen rather than inferred.
+const PHOSPHOR_RING    = 3;
+
 // ─── Layout ──────────────────────────────────────────────────────────────────
 const SPECIES_R = 4.2;
 const EDNA_R    = 7.8;
@@ -279,7 +299,8 @@ class ParliamentStage extends BaseThreeJsModule {
 
     RINGS.forEach((r, i) => {
       const baseOp = i === RINGS.length - 1 ? 0.28 : 0.06;
-      const ring = makeCircle(r, 128, AMBER, baseOp);
+      // Only opacity is animated per frame, so this hue survives the update.
+      const ring = makeCircle(r, 128, i === PHOSPHOR_RING ? PHOSPHOR : AMBER, baseOp);
       this._radarGroup.add(ring);
       this._radarRings.push(ring);
       this._radarBaseOpacities.push(baseOp);
@@ -338,9 +359,13 @@ class ParliamentStage extends BaseThreeJsModule {
 
     for (let i = 0; i < 5; i++) {
       const group = new THREE.Group();
+      // The howler burns white rather than carrying its IUCN hue. Its status is
+      // not what marks it here — its audibility is.
+      const phos = i === PHOSPHOR_SPECIES;
+      const coreHex = phos ? PHOSPHOR : iucnColors[i];
 
       const wireMat = new THREE.MeshBasicMaterial({
-        color: AMBER_BRIGHT,
+        color: phos ? PHOSPHOR_BRIGHT : AMBER_BRIGHT,
         wireframe: true,
         transparent: true,
         opacity: 0.7,
@@ -348,8 +373,8 @@ class ParliamentStage extends BaseThreeJsModule {
       const wireMesh = new THREE.Mesh(geometries[i], wireMat);
 
       const solidMat = new THREE.MeshPhongMaterial({
-        color: iucnColors[i],
-        emissive: iucnColors[i],
+        color: coreHex,
+        emissive: coreHex,
         emissiveIntensity: 0.4,
         transparent: true,
         opacity: 0.15,
@@ -359,7 +384,7 @@ class ParliamentStage extends BaseThreeJsModule {
       group.add(solidMesh);
       group.add(wireMesh);
 
-      const halo = makeParticleHalo(120, 0.65, AMBER);
+      const halo = makeParticleHalo(120, 0.65, phos ? PHOSPHOR : AMBER);
       group.add(halo);
       this.speciesHalos.push(halo);
       this.speciesSolidMats.push(solidMat);
@@ -644,12 +669,18 @@ class ParliamentStage extends BaseThreeJsModule {
 
       // Wireframe: fully transparent at presence=0, fully bright at presence=1
       wfm.material.opacity = sp.presence;
-      // Color: orange-dim (dormant) → amber-bright (active) with smooth blend
+      // Color: dim (dormant) → bright (active) with smooth blend. The howler
+      // climbs the same three steps on its own phosphor ramp, so it reads as
+      // the same state machine in a different substance — not as a node stuck
+      // at one colour while the rest of the chamber breathes.
+      const ramp = i === PHOSPHOR_SPECIES
+        ? [PHOSPHOR_DIM, PHOSPHOR, PHOSPHOR_BRIGHT]
+        : [AMBER_DIM, AMBER, AMBER_BRIGHT];
       const wireHex = sp.activity > 0.7
-        ? AMBER_BRIGHT
+        ? ramp[2]
         : sp.activity > 0.4
-          ? AMBER
-          : AMBER_DIM;
+          ? ramp[1]
+          : ramp[0];
       wfm.material.color.setHex(wireHex);
 
       // Solid core: very visible glow at high presence

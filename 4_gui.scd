@@ -15,7 +15,8 @@
 (
 // Defer all GUI creation to AppClock to avoid Qt threading issues
 {
-    var statusView, counterView, controlView, controlViewRow2, controlViewRow3, controlViewRow4, controlViewRow5, controlViewRow6;
+    var statusView, counterView, controlView, controlViewRow2, controlViewRow3, controlViewRow4, controlViewRow5, controlViewRow6, controlViewRow7;
+    var mixerView;
     var sampleView, sampleControlView, sampleHeader, sampleButtonView, stopButton;
     var container, recordingView, presetView;
     var mainTheme, accentColor, backgroundColor, textColor;
@@ -24,18 +25,34 @@
 
     try {
         
-        // Define theme colors — matched to nw_wrld parliament.html amber palette
+        // ─── 1-bit palette ──────────────────────────────────────────────────
+        // Black and white only, the way the Cámara Fenológica row already
+        // read. The amber scheme carried five hues that each meant something
+        // different (green = ok, red = stop, yellow = armed) and none of it
+        // survived a projector or a photograph; worse, hue was doing the work
+        // that state should do. Here every control is white on black and an
+        // ACTIVE control is inverted — black on white. That is the only state
+        // signal, and it is legible at any size and in any reproduction.
+        //
+        // The semantic keys are kept so the ~300 references to mainTheme.red,
+        // .green, .yellow and .purple elsewhere in this file keep resolving;
+        // they simply all resolve to white now, and the .blend() calls that
+        // used them produce the grey steps.
         mainTheme = (
-            background: Color.fromHexString("#000804"),     // --bg
-            foreground: Color(1, 0.533, 0, 0.85),          // --text (amber rgba)
-            accent: Color.fromHexString("#ff8800"),         // --amber
-            green: Color.fromHexString("#44ff66"),          // parliament green indicators
-            red: Color(1, 0.235, 0, 0.85),                 // --red-alert
-            yellow: Color.fromHexString("#ffcc44"),         // --amber-bright
-            purple: Color.fromHexString("#ffcc44"),         // headers use amber-bright (was purple)
-            dim: Color.fromHexString("#663300"),            // --amber-dim
-            border: Color(1, 0.533, 0, 0.25)               // --border
+            background: Color.black,
+            foreground: Color.white,
+            accent: Color.white,
+            green: Color.white,
+            red: Color.white,
+            yellow: Color.white,
+            purple: Color.white,
+            dim: Color.gray(0.42),
+            border: Color.gray(0.30)
         );
+
+        // One typeface everywhere. Menlo ships with macOS, so this never falls
+        // back silently the way a missing face would.
+        ~monoFont = "Menlo";
 
         backgroundColor = mainTheme.background;
         textColor = mainTheme.foreground;
@@ -65,7 +82,7 @@
         // Create header
         ~header = StaticText()
             .string_("SøNETH — BIOCRACY ENGINE")
-            .font_(Font("Helvetica", 22, true))
+            .font_(Font(~monoFont, 22, true))
             .align_(\center)
             .stringColor_(mainTheme.yellow);
 
@@ -98,6 +115,16 @@
         // this row has to be checkable mid-performance.
         controlViewRow6 = View().background_(backgroundColor.blend(mainTheme.accent, 0.06))
             .layout_(HLayout().margins_(6).spacing_(14));
+        // Row 7: the field-recording layer's own transport and fader. Same
+        // 1-bit black-and-white palette as row 5 so it reads as belonging to
+        // the Cámara, but a separate row with its own caption so the corpus
+        // fader is findable rather than the eighth knob along.
+        controlViewRow7 = View().background_(Color.black)
+            .layout_(HLayout().margins_(6).spacing_(20));
+        // The matrix mixer: the only row on this surface whose controls change
+        // loudness rather than timbre.
+        mixerView = View().background_(Color.black)
+            .layout_(HLayout().margins_(6).spacing_(10));
 
         // Create sample views
         sampleView = View().background_(backgroundColor.blend(mainTheme.accent, 0.04))
@@ -112,6 +139,8 @@
         };
         controlViewRow5.fixedHeight = 120;
         controlViewRow6.fixedHeight = 62;
+        controlViewRow7.fixedHeight = 120;
+        mixerView.fixedHeight = 176;
         sampleView.fixedHeight = 180;
         sampleControlView.fixedHeight = 120;
 
@@ -140,7 +169,7 @@
             labelText = StaticText()
                 .string_(label)
                 .stringColor_(textColor)
-                .font_(Font("Helvetica", 12))  // 2px smaller
+                .font_(Font(~monoFont, 12))  // 2px smaller
                 .minWidth_(80);
 
             container.layout.add(labelText);
@@ -177,14 +206,14 @@
                 .background_(backgroundColor.blend(mainTheme.accent, 0.08))
                 .normalColor_(mainTheme.yellow)
                 .stringColor_(mainTheme.yellow)
-                .font_(Font("Monaco", 14, true))
+                .font_(Font(~monoFont, 14, true))
                 .align_(\center)
                 .minWidth_(60);
 
             labelText = StaticText()
                 .string_(label)
                 .stringColor_(textColor)
-                .font_(Font("Helvetica", 12))  // 2px smaller
+                .font_(Font(~monoFont, 12))  // 2px smaller
                 .minWidth_(80);
 
             container.layout.add(labelText);
@@ -232,7 +261,14 @@
             // Row 6: Marea — the density arc. Stepped specs, so the knobs snap
             // 0/1; the browser checkboxes are the comfortable surface and these
             // mirror them so both control surfaces stay at parity.
-            [\tideShort, \tideMedia, \tideLarga, \tidePulse]
+            [\tideShort, \tideMedia, \tideLarga, \tidePulse],
+            // Row 7: Cámara Fenológica · Corpus. Its own row, not appended to
+            // row 5: nine knobs overflowed the 1100px window, and ~scrollView
+            // has no horizontal scroller, so the last two were simply clipped
+            // out of existence. These two also deserve separating — they are
+            // the transport and the fader of the field-recording layer, not
+            // two more readings of the calendar.
+            [\phenoRate, \corpusLevel]
         ];
 
         // Enhanced knob function with oscilloscope aesthetics
@@ -253,13 +289,15 @@
                 .color_([mainTheme.background, accentColor, mainTheme.foreground, mainTheme.foreground.alpha_(0.2)])
                 .value_(spec.unmap(defaultVal));
 
-            displayStr = label.asString;
-            displayStr = displayStr[0].toUpper ++ displayStr[1..];
+            // ALL CAPS throughout: camelCase parameter names read as two
+            // words at a glance once the case is flattened, and caps hold
+            // the monospace grid better than mixed case at 10px.
+            displayStr = label.asString.toUpper;
 
             valueLabel = StaticText()
                 .string_(displayStr ++ ": " ++ defaultVal.round(0.001))
                 .stringColor_(Color.white)
-                .font_(Font("Monaco", 10))  // 2px smaller
+                .font_(Font(~monoFont, 10))  // 2px smaller
                 .align_(\center);
 
             knobContainer.layout.add(knob);
@@ -372,9 +410,186 @@
             };
             if(~controlLabels[key].notNil) {
                 ~controlLabels[key].stringColor_(Color.white);
-                ~controlLabels[key].font_(Font("Courier New", 10, true));
+                ~controlLabels[key].font_(Font(~monoFont, 10, true));
             };
             controlViewRow5.layout.add(knobContainer);
+        };
+
+        // ─── Row 7: Cámara Fenológica · Corpus ────────────────────────────
+        // The AudioMoth layer's transport and fader, same 1-bit palette as
+        // row 5 but captioned, because "where is the corpus fader" has to have
+        // an answer you can see. The caption is a plain StaticText added to the
+        // row's HLayout ahead of the knobs.
+        controlViewRow7.layout.add(
+            StaticText()
+                .string_("CÁMARA\nFENOLÓGICA\n· CORPUS ·")
+                .font_(Font(~monoFont, 10, true))
+                .stringColor_(Color.white)
+                .align_(\left)
+                .maxWidth_(110)
+        );
+        ~knobParameters[6].do { |key|
+            var knobContainer;
+            ~knobs[key] = ~makeKnob.value(
+                key.asString,
+                ~controlSpecs[key].minval,
+                ~controlSpecs[key].maxval,
+                ~controlValues[key],
+                ~controlSpecs[key].warp
+            );
+            knobContainer = ~knobs[key];
+            knobContainer.background_(Color.black);
+            if(~knobViews[key].notNil) {
+                ~knobViews[key].color_([Color.black, Color.white, Color.white, Color.gray(0.4)]);
+            };
+            if(~controlLabels[key].notNil) {
+                ~controlLabels[key].stringColor_(Color.white);
+                ~controlLabels[key].font_(Font(~monoFont, 10, true));
+            };
+            controlViewRow7.layout.add(knobContainer);
+        };
+        // The ring's own reading of where it is, refreshed by 14_'s routine.
+        ~phenoCursorLabel = StaticText()
+            .string_("doy — · —")
+            .font_(Font(~monoFont, 11, true))
+            .stringColor_(Color.gray(0.75))
+            .align_(\left);
+        controlViewRow7.layout.add(~phenoCursorLabel);
+
+        // Skip the silence. 331 of 365 ring days have no recording, so at the
+        // default rate the corpus is inaudible for up to three hours at a
+        // stretch. Auditioning or performing it needs a way to reach the next
+        // day that actually has audio.
+        ~phenoSkipButton = Button()
+            .states_([["NEXT REC. DAY ▶", mainTheme.foreground, backgroundColor]])
+            .font_(Font(~monoFont, 10, true))
+            .maxHeight_(26)
+            .maxWidth_(150)
+            .action_({
+                if(~phenoNextRecorded.notNil) { ~phenoNextRecorded.value }
+                    { "[pheno] corpus layer not loaded".postln };
+            });
+        controlViewRow7.layout.add(~phenoSkipButton);
+
+        // ─── MATRIX MIXER ─────────────────────────────────────────────────
+        // One fader per audible layer, plus a mute. Until now the balance
+        // between voices lived only in the hardcoded gain budget of
+        // 3_synthdefs.scd, fixed at load: every knob on this surface shaped
+        // timbre and none of them changed how loud one layer sat against
+        // another, so the instrument could not be mixed while it played.
+        //
+        // Unity is 1.0 and sits mid-throw, so a boot with these untouched
+        // sounds exactly as before. They multiply the trims rather than
+        // replacing them, which keeps the documented gain budget meaningful.
+        //
+        // Strips register into ~knobViews / ~controlLabels like every other
+        // control, so ~setParam's deferred update drives them from MIDI CC
+        // 42–49, the browser and preset loads with no special-casing.
+        ~mixerStrips = ();
+        ~mixerMuted = ();
+        ~makeMixStrip = { |paramName, caption|
+            var strip, slider, valueLabel, muteButton, spec;
+
+            spec = ~controlSpecs[paramName];
+            strip = View().background_(Color.black);
+            strip.layout_(VLayout().margins_(4).spacing_(3));
+
+            strip.layout.add(
+                StaticText()
+                    .string_(caption)
+                    .font_(Font(~monoFont, 10, true))
+                    .stringColor_(Color.white)
+                    .align_(\center)
+                    .maxHeight_(14)
+            );
+
+            // Narrow and tall: Qt reads the bounds as a vertical fader, which
+            // is more reliable across versions than asking for an orientation.
+            slider = Slider()
+                .maxWidth_(30)
+                .background_(Color.gray(0.12))
+                .knobColor_(Color.white)
+                .value_(spec.unmap(~controlValues[paramName]));
+
+            valueLabel = StaticText()
+                .string_(~labelCase.(paramName) ++ ": " ++ ~controlValues[paramName].round(0.001))
+                .font_(Font(~monoFont, 8))
+                .stringColor_(Color.gray(0.6))
+                .align_(\center)
+                .maxHeight_(12);
+
+            slider.action = { |sl|
+                var mapped = spec.map(sl.value);
+                // Touching a fader lifts its own mute — otherwise the strip
+                // would look live while the bus stayed at zero.
+                if(~mixerMuted[paramName] == true) {
+                    ~mixerMuted[paramName] = false;
+                    muteButton.value_(0);
+                };
+                if(~setParam.notNil) { ~setParam.(paramName, mapped, \gui) } {
+                    if(~buses.notNil and: { ~buses[paramName].notNil }) {
+                        ~buses[paramName].set(mapped);
+                    };
+                };
+            };
+
+            // 1-bit state: an engaged mute inverts to black-on-white.
+            muteButton = Button()
+                .states_([
+                    ["MUTE", mainTheme.dim, backgroundColor],
+                    ["MUTE", Color.black, Color.white]
+                ])
+                .font_(Font(~monoFont, 9, true))
+                .maxHeight_(20)
+                .maxWidth_(46)
+                .action_({ |b|
+                    var muted = b.value > 0;
+                    ~mixerMuted[paramName] = muted;
+                    if(muted) {
+                        // Remember where the fader was so unmute is exact.
+                        // ~busVal comes from 5_beat_engine, which loads after
+                        // this file — it exists by click time, but not if the
+                        // GUI is opened standalone, hence the fallback.
+                        ~mixerStrips[paramName][\held] = if(~busVal.notNil,
+                            { ~busVal.(paramName, 1.0) },
+                            { spec.map(slider.value) });
+                        if(~setParam.notNil) { ~setParam.(paramName, 0.0, \gui) };
+                    } {
+                        if(~setParam.notNil) {
+                            ~setParam.(paramName,
+                                (~mixerStrips[paramName][\held] ? 1.0), \gui);
+                        };
+                    };
+                });
+
+            strip.layout.add(slider);
+            strip.layout.add(valueLabel);
+            strip.layout.add(muteButton);
+
+            ~controlLabels = ~controlLabels ?? ();
+            ~knobViews = ~knobViews ?? ();
+            ~controlLabels[paramName] = valueLabel;
+            ~knobViews[paramName] = slider;
+            ~mixerStrips[paramName] = (strip: strip, slider: slider,
+                mute: muteButton, held: 1.0);
+            strip;
+        };
+
+        mixerView.layout.add(
+            StaticText()
+                .string_("MATRIX\nMIXER\nCC 42-49")
+                .font_(Font(~monoFont, 10, true))
+                .stringColor_(Color.white)
+                .align_(\left)
+                .maxWidth_(96)
+        );
+        [
+            [\mixDrone,  "DRONE"],  [\mixPad,    "PAD"],
+            [\mixKick,   "KICK"],   [\mixPerc,   "PERC"],
+            [\mixDust,   "DUST"],   [\mixSample, "SAMPLE"],
+            [\mixCorpus, "CORPUS"], [\mixUltra,  "ULTRA"]
+        ].do { |pair|
+            mixerView.layout.add(~makeMixStrip.value(pair[0], pair[1]));
         };
 
         // ─── Row 6: Marea — arco de densidad ──────────────────────────────
@@ -395,14 +610,14 @@
                     [caption, mainTheme.dim,    backgroundColor],
                     [caption, backgroundColor, mainTheme.accent]
                 ])
-                .font_(Font("Monaco", 11, true))
+                .font_(Font(~monoFont, 11, true))
                 .maxHeight_(28)
                 .value_((~controlValues[key] ? 0).asInteger);
 
             valueLabel = StaticText()
                 .string_(~labelCase.(key) ++ ": " ++ (~controlValues[key] ? 0))
                 .stringColor_(mainTheme.foreground)
-                .font_(Font("Monaco", 9))
+                .font_(Font(~monoFont, 9))
                 .align_(\center);
 
             // Route through the single write path so exclusivity, the beat
@@ -449,7 +664,7 @@
         // Sample section header
         sampleHeader = StaticText()
             .string_("SAMPLE TRIGGERS")
-            .font_(Font("Helvetica", 16, true))
+            .font_(Font(~monoFont, 16, true))
             .align_(\center)
             .stringColor_(mainTheme.yellow);
         
@@ -465,7 +680,7 @@
                     [name, textColor, backgroundColor.blend(mainTheme.accent, 0.12)],
                     [name, backgroundColor, mainTheme.accent]
                 ])
-                .font_(Font("Helvetica", 10))
+                .font_(Font(~monoFont, 10))
                 .maxHeight_(40)
                 .action_({ |btn|
                     if(btn.value == 1) {
@@ -487,7 +702,7 @@
         // Add stop button
         stopButton = Button()
             .states_([["STOP ALL", textColor, backgroundColor.blend(mainTheme.red, 0.2)]])
-            .font_(Font("Helvetica", 10, true))
+            .font_(Font(~monoFont, 10, true))
             .maxHeight_(40)
             .action_({
                 "Stopping all samples".postln;
@@ -542,13 +757,15 @@
                 .color_([mainTheme.background, mainTheme.dim, mainTheme.foreground, mainTheme.foreground.alpha_(0.2)])
                 .value_(spec.unmap(defaultVal));
 
-            displayStr = label.asString;
-            displayStr = displayStr[0].toUpper ++ displayStr[1..];
+            // ALL CAPS throughout: camelCase parameter names read as two
+            // words at a glance once the case is flattened, and caps hold
+            // the monospace grid better than mixed case at 10px.
+            displayStr = label.asString.toUpper;
 
             valueLabel = StaticText()
                 .string_(displayStr ++ ": " ++ defaultVal.round(0.001))
                 .stringColor_(Color.white)
-                .font_(Font("Monaco", 9))
+                .font_(Font(~monoFont, 9))
                 .align_(\center);
 
             // Add function description label
@@ -563,7 +780,7 @@
                     displayStr.toUpper
                 ))
                 .stringColor_(Color.white)
-                .font_(Font("Helvetica", 8, true))
+                .font_(Font(~monoFont, 8, true))
                 .align_(\center);
 
             knobContainer.layout.add(knob);
@@ -625,7 +842,7 @@
         ~recordingStatus = StaticText()
             .string_("REC: READY")
             .stringColor_(mainTheme.green)
-            .font_(Font("Monaco", 12, true))
+            .font_(Font(~monoFont, 12, true))
             .align_(\center)
             .minWidth_(120);
         
@@ -635,7 +852,7 @@
                 ["● START REC", mainTheme.foreground, backgroundColor.blend(mainTheme.red, 0.2)],
                 ["■ STOP REC", backgroundColor, mainTheme.red]
             ])
-            .font_(Font("Helvetica", 11, true))
+            .font_(Font(~monoFont, 11, true))
             .action_({ |btn|
                 if(btn.value == 1) {
                     if(~startRecording.notNil) {
@@ -657,7 +874,7 @@
         // press STOP manually. Defined in 11_recording_system.scd:219.
         ~quickRecButton = Button()
             .states_([["▶ 30s SNAPSHOT", mainTheme.foreground, backgroundColor.blend(mainTheme.yellow, 0.2)]])
-            .font_(Font("Helvetica", 10))
+            .font_(Font(~monoFont, 10))
             .action_({
                 if(~quickRecord.notNil) {
                     "Quick record: 30s auto-stop. Saves to recordings/ dir.".postln;
@@ -677,7 +894,7 @@
         // which is invisible on displays narrower than ~1800px).
         ~spatialGuiButton = Button()
             .states_([["◇ SPATIAL 4ch", mainTheme.foreground, backgroundColor.blend(mainTheme.accent, 0.15)]])
-            .font_(Font("Helvetica", 10))
+            .font_(Font(~monoFont, 10))
             .action_({
                 // Use the path captured at file-load time (see top of script).
                 // thisProcess.nowExecutingPath is nil inside a button action,
@@ -724,13 +941,13 @@
             .string_("")
             .background_(backgroundColor.blend(mainTheme.accent, 0.10))
             .stringColor_(mainTheme.yellow)
-            .font_(Font("Monaco", 11));
+            .font_(Font(~monoFont, 11));
 
         ~presetMenu = PopUpMenu()
             .items_([])
             .background_(backgroundColor.blend(mainTheme.accent, 0.10))
             .stringColor_(mainTheme.yellow)
-            .font_(Font("Monaco", 11));
+            .font_(Font(~monoFont, 11));
 
         ~refreshPresetMenu = {
             if(~listConfigs.notNil) {
@@ -740,7 +957,7 @@
 
         ~presetSaveButton = Button()
             .states_([["◈ SAVE CONFIG", mainTheme.foreground, backgroundColor.blend(mainTheme.accent, 0.15)]])
-            .font_(Font("Helvetica", 10, true))
+            .font_(Font(~monoFont, 10, true))
             .action_({
                 var name = ~presetNameField.string;
                 if(name.isEmpty) { name = "config_" ++ Date.getDate.format("%y%m%d_%H%M%S") };
@@ -752,7 +969,7 @@
 
         ~presetLoadButton = Button()
             .states_([["◈ LOAD", mainTheme.foreground, backgroundColor.blend(mainTheme.green, 0.15)]])
-            .font_(Font("Helvetica", 10, true))
+            .font_(Font(~monoFont, 10, true))
             .action_({
                 var sel = ~presetMenu.item;
                 if(sel.notNil and: { ~loadConfig.notNil }) {
@@ -762,7 +979,7 @@
 
         presetView.layout.add(
             StaticText().string_("CONFIGS:").stringColor_(mainTheme.yellow)
-                .font_(Font("Helvetica", 11, true)).minWidth_(60)
+                .font_(Font(~monoFont, 11, true)).minWidth_(60)
         );
         presetView.layout.add(~presetNameField);
         presetView.layout.add(~presetSaveButton);
@@ -779,6 +996,8 @@
         ~scrollCanvas.layout.add(controlViewRow3);
         ~scrollCanvas.layout.add(controlViewRow4);
         ~scrollCanvas.layout.add(controlViewRow5);
+        ~scrollCanvas.layout.add(controlViewRow7);
+        ~scrollCanvas.layout.add(mixerView);
         ~scrollCanvas.layout.add(controlViewRow6);
         ~scrollCanvas.layout.add(sampleView);
         ~scrollCanvas.layout.add(recordingView);
@@ -787,7 +1006,7 @@
         // Add footer
         ~footer = StaticText()
             .string_("SøNETH BiocracyEngine — Spatial Audio + Samples")
-            .font_(Font("Monaco", 8))
+            .font_(Font(~monoFont, 8))
             .align_(\right)
             .stringColor_(mainTheme.dim.alpha_(0.6));
         ~scrollCanvas.layout.add(~footer);

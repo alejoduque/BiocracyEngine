@@ -7,6 +7,34 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Cámara Fenológica · corpus layer, matrix mixer, 1-bit GUI (2026-08-07)
+
+#### Added
+- **The AudioMoth corpus as a fourth actor** (`14_phenological_corpus.scd`): 261 field recordings from La Luna / Planeta Rica (Córdoba) placed on the 365-day phenological ring of Article 42 and played as the ring turns. Independent `Routine` (not a branch of `~beatRoutine`, whose 0.06–2.0 s tick is the wrong grain for material measured in minutes), a 16-slot LRU RAM pool with asynchronous look-ahead, and 4 `DiskIn` cue buffers. Resident cost ≈ 230 MB, so `memSize`/`numBuffers` are unchanged. New OSC: `/pheno/goto <doy>`, `/pheno/next`, `/pheno/stop`, `/pheno/start`, plus `/pheno/cursor` and `/pheno/clip` outbound.
+- **`tools/build_corpus.py`**: one-off preprocessing of the 384 kHz originals (which are opened read-only and never modified) into four derived tiers — `audible/` 261 clips at 48 kHz, `expanded/` 69 ×8 time-expansions, `stems/` 93 clips × 3 bands, `grains/` 116 cuts — plus `corpus/manifest.json` merging all 248 `events.json` with `phenological_series.csv`. 725 files, 4.21 GB. `--dry-run` reports counts and projected sizes first.
+- **Five orphan phenology buses finally have readers.** `windowWidth`, `seasonalBias`, `absenceWeight`, `pulseGain` and `opacityFloor` were allocated and reachable by MIDI and OSC but read by nothing in SuperCollider. `activityThreshold`'s default of 0.50 is Article 45's threshold verbatim.
+- **Matrix mixer (Row 8, CC 42–49, `/mix/*`)**: one live fader per audible layer — drone, pad, kick, perc, dust, sample, corpus, ultra — wired through all nine SynthDefs and all six spawn sites. Every other control on the surface shapes timbre; before this the balance between layers lived only in the hardcoded gain budget of `3_synthdefs.scd`, fixed at load, so the instrument could not be mixed while playing. Unity is 1.0 at mid-throw, so an untouched boot is unchanged; 0 is a true mute, 2.0 is +6 dB. SC strips carry a MUTE that remembers the fader position. Measured on the drone: unity 0.0262 RMS, 0.5 → 0.0132, 2.0 → 0.0531, 0 → silence.
+- **`phenoRate` (CC 21) and `corpusLevel` (CC 22)** on both control surfaces. `phenoRate` default 0.0167 day/s is one ring day per minute — a 6 h 05 m year in which one recorded day lasts exactly as long as one AudioMoth clip; full range spans 91 s to 48 h.
+- **NEXT REC. DAY ▶** button and `/pheno/next`: 331 of 365 ring days have no recording, so at the default rate the corpus can be silent for up to three hours at a stretch. Auditioning or performing it needs a way to reach the next day that has audio.
+
+#### Fixed
+- **Corpus fader appeared dead.** Nothing was playing for it to act on: the cursor started at doy 1, the first recorded day is doy 9, and only 9.3 % of the ring carries audio. The ring now opens on a recorded day (doy 10, 33 clips) instead of doy 1 with zero.
+- **Row 7 read "0 clip(s)" permanently.** Zero is the *normal* reading for 331 of 365 days, but naming it that way made a working layer look broken. Gaps now report `AUSENCIA · <depth>d`, matching the HTML.
+- **Corpus knobs were clipped out of existence.** Appending them to GUI row 5 made nine knobs needing ~1340 px in a window capped at 1100 with `hasHorizontalScroller_(false)`. They now have their own captioned row.
+- **The absence voice revealed nothing.** It streamed the raw 384 kHz files through `DiskIn`, which performs no sample-rate conversion and so expands ×8 for free — a tempting trick and the wrong one: it drops *everything* three octaves, so the loud audible band lands at 125 Hz–2.5 kHz and buries the ultrasound it was meant to expose. It now streams `corpus/expanded/`, where the renderer high-passes at 38 kHz (24 dB/oct) *before* expanding.
+- **Corpus layer was ~9 dB too quiet.** Measured: `samples/*.mp3` average −22.2 dB mean, `corpus/audible/` −21.3 dB — within ~1 dB, so parity of trim is parity of loudness. `~trimCorpus` 1.10 → **2.60 × ~trimMaster**, which lands the layer within ~1 dB of the sample layer at `corpusLevel`'s 0.5 default and ~6 dB below the drone bed.
+- **`bancada` had an unreachable position.** With 0 = "todas", a 0–4 spec left the fifth ecological role out of range. Dawn and dusk chorus now share a seat (dawn alone is 6 events in 261), giving four roles plus "todas" — 135/42/44/38.
+
+#### Changed
+- **SC GUI is 1-bit monospace, all caps.** One typeface (Menlo, 31 call sites unified from Helvetica/Monaco/Courier New), black and white only. The amber scheme encoded state in *hue* — green ok, red stop, yellow armed — none of which survives a projector or a photograph, and which made hue do the work that state should. Engaged controls now invert to black-on-white; that is the only state signal.
+- **Slot 0 is no longer entirely amber.** The outermost radar ring and Alouatta (the howler, Article 46's alert protocol) burn white phosphorous `#f2fff4`. The howler keeps the same three-step activity ramp as the other species, in phosphor rather than amber.
+- **Bancada buttons name what the bus selects.** They were labelled by temporada, which duplicated the jump-season row below them and named something `bancada` does not select. Article 43 defines the bancadas taxonomically, but the corpus carries no taxonomy — the detector yields ecological roles, so those are the labels.
+- **The biome panel names the site that exists.** "Biome Network · Colombia" listed eight regions — Chocó, Amazonia, Orinoquía and five more — that the AudioMoth has never recorded and has no way to reach. The Reserva is one biome in one place: bosque seco tropical of the Sinú valley, Córdoba. That space now carries the corpus transport and fader. `state.edna` stays eight wide on purpose, because the BioToken formula and the consensus average over all eight; narrowing the formula is a separate decision about the token, not about the panel.
+
+#### Notes
+- **libsoxr is not compiled into the Homebrew ffmpeg here, and is not needed.** Measured against a 60 kHz tone (which folds to 12 kHz under 8:1 decimation, floor −153.8 dB): ffmpeg's native swr rejects 112 dB by default and **130 dB** at `filter_size=256` — beyond what 24-bit output can represent. Explicit biquad pre-filters reach the measurement floor but roll off real 15–22 kHz content, so they are not used.
+- The build applies **one global gain across the whole corpus**, never per-clip normalisation: a quiet dry-season night has to stay quiet against a rainy insect chorus, since `activity` and `richness` are exactly the signal per-clip normalisation would flatten.
+
 ### Refactor branch `refactor/control-bridges-ilda` (2026-07-17)
 
 #### Added

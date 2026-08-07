@@ -190,7 +190,11 @@ s.doWhenBooted({
         masterAmpBus=(-1), filterCutoffBus=(-1), noiseLevelBus=(-1), noiseFiltBus=(-1),
         droneDepthBus=(-1), droneFadeBus=(-1), droneSpaceBus=(-1), droneMixBus=(-1),
         // Spatial positioning buses
-        spatialXBus=(-1), spatialYBus=(-1), roomSizeBus=(-1), distanceEffectBus=(-1);
+        spatialXBus=(-1), spatialYBus=(-1), roomSizeBus=(-1), distanceEffectBus=(-1),
+        // Matrix mixer: this layer's live level (0 = mute, 1 = unity). Named
+        // to match the \mixPad bus, so the generic wiring in 6_osc_handlers
+        // connects it without the spawn site listing it.
+        mixPadBus=(-1);
 
         var env, sig, mod, carrier, grains, wet, noise, distance, distanceAmp, quadSig;
         // MIDI bus inputs - Lawrence English ambient style with bus parameter fallbacks
@@ -326,7 +330,8 @@ s.doWhenBooted({
         // 20-30 voices they alone reached 2-3x full scale while every other
         // layer sat under 0.17.
         sig = sig * (amp * masterVol.clip(0.01, 1) * distanceAmp.clip(0.1, 1)
-            * Lag.kr(legacyAmp, 0.3).linlin(0, 1, 0.05, 1.4)) * polyComp * ~trimPad;
+            * Lag.kr(legacyAmp, 0.3).linlin(0, 1, 0.05, 1.4)) * polyComp * ~trimPad
+            * Lag.kr(Select.kr(mixPadBus >= 0, [1.0, In.kr(mixPadBus, 1)]), 0.08);
         
         // Quadraphonic spatial positioning
         // Panner chosen from the REAL output channel count, at graph-build time
@@ -351,7 +356,9 @@ s.doWhenBooted({
     // opalKick: Deep FM/Distortion kick (Gem style)
     SynthDef(\opalKick, {
         arg out=0, freq=50, amp=0.5, atk=0.001, dec=0.4,
-        masterVolBus=(-1), timeBus=(-1), harmonicBus=(-1), textureBus=(-1), spectralBus=(-1), atmosphereBus=(-1), spatialBus=(-1);
+        masterVolBus=(-1), timeBus=(-1), harmonicBus=(-1), textureBus=(-1), spectralBus=(-1), atmosphereBus=(-1), spatialBus=(-1),
+        // Matrix mixer: this layer's live level (0 = mute, 1 = unity).
+        mixKickBus=(-1);
 
         var vol   = Select.kr(masterVolBus >= 0, [0.3, In.kr(masterVolBus, 1)]);
         var tStretch= Select.kr(timeBus >= 0, [2.0, In.kr(timeBus, 1)]);
@@ -377,7 +384,8 @@ s.doWhenBooted({
         // Reverb tail
         sig = sig + FreeVerb.ar(sig, revM * 0.5, 0.7, 0.2);
 
-        sig = sig * env * amp * vol * ~trimKick;
+        sig = sig * env * amp * vol * ~trimKick
+            * Lag.kr(Select.kr(mixKickBus >= 0, [1.0, In.kr(mixKickBus, 1)]), 0.08);
         
         // Quadraphonic spatial positioning
         // PanAz's position is already a -1..1 traversal of the ring, which is
@@ -405,7 +413,9 @@ s.doWhenBooted({
     SynthDef(\opalPerc, {
         arg out=0, freq=400, amp=0.3, 
         masterVolBus=(-1), harmonicBus=(-1), textureBus=(-1), resonantBus=(-1), spectralBus=(-1), timeBus=(-1),
-        memoryBus=(-1), atmosphereBus=(-1), spatialBus=(-1);
+        memoryBus=(-1), atmosphereBus=(-1), spatialBus=(-1),
+        // Matrix mixer: this layer's live level (0 = mute, 1 = unity).
+        mixPercBus=(-1);
 
         var vol   = Select.kr(masterVolBus >= 0, [0.3, In.kr(masterVolBus, 1)]);
         var tStretch= Select.kr(timeBus >= 0, [2.0, In.kr(timeBus, 1)]);
@@ -460,7 +470,8 @@ s.doWhenBooted({
         sig = sig + wet;
         sig = sig + FreeVerb.ar(sig, revM, 0.8, 0.5);
 
-        sig = sig * amp * vol * ~trimPerc;
+        sig = sig * amp * vol * ~trimPerc
+            * Lag.kr(Select.kr(mixPercBus >= 0, [1.0, In.kr(mixPercBus, 1)]), 0.08);
         
         // PanAz's position is already a -1..1 traversal of the ring, which is
         // exactly the range spatialSpread has. The old atan2(x, 0) collapsed
@@ -495,7 +506,9 @@ s.doWhenBooted({
         // a bus that reached no UGen. They shape the drone here.
         masterAmpBus=(-1), filterCutoffBus=(-1),
         droneDepthBus=(-1), droneFadeBus=(-1), droneSpaceBus=(-1), droneMixBus=(-1),
-        delayFeedbackBus=(-1);
+        delayFeedbackBus=(-1),
+        // Matrix mixer: this layer's live level (0 = mute, 1 = unity).
+        mixDroneBus=(-1);
 
         var vol   = Select.kr(masterVolBus >= 0, [0.3, In.kr(masterVolBus, 1)]);
         var pShift= Select.kr(pitchBus >= 0, [0.0, In.kr(pitchBus, 1)]);
@@ -589,7 +602,8 @@ s.doWhenBooted({
             1
         );
 
-        sig = sig * env * amp * vol * Lag.kr(mAmp, dFade).linlin(0, 1, 0.05, 1.4) * ~trimDrone;
+        sig = sig * env * amp * vol * Lag.kr(mAmp, dFade).linlin(0, 1, 0.05, 1.4) * ~trimDrone
+            * Lag.kr(Select.kr(mixDroneBus >= 0, [1.0, In.kr(mixDroneBus, 1)]), 0.08);
         
         // Same fix as the other voices; the slow LFNoise wander stays on top.
         // Panner chosen from the REAL output channel count, at graph-build time.
@@ -613,7 +627,9 @@ s.doWhenBooted({
     SynthDef(\opalDust, {
         arg out=0, amp=0.2,
         masterVolBus=(-1), textureBus=(-1), spectralBus=(-1), timeBus=(-1), pitchBus=(-1),
-        memoryBus=(-1), atmosphereBus=(-1), spatialBus=(-1);
+        memoryBus=(-1), atmosphereBus=(-1), spatialBus=(-1),
+        // Matrix mixer: this layer's live level (0 = mute, 1 = unity).
+        mixDustBus=(-1);
 
         var vol   = Select.kr(masterVolBus >= 0, [0.3, In.kr(masterVolBus, 1)]);
         var dens  = Select.kr(textureBus >= 0, [0.2, In.kr(textureBus, 1)]);
@@ -646,7 +662,8 @@ s.doWhenBooted({
         // in the mix and this doubled it on the way out, against a master bus
         // that was already running 3-6x over full scale. Gain budget for this
         // layer is 0.08 — crackle as occasional texture, not a constant rain.
-        sig = sig * env * amp * vol * ~trimDust;
+        sig = sig * env * amp * vol * ~trimDust
+            * Lag.kr(Select.kr(mixDustBus >= 0, [1.0, In.kr(mixDustBus, 1)]), 0.08);
         
         // PanAz's position is already a -1..1 traversal of the ring, which is
         // exactly the range spatialSpread has. The old atan2(x, 0) collapsed

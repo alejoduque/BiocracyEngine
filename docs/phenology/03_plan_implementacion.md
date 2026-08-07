@@ -44,6 +44,22 @@ Adicionalmente, todos los `/soneth/*` y `/parliament/*` están **vivos** (handle
 
 **Botones de temporada (4):** se renderizan como una fila de botones discretos al final de la sección. Envían `/pheno/jumpSeason` con string `"seca" | "primeras_lluvias" | "medio_seco" | "segundas_lluvias"`. No consumen CC; se disparan con clic del ratón o atajo de teclado opcional.
 
+> **Nota de implementación (2026-08-07) — `bancada` cambió de significado.**
+> Este plan, y la propuesta que lo precede, mapean `bancada` a las cuatro
+> temporadas del Art. 42. Al conectarse la capa del corpus AudioMoth
+> (`14_phenological_corpus.scd`) ese mapeo resultó insostenible por dos razones:
+> duplicaba exactamente la fila de botones de salto de temporada que aparece
+> justo debajo, y nombraba algo que el bus no selecciona. El Art. 43 define las
+> bancadas taxonómicamente (FLORA / AVES / AMPHIBIA / REPTILIA / MAMMALIA), pero
+> el corpus no lleva taxonomía: el detector entrega **roles ecológicos**. Ésos
+> son los que el filtro puede accionar con honestidad.
+>
+> Mapeo vigente — 0 = todas, 1 = `nocturnal_voice` (135 clips),
+> 2 = `insect_chorus` (42), 3 = `chorus_participant` (44), 4 = `community_shift`
+> (38). Alba y crepúsculo comparten escaño: el coro del alba son 6 eventos de
+> 261, insuficientes para convocar bancada propia. El rango 0–4 y el CC 16 se
+> conservan. Se mantiene este documento como registro de lo propuesto.
+
 ### 2.1 Re-bautizo de secciones HTML
 
 - **"Fungi Chemical → SC"** → **"Cámara Fenológica · Bosque"** (4 sliders + 1 nuevo)

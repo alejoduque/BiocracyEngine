@@ -135,7 +135,11 @@ s.doWhenBooted({
             sampleDelayBus=(-1), delayTimeBus=(-1), delayFeedbackBus=(-1),
             lowPassBus=(-1), highPassBus=(-1), filterResBus=(-1),
             samplePanBus=(-1), sampleSpatialXBus=(-1), sampleSpatialYBus=(-1),
-            roomSizeBus=(-1), distanceEffectBus=(-1);
+            roomSizeBus=(-1), distanceEffectBus=(-1),
+            // Matrix mixer: this layer's live level (0 = mute, 1 = unity).
+            // Passed explicitly at the spawn site — ~triggerSample auto-wires
+            // ~sampleBuses, which is a different collection from ~buses.
+            mixSampleBus=(-1);
 
             var sig, grains, wet, stretchAmount, distance, distanceAmp, quadSig, env;
 
@@ -226,7 +230,8 @@ s.doWhenBooted({
             );
 
             sig = sig * env * controlAmp.clip(0, 1) * distanceAmp.clip(0.1, 1)
-                * (~trimSample ? 0.0853);
+                * (~trimSample ? 0.0853)
+                * Lag.kr(Select.kr(mixSampleBus >= 0, [1.0, In.kr(mixSampleBus, 1)]), 0.08);
 
             // Panner chosen from the REAL output channel count, at graph-build
             // time — same fix as the five voices in 3_synthdefs.scd. PanAz(4)
@@ -337,6 +342,12 @@ s.doWhenBooted({
                     };
                 } {
                     "Sample buses not initialized yet".warn;
+                };
+
+                // The matrix-mixer level for this layer lives in ~buses, not
+                // ~sampleBuses, so the loop above does not reach it.
+                if(~buses.notNil and: { ~buses[\mixSample].notNil }) {
+                    synthArgs = synthArgs ++ [\mixSampleBus, ~buses[\mixSample].index];
                 };
 
                 "Triggering sample: % (%, % ch)".format(sampleName, defName, buf.numChannels).postln;

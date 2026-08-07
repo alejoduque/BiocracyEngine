@@ -85,9 +85,11 @@ SuperCollider
   ├─ 1_server_config.scd   MOTU/CoreAudio auto-detect
   ├─ 2_midi_control.scd    Faderfox LC2 → ~buses (20 CC)
   ├─ 3_synthdefs.scd       SynthDefs (opalKick/Perc/Drone/Dust/Bell)
-  ├─ 4_gui.scd             SC GUI knobs (20 params, amber palette)
+  ├─ 4_gui.scd             SC GUI (1-bit monospace) + matrix mixer
   ├─ 5_beat_engine.scd     Evolving beat engine (TX-driven melodic pool)
   ├─ 6_osc_handlers.scd    OSC in from HTML/bridge → ~buses
+  ├─ 10_sample_system.scd  samples/ playback + paulstretch
+  ├─ 14_phenological_corpus.scd  AudioMoth corpus on the 365-day ring
   └─ audio out → MOTU 828x or CoreAudio stereo
      │
      │  OSC echo → UDP:3333  (~visualsDest)
@@ -112,7 +114,7 @@ nw_wrld Electron browser  (parliament.html)
   │
   └─ applySonethToViz(key, v)  ─────────────────────────────────────────┐
        │                                                                  │
-       ├─ Slot 0  ParliamentStage.js   (Three.js)                        │
+       ├─ Slot 0  ParliamentStage.js   (Three.js)  amber + phosphor      │
        ├─ Slot 1  AsteroidWaves        (p5.js)  → __slot1Soneth          │
        ├─ Slot 2  LowEarthPoint        (Three.js)                        │
        ├─ Slot 3  PerlinBlob           (p5.js)  → __slot3Soneth          │
@@ -290,6 +292,108 @@ Four processes are managed by `start_ecosystem.sh`:
 > Six of these (CC 5, 6, 9, 37, 38, 39) previously wrote to control buses that
 > **no UGen read** — `\opalDrone` did not declare them and `\elektronBell` read
 > them into variables it discarded. They now shape the drone.
+
+### Row 5: Cámara Fenológica de lo Vivo — the corpus on the 365-day ring
+
+`14_phenological_corpus.scd` plays 261 AudioMoth clips from La Luna / Planeta
+Rica across the phenological ring of Article 42. Only **34 of 365 days carry a
+recording**; the other 331 are silence, and under Article 44 that silence is
+the piece's dominant material, never interpolated.
+
+| Param | MIDI CC | SC Audio |
+|---|---|---|
+| **activityThreshold** | CC 10 | Art. 45 — presence above 0.5 lights the seat; below it the species is in the territory but silent in the Chamber |
+| **windowWidth** | CC 11 | Art. 43 — Gaussian reach in ring days. 0.4 leaves recordings isolated points in silence; 2.5 lets a real day be heard from across a gap (it never invents one) |
+| **seasonalBias** | CC 12 | pulls selection toward Seca (−1) or lluvias (+1) independently of the cursor |
+| **absenceWeight** | CC 13 | Art. 44 — 0 leaves unrecorded days truly silent; above it they sound the ×8 ultrasonic layer, so what fills the silence is what human hearing cannot reach |
+| **pulseGain** | CC 14 | Art. 45 — how hard *quórum sensible* pushes back into `harmonicRich`, `textureDepth` and `/bio/consensus` |
+| **opacityFloor** | CC 15 | Art. 47 — raising it withholds more of the corpus from analysis, projection and the laser |
+| **bancada** | CC 16 | Art. 43 — 0 = todas, then the detector's four ecological roles |
+| **phenoRate** | CC 21 | ring speed in days/second. Default 0.0167 = one day per minute = a 6 h 05 m year; full range 91 s → 48 h |
+| **corpusLevel** | CC 22 | the field recordings against the synthesis |
+
+> Before this layer, five of these buses (`windowWidth`, `seasonalBias`,
+> `absenceWeight`, `pulseGain`, `opacityFloor`) were allocated and reachable by
+> MIDI and OSC but had **zero readers in SuperCollider**. The corpus is what
+> they were built for.
+
+**Two playback paths, because 384 kHz is not optional.** A 60 s AudioMoth clip
+is 92 MB as a server Buffer — the corpus would be 24 GB resident. Nothing reads
+the originals at run time; two derived tiers carry the layer:
+
+* `corpus/audible/` (48 kHz) feeds a fixed pool of 16 RAM slots recycled by the
+  ring's look-ahead. Nothing is allocated at trigger time.
+* `corpus/expanded/` (×8 time-expanded) is streamed with `DiskIn` for the
+  absence voice — 4 cue buffers, ~2 MB.
+
+Resident cost ≈ 230 MB, so `memSize` and `numBuffers` are unchanged.
+
+> **Why the expansion is baked offline.** `DiskIn` performs no sample-rate
+> conversion, so pointing it at a raw 384 kHz file at a 48 kHz server expands
+> ×8 for free — a tempting trick, and wrong. It drops *everything* three
+> octaves, so the loud audible band lands at 125 Hz–2.5 kHz and buries the
+> ultrasound it was meant to reveal. The renderer high-passes at 38 kHz
+> (24 dB/oct) **before** expanding, so only what was genuinely inaudible
+> arrives, at 4.75–24 kHz.
+
+**Gain staging.** `~trimCorpus = 2.60 × ~trimMaster`, measured rather than
+guessed. The seven MP3s in `samples/` average −22.2 dB mean; `corpus/audible/`
+averages −21.3 dB after the single global gain — within ~1 dB, so parity of
+trim is parity of loudness. Since `corpusLevel` sits in this layer's path and
+defaults to 0.5, the trim compensates: the layer lands within ~1 dB of the
+sample layer at the fader's default and ~6 dB below the drone bed, leaving the
+top half of the fader as real headroom.
+
+The build applies **one global gain across the whole corpus**, never per-clip
+normalisation — a quiet dry-season night has to stay quiet against a rainy
+insect chorus, since `activity` and `richness` are exactly the signal per-clip
+normalisation would flatten.
+
+Build the derived library (~4.2 GB, one-off) with:
+
+```bash
+python3 tools/build_corpus.py --dry-run   # counts and projected sizes
+python3 tools/build_corpus.py             # renders + writes corpus/manifest.json
+```
+
+Ring transport: `/pheno/goto <doy>`, `/pheno/next`, `/pheno/stop`, `/pheno/start`.
+
+> **The ring opens on a recorded day.** Only 34 of 365 days carry audio and the
+> first is doy 9, so starting the cursor at doy 1 meant the instrument began
+> with eight minutes of nothing — and since the two arcs are separated by gaps
+> of 178 and 131 days, it can then be silent for up to **three hours** at the
+> default rate. Absence is the material (Art. 44), but it should be arrived at,
+> not booted into. `/pheno/next` and the **NEXT REC. DAY ▶** button skip to the
+> next day that actually has audio.
+
+### Row 8: Matrix mixer — the only controls that change loudness
+
+| Param | MIDI CC | Layer |
+|---|---|---|
+| **mixDrone** | CC 42 | `\opalDrone` — the continuous bed |
+| **mixPad** | CC 43 | `\elektronBell` |
+| **mixKick** | CC 44 | `\opalKick` |
+| **mixPerc** | CC 45 | `\opalPerc` |
+| **mixDust** | CC 46 | `\opalDust` |
+| **mixSample** | CC 47 | `samples/` via `\samplePlayer*` |
+| **mixCorpus** | CC 48 | the AudioMoth audible layer |
+| **mixUltra** | CC 49 | the ×8 absence voice |
+
+Every other control on the surface shapes **timbre**. Before this row, the
+balance between layers lived only in the hardcoded gain budget of
+`3_synthdefs.scd` (`~trimDrone`, `~trimPad`, …), fixed at load and unreachable
+while playing — so the instrument could not be mixed.
+
+Unity is **1.0 at mid-throw**: at boot these multiply by exactly 1 and the
+engine sounds as it did before. `0` is a true mute, `2.0` is +6 dB. They
+multiply the trims rather than replacing them, so the documented gain budget
+stays meaningful. Measured on the drone layer: unity 0.0262 RMS, 0.5 → 0.0132
+(−6 dB), 2.0 → 0.0531 (+6 dB), 0 → silence.
+
+The SC GUI strips carry a **MUTE** that remembers the fader position, so
+unmuting restores the exact level. Mixer faders appear on both surfaces and
+follow MIDI, browser and preset loads through the same `~setParam` path as
+every other control.
 
 ### Slot A · Antifonía — the forest's acoustic parliament
 
@@ -484,6 +588,38 @@ peaks. The drone is now the **bed** rather than a quiet reference, the tidal
 trough thins to 0.42 instead of 0.15, and the field recordings sustain and
 cross-fade instead of punctuating. Result: **inaudible 48% → 16%**, crest
 340:1 → **37:1**, median level ×1.8, `outPk` p90 0.745.
+
+These trims remain the *structure* of the balance. What Row 8 adds is a live
+multiplier on each of them, so the structure can be adjusted while playing
+without editing constants and rebooting.
+
+### Slot 0 is no longer entirely amber
+
+`ParliamentStage.js` rendered every element in one hue, which made the chamber
+read as a single instrument panel rather than an assembly — nothing could stand
+apart from the amber because nothing was allowed to. Two elements now burn
+**white phosphorous** (`#f2fff4`, a trace of green so it stays a phosphor rather
+than a UI white):
+
+* **the outermost radar ring** — the boundary of what the instrument can see.
+  It is the only ring with real presence (base opacity 0.28 against 0.06), so a
+  change of hue there is seen rather than inferred.
+* **Alouatta, the howler** — Article 46 of the Cámara Fenológica gives it the
+  one alert protocol in the statute, obliging the Corporation to attend to its
+  silence. The species the instrument is bound to listen for is the species
+  that is not amber. It keeps the same three-step dim→bright activity ramp as
+  the others, in phosphor rather than amber, so it reads as the same state
+  machine in a different substance — not as a node stuck at one colour while
+  the rest of the chamber breathes.
+
+### The SC GUI is 1-bit monospace
+
+Black and white only, one typeface (Menlo), labels in caps. The previous amber
+scheme carried five hues that each encoded a state — green ok, red stop, yellow
+armed — none of which survived a projector or a photograph, and which made hue
+do the work that state should. Now every control is white on black and an
+**engaged** control inverts to black on white. That is the only state signal,
+and it reads at any size and in any reproduction.
 
 ---
 

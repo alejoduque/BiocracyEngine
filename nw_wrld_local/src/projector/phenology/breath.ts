@@ -241,12 +241,17 @@ export function notifyBeatTempo(beatTempo01: number) {
 //
 // Special case: bancada arrives as 0..1 in steps of 0.25 (5 positions).
 // We resolve to the string name before calling setBancada.
+//
+// These were temporada names, which is what the jump-season row selects, not
+// what the bancada bus does. Art. 43's bancadas are taxonomic, but the corpus
+// the bus filters carries only the detector's ecological roles — so those are
+// the names. Kept in step with BANCADA_ROLES in tools/build_corpus.py.
 const BANCADA_NAMES = [
   "todas",
-  "seca",
-  "primeras_lluvias",
-  "medio_seco",
-  "segundas_lluvias",
+  "nocturnal_voice",
+  "insect_chorus",
+  "chorus_participant",
+  "community_shift",
 ] as const;
 
 export function applyPhenoControl(key: string, val: number): void {

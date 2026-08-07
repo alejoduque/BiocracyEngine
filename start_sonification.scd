@@ -27,7 +27,8 @@
         "8_transaction_buffer.scd", // Transaction management
         "9_spatial_headphone_sim.scd", // 4-channel headphone simulation
         "10_sample_system.scd",     // Sample playback system with paulstretch
-        "11_recording_system.scd"   // Multichannel recording system
+        "11_recording_system.scd",  // Multichannel recording system
+        "14_phenological_corpus.scd" // Cámara Fenológica: the AudioMoth corpus on the 365-day ring
     ].do { |file|
         var path = basePath +/+ file;
         ("Loading " ++ file ++ "...").postln;

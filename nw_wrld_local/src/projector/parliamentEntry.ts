@@ -42,6 +42,10 @@ const phenoParams: Record<string, number> = {
   opacityFloor: 0.0,
   pulseGain: 0.5,
   bancada: 0,
+  // The corpus layer's transport and fader (14_phenological_corpus.scd).
+  // rate 0.28 normalized is one ring day per minute on the exponential spec.
+  rate: 0.28,
+  corpusLevel: 0.5,
   seasonalWeight: 0.5,
   activeFraction: 0,
 };
@@ -90,6 +94,26 @@ function connectControlWS() {
             sel.appendChild(o);
           });
           if (names.includes(cur)) sel.value = cur;
+        }
+        return;
+      }
+
+      // The ring's own reading of where it is, pushed once per phenological
+      // day by 14_phenological_corpus.scd:
+      //   /pheno/cursor  doy, temporada, admitted clips, gap depth, quórum
+      // Read-only telemetry, so it deliberately does not touch phenoParams —
+      // those mirror controls, and the cursor is not one.
+      if (address === "/pheno/cursor") {
+        const el = document.getElementById("corpus-cursor");
+        if (el) {
+          const [doy, temporada, clips, gap, quorum] = args as unknown as [
+            number, string, number, number, number,
+          ];
+          const body = Number(clips) > 0
+            ? `${clips} clip${Number(clips) === 1 ? "" : "s"}`
+            : `ausencia · ${gap}d`;
+          el.textContent =
+            `doy ${doy} · ${temporada} · ${body} · quórum ${Number(quorum).toFixed(2)}`;
         }
         return;
       }
@@ -242,6 +266,21 @@ function connectControlWS() {
 
         // 2. Apply to the calendar instance (no-op if slot P not mounted)
         applyPhenoControl(key, v);
+      }
+
+      // Matrix mixer echo. Level only — nothing here reaches a visual, so it
+      // syncs the slider and its readout and stops. SC is the owner: a mute
+      // pressed on the SC GUI arrives as 0.0 and the fader here follows.
+      if (address.startsWith("/mix/")) {
+        const v = args[0];
+        if (typeof v !== "number" || !isFinite(v)) return;
+        const layer = address.slice("/mix/".length);
+        const slider = document.querySelector<HTMLInputElement>(
+          `input[type='range'][data-osc='${address}']`
+        );
+        if (slider) slider.value = String(v);
+        const dispEl = document.getElementById(`disp-mix-${layer}`);
+        if (dispEl) dispEl.textContent = v.toFixed(2);
       }
     } catch (_) { }
   };
@@ -726,12 +765,25 @@ async function init() {
   initLaserTap();
 
   // ─── Build eDNA control rows ───
+  // Only the site the Reserva actually occupies gets a slider. The other seven
+  // regions named a national survey this instrument has never recorded and has
+  // no way to reach — Chocó, Amazonia and Orinoquía are not places the
+  // AudioMoth has ever been. EDNA_SITES lists the indices that are real here.
+  //
+  // state.edna stays eight wide on purpose: the BioToken formula and the
+  // consensus average over all eight (see computeBioToken), and the seven
+  // unsurfaced entries simply hold their initial value, which is exactly what
+  // they did before when nobody touched their sliders. Narrowing the formula
+  // to the surfaced sites is a separate decision about the token, not about
+  // this panel.
   const ednaCtrlRows = document.getElementById("edna-ctrl-rows");
-  const ednaShortNames = ["Chocó", "Amazon", "E.Cord", "Caribb", "Orinoc", "Pacific", "Magdal", "Guayan"];
+  const EDNA_SITES: ReadonlyArray<{ i: number; label: string }> = [
+    { i: 3, label: "B.s.T · Córdoba" },  // CAR — Sinú valley, the Reserva
+  ];
   if (ednaCtrlRows) {
-    ednaCtrlRows.innerHTML = EDNA_IDS.map((id, i) => `
+    ednaCtrlRows.innerHTML = EDNA_SITES.map(({ i, label }) => `
       <div class="ctrl-row">
-        <label>${ednaShortNames[i]}</label>
+        <label>${label}</label>
         <input type="range" min="0" max="1" step="0.01" value="0.85"
           data-osc="/agents/edna/biodiversity" data-agent-id="${i}">
         <span class="ctrl-val" id="disp-edna-bio-${i}">0.85</span>
@@ -792,9 +844,10 @@ async function init() {
 
   const ednaTele = document.getElementById("edna-tele");
   if (ednaTele) {
-    ednaTele.innerHTML = EDNA_IDS.map((id, i) => `
+    // Same narrowing as the control rows above: report the site that exists.
+    ednaTele.innerHTML = EDNA_SITES.map(({ i }) => `
       <div class="tele-row" style="margin-bottom:2px">
-        <span class="lbl" style="min-width:28px">${id}</span>
+        <span class="lbl" style="min-width:28px">${EDNA_IDS[i]}</span>
         <div class="tele-bar-wrap"><div class="tele-bar" id="ed-bar-${i}" style="width:85%"></div></div>
         <span class="val" id="ed-bio-${i}" style="min-width:32px">—</span>
         <span class="val" id="ed-val-${i}" style="min-width:32px;color:var(--text-dim)">—</span>
@@ -1393,6 +1446,18 @@ async function init() {
     "/pheno/pulseGain":         "disp-pheno-pulseGain",
     "/pheno/opacityFloor":      "disp-pheno-opacityFloor",
     "/pheno/bancada":           "disp-pheno-bancada",
+    "/pheno/rate":              "disp-pheno-rate",
+    "/pheno/corpusLevel":       "disp-pheno-corpusLevel",
+    // Matrix mixer — without these the default prefix would derive
+    // "disp-drone-" from /mix/drone and the readout would never update.
+    "/mix/drone":  "disp-mix-drone",
+    "/mix/pad":    "disp-mix-pad",
+    "/mix/kick":   "disp-mix-kick",
+    "/mix/perc":   "disp-mix-perc",
+    "/mix/dust":   "disp-mix-dust",
+    "/mix/sample": "disp-mix-sample",
+    "/mix/corpus": "disp-mix-corpus",
+    "/mix/ultra":  "disp-mix-ultra",
   };
 
   // ─── Replica → instrument macros ───────────────────────────────────────────
@@ -1562,6 +1627,7 @@ async function init() {
   // every other surface (MIDI knob, SC GUI, HTML slider) stays in sync.
 
   // Bancada radio group: 5 buttons → CC 16 / OSC /pheno/bancada (0..4 → 0..1)
+  // 0 is "todas"; 1..4 are the detector's ecological roles.
   document.querySelectorAll<HTMLButtonElement>(".pheno-bancada-btn").forEach((btn) => {
     btn.addEventListener("click", () => {
       const idx = parseInt(btn.dataset.bancada ?? "0", 10);
@@ -1823,9 +1889,6 @@ async function init() {
       setBar(`ed-bar-${i}`, ed.biodiversity);
       setVal(`ed-bio-${i}`, ed.biodiversity.toFixed(3));
       setVal(`ed-val-${i}`, ed.validation.toFixed(3));
-      // Highlight biome map row
-      const bm = document.getElementById(`bm-${EDNA_IDS[i]}`);
-      if (bm) bm.className = ed.biodiversity > 0.7 ? "biome-active" : "";
     });
 
     // Fungi
