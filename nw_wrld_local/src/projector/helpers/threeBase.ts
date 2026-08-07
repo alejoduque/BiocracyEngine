@@ -1024,10 +1024,27 @@ export class BaseThreeJsModule extends ModuleBase {
           object.parent.remove(object);
         }
 
-        // Nullify properties to help with garbage collection
-        for (const propName in object) {
-          if (typeof object[propName] === "object" && object[propName] !== null) {
-            object[propName] = null;
+        // Nullify properties to help with garbage collection.
+        //
+        // ONLY on objects this module actually owns. This loop used to run on
+        // whatever it was handed, and destroy() hands it every field on `this`
+        // — so a module that merely HELD A REFERENCE to a shared global got
+        // that global gutted on unmount. Antifonía cached window.__scAudio in
+        // a field; switching away from the slot nulled __scAudio.voices and
+        // __scAudio.bands, and scAudio.ts's tick loop then threw
+        // "Cannot read properties of null" on every subsequent frame, for the
+        // rest of the session, from a slot that was no longer mounted.
+        //
+        // THREE objects are safe to gut — they are ours and they are being
+        // disposed. Plain data objects are not: we do not know who else holds
+        // them.
+        const owned = object.isObject3D || object.isMaterial
+          || object.isBufferGeometry || object.isTexture;
+        if (owned) {
+          for (const propName in object) {
+            if (typeof object[propName] === "object" && object[propName] !== null) {
+              object[propName] = null;
+            }
           }
         }
       } catch {

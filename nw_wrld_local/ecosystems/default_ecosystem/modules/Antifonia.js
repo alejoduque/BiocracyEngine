@@ -145,6 +145,22 @@ class Antifonia extends BaseThreeJsModule {
     // la ecolocalización real vive muy por encima de Nyquist.
     { key: "murcielago", label: "MURCIÉLAGO",    sci: "Chiroptera",         smp: 2, cls: "biofonia",
       stratum: "dosel",      lo: 12000, hi: 60000, win: [18.4, 23.9], rate: 1.00 },
+    // Crax alberti — paujil piquiazul, endémico y en peligro crítico. Camina
+    // por el suelo entre los fustes en vez de volar, así que da al estrato del
+    // suelo su primer habitante en movimiento. Su canto es un BOOM grave y
+    // resonante: la única voz de la biofonía que vive donde vive el bombo, de
+    // ahí la banda baja. Se abre la grabación de aves en esa ventana, que es
+    // lo que el motor hace con todas: la banda de la llamada filtra el
+    // registro, no lo sustituye.
+    { key: "paujil",     label: "PAUJIL",        sci: "Crax alberti",       smp: 1, cls: "biofonia",
+      stratum: "suelo",      lo: 60,    hi: 320,   win: [5.0, 8.6],   rate: 0.72 },
+    // Atta cephalotes — hormiga arriera. No es un individuo, es un CAMINO: una
+    // fila que va del hormiguero al árbol. Estridulan al cortar, así que sí
+    // tienen voz — agudísima, muy tenue y casi continua. Y como cultivan
+    // hongo, el camino enciende el micelio por donde pasa: las dos cosas son
+    // un solo sistema y no dos adornos.
+    { key: "arriera",    label: "ARRIERA",       sci: "Atta cephalotes",    smp: 1, cls: "biofonia",
+      stratum: "suelo",      lo: 6000,  hi: 15000, win: [18.0, 5.5],  rate: 1.85 },
     { key: "lluvia",     label: "LLUVIA",        sci: "precipitación",      smp: -1, cls: "geofonia",
       stratum: "atmosfera",  lo: 200,   hi: 8000,  win: [13.0, 18.0], rate: 1.00 },
     { key: "viento",     label: "VIENTO",        sci: "advección",          smp: -1, cls: "geofonia",
@@ -161,6 +177,7 @@ class Antifonia extends BaseThreeJsModule {
     aullador: "mammals", murcielago: "mammals",
     oropendola: "birds",  aves: "birds",
     rana: "amphibians",   chicharra: "reptiles",
+    paujil: "birds",      arriera: "reptiles",   // el vocabulario no tiene insectos
   };
 
   // ── Presupuesto de la nube ──────────────────────────────────────────────
@@ -190,7 +207,7 @@ class Antifonia extends BaseThreeJsModule {
   // La parcela son 100 m ↔ PLOT*2 unidades.
   static M = (9.0 * 2) / 100;
 
-  static BIRDS = 5;             // aves en vuelo — ocupan el estrato de las velas
+  static BIRDS = 3;             // aves en vuelo — ocupan el estrato de las velas
   // Dos monos aulladores rojos (Alouatta seniculus) en las ramas de la ceiba.
   // No son decorado: el aullador ya era una de las fuentes de la bancada de
   // biofonía —la de registro más grave, ventana 4.3-8.0 h— y hasta ahora sus
@@ -199,6 +216,8 @@ class Antifonia extends BaseThreeJsModule {
   // Y sólo pueden estar en la ceiba, porque es la única emergente del rodal:
   // el mismo confinamiento que ya regía sus llamadas, ahora visible.
   static HOWLERS = 2;
+  static PAUJILES = 2;         // Crax alberti — camina el suelo entre fustes
+  static ANTS = 46;            // una fila de Atta, no cuarenta y seis bichos
   static GLYPH_POOL = 220;      // techo duro de velas vivas
   static NICHE_KEEP = 260;      // llamadas retenidas en la franja del nicho
   static PLOT = 9.0;            // media anchura de la parcela, en unidades de escena
@@ -290,6 +309,7 @@ class Antifonia extends BaseThreeJsModule {
     this._buildBirds();
     // Después de _buildCloud: necesitan la ceiba, que se siembra allí.
     this._buildHowlers();
+    this._buildGroundFauna(this._rnd0 || this._rng(7));
     this._buildStrata();
     this._buildGlyphs();
     this._buildNiche();
@@ -307,6 +327,26 @@ class Antifonia extends BaseThreeJsModule {
       this._animationId = null;
     }
     try {
+      for (const spr of (this._howlerSprites || [])) {
+        if (spr && spr.parent) spr.parent.remove(spr);
+        if (spr && spr.geometry) spr.geometry.dispose();
+        if (spr && spr.material) spr.material.dispose();
+      }
+      this._howlerSprites = null;
+      for (const net of (this._mycoNets || [])) {
+        if (net && net.line) {
+          if (net.line.parent) net.line.parent.remove(net.line);
+          if (net.line.geometry) net.line.geometry.dispose();
+          if (net.mat) net.mat.dispose();
+        }
+      }
+      this._mycoNets = null;
+      for (const spr of (this._paujilSprites || [])) {
+        if (spr && spr.parent) spr.parent.remove(spr);
+        if (spr && spr.geometry) spr.geometry.dispose();
+        if (spr && spr.material) spr.material.dispose();
+      }
+      this._paujilSprites = null;
       for (const el of [this._hud, this._legend, this._nicheCv, this._fontLink]) {
         if (el && el.parentNode) el.parentNode.removeChild(el);
       }
@@ -403,7 +443,10 @@ class Antifonia extends BaseThreeJsModule {
   }
 
   _buildCloud() {
-    const rnd = this._rng(20221109);           // fecha del barrido de referencia
+    const rnd = this._rng(20221109);
+    // Compartido con _buildGroundFauna: el hormiguero y el árbol al que va la
+    // fila tienen que ser los MISMOS en cada arranque, igual que el rodal.
+    this._rnd0 = rnd;           // fecha del barrido de referencia
     const W = Antifonia.PLOT;
     // Un cubo por estrato: cada uno acaba siendo su propio THREE.Points, de
     // modo que responder a la actividad por estrato cuesta SEIS cambios de
@@ -536,6 +579,24 @@ class Antifonia extends BaseThreeJsModule {
       }
     }
 
+    // ── Las palmas van ANTES del relleno ──────────────────────────────────
+    // Iban al final y se quedaron sin sitio: subir los puntos del fuste de la
+    // ceiba consumió miles de tiradas más del generador, todo el rodal se
+    // resembró distinto, y los 60 intentos de colocación de las palmas
+    // fallaron contra un bosque más lleno. El rodal salía SIN NINGUNA palma y
+    // sólo se notó porque el conteo se publica.
+    //
+    // Se siembran ahora con las cohortes, cuando aún hay hueco. El relleno se
+    // acomoda a ellas y no al revés.
+    for (let k = 0, tries = 0; k < 2 && tries < 120; tries++) {
+      const a = rnd() * Math.PI * 2;
+      const r = (0.42 + rnd() * 0.5) * W;
+      const x = Math.cos(a) * r, z = Math.sin(a) * r;
+      if (!claim(x, z, 1.2)) continue;
+      this._tree_palma(rnd, x, z, 0.88 + rnd() * 0.24);
+      k++;
+    }
+
     // relleno disperso: los que crecieron donde cupieron
     for (let i = 0; i < 46; i++) {
       const a = rnd() * Math.PI * 2;
@@ -545,15 +606,7 @@ class Antifonia extends BaseThreeJsModule {
       this._tree_arbol(rnd, x, z, 0.34 + rnd() * 0.6);
     }
 
-    // dos palmas, nada más: puntúan el rodal, no lo pueblan
-    for (let k = 0, tries = 0; k < 2 && tries < 60; tries++) {
-      const a = rnd() * Math.PI * 2;
-      const r = (0.42 + rnd() * 0.5) * W;
-      const x = Math.cos(a) * r, z = Math.sin(a) * r;
-      if (!claim(x, z, 1.5)) continue;
-      this._tree_palma(rnd, x, z, 0.88 + rnd() * 0.24);
-      k++;
-    }
+
 
     // ── sotobosque ───────────────────────────────────────────────────────
     const nShrub = Math.round(Antifonia.CLOUD.shrub * Antifonia.CLOUD.scale);
@@ -630,6 +683,8 @@ class Antifonia extends BaseThreeJsModule {
           mycoSegments: this._mycoSegs,
           birds: Antifonia.BIRDS,
           howlers: Antifonia.HOWLERS,
+          paujiles: Antifonia.PAUJILES,
+          ants: Antifonia.ANTS,
           seed: 20221109,
         };
       }
@@ -661,8 +716,17 @@ class Antifonia extends BaseThreeJsModule {
             cz + Math.sin(a + wob) * (0.9 * scale * M + out), 0.75 + rnd() * 0.25);
       }
     }
-    // fuste — pocos retornos: un haz casi vertical apenas roza una pared
-    const nBole = Math.round(320 * S);
+    // ── El fuste, a propósito CONTRA el modelo ──────────────────────────
+    // Aquí decía "pocos retornos: un haz casi vertical apenas roza una pared",
+    // que es cierto de un barrido aéreo y daba 134 puntos de fuste contra 2604
+    // de copa — el tronco era el 4,5 % del árbol y sencillamente no se veía.
+    //
+    // La ceiba es el único árbol de este rodal cuya ARQUITECTURA es el asunto:
+    // el fuste limpio y larguísimo es la mitad de lo que la hace reconocible.
+    // Un barrido que lo borra es físicamente honesto y compositivamente
+    // inútil, así que aquí se abandona el modelo a sabiendas. Los demás
+    // árboles conservan la asimetría aérea.
+    const nBole = Math.round(1500 * S);
     for (let i = 0; i < nBole; i++) {
       const t = rnd();
       const h = 3.0 * scale + t * (boleTop - 3.0 * scale);
@@ -677,7 +741,10 @@ class Antifonia extends BaseThreeJsModule {
       const h = boleTop + u * (H - boleTop);
       // ancho máximo hacia abajo, estrechando arriba — de ahí lo aplanado
       const rr = R * Math.sin(Math.PI * (0.30 + u * 0.62)) * (1 - u * 0.22);
-      const n = Math.round((1500 - ti * 130) * S);
+      // Copa MÁS RALA: 1500 -> 800 por bandeja. Las bandejas horizontales se
+      // leen por su silueta, no por su densidad, y al aclararlas se ve el
+      // fuste a través de ellas y el cielo entre piso y piso.
+      const n = Math.round((800 - ti * 90) * S);
       // ramas: radios que salen del eje en esta bandeja
       const branches = 7 + ((rnd() * 4) | 0);
       for (let i = 0; i < n; i++) {
@@ -875,28 +942,129 @@ class Antifonia extends BaseThreeJsModule {
   // reconocible a un mono del Nuevo Mundo a cualquier distancia: la curva de
   // la cola cuenta más que la silueta del cuerpo. Rojo apagado, como el
   // animal.
+  // ── Silueta dibujada ────────────────────────────────────────────────────
+  // Un THREE.Line NO puede ser una silueta. WebGL fija
+  // ALIASED_LINE_WIDTH_RANGE en [1,1] en todos los destinos de escritorio, y
+  // `linewidth` de LineBasicMaterial se ignora — por eso existen Line2 y
+  // LineMaterial. El aullador anterior eran doce trazos rojos SUELTOS de un
+  // píxel de ancho: agrandarlo de 0.055 a 0.17 sólo separó más los mismos
+  // pelos, nunca hizo un cuerpo. Y la mezcla aditiva sobre una nube de puntos
+  // blanca desteñía el rojo hacia el blanco, que es por qué hubo que subir el
+  // brillo base a 1.25 sólo para que se notara algo.
+  //
+  // Un sprite con la silueta PINTADA sí tiene cuerpo. Se reutiliza la
+  // construcción de _textSprite (CanvasTexture → Sprite) y se conserva el
+  // idioma del archivo para "tiene que verse a través del dosel":
+  // depthTest false + renderOrder.
+  // ── Fauna en puntos, como el resto del barrido ──────────────────────────
+  // No una silueta rellena: un ANIMAL DE PUNTOS, en el mismo blanco fósforo
+  // que los árboles. Todo lo que hay en esta escena es un retorno del mismo
+  // escaneo, y un bicho pintado de rojo encima delataba que estaba puesto a
+  // mano. Un animal cazado por el haz es una nube densa con forma de animal, y
+  // eso es lo que se construye aquí.
+  //
+  // Se genera UNA VEZ en coordenadas locales y luego sólo se mueve el objeto:
+  // ni un vértice se reescribe por cuadro, igual que el rodal.
+  //
+  // La escala está EXAGERADA a propósito. Un aullador mide ~0.6 m de cuerpo,
+  // que a 0.18 unidades por metro son 0.11 unidades — invisible en un rodal de
+  // ±9. Se dibuja a ~0.7 unidades (unos 4 m de equivalente) porque la
+  // alternativa honesta es que no se vea, y un animal que no se ve no está.
+  _faunaPoints(kind, rnd) {
+    const pos = [];
+    const col = [];
+    const put = (x, y, z, intensity) => {
+      pos.push(x, y, z);
+      // Mismo fósforo que la nube: casi blanco con sesgo verde-cian.
+      const i = Math.max(0.2, Math.min(1, intensity));
+      col.push(0.80 * i + 0.10, 0.97 * i + 0.06, 0.90 * i + 0.10);
+    };
+    // nube elipsoidal: cáscara, no volumen — un haz roza la superficie
+    const blob = (cx, cy, cz, rx, ry, rz, n, inten) => {
+      for (let i = 0; i < n; i++) {
+        const u = rnd() * Math.PI * 2;
+        const v = Math.acos(2 * rnd() - 1);
+        const t = 0.78 + rnd() * 0.22;
+        put(cx + Math.cos(u) * Math.sin(v) * rx * t,
+            cy + Math.cos(v) * ry * t,
+            cz + Math.sin(u) * Math.sin(v) * rz * t,
+            inten * (0.75 + rnd() * 0.35));
+      }
+    };
+    // hilera de puntos a lo largo de una curva — colas, patas, cuello
+    const limb = (fn, n, jitter, inten) => {
+      for (let i = 0; i < n; i++) {
+        const t = i / (n - 1);
+        const q = fn(t);
+        put(q[0] + (rnd() - 0.5) * jitter,
+            q[1] + (rnd() - 0.5) * jitter,
+            q[2] + (rnd() - 0.5) * jitter,
+            inten * (0.8 + rnd() * 0.3));
+      }
+    };
+
+    if (kind === "howler") {
+      // Alouatta seniculus, encorvado sobre la rama.
+      blob(0, 0, 0, 0.20, 0.15, 0.14, 130, 0.62);          // cuerpo
+      blob(0.24, 0.10, 0, 0.10, 0.10, 0.09, 60, 0.78);     // cabeza
+      blob(0.30, 0.03, 0, 0.07, 0.06, 0.06, 34, 0.85);     // mandíbula (hioides)
+      // COLA PREHENSIL enroscada — es lo que hace legible a un mono del Nuevo
+      // Mundo a cualquier distancia, así que lleva el doble de puntos que una
+      // pata y se enrosca de verdad.
+      limb((t) => {
+        const a = t * Math.PI * 1.7;
+        const r = 0.26 * (1 - t * 0.45);
+        return [-0.18 - t * 0.10, -0.02 + Math.sin(a) * r * 0.75, Math.cos(a) * r * 0.5 - 0.13];
+      }, 80, 0.022, 0.72);
+      // brazos agarrados a la rama
+      limb((t) => [0.10 - t * 0.02, -0.13 - t * 0.16, 0.10], 22, 0.02, 0.6);
+      limb((t) => [-0.02 - t * 0.02, -0.13 - t * 0.15, -0.10], 22, 0.02, 0.6);
+    } else if (kind === "paujil") {
+      // Crax alberti — cuerpo pesado, cuello erguido, cresta rizada.
+      blob(0, 0, 0, 0.20, 0.14, 0.13, 110, 0.60);          // cuerpo
+      limb((t) => [0.13 + t * 0.06, 0.10 + t * 0.20, 0], 26, 0.02, 0.68);  // cuello
+      blob(0.20, 0.32, 0, 0.07, 0.06, 0.06, 40, 0.80);     // cabeza
+      limb((t) => [0.26 + t * 0.09, 0.31, 0], 10, 0.012, 0.9);             // pico
+      // cresta rizada, el rasgo que le da el nombre
+      for (let k = 0; k < 5; k++) {
+        limb((t) => [0.17 + k * 0.012 - t * 0.03,
+                     0.38 + t * 0.10,
+                     (k - 2) * 0.014 + Math.sin(t * 4) * 0.012], 9, 0.008, 0.85);
+      }
+      limb((t) => [-0.03, -0.13 - t * 0.16, 0.045], 18, 0.015, 0.62);      // patas
+      limb((t) => [0.03, -0.13 - t * 0.16, -0.045], 18, 0.015, 0.62);
+      limb((t) => [-0.20 - t * 0.20, 0.02 + t * 0.10, 0], 30, 0.025, 0.55); // cola
+    }
+
+    const g = new THREE.BufferGeometry();
+    g.setAttribute("position", new THREE.Float32BufferAttribute(pos, 3));
+    g.setAttribute("color", new THREE.Float32BufferAttribute(col, 3));
+    const m = new THREE.PointsMaterial({
+      size: 0.030, sizeAttenuation: true, vertexColors: true,
+      transparent: true, opacity: 0.95, depthWrite: false,
+      blending: THREE.AdditiveBlending,
+    });
+    // Un pelín más grande que el punto del rodal (0.020) para que el animal
+    // lea como un retorno MÁS DENSO y no se disuelva en el follaje.
+    const pts = new THREE.Points(g, m);
+    pts.frustumCulled = false;
+    pts.renderOrder = 500;
+    return pts;
+  }
+
   _buildHowlers() {
     const N = Antifonia.HOWLERS;
-    // 6 segmentos por mono: 2 cuerpo, 1 cabeza, 3 cola.
-    const SEG = 6;
-    const pos = new Float32Array(N * SEG * 2 * 3);
-    const col = new Float32Array(N * SEG * 2 * 3);
-    const g = new THREE.BufferGeometry();
-    g.setAttribute("position", new THREE.BufferAttribute(pos, 3));
-    g.setAttribute("color", new THREE.BufferAttribute(col, 3));
-    this._howlerGeo = g;
-    this._howlerMesh = new THREE.LineSegments(g, new THREE.LineBasicMaterial({
-      vertexColors: true, transparent: true, opacity: 1.0,
-      depthWrite: false, depthTest: false, blending: THREE.AdditiveBlending,
-    }));
-    this._howlerMesh.renderOrder = 900;   // por delante de la nube
-    this._howlerMesh.frustumCulled = false;
-    this.scene.add(this._howlerMesh);
-
     // La ceiba, para saber dónde están las ramas.
     this._ceiba = (this._trees || []).find((t) => t.kind === "ceiba") || null;
     this.howlers = [];
-    for (let i = 0; i < N; i++) this.howlers.push(this._spawnHowler(i));
+    this._howlerSprites = [];
+    for (let i = 0; i < N; i++) {
+      const h = this._spawnHowler(i);
+      const spr = this._faunaPoints("howler", this._rnd0 || this._rng(11));
+      this.scene.add(spr);
+      this._howlerSprites.push(spr);
+      this.howlers.push(h);
+    }
   }
 
   _spawnHowler(i) {
@@ -925,15 +1093,11 @@ class Antifonia extends BaseThreeJsModule {
   }
 
   _updateHowlers(dt) {
-    if (!this.howlers || !this._howlerGeo) return;
-    const pos = this._howlerGeo.attributes.position.array;
-    const col = this._howlerGeo.attributes.color.array;
-    const red = new THREE.Color("#C4462A");        // aullador rojo
-    const hot = new THREE.Color("#FF8A5B");
-    const SEG = 6;
-
+    if (!this.howlers || !this._howlerSprites) return;
     for (let i = 0; i < this.howlers.length; i++) {
       const h = this.howlers[i];
+      const spr = this._howlerSprites[i];
+      if (!spr) continue;
       h.lit *= Math.exp(-dt * 1.4);
       if (h.pause > 0) {
         h.pause -= dt;                       // quieto en la rama
@@ -955,39 +1119,18 @@ class Antifonia extends BaseThreeJsModule {
       const y = this._yFromAGL(agl) - sag * 0.12;
       h.px = x; h.pz = z; h.py = y; h.agl = agl;
 
-      const yaw = Math.atan2(this.camera.position.x - x, this.camera.position.z - z);
-      // 0.055 -> 0.17. At the first size a howler was ~0.1 units across in a
-      // stand ±9 wide: present in the data, invisible on screen. An animal
-      // this loud should be findable in the crown without hunting for it.
-      const ux = Math.cos(yaw) * 0.17, uz = -Math.sin(yaw) * 0.17;
-      const o = i * SEG * 6;
-      const P = (k, ax, ay, az, bx, by, bz) => {
-        pos[o + k * 6 + 0] = ax; pos[o + k * 6 + 1] = ay; pos[o + k * 6 + 2] = az;
-        pos[o + k * 6 + 3] = bx; pos[o + k * 6 + 4] = by; pos[o + k * 6 + 5] = bz;
-      };
-      const sw = Math.sin(this._last * 2.2 + i) * 0.5;   // balanceo
-      // cuerpo (dos tramos), cabeza, y la cola en tres tramos que se enroscan
-      P(0, x - ux, y, z - uz, x + ux, y + 0.18, z + uz);
-      P(1, x + ux, y + 0.18, z + uz, x + ux * 1.6, y + 0.18, z + uz * 1.6);
-      P(2, x + ux * 1.6, y + 0.18, z + uz * 1.6, x + ux * 2.3, y + 0.30, z + uz * 2.3);
-      P(3, x - ux, y, z - uz, x - ux * 1.9, y - 0.15 + sw * 0.06, z - uz * 1.9);
-      P(4, x - ux * 1.9, y - 0.15 + sw * 0.06, z - uz * 1.9,
-           x - ux * 2.6, y - 0.39 + sw * 0.12, z - uz * 2.6);
-      P(5, x - ux * 2.6, y - 0.39 + sw * 0.12, z - uz * 2.6,
-           x - ux * 2.2, y - 0.58 + sw * 0.15, z - uz * 2.2);
-
-      const c = red.clone().lerp(hot, Math.min(1, h.lit));
-      // Brighter than the canopy around it, so the eye finds it. Additive
-      // blending over white points needs real headroom to register as red.
-      const k = 1.25 + h.lit * 1.9;
-      for (let v = 0; v < SEG * 2; v++) {
-        col[o + v * 3 + 0] = c.r * k;
-        col[o + v * 3 + 1] = c.g * k;
-        col[o + v * 3 + 2] = c.b * k;
-      }
+      spr.position.set(x, y, z);
+      // Orientado según hacia dónde va: es un objeto 3-D en la escena, no un
+      // cartel que mira a la cámara. Un animal de puntos puede girar.
+      const dx = h.to.x - h.from.x, dz = h.to.z - h.from.z;
+      if (dx * dx + dz * dz > 1e-6) spr.rotation.y = Math.atan2(dx, dz) - Math.PI / 2;
+      // Al aullar los retornos se avivan y el punto engorda: el rugido de un
+      // Alouatta se oye a 3 km, conviene ver quién lo está haciendo.
+      const sc = 1 + h.lit * 0.22;
+      spr.scale.set(sc, sc, sc);
+      spr.material.opacity = 0.72 + h.lit * 0.28;
+      spr.material.size = 0.030 + h.lit * 0.022;
     }
-    this._howlerGeo.attributes.position.needsUpdate = true;
-    this._howlerGeo.attributes.color.needsUpdate = true;
   }
 
   // El aullador que esté más alto canta. Devuelve su posición para que la vela
@@ -1002,6 +1145,155 @@ class Antifonia extends BaseThreeJsModule {
     if (!best) return null;
     best.lit = 1;
     return best;
+  }
+
+  // ══ suelo: paujil y arrieras ═══════════════════════════════════════════
+  //
+  // El estrato del suelo tenía nombre y nada dentro. Estos dos lo habitan, y
+  // se mueven de maneras opuestas a propósito: el paujil camina y se detiene,
+  // la fila de arrieras no se detiene nunca. Entre los dos el suelo deja de
+  // ser una superficie y pasa a ser un sitio donde ocurre algo.
+  _buildGroundFauna(rnd) {
+    const W = Antifonia.PLOT;
+    // ── Paujil ────────────────────────────────────────────────────────────
+    this.paujiles = [];
+    this._paujilSprites = [];
+    for (let i = 0; i < Antifonia.PAUJILES; i++) {
+      const spr = this._faunaPoints("paujil", this._rnd0 || this._rng(23));
+      this.scene.add(spr);
+      this._paujilSprites.push(spr);
+      this.paujiles.push(this._spawnPaujil());
+    }
+
+    // ── Camino de arrieras ────────────────────────────────────────────────
+    // Del hormiguero a un árbol. Las hormigas son puntos que recorren el
+    // camino a distinta fase, así que la fila se lee como un flujo continuo
+    // y no como bichos sueltos.
+    const trees = (this._trees || []).filter((t) => t.kind !== "palma");
+    const target = trees.length ? trees[(rnd() * trees.length) | 0] : { x: 2, z: 2 };
+    const na = rnd() * Math.PI * 2;
+    const nr = (0.35 + rnd() * 0.4) * W;
+    this._antNest = { x: Math.cos(na) * nr, z: Math.sin(na) * nr };
+    this._antTarget = { x: target.x, z: target.z };
+    // Camino con una comba, no una recta: las arrieras siguen el terreno.
+    this._antBow = (rnd() - 0.5) * W * 0.35;
+
+    const N = Antifonia.ANTS;
+    const apos = new Float32Array(N * 3);
+    const ageo = new THREE.BufferGeometry();
+    ageo.setAttribute("position", new THREE.BufferAttribute(apos, 3));
+    this._antGeo = ageo;
+    this._antPoints = new THREE.Points(ageo, new THREE.PointsMaterial({
+      // Fósforo, como todo lo demás: la fila es un retorno más del barrido.
+      color: new THREE.Color("#DCEFE4"), size: 0.030, sizeAttenuation: true,
+      transparent: true, opacity: 0.8, depthWrite: false,
+      blending: THREE.AdditiveBlending,
+    }));
+    this._antPoints.frustumCulled = false;
+    this.scene.add(this._antPoints);
+    this.ants = [];
+    for (let i = 0; i < N; i++) {
+      this.ants.push({ t: i / N, dir: (i % 5 === 0) ? -1 : 1, sp: 0.028 + rnd() * 0.022 });
+    }
+  }
+
+  _spawnPaujil() {
+    const W = Antifonia.PLOT;
+    const pick = () => {
+      const a = Math.random() * Math.PI * 2;
+      const r = Math.sqrt(Math.random()) * W * 0.75;
+      return { x: Math.cos(a) * r, z: Math.sin(a) * r };
+    };
+    return {
+      from: pick(), to: pick(), t: Math.random(),
+      speed: 0.05 + Math.random() * 0.05,
+      pause: Math.random() * 5, lit: 0,
+      px: 0, pz: 0, py: 0,
+    };
+  }
+
+  _antAt(t) {
+    // Bézier cuadrática nido → árbol, con la comba en el punto de control.
+    const n = this._antNest, g = this._antTarget, b = this._antBow;
+    const mx = (n.x + g.x) * 0.5 - (g.z - n.z) * 0.001 * b * 40;
+    const mz = (n.z + g.z) * 0.5 + (g.x - n.x) * 0.001 * b * 40;
+    const u = 1 - t;
+    return {
+      x: u * u * n.x + 2 * u * t * mx + t * t * g.x,
+      z: u * u * n.z + 2 * u * t * mz + t * t * g.z,
+    };
+  }
+
+  _updateGroundFauna(dt) {
+    // ── Paujil: camina y se para ──────────────────────────────────────────
+    if (this.paujiles && this._paujilSprites) {
+      for (let i = 0; i < this.paujiles.length; i++) {
+        const p = this.paujiles[i], spr = this._paujilSprites[i];
+        if (!spr) continue;
+        p.lit *= Math.exp(-dt * 1.5);
+        if (p.pause > 0) { p.pause -= dt; }
+        else {
+          p.t += dt * p.speed;
+          if (p.t >= 1) {
+            p.from = p.to; p.to = this._spawnPaujil().to;
+            p.t = 0; p.pause = 1.5 + Math.random() * 5;
+          }
+        }
+        const e = p.t * p.t * (3 - 2 * p.t);
+        const x = p.from.x + (p.to.x - p.from.x) * e;
+        const z = p.from.z + (p.to.z - p.from.z) * e;
+        // paso: un ave que camina cabecea, no flota
+        const bob = (p.pause > 0) ? 0 : Math.abs(Math.sin(p.t * 40)) * 0.05;
+        const y = this._yFromAGL(1.1) + bob;
+        p.px = x; p.pz = z; p.py = y;
+        spr.position.set(x, y, z);
+        const pdx = p.to.x - p.from.x, pdz = p.to.z - p.from.z;
+        if (pdx * pdx + pdz * pdz > 1e-6) spr.rotation.y = Math.atan2(pdx, pdz) - Math.PI / 2;
+        const sc = 1 + p.lit * 0.25;
+        spr.scale.set(sc, sc, sc);
+        spr.material.opacity = 0.66 + p.lit * 0.34;
+        spr.material.size = 0.028 + p.lit * 0.020;
+      }
+    }
+
+    // ── Arrieras: la fila nunca se detiene ────────────────────────────────
+    if (this.ants && this._antGeo) {
+      const arr = this._antGeo.attributes.position.array;
+      const yGround = this._yFromAGL(0.35);
+      let lead = 0;
+      for (let i = 0; i < this.ants.length; i++) {
+        const a = this.ants[i];
+        a.t += dt * a.sp * a.dir;
+        if (a.t > 1) a.t -= 1;
+        if (a.t < 0) a.t += 1;
+        const q = this._antAt(a.t);
+        arr[i * 3 + 0] = q.x;
+        arr[i * 3 + 1] = yGround + Math.sin(a.t * 60 + i) * 0.012;
+        arr[i * 3 + 2] = q.z;
+        if (i === 0) lead = a.t;
+      }
+      this._antGeo.attributes.position.needsUpdate = true;
+      // Dónde va la cabeza de la fila — el micelio lo usa para encenderse por
+      // donde pasan, que es literalmente lo que hacen: Atta cultiva hongo.
+      const head = this._antAt(lead);
+      this._antHead = head;
+      this._antPoints.material.opacity =
+        0.5 + 0.35 * Math.max(0, Math.min(1, (this.ctl.dens ?? 0.4)));
+    }
+  }
+
+  // Percha de suelo: el paujil canta desde donde está caminando.
+  _groundFor(src) {
+    if (src.key === "paujil" && this.paujiles && this.paujiles.length) {
+      const p = this.paujiles[(Math.random() * this.paujiles.length) | 0];
+      p.lit = 1;
+      return { px: p.px, pz: p.pz, py: p.py, agl: 1.1 };
+    }
+    if (src.key === "arriera" && this._antHead) {
+      const h = this._antHead;
+      return { px: h.x, pz: h.z, py: this._yFromAGL(0.35), agl: 0.35 };
+    }
+    return null;
   }
 
   // ══ micelio ════════════════════════════════════════════════════════════
@@ -1022,6 +1314,15 @@ class Antifonia extends BaseThreeJsModule {
   // draw call, y el pulso se hace moviendo la opacidad del material — nada
   // por vértice.
   _buildMycelium(rnd, W) {
+    // Un par de arreglos por sub-red. Se agrupan las raíces de tres en tres,
+    // que da ~7 sub-redes con la semilla actual: suficientes para que se vea
+    // tráfico, pocas para que cada una siga siendo una red y no un hilo.
+    const NETS = 7;
+    const netPos = Array.from({ length: NETS }, () => []);
+    const netCol = Array.from({ length: NETS }, () => []);
+    const netCx = new Array(NETS).fill(0), netCz = new Array(NETS).fill(0);
+    const netN = new Array(NETS).fill(0);
+    let curNet = 0;
     const pos = [];
     const col = [];
     const yOf = (agl) => this._yFromAGL(agl);
@@ -1057,15 +1358,16 @@ class Antifonia extends BaseThreeJsModule {
         // profundidad: justo bajo la hojarasca, ondulando en el subsuelo
         const d0 = -0.25 - Math.sin(i * 0.31 + x) * 0.35;
         const d1 = -0.25 - Math.sin((i + 1) * 0.31 + x) * 0.35;
-        pos.push(cx, yOf(d0), cz, nx, yOf(d1), nz);
+        netPos[curNet].push(cx, yOf(d0), cz, nx, yOf(d1), nz);
+        netCx[curNet] += cx; netCz[curNet] += cz; netN[curNet] += 1;
         // Se apaga con la distancia al centro, PERO nunca del todo: el trozo
         // que sale del cuadro tiene que seguir visible al borde, o el efecto
         // se convierte en un disco recortado y se pierde el sentido.
         const rr = Math.hypot(nx, nz) / W;
         const fade = Math.max(0.10, 1 - rr * 0.68) * (depth === 0 ? 1 : 0.55);
         const c = warm.clone().lerp(cool, Math.min(1, rr * 0.5));
-        col.push(c.r * fade, c.g * fade, c.b * fade,
-                 c.r * fade, c.g * fade, c.b * fade);
+        netCol[curNet].push(c.r * fade, c.g * fade, c.b * fade,
+                            c.r * fade, c.g * fade, c.b * fade);
         cx = nx; cz = nz;
         // ramificación
         if (depth < 2 && rnd() < 0.055) {
@@ -1077,23 +1379,58 @@ class Antifonia extends BaseThreeJsModule {
       }
     };
 
-    for (const [rx, rz] of roots) {
+    for (let ri = 0; ri < roots.length; ri++) {
+      const [rx, rz] = roots[ri];
+      curNet = Math.min(NETS - 1, (ri / Math.max(1, roots.length)) * NETS | 0);
       const n = 1 + ((rnd() * 2) | 0);
       for (let k = 0; k < n; k++) {
         walk(rx, rz, rnd() * Math.PI * 2, 40 + ((rnd() * 46) | 0), 0);
       }
     }
 
-    const g = new THREE.BufferGeometry();
-    g.setAttribute("position", new THREE.Float32BufferAttribute(pos, 3));
-    g.setAttribute("color", new THREE.Float32BufferAttribute(col, 3));
-    this._myco = new THREE.LineSegments(g, new THREE.LineBasicMaterial({
-      vertexColors: true, transparent: true, opacity: 0.15,
-      depthWrite: false, blending: THREE.AdditiveBlending,
-    }));
-    this._myco.frustumCulled = false;
-    this.scene.add(this._myco);
-    this._mycoSegs = pos.length / 6;
+    // ── Sub-redes ─────────────────────────────────────────────────────────
+    // Era UNA sola LineSegments con un material, así que sólo podía respirar
+    // como un cuerpo entero, y el "pulso" que tenía era un seno libre atado a
+    // nada. Ahora se parte por grupos de raíces: cada trozo lleva su propio
+    // material y se enciende por su cuenta, de modo que la red se lee
+    // TRANSPORTANDO algo en vez de latir toda a la vez.
+    //
+    // No se hace por color de vértice: reescribir ~9000 segmentos por cuadro
+    // son ~200 KB de subida por frame, unas 350 veces el tráfico de los
+    // pájaros y los monos juntos, y justo el gasto que haría al LOD adaptativo
+    // empezar a comerse el bosque para pagarlo. N escrituras de opacidad no
+    // cuestan nada; N draw calls se pagan una vez, no por cuadro.
+    for (let k = 0; k < NETS; k++) {
+      if (netN[k] > 0) { netCx[k] /= netN[k]; netCz[k] /= netN[k]; }
+    }
+    this._mycoNets = [];
+    this._mycoSegs = 0;
+    for (let k = 0; k < netPos.length; k++) {
+      if (netPos[k].length === 0) continue;
+      const gk = new THREE.BufferGeometry();
+      gk.setAttribute("position", new THREE.Float32BufferAttribute(netPos[k], 3));
+      gk.setAttribute("color", new THREE.Float32BufferAttribute(netCol[k], 3));
+      const mk = new THREE.LineBasicMaterial({
+        vertexColors: true, transparent: true, opacity: 0.15,
+        depthWrite: false, blending: THREE.AdditiveBlending,
+      });
+      const line = new THREE.LineSegments(gk, mk);
+      line.frustumCulled = false;
+      this.scene.add(line);
+      // Cada sub-red escucha una banda distinta del espectro real, con peso
+      // hacia lo GRAVE: el micelio está bajo tierra y lo que se oye ahí es el
+      // drone y el bombo. Así distintos caminos se encienden con distintas
+      // partes del sonido.
+      const f = k / Math.max(1, netPos.length - 1);
+      this._mycoNets.push({
+        line, mat: mk,
+        band: [f * 0.30, 0.14 + f * 0.42],   // 0-14% … 30-56% del espectro
+        lit: 0,
+        // centro aproximado, para que la fila de arrieras encienda la que pisa
+        cx: netCx[k], cz: netCz[k],
+      });
+      this._mycoSegs += netPos[k].length / 6;
+    }
   }
 
   // El árbol común del bosque seco: gusanero, indio desnudo, guayacán,
@@ -1423,6 +1760,19 @@ class Antifonia extends BaseThreeJsModule {
     return Math.sin(Math.PI * t) ** 0.7;   // entra y sale, con meseta
   }
 
+  // Media de una franja del espectro, dada en fracciones del rango. Igual que
+  // bandRange en scAudio.ts, pero aquí dentro porque el módulo se evalúa en un
+  // sandbox y no puede importar nada.
+  _bandMean(bands, from, to) {
+    if (!bands || bands.length === 0) return 0;
+    const n = bands.length;
+    const a = Math.max(0, Math.floor(from * (n - 1)));
+    const b = Math.min(n - 1, Math.ceil(to * (n - 1)));
+    let sum = 0, c = 0;
+    for (let i = a; i <= b; i++) { sum += bands[i]; c++; }
+    return c ? sum / c : 0;
+  }
+
   _classColor(cls, hot) {
     const P = Antifonia.PALETTE;
     if (cls === "geofonia") return new THREE.Color(hot ? P.geoHi : P.geo);
@@ -1446,6 +1796,7 @@ class Antifonia extends BaseThreeJsModule {
     this._spawn(dt);
     this._updateBirds(dt);
     this._updateHowlers(dt);
+    this._updateGroundFauna(dt);
     this._updateCalls(dt);
     this._updateCloud(dt);
     this._drawNiche();
@@ -1461,6 +1812,16 @@ class Antifonia extends BaseThreeJsModule {
     try { pp = window.__phenoParams; } catch (e) { pp = null; }
     try { ed = window.__ednaBio; } catch (e) { ed = null; }
     try { tp = window.__tideState; } catch (e) { tp = null; }
+    // El sonido REAL que sale del bus máster. Este módulo no lo leía nunca:
+    // reaccionaba a valores de control, que es la intención, no el sonido.
+    // Es seguro leerlo — la regla de "no leas lo que escribes" cubre
+    // texturedepth, spatialspread y memoryfeed, y esto no es ninguno.
+    //
+    // NO se guarda en un campo. BaseThreeJsModule.destroy() recorre cada
+    // propiedad de `this` y anula las propiedades de lo que encuentre, así que
+    // cachear aquí el objeto global compartido hacía que al desmontar el slot
+    // se vaciara __scAudio.voices para todo el mundo. Se lee suelto donde hace
+    // falta y ya está.
 
     // ⚠ ESTE MÓDULO NO PUEDE LEER LO QUE ESCRIBE.
     // El puente publica texturedepth, spatialspread y noiselevel desde la
@@ -1621,14 +1982,16 @@ class Antifonia extends BaseThreeJsModule {
     // Orden: aullador → un mono real; dosel → un ave que esté cruzando;
     // si no, una percha; y sólo entonces aire abierto.
     const howler = scored ? null : this._howlerFor(src);
-    const bird = (scored || howler) ? null : this._birdFor(src);
-    const perch = (scored || howler || bird) ? null : this._perchFor(src);
+    const ground = (scored || howler) ? null : this._groundFor(src);
+    const bird = (scored || howler || ground) ? null : this._birdFor(src);
+    const perch = (scored || howler || ground || bird) ? null : this._perchFor(src);
+    const body = howler || ground;      // un cuerpo real, si lo hay
     const agl = scored ? scored.heightAGL
-      : (howler ? howler.agl : (bird ? bird.agl : (perch ? perch.agl
+      : (body ? body.agl : (bird ? bird.agl : (perch ? perch.agl
         : this._stratumMeters(src.stratum) * (0.75 + Math.random() * 0.5))));
-    const x = howler ? howler.px : (bird ? bird.px : (perch ? perch.x
+    const x = body ? body.px : (bird ? bird.px : (perch ? perch.x
       : (scored ? scored.x : (Math.random() * 2 - 1)) * Antifonia.PLOT * spread));
-    const z = howler ? howler.pz : (bird ? bird.pz : (perch ? perch.z
+    const z = body ? body.pz : (bird ? bird.pz : (perch ? perch.z
       : (scored ? scored.z : (Math.random() * 2 - 1)) * Antifonia.PLOT * spread));
     const lo = scored ? scored.lo : src.lo;
     const hi = scored ? scored.hi : src.hi;
@@ -1651,7 +2014,7 @@ class Antifonia extends BaseThreeJsModule {
     const call = {
       key: src.key, cls: src.cls, smp: src.smp,
       lo, hi, agl, x, z, dur,
-      y: howler ? howler.py : (bird ? bird.py : this._yFromAGL(agl)),
+      y: body ? body.py : (bird ? bird.py : this._yFromAGL(agl)),
       age: 0,
       life: Math.max(1.2, dur * 1.8),
       hour: this.hour,
@@ -1852,11 +2215,43 @@ class Antifonia extends BaseThreeJsModule {
 
     // El micelio respira con el peso del estrato micorrícico: una sola
     // escritura de opacidad, sin tocar sus miles de segmentos.
-    if (this._myco) {
+    // ── El micelio escucha ────────────────────────────────────────────────
+    // El "pulso" que había aquí era un seno libre a 0.35 rad/s: atado a nada,
+    // decorativo. Ahora cada sub-red se enciende con SU banda del espectro
+    // real que sale del bus máster (window.__scAudio, 16 bandas a 20 Hz), más
+    // un destello por ataque de bombo o de polvo. La red deja de respirar como
+    // un solo cuerpo y pasa a transportar lo que llega.
+    if (this._mycoNets && this._mycoNets.length) {
+      // Leído aquí, no cacheado en un campo — ver la nota en _readControls.
+      let au = null;
+      try { au = window.__scAudio || null; } catch (e) { au = null; }
       const wMic = this.stratumW[Antifonia.STRATA.length - 1];
-      const pulse = 0.5 + 0.5 * Math.sin((this._last - this._t0) * 0.35);
-      this._myco.material.opacity = 0.09 + wMic * 0.13 + pulse * 0.045
-        + Math.min(0.14, (this._stratumLit ? this._stratumLit[Antifonia.STRATA.length - 1] : 0) * 0.22);
+      const lit0 = this._stratumLit ? this._stratumLit[Antifonia.STRATA.length - 1] : 0;
+      // Ataques: el bombo y el polvo son los que viven abajo. Se reparten
+      // entre sub-redes por índice para que enciendan caminos distintos.
+      // Guarda en DOS niveles. `au ? au.voices.kick : 0` sólo comprueba el
+      // objeto exterior, así que un __scAudio a medio publicar —o un cuadro
+      // pendiente de una instancia ya desmontada durante un cambio de slot—
+      // reventaba el montaje entero con "reading 'kick' of null". Un módulo
+      // que se cae al arrancar deja el slot en negro sin decir por qué.
+      const V = (au && au.voices) ? au.voices : null;
+      const kick = (V && V.kick) ? V.kick.env : 0;
+      const dust = (V && V.dust) ? V.dust.env : 0;
+      for (let k = 0; k < this._mycoNets.length; k++) {
+        const net = this._mycoNets[k];
+        const band = (au && au.bands) ? this._bandMean(au.bands, net.band[0], net.band[1]) : 0;
+        // ataque asignado a esta sub-red
+        const hit = (k % 2 === 0 ? kick : dust) * (0.5 + 0.5 * Math.cos(k));
+        // Las arrieras cultivan hongo: la fila enciende la red que pisa.
+        let ants = 0;
+        if (this._antHead) {
+          const d = Math.hypot(this._antHead.x - net.cx, this._antHead.z - net.cz);
+          ants = Math.max(0, 1 - d / (Antifonia.PLOT * 0.55)) * 0.16;
+        }
+        net.lit += (band * 1.9 + hit * 0.9 - net.lit) * Math.min(1, dt * 5.5);
+        net.mat.opacity = Math.min(0.62,
+          0.055 + wMic * 0.10 + net.lit * 0.34 + lit0 * 0.10 + ants);
+      }
     }
 
     // ── LOD adaptativo ───────────────────────────────────────────────────

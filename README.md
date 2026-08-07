@@ -331,8 +331,11 @@ and putting the forest into the same instrument a currency is quoted with says
 out loud what the whole apparatus does — try to measure nature in real time,
 with the wrong tool, leaving the seam visible.
 
-The candles are **immersed**. The howler sings from **one of two red howlers
-(*Alouatta seniculus*) moving through the ceiba's branches** — body, head and
+The candles are **immersed**. The fauna are drawn as **LiDAR returns like
+everything else** — denser clusters of the same white phosphor, not painted
+silhouettes: every mark in this scene comes from the same scan. The howler sings
+from **one of two howlers (*Alouatta seniculus*) moving through the ceiba's
+branches** — body, head and
 prehensile tail, pausing long between moves as the animal does. They can only
 be in the ceiba, because it is the one emergent: the same confinement that
 already governed the call, now visible. Other canopy sources sing from a **bird
@@ -344,13 +347,25 @@ the ceiba, because it is the one emergent. The aircraft has no perch — it is i
 the atmosphere, which is what it is. The strip along the bottom draws the same
 reading as a full chart, time on x and frequency on y.
 
+The **suelo** has inhabitants now: a **paujil piquiazul** (*Crax alberti*, CR
+endemic) walks between the boles rather than flying, and a **file of leafcutter
+ants** (*Atta cephalotes*) crosses from nest to tree. Both have voices — the
+paujil a deep boom in the register where the kick lives, the ants a faint
+high stridulation. Atta farm fungus, so the file **lights the mycelium it passes
+over**: the two elements are one system rather than two decorations.
+
 **Mycelium** runs under the ground and keeps going past the plot and out of
 frame on every side. That it leaves is the claim, not a framing slip: the
 network does not recognise the parcel boundary or the viewport. The unit the
 eye thinks it is looking at — this stand, this rectangle — is an administrative
 cut across something continuous. The forest above can be framed; the one below
-cannot. It breathes with the mycorrhizal stratum's own weight, one opacity
-write for ~7 000 segments.
+cannot. It is split into **seven sub-networks, each keyed to its own band of the live
+master spectrum**, so different paths light with different parts of the sound
+and the net reads as carrying traffic rather than breathing as one body — the
+"pulse" it had before was a free-running sine tied to nothing. Kick and dust
+onsets give the flashes, band energy the sustain. Seven opacity writes per
+frame; a per-vertex update would be ~200 KB/frame, 350× the bird and howler
+systems combined.
 
 **Frequency does not fight for that axis.** Each call is a glyph whose length is
 its bandwidth; the spectrum reads as morphology. A separate strip along the
