@@ -532,8 +532,24 @@ s.doWhenBooted({
         
         env = EnvGen.kr(Env.asr(4.0, 1.0, 6.0), gate, doneAction: 2);
         
-        // Pitch mapping
-        baseFreq = freq * (pShift.clip(-24, 24) / 12).midiratio;
+        // Pitch mapping.
+        //
+        // freq is LAGGED. The beat engine re-pitches this drone every four bars
+        // (5_beat_engine.scd walks #[55, 62, 73, 82, 49, 65, 55, 41] on the
+        // phrase counter), which at the usual tempo lands about every 45–50 s,
+        // and it did it with a bare .set — so a drone that had been holding one
+        // note for the better part of a minute stepped a fifth or a sixth
+        // instantly. On a continuous voice that reads as a fault rather than a
+        // change. Now it glides.
+        //
+        // The glide time rides droneFade, like every other continuous control
+        // in this SynthDef, so the same fader that sets how the filter and the
+        // space breathe also sets how far the pitch slides — 0.1 s is nearly
+        // the old step, 5 s is a portamento that takes a tenth of the phrase.
+        // Doubled because a pitch move wants noticeably longer than a filter
+        // move to stop sounding like an edit.
+        baseFreq = Lag.kr(freq, (dFade * 2.0).clip(0.2, 10.0))
+            * (pShift.clip(-24, 24) / 12).midiratio;
         
         // Complex oscillator using native UGens instead of SuperSaw to avoid plugin dependency
         mod = LFNoise2.kr(0.1 + (tStretch * 0.5)).range(0.9, 1.1) * fmR * 2.0;

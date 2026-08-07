@@ -81,8 +81,8 @@ is judged against that.
 - **Democratic Actions** — Vote / Start / Stop / Emergency → `/parliament/*`. ✓
 
 ### B · ★ REPLICAS WITH NO INCIDENCE OVER THE SC INSTRUMENTS
-These were titled "→ SC" but **SuperCollider has no handler for their OSC
-address.** They only mutate the browser store + the visualization. They are
+These were titled "→ SC" but **SuperCollider had no handler for their OSC
+address.** They only mutated the browser store + the visualization. They are
 *connected to a flow* (the viz), so they were **kept but relabeled `→ VIZ`** to
 stop the UI lying about audio:
 
@@ -96,6 +96,35 @@ stop the UI lying about audio:
 
 Extra tell: the store ingests `/agent/*` (singular) while these sliders emit
 `/agents/*` (plural); **SC handles neither.**
+
+#### ✅ SUPERSEDED — the three `/agents/*` rows are wired
+
+> The bridge's own `/diag` confirmed the diagnosis before it was fixed:
+> `/agents/species/presence` and `/agents/species/activity` counted 30 messages
+> each browser→SC, and **nothing came back** — no `/agent/species/state` in the
+> SC→browser column at all. That is why `FREQ` read a hardcoded `440Hz` and
+> `VOT` a hardcoded `0` for every session the instrument has ever run.
+
+`6_osc_handlers.scd` now carries `\speciesPresence`, `\speciesActivity` and
+`\ednaBiodiv`. They cannot go through the registry loop — that one is generated
+from `~paramDefs` and every handler it builds reads a single float at `msg[1]`,
+while these carry `[agentId, value]` — so they are hand-written defs writing
+`~speciesPresence` / `~speciesActivity` / `~ednaBiodiversity`.
+
+`5_beat_engine.scd` sounds them. Each percussion hit picks a seat weighted by
+`presence × activity`; the pitch pool still chooses the degree and the seat only
+chooses the **register** (`~speciesBand`, ~5-semitone steps upward from unity).
+Presence scales amplitude, centred so the 0.5 default is unity gain. **A species
+votes by sounding** — that is what the `VOT` column counts.
+
+The return path is `/agent/species/state [id, presence, activity, votes, freq]`
+and `/agent/edna/state [id, biodiversity, validation]`, emitted from the
+engine's existing throttled broadcast. `parliamentStore.ts` has parsed both, in
+exactly that argument order, since it was written; they simply had no emitter.
+
+The two `/parliament/*` rows above remain VIZ-only and correctly labelled: SC
+has no authority over consensus or rotation, and the browser macros that bias
+`/soneth/harmonicrich` and `/soneth/beatTempo` from them are the whole effect.
 
 ### C · REMOVED — dead, no input path at all
 - **"Fungi Networks"** (`#fungi-tele`, `fg-bar-*`)

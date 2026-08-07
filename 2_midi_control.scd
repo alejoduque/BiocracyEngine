@@ -28,6 +28,13 @@ s.doWhenBooted({
 // One handler for every mapped CC, on all channels (Faderfox LC2).
 MIDIdef.cc(\paramControl, { |val, num, chan, src|
     var paramName = if(~midiCCToParam.notNil) { ~midiCCToParam[num] };
+    // Proof of traffic for the GUI's MIDI light and CC counter. Stamped for
+    // EVERY incoming CC, mapped or not: the question the light answers is
+    // "is the controller talking to me", and an unmapped knob is still the
+    // controller talking. The old light only tested whether a device was
+    // enumerated, which stayed lit through a dead cable.
+    ~lastMidiTime = SystemClock.seconds;
+    ~midiCCCount = (~midiCCCount ? 0) + 1;
     if(paramName.notNil) {
         var newVal = ~setParamNorm.(paramName, val / 127, \midi);
         if(newVal.notNil) {

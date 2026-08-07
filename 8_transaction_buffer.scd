@@ -251,6 +251,10 @@ OSCdef(\midiNoteReceiver).free;
 
 OSCdef(\midiNoteReceiver, { |msg, time, addr, recvPort|
     {
+        // Shares the Notes counter in the GUI with /eth/note — both are notes
+        // arriving from outside, and the counter answers "is anything playing
+        // me", not "which port did it come in on".
+        ~ethNoteCount = (~ethNoteCount ? 0) + 1;
         ~txBuffer.processOSCData(msg);
     }.try { |error|
         "Error in OSC handler: %".format(error.errorString).error;

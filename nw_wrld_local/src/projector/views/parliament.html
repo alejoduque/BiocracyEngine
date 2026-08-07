@@ -113,15 +113,23 @@
             color: var(--text-dim);
             letter-spacing: 0.5px;
         }
-        /* Right panel: telemetry readouts */
+        /* Right panel: telemetry readouts.
+           Scrolls, like the left panel, with the same hidden scrollbar. It was
+           `overflow: hidden`, which does not mean "nothing overflows" — it
+           means whatever does not fit is silently cut off the bottom, and the
+           Cámara Fenológica · Corpus block sits there. On a short display the
+           corpus cursor simply was not on screen and nothing said so. */
         #right-panel {
             width: 300px;
             flex-shrink: 0;
             border-left: 1px solid var(--border);
             display: flex;
             flex-direction: column;
-            overflow: hidden;
+            overflow-y: auto;
+            overflow-x: hidden;
+            scrollbar-width: none;
         }
+        #right-panel::-webkit-scrollbar { display: none; }
         #footer {
             border-top: 1px solid var(--border);
             padding: 3px 12px;
@@ -284,15 +292,36 @@
         .uicn-LC { color: #88aa00; border-color: #88aa00; }
 
         /* ─── BIOTOKEN FORMULA ─── */
+        /* Two columns rather than three wrapped lines: the terms are a list of
+           readings now, and a reading wants its number on the same baseline as
+           its name. Denser than the old prose form despite carrying six live
+           values it did not carry before. */
         #biotoken-section .formula {
             color: var(--text-dim);
-            font-size: 14px;
-            line-height: 1.6;
+            font-size: 11px;
+            line-height: 1.45;
             border: 1px solid rgba(255,136,0,0.12);
-            padding: 5px;
+            padding: 4px 5px;
             margin-top: 4px;
         }
         #biotoken-section .formula .var { color: var(--amber); }
+        #biotoken-section .formula-head {
+            font-size: 10px;
+            letter-spacing: 0.4px;
+            padding-bottom: 3px;
+            margin-bottom: 3px;
+            border-bottom: 1px solid rgba(255,136,0,0.12);
+        }
+        #biotoken-section .formula-term {
+            display: flex;
+            justify-content: space-between;
+            gap: 8px;
+        }
+        #biotoken-section .formula-term .fterm { white-space: nowrap; }
+        #biotoken-section .formula-term .fval {
+            color: var(--amber);
+            font-variant-numeric: tabular-nums;
+        }
         #biotoken-value {
             font-size: 28px;
             color: var(--amber-bright);
@@ -576,24 +605,28 @@
             </div>
 
             <!-- Acoustic Species Controls (injected by JS from live IUCN data).
-                 VIZ-only: emit /agents/species/activity, which SC does not
-                 handle (SC species sound comes from MIDI /midi/note + ETH). -->
+                 These were VIZ-only for as long as they existed: they emitted
+                 /agents/species/* into UDP 57120 where no OSCdef received them.
+                 6_osc_handlers.scd now does, and 5_beat_engine.scd sounds them —
+                 activity weights how often a seat is picked for a percussion
+                 hit, presence how loudly it speaks and which register it owns.
+                 The seat reports back on /agent/species/state (ACT / FREQ / VOT
+                 in the right rail). -->
             <div class="tele-section">
-                <div class="tele-section-title">Species Activity → VIZ</div>
+                <div class="tele-section-title">Species Activity → SC + VIZ</div>
                 <div id="species-activity-ctrl"></div>
             </div>
 
-            <!-- Species Presence (injected by JS). VIZ-only: /agents/species/presence
-                 has no SC handler. -->
             <div class="tele-section">
-                <div class="tele-section-title">Species Presence → VIZ</div>
+                <div class="tele-section-title">Species Presence → SC + VIZ</div>
                 <div id="species-presence-ctrl"></div>
             </div>
 
-            <!-- eDNA biodiversity controls (dynamic from IUCN feed). VIZ-only:
-                 /agents/edna/biodiversity has no SC handler. -->
+            <!-- eDNA biodiversity (dynamic from IUCN feed). Same story:
+                 /agents/edna/biodiversity is received now, and the site's
+                 validation reading is echoed back on /agent/edna/state. -->
             <div class="tele-section">
-                <div class="tele-section-title">eDNA Biodiversity → VIZ</div>
+                <div class="tele-section-title">eDNA Biodiversity → SC + VIZ</div>
                 <div id="edna-ctrl-rows"></div><!-- injected by JS -->
             </div>
 
@@ -1019,10 +1052,23 @@
                 <div class="tele-section-title">BioToken V3 · Live</div>
                 <div id="biotoken-value">0.000</div>
                 <div id="biotoken-mult">IUCN ×<span id="bt-iucn">1.0</span>  eDNA ×<span id="bt-edna">1.0</span>  Fungi ×<span id="bt-fungi">1.0</span></div>
+                <!-- The formula was static text, and it disagreed with the code
+                     it claimed to describe: it said "Duration" where
+                     bioTokenTerms() has always used activity, and it printed
+                     IUCN as the raw ×5 multiplier while the factor applied is
+                     that over 5. Two of its six terms (Fungi.chem, AI.optim)
+                     were frozen constants left behind when the Fungi Networks
+                     and Gaia AI Core panels were removed. Every term now
+                     carries its live value, so the token can be read as the
+                     product it is rather than taken on faith. -->
                 <div class="formula">
-                    <span class="var">BT</span> = Presence × Duration<br>
-                    &nbsp;&nbsp;× eDNA.biodiv × Fungi.chem<br>
-                    &nbsp;&nbsp;× AI.optim × IUCN.weight
+                    <div class="formula-head"><span class="var">BT</span> = ∏ of six factors</div>
+                    <div class="formula-term"><span class="fterm">Presence</span><span class="fval" id="bt-t-presence">—</span></div>
+                    <div class="formula-term"><span class="fterm">Activity</span><span class="fval" id="bt-t-activity">—</span></div>
+                    <div class="formula-term"><span class="fterm">eDNA.biodiv</span><span class="fval" id="bt-t-edna">—</span></div>
+                    <div class="formula-term"><span class="fterm">Fungi.chem</span><span class="fval" id="bt-t-fungi">—</span></div>
+                    <div class="formula-term"><span class="fterm">AI.optim</span><span class="fval" id="bt-t-ai">—</span></div>
+                    <div class="formula-term"><span class="fterm">IUCN.weight</span><span class="fval" id="bt-t-iucn">—</span></div>
                 </div>
             </div>
 

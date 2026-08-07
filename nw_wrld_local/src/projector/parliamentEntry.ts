@@ -55,12 +55,24 @@ const phenoParams: Record<string, number> = {
 let controlWS: WebSocket | null = null;
 let controlWsReady = false;
 
+// Set by init() once the sliders exist. connectControlWS lives out here at
+// module scope and needs to re-push the /agents/* replicas whenever the socket
+// (re)opens, which is the one moment SC is listening and the panel already
+// knows what it is showing.
+let resyncReplicaSliders: ((sendToSC: boolean) => void) | null = null;
+
 function connectControlWS() {
   controlWS = new WebSocket("ws://localhost:3334");
   controlWS.onopen = () => {
     controlWsReady = true;
     // Populate the CONFIGS dropdown: SC answers with /preset/names
     try { controlWS?.send(JSON.stringify({ direction: "toSC", address: "/preset/list", args: [] })); } catch { /* ignore */ }
+    // Push the /agents/* replicas to SC (and only those — see the note on
+    // syncStoreFromSliders). On a cold start this is what the sliders were
+    // rendered with; on a reconnect it is whatever the performer has dialled
+    // in since. Either way SC's ~speciesPresence should agree with the surface
+    // rather than with its own defaults.
+    resyncReplicaSliders?.(true);
   };
   controlWS.onclose = () => {
     controlWsReady = false;
@@ -715,17 +727,59 @@ function buildFftBins(state: ParliamentState | null, elapsed: number, numBins = 
   return bins;
 }
 
+// ─── eDNA sites the Reserva actually occupies ───
+// Module scope rather than local to init() because calcBioToken needs it: the
+// token used to average biodiversity over all eight regions while only this
+// one has a slider, so seven frozen 0.5s permanently damped it and no amount
+// of moving the Córdoba fader could lift the token past a fraction of its
+// range. state.edna stays eight wide — the seven unsurfaced entries are still
+// there, they simply no longer vote on a number nobody can influence.
+const EDNA_SITES: ReadonlyArray<{ i: number; label: string }> = [
+  { i: 3, label: "B.s.T · Córdoba" },  // CAR — Sinú valley, the Reserva
+];
+
 // ─── BioToken V3 calculation ───
-function calcBioToken(state: ParliamentState): number {
-  if (!state || !Array.isArray(state.species) || !Array.isArray(state.edna) || !Array.isArray(state.fungi)) return 0;
-  const avgPresence = state.species.reduce((s, sp) => s + sp.presence, 0) / 5;
-  const avgActivity = state.species.reduce((s, sp) => s + sp.activity, 0) / 5;
-  const avgEdnaBio = state.edna.reduce((s, e) => s + e.biodiversity, 0) / 8;
-  const avgFungiChem = state.fungi.reduce((s, f) => s + f.chemical, 0) / 4;
+// The six factors, and where each one comes from. This used to be three live
+// numbers and three lies: the panel's formula said "Duration" where the code
+// has always used activity, and Fungi.chem and AI.optim were constants left
+// behind when their panels were removed. Both now read live ETH-derived state
+// (see the /bio/nutrient and /bio/density branches in parliamentStore.ts).
+export interface BioTokenTerms {
+  presence: number;
+  activity: number;
+  ednaBio: number;
+  fungiChem: number;
+  aiOpt: number;
+  iucn: number;
+  value: number;
+}
+
+function bioTokenTerms(state: ParliamentState): BioTokenTerms {
+  const zero: BioTokenTerms = {
+    presence: 0, activity: 0, ednaBio: 0, fungiChem: 0, aiOpt: 0, iucn: 0, value: 0,
+  };
+  if (!state || !Array.isArray(state.species) || !Array.isArray(state.edna) || !Array.isArray(state.fungi)) {
+    return zero;
+  }
+  const presence = state.species.reduce((s, sp) => s + sp.presence, 0) / 5;
+  const activity = state.species.reduce((s, sp) => s + sp.activity, 0) / 5;
+  const ednaBio =
+    EDNA_SITES.reduce((s, { i }) => s + (state.edna[i]?.biodiversity ?? 0), 0) /
+    Math.max(1, EDNA_SITES.length);
+  const fungiChem = state.fungi.reduce((s, f) => s + f.chemical, 0) / 4;
   const aiOpt = state.ai?.optimization / 127 || 0;
-  // IUCN weight: highest urgency species dominates
-  const maxIucnMult = Math.max(...IUCN_MULT) / 5; // normalize to 0-1
-  return avgPresence * avgActivity * avgEdnaBio * avgFungiChem * aiOpt * maxIucnMult;
+  // IUCN weight: highest urgency species dominates, normalised to 0–1 against
+  // the CR multiplier of 5. The panel used to print the RAW multiplier next to
+  // the formula, so the number shown was five times the factor being applied.
+  const iucn = Math.max(...IUCN_MULT) / 5;
+  return {
+    presence, activity, ednaBio, fungiChem, aiOpt, iucn,
+    value: presence * activity * ednaBio * fungiChem * aiOpt * iucn,
+  };
+}
+
+function calcBioToken(state: ParliamentState): number {
+  return bioTokenTerms(state).value;
 }
 
 async function init() {
@@ -770,16 +824,10 @@ async function init() {
   // no way to reach — Chocó, Amazonia and Orinoquía are not places the
   // AudioMoth has ever been. EDNA_SITES lists the indices that are real here.
   //
-  // state.edna stays eight wide on purpose: the BioToken formula and the
-  // consensus average over all eight (see computeBioToken), and the seven
-  // unsurfaced entries simply hold their initial value, which is exactly what
-  // they did before when nobody touched their sliders. Narrowing the formula
-  // to the surfaced sites is a separate decision about the token, not about
-  // this panel.
+  // state.edna stays eight wide on purpose, but the BioToken now averages only
+  // over EDNA_SITES (module scope, above bioTokenTerms) rather than over all
+  // eight — seven frozen 0.5s were damping a factor no control could reach.
   const ednaCtrlRows = document.getElementById("edna-ctrl-rows");
-  const EDNA_SITES: ReadonlyArray<{ i: number; label: string }> = [
-    { i: 3, label: "B.s.T · Córdoba" },  // CAR — Sinú valley, the Reserva
-  ];
   if (ednaCtrlRows) {
     ednaCtrlRows.innerHTML = EDNA_SITES.map(({ i, label }) => `
       <div class="ctrl-row">
@@ -793,32 +841,45 @@ async function init() {
   }
 
   // ─── Build species control rows (left panel) ───
+  // Called twice: once at boot, and again when the IUCN roster resolves and
+  // the five names change. The second call used to rebuild the markup from the
+  // literals below, which silently threw away anything the performer had
+  // already dialled in — the fader jumped back to 0.95 mid-set while the store
+  // kept the value they had chosen. `seeded` makes the literals the opening
+  // position only; after that the live store is the source of truth.
+  const PRESENCE_DEFAULTS = [0.95, 0.80, 0.90, 0.70, 0.50];
+  let speciesSlidersSeeded = false;
+
   function renderSpeciesSliders() {
     const actCtrl = document.getElementById("species-activity-ctrl");
     const presCtrl = document.getElementById("species-presence-ctrl");
+    const live = speciesSlidersSeeded ? parliamentStore.state?.species : null;
+
     if (actCtrl) {
       actCtrl.innerHTML = SPECIES_NAMES.map((name, i) => {
         const shortName = name.length > 14 ? name.slice(0, 13) + "…" : name;
+        const v = live?.[i]?.activity ?? 0.50;
         return `<div class="ctrl-row">
           <label title="${name}">${shortName}</label>
-          <input type="range" min="0" max="1" step="0.01" value="0.50"
+          <input type="range" min="0" max="1" step="0.01" value="${v.toFixed(2)}"
             data-osc="/agents/species/activity" data-agent-id="${i}">
-          <span class="ctrl-val" id="disp-sp-act-${i}">0.50</span>
+          <span class="ctrl-val" id="disp-sp-act-${i}">${v.toFixed(2)}</span>
         </div>`;
       }).join("");
     }
     if (presCtrl) {
       presCtrl.innerHTML = SPECIES_NAMES.map((name, i) => {
         const shortName = name.length > 14 ? name.slice(0, 13) + "…" : name;
-        const defVal = [0.95, 0.80, 0.90, 0.70, 0.50][i] ?? 0.50;
+        const v = live?.[i]?.presence ?? PRESENCE_DEFAULTS[i] ?? 0.50;
         return `<div class="ctrl-row">
           <label title="${name}">${shortName}</label>
-          <input type="range" min="0" max="1" step="0.01" value="${defVal.toFixed(2)}"
+          <input type="range" min="0" max="1" step="0.01" value="${v.toFixed(2)}"
             data-osc="/agents/species/presence" data-agent-id="${i}">
-          <span class="ctrl-val" id="disp-sp-pres-${i}">${defVal.toFixed(2)}</span>
+          <span class="ctrl-val" id="disp-sp-pres-${i}">${v.toFixed(2)}</span>
         </div>`;
       }).join("");
     }
+    speciesSlidersSeeded = true;
   }
   renderSpeciesSliders();
 
@@ -855,18 +916,9 @@ async function init() {
     `).join("");
   }
 
-  const fungiTele = document.getElementById("fungi-tele");
-  const fungiNames = ["N.Myco", "C.Spore", "S.Web", "Coastal"];
-  if (fungiTele) {
-    fungiTele.innerHTML = fungiNames.map((name, i) => `
-      <div class="tele-row" style="margin-bottom:2px">
-        <span class="lbl" style="min-width:40px">${name}</span>
-        <div class="tele-bar-wrap"><div class="tele-bar" id="fg-bar-${i}" style="width:60%"></div></div>
-        <span class="val" id="fg-chem-${i}">—</span>
-        <span class="val" id="fg-conn-${i}" style="color:var(--text-dim)">—</span>
-      </div>
-    `).join("");
-  }
+  // The Fungi Networks tele builder that stood here has been removed with the
+  // rest of that panel. It wrote markup into #fungi-tele, an element deleted
+  // from parliament.html, so it built four rows into nothing on every boot.
 
   // ─── Canvas labels ───
   const overlay = document.getElementById("canvas-overlay");
@@ -1542,36 +1594,86 @@ async function init() {
     },
   };
 
-  function wireSlider(slider: HTMLInputElement) {
-    if ((slider as any)._sliderWired) return; // already wired
-    (slider as any)._sliderWired = true;
-
-    const addr = slider.dataset.osc!;
+  // Everything a slider does when it moves, in one named place so the boot
+  // sweep below can do exactly the same thing without re-implementing it.
+  function applySlider(slider: HTMLInputElement) {
+    const addr = slider.dataset.osc;
+    if (!addr) return;
     const agentId = slider.dataset.agentId;
     const prefix = SLIDER_DISP_PREFIX[addr] ?? `disp-${addr.split("/").pop()}-`;
-
-    // Derive display element — agent sliders use prefix+id, global sliders use prefix alone
     const dispId = agentId !== undefined ? `${prefix}${agentId}` : prefix;
     const dispEl = document.getElementById(dispId);
 
-    slider.addEventListener("input", () => {
-      const v = parseFloat(slider.value);
-      const id = agentId !== undefined ? parseInt(agentId) : null;
-      if (dispEl) dispEl.textContent = v.toFixed(2);
+    const v = parseFloat(slider.value);
+    const id = agentId !== undefined ? parseInt(agentId) : null;
+    if (dispEl) dispEl.textContent = v.toFixed(2);
 
-      // 1. Send to SC
-      if (id !== null) sendOSCArgs(addr, [id, v]);
-      else sendOSC(addr, v);
+    // 1. Send to SC
+    if (id !== null) sendOSCArgs(addr, [id, v]);
+    else sendOSC(addr, v);
 
-      // 2. Patch local store immediately for instant visual feedback
-      patchStoreFromSlider(addr, id, v);
+    // 2. Patch local store immediately for instant visual feedback
+    patchStoreFromSlider(addr, id, v);
 
-      // 3. If this is a parliament/agent replica (no direct SC handler), bias
-      //    the instrument via its conceptually-matching /soneth slider.
-      const macro = REPLICA_MACROS[addr];
-      if (macro) macro(v);
-    });
+    // 3. If this is a parliament/agent replica, bias the instrument via its
+    //    conceptually-matching /soneth slider. (Species presence and activity
+    //    now ALSO reach SC directly — 6_osc_handlers.scd receives
+    //    /agents/species/* and 5_beat_engine.scd sounds it — so this is a
+    //    second, faster path rather than the only one.)
+    const macro = REPLICA_MACROS[addr];
+    if (macro) macro(v);
   }
+
+  function wireSlider(slider: HTMLInputElement) {
+    if ((slider as any)._sliderWired) return; // already wired
+    (slider as any)._sliderWired = true;
+    slider.addEventListener("input", () => applySlider(slider));
+  }
+
+  // ── Boot: make the store agree with what the panel is showing ────────────
+  // Every slider renders with a default in its markup, and none of those
+  // defaults were ever applied to anything: the store initialised at its own
+  // (species presence 0.5, eDNA 0.5) and only a human dragging a fader could
+  // reconcile the two. So the left rail read 0.95 while the right rail read
+  // 0.50 for the same species, and the BioToken was computed from numbers
+  // nobody had chosen.
+  //
+  // WHAT THIS DELIBERATELY DOES NOT DO is push every slider to SuperCollider.
+  // SC owns every address in ~paramDefs — /soneth/, /pheno/, /mix/, /tide/ —
+  // and restores them from presets/_autosave at boot, then echoes them down to
+  // these sliders. Blasting the markup defaults up at connect time would
+  // overwrite the performer's restored config with whatever is hardcoded in
+  // parliament.html, and it would do it again on every reconnect. Only the
+  // /agents/* replicas are sent: they have no SC-side authority and no echo,
+  // so the browser is the only place their opening value exists.
+  //
+  // Macros are not fired here either. REPLICA_MACROS drive /soneth/ faders,
+  // which is the same stomp by another route — and a macro is a response to a
+  // gesture, not an initial condition. Presence reaches SC directly now.
+  function syncStoreFromSliders(sendToSC = true) {
+    document
+      .querySelectorAll<HTMLInputElement>("input[type='range'][data-osc]")
+      .forEach((el) => {
+        const addr = el.dataset.osc;
+        if (!addr) return;
+        const agentId = el.dataset.agentId;
+        const id = agentId !== undefined ? parseInt(agentId) : null;
+        const v = parseFloat(el.value);
+
+        const dispPrefix = SLIDER_DISP_PREFIX[addr] ?? `disp-${addr.split("/").pop()}-`;
+        const dispEl = document.getElementById(id !== null ? `${dispPrefix}${id}` : dispPrefix);
+        if (dispEl) dispEl.textContent = v.toFixed(2);
+
+        patchStoreFromSlider(addr, id, v);
+
+        if (sendToSC && addr.startsWith("/agents/")) {
+          if (id !== null) sendOSCArgs(addr, [id, v]);
+          else sendOSC(addr, v);
+        }
+      });
+    parliamentStore.notifyListeners();
+  }
+  resyncReplicaSliders = syncStoreFromSliders;
 
   // ── Marea · arco de densidad: tide toggles (/tide/*) ────────────────────
   // Same contract as wireSlider, but the value is 0/1. SC's registry entries
@@ -1620,6 +1722,12 @@ async function init() {
     const el = document.getElementById(id);
     if (el) el.querySelectorAll<HTMLInputElement>("input[type='range'][data-osc]").forEach(wireSlider);
   });
+
+  // Every slider is wired now, so reconcile the store with the panel. Local
+  // only on this pass — the socket may still be opening, and connectControlWS's
+  // onopen fires the same sweep with sendToSC on, which is what puts the
+  // /agents/* opening position on the wire.
+  syncStoreFromSliders(false);
 
   // ─── Cámara Fenológica button wiring (Capítulo VI) ──────────────────────
   // The bancada row + jump-season row are not range sliders, so they need
@@ -1866,21 +1974,30 @@ async function init() {
     setBar("bar-rotation", Math.min(state.rotation / 2, 1)); setVal("val-rotation", state.rotation.toFixed(3));
     setBar("bar-votes", state.votes / 26); setVal("val-votes", String(state.votes));
 
-    // BioToken breakdown
-    const avgEdna = state.edna.reduce((s, e) => s + e.biodiversity, 0) / 8;
-    const avgFungi = state.fungi.reduce((s, f) => s + f.chemical, 0) / 4;
-    const btVal = calcBioToken(state);
-    setVal("biotoken-value", btVal.toFixed(4));
+    // BioToken breakdown — every factor of the product, live. bioTokenTerms()
+    // returns exactly what calcBioToken multiplies, so the six rows below and
+    // the number above them cannot drift apart the way the old static text did.
+    const bt6 = bioTokenTerms(state);
+    setVal("biotoken-value", bt6.value.toFixed(4));
     setVal("bt-iucn", String(iucnMult));
-    setVal("bt-edna", avgEdna.toFixed(2));
-    setVal("bt-fungi", avgFungi.toFixed(2));
+    setVal("bt-edna", bt6.ednaBio.toFixed(2));
+    setVal("bt-fungi", bt6.fungiChem.toFixed(2));
+    setVal("bt-t-presence", bt6.presence.toFixed(3));
+    setVal("bt-t-activity", bt6.activity.toFixed(3));
+    setVal("bt-t-edna", bt6.ednaBio.toFixed(3));
+    setVal("bt-t-fungi", bt6.fungiChem.toFixed(3));
+    setVal("bt-t-ai", bt6.aiOpt.toFixed(3));
+    setVal("bt-t-iucn", bt6.iucn.toFixed(3));
 
-    // Species
+    // Species. freq and votes arrive from SC (/agent/species/state, emitted by
+    // 5_beat_engine.scd once the seat has actually sounded); a species that has
+    // not spoken yet reports 0 Hz, and "—" is the honest way to show that
+    // rather than printing a frequency nothing is playing.
     state.species.forEach((sp, i) => {
       setBar(`sp-bar-pres-${i}`, sp.presence);
       setVal(`sp-val-${i}`, sp.presence.toFixed(2));
       setVal(`sp-act-${i}`, sp.activity.toFixed(2));
-      setVal(`sp-frq-${i}`, sp.freq.toFixed(0) + "Hz");
+      setVal(`sp-frq-${i}`, sp.freq > 0 ? sp.freq.toFixed(0) + "Hz" : "—");
       setVal(`sp-vot-${i}`, String(sp.votes));
     });
 
@@ -1891,18 +2008,12 @@ async function init() {
       setVal(`ed-val-${i}`, ed.validation.toFixed(3));
     });
 
-    // Fungi
-    state.fungi.forEach((fg, i) => {
-      setBar(`fg-bar-${i}`, fg.chemical);
-      setVal(`fg-chem-${i}`, fg.chemical.toFixed(2));
-      setVal(`fg-conn-${i}`, fg.connectivity.toFixed(2));
-    });
-
-    // AI
-    setBar("bar-ai-c", state.ai.consciousness);
-    setVal("val-ai-c", state.ai.consciousness.toFixed(3));
-    setBar("bar-ai-o", state.ai.optimization / 127);
-    setVal("val-ai-o", String(Math.round(state.ai.optimization)));
+    // The per-agent Fungi and AI writes that used to sit here are gone. Their
+    // panels were removed (see the note in parliament.html where Fungi Networks
+    // and Gaia AI Core used to be) and the ids they addressed have not existed
+    // since; setBar/setVal null-guard, so they were a silent no-op on every
+    // frame. Both quantities now surface where they are actually used, as
+    // Fungi.chem and AI.optim in the BioToken breakdown above.
 
     // Eco
     setBar("bar-co2", state.eco.co2 / 127); setVal("val-co2", state.eco.co2.toFixed(0));

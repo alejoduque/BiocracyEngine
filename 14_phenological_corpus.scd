@@ -458,7 +458,16 @@ s.waitForBoot {
             ] ++ ~phenoBusArgs.value,
                 target: if(~defaultGroup.notNil, { ~defaultGroup }, { s.defaultGroup }));
 
-            ~corpusVoices = ~corpusVoices.add((synth: synth, slot: slot, key: clip[\key]));
+            // ringDay is which position on the 365-ring admitted this voice —
+            // not clip[\doy], which is when the recording was made. The
+            // mid-day re-selection below needs to know which voices belong to
+            // the day it is re-deciding, so that a clip still decaying from
+            // the previous day is left alone rather than retired as though the
+            // knob had just excluded it.
+            ~corpusVoices = ~corpusVoices.add((
+                synth: synth, slot: slot, key: clip[\key],
+                ringDay: ~phenoCursor.floor.asInteger
+            ));
 
             // Article 47 again, this time outward: an opaque clip is not
             // announced to the visuals or the laser at all. It is heard and
@@ -501,11 +510,152 @@ s.waitForBoot {
     };
 };
 
+// Let go of what is sounding, on a stated release rather than the clip's own.
+// A corpus voice is built with rel up to 20 s, which is right when a day ends
+// of its own accord and wrong when the performer has just asked to be
+// somewhere else.
+//
+// It must be a NEGATIVE gate. Both corpus envelopes are Env.new([0,1,1,0], …)
+// — fixed length, no release node — and for those EnvGen treats gate purely as
+// a trigger: setting it to 0 does nothing at all and the clip plays out its
+// full atk+hold+rel regardless. gate < 0 is the forced release, over
+// -1.0 - gate seconds (EnvGen helpfile, "Forced release"). This is also why
+// ~phenoPanic below has never actually silenced anything.
+~phenoGateOff = { |synth, rel = 1.2|
+    try { synth.set(\gate, -1.0 - rel.clip(0.02, 30)) };
+};
+
+~phenoFadeVoices = { |rel = 1.2, onlyRingDay = nil|
+    ~corpusVoices.do { |v|
+        if(onlyRingDay.isNil or: { v[\ringDay] == onlyRingDay }) {
+            ~phenoGateOff.(v[\synth], rel);
+        };
+    };
+    ~corpusVoices = ~corpusVoices.select { |v|
+        onlyRingDay.notNil and: { v[\ringDay] != onlyRingDay }
+    };
+};
+
+// ─── Making the Chamber answer while a day is still running ─────────────────
+// Every control in the Cámara — the threshold, the window, the seasonal bias,
+// the bancada filter, the opacity floor — was consulted in exactly one place:
+// ~phenoPool, called once per phenological day. At the default rate that is
+// once every sixty seconds, and at the slow end once every eight minutes. So
+// the whole row read as dead: you turned a knob, nothing happened, and by the
+// time it did happen you had stopped connecting the two. The NEXT REC. DAY
+// button had the same fault from the other side — it set the cursor correctly
+// and then the routine slept through it (visible in the log as two `skip ->
+// doy 211` a few seconds apart and the day itself arriving much later).
+//
+// The ring still turns at its own rate. What changed is that the wait is now
+// sliced, and on each slice the Chamber re-asks who is admitted TODAY.
+~phenoTick = 0.25;
+~phenoSkipNow = false;
+
+// Bring the sounding voices into line with what the current settings admit for
+// this ring day: retire the ones that no longer qualify, start the ones that
+// newly do, and leave everything already correct alone. Diffing by clip key
+// rather than re-triggering wholesale is what keeps a knob sweep from
+// machine-gunning the same clip — nothing restarts unless it genuinely just
+// crossed the threshold.
+~phenoSyncVoices = { |doy, holdSecs|
+    var desired = ~phenoSelect.(doy);
+    var wantKeys, changed = false;
+
+    if(desired.size > 2) { desired = desired[..1] };
+    wantKeys = desired.collect { |c| c[\key] };
+
+    // includesEqual, not includes: Collection.includes compares with === , so
+    // on Strings it is object identity. Two clip keys reading "SN26_0208_0530"
+    // are not the same object unless they came from the same ~corpusClips
+    // entry — which here they happen to, but relying on that would mean a
+    // clip that IS still admitted gets retired and immediately retriggered
+    // the moment anything reconstructs a key.
+    ~corpusVoices.do { |v|
+        if((v[\ringDay] == doy) and: { wantKeys.includesEqual(v[\key]).not }) {
+            ~phenoGateOff.(v[\synth], 1.2);
+            v[\retired] = true;
+            changed = true;
+        };
+    };
+    ~corpusVoices = ~corpusVoices.reject { |v| v[\retired] == true };
+
+    desired.do { |clip|
+        if(~corpusVoices.any { |v| v[\key] == clip[\key] }.not) {
+            ~phenoPlayClip.(clip, holdSecs);
+            changed = true;
+        };
+    };
+    changed;
+};
+
+// Article 45's reverse breath, factored out so it can be re-applied when
+// pulseGain moves instead of only at a day boundary.
+~phenoBreath = { |quorum, pulse|
+    if(pulse > 0.01 and: { ~setParam.notNil }) {
+        var richSpec = ~controlSpecs[\harmonicRich];
+        var texSpec = ~controlSpecs[\textureDepth];
+        if(richSpec.notNil) {
+            ~setParam.(\harmonicRich,
+                richSpec.map((quorum * pulse * 0.5).clip(0, 1)), \pheno);
+        };
+        if(texSpec.notNil) {
+            ~setParam.(\textureDepth,
+                texSpec.map((quorum * pulse * 0.6).clip(0, 1)), \pheno);
+        };
+    };
+};
+
+// Wait out the rest of the day in slices, answering the Chamber as we go.
+// Returns true if the dwell was cut short by a skip request.
+~phenoDwell = { |secs, doy, holdSecs|
+    var tick = (~phenoTick ? 0.25).clip(0.05, 1.0);
+    var waited = 0.0;
+    var sinceSync = 0.0;
+    var pulseWas = ~phenoVal.(\pulseGain, 1.0);
+    var jumped = false;
+    var pulseNow;
+
+    while { (waited < secs) and: { jumped.not } } {
+        tick.wait;
+        waited = waited + tick;
+        sinceSync = sinceSync + tick;
+
+        if(~phenoSkipNow == true) {
+            ~phenoSkipNow = false;
+            jumped = true;
+        } {
+            // Re-decide who is in the Chamber. Twice a second is far finer
+            // than the ear needs and far coarser than a knob drag, so a sweep
+            // produces a handful of decisions rather than hundreds.
+            if(sinceSync >= 0.5) {
+                sinceSync = 0.0;
+                // What is left of the day, floored so a clip admitted near a
+                // boundary still gets long enough to be a clip.
+                ~phenoSyncVoices.(doy, ((secs - waited) * 0.9).max(3.0));
+            };
+            // pulseGain scales how hard the forest plays the synthesiser. It
+            // was also once-a-day; deadbanded here so holding still does not
+            // fight the performer's own harmonicRich knob.
+            pulseNow = ~phenoVal.(\pulseGain, 1.0);
+            if((pulseNow - pulseWas).abs > 0.02) {
+                pulseWas = pulseNow;
+                ~phenoBreath.(~phenoQuorum.(doy), pulseNow);
+            };
+        };
+    };
+    jumped;
+};
+
 ~phenoPanic = {
-    ~corpusVoices.do { |v| try { v[\synth].set(\gate, 0) } };
+    // Negative gate, per ~phenoGateOff above. With .set(\gate, 0) this
+    // function printed its confirmation and left every voice sounding: both
+    // corpus envelopes are fixed-length, so a zero gate is not a release.
+    // /pheno/stop stopped the ring clock and nothing else.
+    ~corpusVoices.do { |v| ~phenoGateOff.(v[\synth], 0.6) };
     ~corpusVoices = [];
     ~corpusDisk.do { |sl|
-        if(sl[\synth].notNil) { try { sl[\synth].set(\gate, 0) }; sl[\synth] = nil; sl[\key] = nil };
+        if(sl[\synth].notNil) { ~phenoGateOff.(sl[\synth], 0.6); sl[\synth] = nil; sl[\key] = nil };
     };
     "[pheno] all corpus voices released".postln;
 };
@@ -577,18 +727,7 @@ s.waitForBoot {
                 // and out to every visual module as /bio/consensus.
                 quorum = ~phenoQuorum.(doy);
                 pulse = ~phenoVal.(\pulseGain, 1.0);
-                if(pulse > 0.01 and: { ~setParam.notNil }) {
-                    var richSpec = ~controlSpecs[\harmonicRich];
-                    var texSpec = ~controlSpecs[\textureDepth];
-                    if(richSpec.notNil) {
-                        ~setParam.(\harmonicRich,
-                            richSpec.map((quorum * pulse * 0.5).clip(0, 1)), \pheno);
-                    };
-                    if(texSpec.notNil) {
-                        ~setParam.(\textureDepth,
-                            texSpec.map((quorum * pulse * 0.6).clip(0, 1)), \pheno);
-                    };
-                };
+                ~phenoBreath.(quorum, pulse);
 
                 if(~visualsDest.notNil) {
                     ~visualsDest.sendMsg('/bio/consensus', quorum);
@@ -617,7 +756,10 @@ s.waitForBoot {
                     };
                 };
 
-                secsPerDay.max(0.25).wait;
+                // Not a single long sleep any more. ~phenoDwell waits out the
+                // day in slices and answers the Cámara's controls while it
+                // does, returning early when NEXT REC. DAY has been pressed.
+                ~phenoDwell.(secsPerDay.max(0.25), doy, secsPerDay * 0.9);
             } {
                 |err|
                 ("[pheno] frame error: " ++ err.errorString).postln;
@@ -650,8 +792,13 @@ s.doWhenBooted {
 // /pheno/jumpSeason already exists in 6_osc_handlers.scd and moves the season;
 // these move the cursor itself and stop/start the layer.
 OSCdef(\phenoGoto, { |msg|
+    // -1 for the same reason ~phenoNextRecorded subtracts one: the routine's
+    // own increment is what lands on the day. Waking and fading for the same
+    // reason too — without them this set a variable and nothing else.
     var doy = (msg[1] ? 1).asInteger.clip(1, 365);
-    ~phenoCursor = doy.asFloat;
+    ~phenoCursor = (doy - 1).max(0).asFloat;
+    ~phenoSkipNow = true;
+    ~phenoFadeVoices.(1.0);
     ("[pheno] cursor -> doy % (%)".format(doy, ~phenoSeason.(doy))).postln;
 }, '/pheno/goto');
 
@@ -665,6 +812,16 @@ OSCdef(\phenoGoto, { |msg|
         next = ~phenoRecordedDays.detect { |d| d > here } ? ~phenoRecordedDays.first;
         // -1 so the routine's own increment lands exactly on it.
         ~phenoCursor = (next - 1).max(0).asFloat;
+        // Moving the cursor was all this used to do, and the routine was
+        // asleep in a whole-day wait, so nothing happened until that wait ran
+        // out — up to a minute at the default rate, eight at the slow end.
+        // Pressing the button again in the meantime just recomputed the same
+        // destination. These two lines are the difference between setting a
+        // destination and arriving at it: wake the ring, and let go of what is
+        // currently sounding so the jump is audible rather than buried under a
+        // clip with fifty seconds left to run.
+        ~phenoSkipNow = true;
+        ~phenoFadeVoices.(1.0);
         ("[pheno] skip -> doy % (%)".format(next, ~phenoSeason.(next))).postln;
         next;
     };

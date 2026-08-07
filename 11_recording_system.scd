@@ -158,6 +158,21 @@ s.doWhenBooted({
             ~recordingParams.isRecording = false;
             ~recordingParams.recordingPath = nil;
             ~recordingParams.recordingDuration = 0;
+
+            // And reset the surface that claims to show it. Two of the three
+            // ways a recording ends do not go through the STOP button — the
+            // 30 s snapshot schedules this on SystemClock, and the maximum
+            // duration timer calls it directly — so the GUI was left reading
+            // "REC: RECORDING" with ■ STOP REC still latched over a recording
+            // that had already been written and closed. Deferred because this
+            // can arrive from SystemClock, and guarded because 4_gui.scd loads
+            // before this file and its window can be closed at any time.
+            {
+                if(~recordingStatus.notNil) {
+                    ~recordingStatus.string_("REC: READY");
+                };
+                if(~recordButton.notNil) { ~recordButton.value = 0 };
+            }.defer;
         };
     };
     

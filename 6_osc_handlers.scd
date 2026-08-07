@@ -386,6 +386,12 @@ s.doWhenBooted({
         };
 
         // Update global state
+        // ~lastEthTime / ~ethNoteCount feed the GUI's ETH light and Notes
+        // counter. Stamped here rather than in each of the three entry points
+        // (/eth/note, /tx, and the block handler) because this is the one
+        // funnel they all pass through.
+        ~lastEthTime = SystemClock.seconds;
+        ~ethNoteCount = (~ethNoteCount ? 0) + 1;
         ~globalState.transactionCount = ~globalState.transactionCount + 1;
         ~globalState.lastValue = value;
         ~globalState.lastHash = txHash ? "";
@@ -564,16 +570,13 @@ s.doWhenBooted({
             ~bellStats[\lastAmp] = velocity.linlin(30, 120, 0.10, 0.26) * accent;
         };
 
-        // Update GUI
-        {
-            if(~transactionCount.notNil) {
-                ~transactionCount.string = "Transactions: %".format(~globalState.transactionCount);
-            };
-            if(~valueDisplay.notNil) {
-                ~valueDisplay.string = "Last Value: % ETH".format(value.round(0.001));
-            };
-            if(~activityMeter.notNil) { ~activityMeter.refresh };
-        }.defer;
+        // The GUI refresh that used to live here drove ~transactionCount,
+        // ~valueDisplay and ~activityMeter — three views belonging to
+        // ~addBeatControls, a second control window in 5_beat_engine.scd that
+        // was never called from anywhere. The globals were therefore never
+        // assigned, every branch was a .notNil that failed, and the whole
+        // block was a deferred no-op on every transaction. Both are gone now;
+        // the live counters are in 4_gui.scd, fed from ~globalState.
 
         if(~addTrendValue.notNil) { ~addTrendValue.value(value) };
     };
@@ -604,6 +607,7 @@ s.doWhenBooted({
         var iv, gap, priorityGwei, baseGwei;
 
         // Store for the next /eth/note to use
+        ~lastEthTime = now;
         ~globalState.lastValue = value;
         ~globalState.lastGasPrice = gasPrice;
         ~globalState.lastHash = txHash;
@@ -663,6 +667,7 @@ s.doWhenBooted({
                 // native units via the registry spec, sets the bus, mirrors
                 // ~beatParams (beatTempo/txInfluence), syncs the GUI knob and
                 // echoes 0–1 back on the canonical path.
+                ~lastOscTime = SystemClock.seconds;
                 ~setParamNorm.(paramName, msg[1].asFloat, \osc);
             }, oscPath);
         };
@@ -686,6 +691,52 @@ s.doWhenBooted({
             ~beatParams.transactionInfluence = (~beatParams.transactionInfluence ? 0.0) + 0.6;
         };
     }, "/pheno/jumpSeason");
+
+    // ── Cámara de las Especies: the five seats the browser actually shows ──
+    // These three addresses were reaching this port and being dropped on the
+    // floor. They cannot go through the registry loop above: that one is built
+    // from ~paramDefs and every handler it makes reads a single float at
+    // msg[1], while these carry [agentId, value] — one message per seat. So
+    // they get their own defs, and the arrays they write are read by the
+    // percussion trigger in 5_beat_engine.scd, which is where a species
+    // becomes audible.
+    //
+    // ~lastBrowserOscTime is stamped for the same reason every other
+    // browser-origin handler stamps it: the Bridge RX light is the only
+    // confirmation that HTML→bridge→SC is alive, and a surface that moves five
+    // faders without lighting it would be lying about the path.
+    ~speciesPresence   = ~speciesPresence   ?? { Array.fill(5, 0.5) };
+    ~speciesActivity   = ~speciesActivity   ?? { Array.fill(5, 0.5) };
+    ~ednaBiodiversity  = ~ednaBiodiversity  ?? { Array.fill(8, 0.5) };
+    ~ednaTouchedAt     = ~ednaTouchedAt     ?? { Array.fill(8, 0.0) };
+
+    OSCdef(\speciesPresence).free;
+    OSCdef(\speciesPresence, { |msg|
+        // Values arrive from a browser, so clamp rather than trust: an out of
+        // range index here would throw inside the beat routine, and an error
+        // in a Routine stops it permanently (see 5_beat_engine.scd:260).
+        var id = msg[1].asInteger.clip(0, 4);
+        ~speciesPresence[id] = msg[2].asFloat.clip(0, 1);
+        ~lastBrowserOscTime = SystemClock.seconds;
+    }, "/agents/species/presence");
+
+    OSCdef(\speciesActivity).free;
+    OSCdef(\speciesActivity, { |msg|
+        var id = msg[1].asInteger.clip(0, 4);
+        ~speciesActivity[id] = msg[2].asFloat.clip(0, 1);
+        ~lastBrowserOscTime = SystemClock.seconds;
+    }, "/agents/species/activity");
+
+    OSCdef(\ednaBiodiv).free;
+    OSCdef(\ednaBiodiv, { |msg|
+        var id = msg[1].asInteger.clip(0, 7);
+        ~ednaBiodiversity[id] = msg[2].asFloat.clip(0, 1);
+        // When the site was last attested. The browser reports this back as
+        // "validation": a reading nobody has touched in a while is not a
+        // validated one.
+        ~ednaTouchedAt[id] = SystemClock.seconds;
+        ~lastBrowserOscTime = SystemClock.seconds;
+    }, "/agents/edna/biodiversity");
 
     // NOTE: /soneth/beatTempo and /soneth/txInfluence are handled by the
     // registry-generated OSCdefs above — their entries carry a beatParam

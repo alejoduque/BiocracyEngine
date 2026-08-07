@@ -283,7 +283,7 @@ Four processes are managed by `start_ecosystem.sh`:
 | **noiseLevel** | CC 7 | pink-noise breath under the pad |
 | **noiseFilt** | CC 8 | noise LPF 200–2000 Hz |
 | **droneDepth** | CC 9 | how far the sub body sinks |
-| **droneFade** | CC 37 | glide time on the drone's own controls |
+| **droneFade** | CC 37 | glide time on the drone's own controls — **including its pitch** (see below) |
 | **droneSpace** | CC 38 | reverb room size |
 | **droneMix** | CC 39 | dry drone ↔ fully bloomed (wash + sub) |
 | **delayFeedback** | CC 40 | comb delay feedback |
@@ -292,6 +292,17 @@ Four processes are managed by `start_ecosystem.sh`:
 > Six of these (CC 5, 6, 9, 37, 38, 39) previously wrote to control buses that
 > **no UGen read** — `\opalDrone` did not declare them and `\elektronBell` read
 > them into variables it discarded. They now shape the drone.
+
+> **The drone glides between pitches.** Every four bars the beat engine walks
+> `#[55, 62, 73, 82, 49, 65, 55, 41]` Hz on the phrase counter — about every 45
+> to 50 seconds at the usual tempo — and it did it with a bare `.set(\freq, …)`.
+> `freq` was the one parameter in `\opalDrone` without a lag, so a voice that
+> had been holding a note for most of a minute stepped a fifth or a sixth
+> instantly, which on a continuous drone reads as a fault rather than a change.
+> It now rides `droneFade` like every other continuous control in that SynthDef,
+> doubled — a pitch move needs noticeably longer than a filter move to stop
+> sounding like an edit. At the 2 s default that is a 4 s portamento; the top of
+> the fader takes it to 10.
 
 ### Row 5: Cámara Fenológica de lo Vivo — the corpus on the 365-day ring
 
@@ -316,6 +327,35 @@ the piece's dominant material, never interpolated.
 > `absenceWeight`, `pulseGain`, `opacityFloor`) were allocated and reachable by
 > MIDI and OSC but had **zero readers in SuperCollider**. The corpus is what
 > they were built for.
+
+**The ring answers while the day is still running.** Every control in this row
+is consulted in one place — `~phenoPool`, called once per phenological day —
+and the ring used to sleep out the whole day in a single `wait`. At the default
+rate that is sixty seconds between turning a knob and hearing it, and eight
+minutes at the slow end, so the entire bench read as unwired. The same fault hit
+the transport from the other side: **NEXT REC. DAY ▶** set the cursor correctly
+and the routine slept through it (the log shows two `skip -> doy 211` a few
+seconds apart and the day itself arriving much later).
+
+The ring still turns at `phenoRate`. What changed is that the wait is sliced
+(0.25 s), and on each slice the Chamber re-asks who is admitted *today*:
+
+* **skip requests are honoured immediately** — `/pheno/next`, `/pheno/goto` and
+  the button wake the ring and release what is sounding, so the jump is audible
+  instead of buried under a clip with fifty seconds left to run;
+* **selection is re-decided twice a second**, diffed by clip key, so a knob
+  sweep starts only what has genuinely just crossed the threshold and stops only
+  what has fallen below it — nothing retriggers while you drag;
+* **`pulseGain` is picked up on a deadband** rather than once a day, so the
+  reverse breath follows the fader without fighting the performer's own
+  `harmonicRich`.
+
+> **Releasing a corpus voice needs a negative gate.** Both corpus envelopes are
+> `Env.new([0,1,1,0], …)` — fixed length, no release node — and for those EnvGen
+> treats `gate` as a pure trigger: `.set(\gate, 0)` does nothing at all and the
+> clip plays out its full atk+hold+rel. The forced release is `gate < 0`, over
+> `-1.0 - gate` seconds. `~phenoPanic` had always used a zero gate, which is why
+> `/pheno/stop` stopped the ring clock and left every voice sounding.
 
 **Two playback paths, because 384 kHz is not optional.** A 60 s AudioMoth clip
 is 92 MB as a server Buffer — the corpus would be 24 GB resident. Nothing reads
@@ -365,6 +405,61 @@ Ring transport: `/pheno/goto <doy>`, `/pheno/next`, `/pheno/stop`, `/pheno/start
 > default rate. Absence is the material (Art. 44), but it should be arrived at,
 > not booted into. `/pheno/next` and the **NEXT REC. DAY ▶** button skip to the
 > next day that actually has audio.
+
+### Cámara de las Especies — the five seats, as voices
+
+Browser-only sliders (no MIDI CC), five species × two controls, taken from the
+live IUCN roster. For as long as they existed they emitted `/agents/species/*`
+into UDP 57120 where **no OSCdef received them** — the bridge's `/diag` showed
+30 messages sent and nothing returning — so `FREQ` read a hardcoded `440Hz` and
+`VOT` a hardcoded `0` for every session.
+
+| Control | Emits | SC effect |
+|---|---|---|
+| **Species Activity** (×5) | `/agents/species/activity [id, v]` | weights how often that seat is picked for a percussion hit |
+| **Species Presence** (×5) | `/agents/species/presence [id, v]` | how loudly the seat speaks, and it owns a register |
+| **eDNA Biodiversity** | `/agents/edna/biodiversity [id, v]` | site reading; echoed back with a decaying validation |
+
+The corpus cannot carry taxonomy — it is indexed by ecological *role*, which is
+why Article 43's bancadas are labelled by role. So a species becomes audible in
+the percussion layer instead, where a pitch pool and a trigger already exist.
+The division of labour is deliberate: the **pool** still chooses the degree and
+the **seat** only chooses the register. One species does not get to overwrite
+the melody; it gets to say which octave the chamber hears it in.
+
+`~speciesBand` is `[1.0, 1.33, 1.78, 2.37, 3.16]` — ~5-semitone steps, upward
+only, seat 0 at unity. Measured against the real pool rather than guessed: a
+symmetric set around 1.0 put the lower seats under the 40 Hz floor `\opalPerc`
+enforces, and at the bottom of the `harmonicRich` fader two or three of them
+collapsed onto 40 Hz and became the same voice (21 clipped notes, adjacent-seat
+ratio 1.00 — identical). Upward-only clips nothing and holds a full 1.33 between
+seats across the whole fader range, topping out near 780 Hz. Unity at seat 0
+means the layer's original register is not lost, just assigned to the first
+seat — which, at the default presences, is also the most likely pick.
+
+**A species votes by sounding.** `~speciesVotes[i]` increments at the moment of
+the hit, and the seat reports back on
+`/agent/species/state [id, presence, activity, votes, freq]` from the engine's
+existing throttled broadcast. `parliamentStore.ts` has parsed that message, in
+exactly that argument order, since it was written — it simply had no emitter.
+
+### BioToken V3 — the formula shows its own terms
+
+The panel's formula was static text and it disagreed with the code it described:
+it read `Presence × Duration` where `bioTokenTerms()` has always multiplied by
+*activity*, and printed IUCN as the raw `×5` multiplier while the factor applied
+is that over 5. Two of its six factors were frozen constants left behind when
+the Fungi Networks and Gaia AI Core panels were removed. Every term now carries
+its live value beside it:
+
+| Term | Source |
+|---|---|
+| Presence | mean of `species[].presence` |
+| **Activity** | mean of `species[].activity` — relabelled from "Duration" to match the code |
+| eDNA.biodiv | mean over the **surfaced** sites only — it averaged all eight while only Córdoba has a fader, so seven frozen 0.5s permanently damped the token |
+| Fungi.chem | ← `/bio/nutrient`, the mycelial pulse the Eco panel already shows |
+| AI.optim | ← `/bio/density`, transaction density |
+| IUCN.weight | `max(IUCN_MULT) / 5`, shown normalised |
 
 ### Row 8: Matrix mixer — the only controls that change loudness
 
@@ -612,14 +707,42 @@ than a UI white):
   machine in a different substance — not as a node stuck at one colour while
   the rest of the chamber breathes.
 
-### The SC GUI is 1-bit monospace
+### The SC GUI is 1-bit monospace, with two exceptions
 
 Black and white only, one typeface (Menlo), labels in caps. The previous amber
 scheme carried five hues that each encoded a state — green ok, red stop, yellow
 armed — none of which survived a projector or a photograph, and which made hue
-do the work that state should. Now every control is white on black and an
-**engaged** control inverts to black on white. That is the only state signal,
-and it reads at any size and in any reproduction.
+do the work that state should. Every control is white on black and an
+**engaged** control inverts to black on white.
+
+Two things are deliberately not 1-bit, because inversion needs a body to invert
+and neither of these has one.
+
+**The status lights are red when live, dark when dead.** A control has a shape
+you can read; a light has nothing but its own state. When the palette went
+1-bit, `mainTheme.green` and `mainTheme.red` both became `Color.white` — and the
+LED drawFunc still chose between those two names as its *only* state signal, so
+all five lights were identical white discs in every condition. They now carry
+two literal colours of their own; an unlit light keeps its rim, so only the
+filament goes out. Nothing else on the window is red, so the status row is the
+one thing that can catch your eye across a stage.
+
+Three of them were also answering the wrong question — testing whether
+something had been *registered* rather than whether it was *running*, which
+becomes true at boot and stays true through a dead feed:
+
+| Light | Was | Is |
+|---|---|---|
+| **SERVER** | `Server.default.serverRunning` | unchanged |
+| **BEAT** | `~beatRoutine.notNil` — never nil'd after `.stop`, so a stopped engine read as running | `~lastBeatTime` within 3 s, stamped once per step |
+| **OSC** | `OSCdef(\txHandler).notNil` — registration, not traffic | `~lastOscTime` within 5 s |
+| **ETH** | *(did not exist)* | `~lastEthTime` within 30 s — the feed the OSC light used to claim, and never watched |
+| **MIDI** | a device is enumerated — stays lit through a dead cable | `~lastMidiTime` within 5 s, any CC |
+| **BRIDGE RX** | `~lastBrowserOscTime` within 5 s | unchanged — the only one that was ever live |
+
+**Row 5, the Cámara Fenológica, is tinted amber.** It is the one bench whose
+controls change *who speaks* rather than how the engine sounds. The tint marks
+the row; it does not restart the hue-as-state habit the rewrite removed.
 
 ---
 

@@ -100,6 +100,62 @@
     });
 };
 
+// ─── Cámara de las Especies: the five seats, as voices ──────────────────────
+// The browser shows five species with a Presence and an Activity fader each,
+// and until now both faders sent OSC that nothing in SuperCollider received.
+// This is where they land.
+//
+// The corpus cannot carry them: it is indexed by ecological ROLE, not by
+// taxon — 14_phenological_corpus.scd says so where it defines the bancadas.
+// So a species becomes audible here instead, in the percussion layer, which
+// already owns a pitch pool and a trigger.
+//
+// The division of labour is deliberate: the POOL still chooses the degree
+// (that whole hop-selection design above survives untouched) and the SPECIES
+// only chooses the register. One seat does not get to overwrite the melody;
+// it gets to say which octave the chamber hears it in.
+//
+// Registers are ~5-semitone steps ordered low to high, which is also roughly
+// descending body size across the default roster — a spectacled bear does not
+// call where a cotton-top tamarin calls. When the roster changes the ordering
+// stops meaning that, and the register is simply the seat's assigned range.
+//
+// They transpose UPWARD ONLY, and seat 0 is unity. Two reasons, both measured
+// against the actual pool (~computePitchPool spans about 35–250 Hz depending
+// on harmonicRich and transaction pressure):
+//
+//   · A symmetric set around 1.0 puts the lower seats under the 40 Hz floor
+//     that \opalPerc enforces, and a clipped seat is not a seat — at the
+//     bottom of the harmonicRich fader two or three of them collapsed onto
+//     40 Hz and became the same voice. Measured: 21 clipped notes and an
+//     adjacent-seat ratio of 1.00 (identical) for a symmetric set, against
+//     0 clipped and a full 1.33 throughout for this one.
+//   · Unity at seat 0 means the layer's original register is not lost, it is
+//     simply assigned to the first seat. With the default presences the first
+//     seat is also the most likely pick, so the percussion still sits where it
+//     always sat and the other four open the register upward from it.
+//
+// Top of the range works out at ~780 Hz, inside \opalPerc's own 900 Hz ceiling.
+~speciesBand     = #[1.0, 1.33, 1.78, 2.37, 3.16];
+~speciesPresence = ~speciesPresence ?? { Array.fill(5, 0.5) };
+~speciesActivity = ~speciesActivity ?? { Array.fill(5, 0.5) };
+// A species votes by sounding. This is the count the browser's VOT column has
+// been showing as a hardcoded 0 for its entire existence.
+~speciesVotes    = ~speciesVotes    ?? { Array.fill(5, 0) };
+~speciesFreq     = ~speciesFreq     ?? { Array.fill(5, 0.0) };
+
+// Weighted pick over presence × activity: a species that is present but silent
+// rarely speaks, and one that is absent does not speak at all. Falls back to a
+// uniform pick when every weight is ~0, so an empty chamber thins the layer's
+// register spread rather than stopping it — an error here would be raised
+// inside the beat Routine, and an error in a Routine stops it for the session.
+~pickSpecies = {
+    var w = Array.fill(5, { |i|
+        (~speciesPresence[i] ? 0.5).clip(0, 1) * (~speciesActivity[i] ? 0.5).clip(0, 1)
+    });
+    if(w.sum < 1e-6) { 5.rand } { w.normalizeSum.windex.clip(0, 4) };
+};
+
 // ─── Helper: Select voicing strategy from control values ───
 ~selectVoicing = { |resBdy=0.4, texDep=0.2|
     case
@@ -173,7 +229,11 @@
 };
 
 ~beatEngine = {
-    if(~beatRoutine.notNil) { ~beatRoutine.stop };
+    // .stop AND nil. The GUI's Beat Engine light used to test ~beatRoutine.notNil,
+    // which stayed true forever because this line only stopped it — so the light
+    // reported a dead engine as running. The light now watches ~lastBeatTime
+    // (stamped once per step below), and this keeps the two in agreement.
+    if(~beatRoutine.notNil) { ~beatRoutine.stop; ~beatRoutine = nil };
     if(~opalDroneSynth.notNil) { ~opalDroneSynth.set(\gate, 0) };
     
     // Start the continuous ambient drone immediately
@@ -256,6 +316,12 @@
             var elapsed = now % 300; // 5-minute macro cycle
             var rs, priorityRatio, accent;
             var tide, tideDensity, jitTick, blockEdge, percProb;
+
+            // Proof of life for the GUI's Beat Engine light, stamped before the
+            // guarded body so it reflects the loop turning rather than the loop
+            // succeeding — a run of bad frames should still read as "running".
+            ~lastBeatTime = now;
+            ~beatStepCount = (~beatStepCount ? 0) + 1;
 
             // ⚠ An uncaught error inside a Routine STOPS IT, permanently and
             // silently. That is how a single nil read killed the kick and
@@ -491,19 +557,34 @@
                 // never repeats a note, never steps to a neighbour, and has no
                 // fixed cycle to lock into (verified full pool coverage at
                 // every size 4–7).
-                var baseFreq = pitchPool.wrapAt(poolIdx);
+                //
+                // Which seat speaks, and therefore in which register. The pool
+                // still supplies the degree; ~speciesBand only transposes it.
+                var speciesIdx = ~pickSpecies.value;
+                // Presence as prominence, not as a gate — absence is already
+                // handled upstream, where a weight of 0 simply stops that seat
+                // being picked. Centred so the 0.5 default is unity gain and
+                // the layer sounds exactly as it did before any of this.
+                var speciesGain = 0.55
+                    + ((~speciesPresence[speciesIdx] ? 0.5).clip(0, 1) * 0.9);
+                var baseFreq = (pitchPool.wrapAt(poolIdx)
+                    * ~speciesBand[speciesIdx]).clip(40, 900);
                 poolIdx = if(rs.notNil and: { rs[\addrSig] > 0 }) {
                     ((rs[\addrSig] >> 2) + rs[\txIndex]) % pitchPool.size
                 } {
                     (poolIdx + rrand(2, pitchPool.size - 1)) % pitchPool.size
                 };
                 ~beatParams.percCount = (~beatParams.percCount ? 0) + 1;
+                // The vote is cast at the moment of sounding, and the register
+                // it sounded in is what the browser's FREQ column reports.
+                ~speciesVotes[speciesIdx] = ~speciesVotes[speciesIdx] + 1;
+                ~speciesFreq[speciesIdx]  = baseFreq;
                 if(~visualsDest.notNil) {
                     // freq normalizada además del ataque: la percusión cambia
                     // de registro con la melodía y el visual debe seguirla.
                     ~visualsDest.sendMsg('/voice/perc',
                         (0.2 + (transactionInfluence * 0.15)).clip(0, 1),
-                        (pitchPool.wrapAt(poolIdx) / 900).clip(0, 1));
+                        (baseFreq / 900).clip(0, 1));
                 };
 
                 // ─ Voicing: single note, dyad, or triad based on texture control ─
@@ -517,7 +598,7 @@
                     Synth(\opalPerc, [
                         \out,          0,
                         \freq,         percFreq,
-                        \amp,          ~beatParams.masterAmp * (~beatParams.transportGain ? 1) *(0.2 + (transactionInfluence * 0.15)) * accent,
+                        \amp,          ~beatParams.masterAmp * (~beatParams.transportGain ? 1) *(0.2 + (transactionInfluence * 0.15)) * accent * speciesGain,
                         \masterVolBus, bMVol,
                         \harmonicBus,  bHarm,
                         \textureBus,   bText,
@@ -538,7 +619,7 @@
                         Synth(\opalPerc, [
                             \out,          0,
                             \freq,         harmFreq,
-                            \amp,          ~beatParams.masterAmp * (~beatParams.transportGain ? 1) *(0.2 + (transactionInfluence * 0.15)) * accent * [1.0, 0.6][voice],
+                            \amp,          ~beatParams.masterAmp * (~beatParams.transportGain ? 1) *(0.2 + (transactionInfluence * 0.15)) * accent * speciesGain * [1.0, 0.6][voice],
                             \masterVolBus, bMVol,
                             \harmonicBus,  bHarm,
                             \textureBus,   bText,
@@ -564,7 +645,7 @@
                         Synth(\opalPerc, [
                             \out,          0,
                             \freq,         harmFreq,
-                            \amp,          ~beatParams.masterAmp * (~beatParams.transportGain ? 1) *(0.2 + (transactionInfluence * 0.15)) * accent * (1.0 / (h + 1.5)),
+                            \amp,          ~beatParams.masterAmp * (~beatParams.transportGain ? 1) *(0.2 + (transactionInfluence * 0.15)) * accent * speciesGain * (1.0 / (h + 1.5)),
                             \masterVolBus, bMVol,
                             \harmonicBus,  bHarm,
                             \textureBus,   bText,
@@ -616,6 +697,35 @@
                 // second envelope that drifts against this one. Arc periods are
                 // 40 s to 6 min, so a ~1.5 s update is ample resolution.
                 ~visualsDest.sendMsg('/tide/state', tide, ~beatParams.tidePhase ? 0);
+
+                // ── The chamber reports back ────────────────────────────────
+                // /agent/species/state and /agent/edna/state have been parsed
+                // by parliamentStore.ts since it was written, in exactly this
+                // argument order, with nothing on the other end sending them.
+                // That is why the browser's ACOUSTIC SPECIES panel showed a
+                // hardcoded 440 Hz and 0 votes for every session. These are
+                // the emitters.
+                5.do { |i|
+                    ~visualsDest.sendMsg('/agent/species/state',
+                        i,
+                        (~speciesPresence[i] ? 0.5),
+                        (~speciesActivity[i] ? 0.5),
+                        (~speciesVotes[i] ? 0),
+                        (~speciesFreq[i] ? 0.0));
+                };
+                // Validation is how recently the site was last attested: a
+                // reading nobody has touched for two minutes is no longer a
+                // validated one. Decays rather than dropping, so the bar reads
+                // as confidence draining rather than a feed going down.
+                if(~ednaBiodiversity.notNil and: { ~ednaTouchedAt.notNil }) {
+                    8.do { |i|
+                        var since = SystemClock.seconds - (~ednaTouchedAt[i] ? 0);
+                        ~visualsDest.sendMsg('/agent/edna/state',
+                            i,
+                            (~ednaBiodiversity[i] ? 0.5),
+                            (1.0 - (since / 120.0)).clip(0, 1));
+                    };
+                };
             };
 
             // Step + interval
@@ -660,107 +770,16 @@
     ~beatRoutine.play;
 };
 
-// Enhanced Beat Controls with fixed GUI
-~addBeatControls = {
-    var controls = ();
-    var values = ~beatParams.copy;
-    
-    if(~beatWindow.notNil and: { ~beatWindow.isClosed.not }) {
-        ~beatWindow.close;
-    };
-
-    ~beatWindow = Window("Ethereum Beat Controls", Rect(500, 100, 400, 700));
-    ~beatWindow.view.decorator = FlowLayout(~beatWindow.bounds, Point(10, 10), Point(10, 5));
-
-    // Parameter groups
-    [
-        // Group 1: Rhythm
-        ["RHYTHM", [
-            [\beatTempo, [0.5, 2.0, \exp], "Tempo"],
-            [\transactionInfluence, [0.0, 1.0, \lin], "TX Influence"]
-        ]],
-        
-        // Group 2: Drone
-        ["DRONE", [
-            [\droneFade, [0.5, 4.0, \exp], "Fade Time"],
-            [\droneSpace, [0.0, 1.0, \lin], "Space"],
-            [\droneMix, [0.0, 1.0, \lin], "Layer Mix"],
-            [\droneRes, [0.1, 0.9, \lin], "Resonance"],
-            [\droneDepth, [0.0, 1.0, \lin], "Depth"]
-        ]],
-        
-        // Group 3: Effects
-        ["EFFECTS", [
-            [\noiseLevel, [0.0, 0.3, \lin], "Noise Level"],
-            [\noiseFilt, [0.1, 0.8, \lin], "Noise Filter"],
-            [\delayFeedback, [0.0, 0.8, \lin], "Delay Feedback"],
-            [\filterCutoff, [0.1, 1.0, \exp], "Filter Cutoff"]
-        ]],
-        
-        // Group 4: Master
-        ["MASTER", [
-            [\masterAmp, [0.0, 1.0, \lin], "Master Level"]
-        ]]
-    ].do { |group|
-        var groupName = group[0];
-        var params = group[1];
-        
-        // Add group header
-        StaticText(~beatWindow, 380@25)
-            .string_(groupName)
-            .align_(\center)
-            .background_(Color.grey(0.9));
-            
-        params.do { |spec|
-            var name = spec[0];
-            var range = spec[1];
-            var label = spec[2];
-            
-            StaticText(~beatWindow, 380@20)
-                .string_(label)
-                .align_(\left);
-            
-            controls[name] = Slider(~beatWindow, 380@20)
-                .value_(values[name].linlin(range[0], range[1], 0, 1))
-                .action_({ |sl|
-                    var mappedValue = sl.value.linlin(0, 1, range[0], range[1]);
-                    values[name] = mappedValue;
-                    ~beatParams[name] = mappedValue;
-                    ~controlBuses[name].set(mappedValue);
-                    if(name == \beatTempo) {
-                        ~beatEngine.value;
-                    };
-                });
-        };
-        
-        // Add spacing between groups
-        StaticText(~beatWindow, 380@10);
-    };
-
-    // Transaction Monitor
-    StaticText(~beatWindow, 380@30)
-        .string_("TRANSACTION MONITOR")
-        .align_(\center)
-        .background_(Color.grey(0.9));
-
-    ~transactionCount = StaticText(~beatWindow, 380@20)
-        .string_("Transactions: 0")
-        .align_(\center);
-        
-    ~valueDisplay = StaticText(~beatWindow, 380@20)
-        .string_("Last Value: 0 ETH")
-        .align_(\center);
-        
-    ~activityMeter = UserView(~beatWindow, 380@20)
-        .drawFunc_({ |view|
-            var activity = ~beatParams.transactionDensity;
-            Pen.fillColor = Color.blue(0.6, 0.5);
-            Pen.fillRect(Rect(0, 0, view.bounds.width * activity, view.bounds.height));
-        })
-        .animate_(true);
-
-    ~beatWindow.front;
-};
+// The 'Enhanced Beat Controls' window that used to live here is gone.
+// ~addBeatControls was never called from anywhere in the repo: it built a
+// second control surface with twelve 380-px sliders whose ranges contradicted
+// the canonical registry (droneFade 0.5-4.0 against 0.1-5 exp, filterCutoff
+// 0.1-1.0 exp against 0-1 lin, noiseLevel 0-0.3 against 0-0.5), and it wrote
+// through ~controlBuses[name].set() -- the pre-registry path that bypasses
+// ~setParam, so nothing it touched would have reached the GUI knob, the MIDI
+// mirror or the browser slider. Its three readouts (~transactionCount,
+// ~valueDisplay, ~activityMeter) were the only reason the deferred GUI-refresh
+// block in 6_osc_handlers.scd existed; that is deleted too.
 
 // Initialize beat engine only after server is booted and SynthDefs are registered.
 // s.doWhenBooted fires after the server is confirmed running. Adding s.sync + 0.5s extra
