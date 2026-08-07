@@ -39,8 +39,14 @@ const VOICE_INDEX: Record<SlotVoice, number> = {
 
 // Slightly tighter than ~slotVoiceGap in SC (seconds → ms), so the wire carries
 // requests that stand a chance rather than ones SC will certainly refuse.
+// perc and dust were 120 ms and 60 ms. Those were set as safety limits on the
+// assumption that the structural events would be sparse — and they are not, so
+// the limit became the clock and the two fastest voices became a vibration
+// rather than a punctuation. Raised to musical spacing: with the excursion
+// trigger in front of them the density now comes from the structure, and these
+// only stop a burst from turning into a buzz.
 const LOCAL_GAP_MS: Record<SlotVoice, number> = {
-  drone: 5400, pad: 820, perc: 120, kick: 720, dust: 60, sample: 1450,
+  drone: 5400, pad: 820, perc: 520, kick: 720, dust: 380, sample: 1450,
 };
 
 // -Infinity, not 0: performance.now() starts at 0 at page load, so a zero here
@@ -96,9 +102,11 @@ export function emitSlotVoice(voice: SlotVoice, amp: number, tone: number): bool
 }
 
 /**
- * Edge detector for the common case: a slot counts something (collisions,
- * evictions, rotations) and wants a note when the count goes up. Keeps the
- * caller from having to hold its own previous-value state.
+ * Edge detector for a MONOTONIC counter — something that only ever goes up,
+ * like a completed revolution. Fires once per increment.
+ *
+ * Do not use this for a measurement that jitters frame to frame. See
+ * makeExcursionEmitter below for why.
  */
 export function makeEventEmitter(voice: SlotVoice) {
   let prev: number | null = null;
@@ -111,5 +119,64 @@ export function makeEventEmitter(voice: SlotVoice) {
     // structure that was already in that state.
     if (!rose) return false;
     return emitSlotVoice(voice, amp, tone);
+  };
+}
+
+/**
+ * Trigger for a measurement that MOVES — edges in a graph, nodes at their
+ * target, targets acquired, hash collisions. Fires when the measure makes a
+ * genuine excursion above its own running normal, and will not fire again
+ * until it has come back down.
+ *
+ * ─── Why the naive "did it go up?" test was wrong ───────────────────────────
+ *
+ * These counts jitter every single frame — slot 6 adds `Math.random()` to node
+ * positions on the line after it counts which nodes have arrived, so "arrived"
+ * is frame noise by construction. At 60 fps a count like that has risen since
+ * the last look essentially always. So `count > prev` was true every time the
+ * rate gate reopened, and the gate — which exists as a safety limit — became
+ * the clock instead.
+ *
+ * The result was that every slot fired at exactly its minimum gap: slot 6 at
+ * 8 per second, which reads as vibration, and slot 7 at a metronomic ~83 BPM,
+ * which reads as a drum machine. Neither was the structure speaking; both were
+ * the rate limiter speaking.
+ *
+ * A Schmitt trigger on a slow baseline fixes it. The structure has to actually
+ * do something unusual — rise `rise` above what it has lately been doing — and
+ * then return to normal before it can speak again. Quiet structures stay quiet,
+ * and a burst is a burst.
+ */
+export function makeExcursionEmitter(
+  voice: SlotVoice,
+  opts?: { rise?: number; fall?: number; smooth?: number },
+) {
+  const rise = opts?.rise ?? 1.35;    // how far above normal counts as an event
+  const fall = opts?.fall ?? 1.05;    // must come back to about normal to re-arm
+  const smooth = opts?.smooth ?? 0.012; // EMA weight — ~80 frames of memory
+  let baseline: number | null = null;
+  let armed = true;
+
+  return (count: number, amp: number, tone: number): boolean => {
+    if (baseline === null) {
+      baseline = count;
+      return false;
+    }
+    // The +0.5 floors both thresholds so a structure hovering near zero needs a
+    // real change rather than a rounding one — without it, 0 -> 1 on a baseline
+    // of 0 is an infinite proportional rise and fires constantly.
+    const hi = baseline * rise + 0.5;
+    const lo = baseline * fall + 0.5;
+    baseline = baseline * (1 - smooth) + count * smooth;
+
+    if (!armed) {
+      if (count <= lo) armed = true;
+      return false;
+    }
+    if (count > hi) {
+      armed = false;
+      return emitSlotVoice(voice, amp, tone);
+    }
+    return false;
   };
 }

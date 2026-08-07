@@ -7,7 +7,7 @@ import { ShaderPass }      from "three/examples/jsm/postprocessing/ShaderPass.js
 import type { ParliamentState } from "./parliament/parliamentStore";
 import { getVizMotion, readVoteFlash, isAlarm } from "./vizMotion";
 import { getScAudio, bandRange, normLevel } from "./scAudio";
-import { makeEventEmitter } from "./slotVoice";
+import { makeEventEmitter, makeExcursionEmitter } from "./slotVoice";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
 import {
     Viz,
@@ -599,7 +599,7 @@ export function mountDynamicGraphs(stageEl: HTMLElement, getLatestState: () => P
     // a sprite; it is gone. The binding it announced is the real one and
     // survives: this slot reads inst5's band and its voice's onsets.
     const inst5 = INSTRUMENTS.s5;
-    const emitEdge5 = makeEventEmitter("pad");
+    const emitEdge5 = makeExcursionEmitter("pad");
 
     const composer = new EffectComposer(renderer);
     composer.addPass(new RenderPass(scene, camera));
@@ -927,7 +927,12 @@ export function mountDynamicOptimality(stageEl: HTMLElement, getLatestState: () 
     // a sprite; it is gone. The binding it announced is the real one and
     // survives: this slot reads inst6's band and its voice's onsets.
     const inst6 = INSTRUMENTS.s6;
-    const emitArrive6 = makeEventEmitter("perc");
+    // Slot 6's measure is the jitteriest of the six — the loop adds random
+    // displacement to node positions on the line after it counts which nodes
+    // have arrived, so "arrived" is partly frame noise by construction. It
+    // gets a higher rise threshold, and its rate gate carries more of the
+    // load than the others.
+    const emitArrive6 = makeExcursionEmitter("perc", { rise: 1.42 });
 
     const composer = new EffectComposer(renderer);
     composer.addPass(new RenderPass(scene, camera));
@@ -1260,7 +1265,7 @@ export function mountGeometry(stageEl: HTMLElement, getLatestState: () => Parlia
     // a sprite; it is gone. The binding it announced is the real one and
     // survives: this slot reads inst7's band and its voice's onsets.
     const inst7 = INSTRUMENTS.s7;
-    const emitTarget7 = makeEventEmitter("kick");
+    const emitTarget7 = makeExcursionEmitter("kick");
 
     const composer = new EffectComposer(renderer);
     composer.addPass(new RenderPass(scene, camera));
@@ -1663,7 +1668,7 @@ export function mountMemoryHierarchy(stageEl: HTMLElement, getLatestState: () =>
     // a sprite; it is gone. The binding it announced is the real one and
     // survives: this slot reads inst8's band and its voice's onsets.
     const inst8 = INSTRUMENTS.s8;
-    const emitSpill8 = makeEventEmitter("dust");
+    const emitSpill8 = makeExcursionEmitter("dust");
 
     const composer = new EffectComposer(renderer);
     composer.addPass(new RenderPass(scene, camera));
@@ -1837,6 +1842,16 @@ export function mountMemoryHierarchy(stageEl: HTMLElement, getLatestState: () =>
         // Drop lines between layers
         let dIdx = 0;
         const dropCount = Math.floor(3 + noiseF * 5);
+        // What POLVO actually listens for. dIdx was the obvious candidate and
+        // it is worthless: dropCount depends only on the noiseFilt fader and
+        // the loop runs it once per layer, so dIdx is the same integer on every
+        // frame and the emitter never fired once. A dead emitter is worse than
+        // a noisy one, because nothing announces it.
+        //
+        // A layer OVERFLOWING is a real event and a real cache eviction: the
+        // blocks are laid out left to right by species presence times a noise
+        // term, so whether they fit inside their level genuinely varies.
+        let overflow8 = 0;
 
         for (let j = 0; j < LAYERS; j++) {
             const wRatio = lerp(0.95 * (0.8 + spatSp * 0.2), 0.25 + spatSp * 0.15, j / Math.max(LAYERS - 1, 1));
@@ -1895,6 +1910,8 @@ export function mountMemoryHierarchy(stageEl: HTMLElement, getLatestState: () =>
                 bm.rotation.z = act * (snoise(i + j * 10, frame * 0.01) - 0.5) * 0.15 * txInf;
                 blockCX += cw + 5;
             }
+            // Past the right edge of its own level: this layer has spilled.
+            if (blockCX > (bx + bw)) overflow8++;
 
             // Drop lines to next layer
             if (j < LAYERS - 1) {
@@ -1914,7 +1931,8 @@ export function mountMemoryHierarchy(stageEl: HTMLElement, getLatestState: () =>
         // Drop lines are what spills from one level of the hierarchy to the
         // next — an eviction. Granular is exactly the register for it: each
         // spill is a grain, and a hierarchy under pressure swarms.
-        emitSpill8(dIdx, 0.3 + Math.min(1, dIdx / 40) * 0.55, Math.min(1, dIdx / 48));
+        emitSpill8(overflow8, 0.3 + Math.min(1, overflow8 / LAYERS) * 0.55,
+            Math.min(1, overflow8 / LAYERS));
         dropGeo.setDrawRange(0, dIdx * 2);
         dropGeo.attributes.position.needsUpdate = true;
         const dmR = lerp(0.78, 1.0, droneMix); const dmG = lerp(1.0, 0.67, droneMix);
@@ -2005,7 +2023,7 @@ export function mountHashing(stageEl: HTMLElement, getLatestState: () => Parliam
     // a sprite; it is gone. The binding it announced is the real one and
     // survives: this slot reads inst9's band and its voice's onsets.
     const inst9 = INSTRUMENTS.s9;
-    const emitCollision9 = makeEventEmitter("sample");
+    const emitCollision9 = makeExcursionEmitter("sample");
 
     const composer = new EffectComposer(renderer);
     composer.addPass(new RenderPass(scene, camera));

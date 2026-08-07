@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### The six screens were playing the rate limiter, not the structure (2026-08-07)
+
+#### Fixed
+- **Slots 4–9 fired at exactly their minimum gap.** The structural counts they trigger on jitter every frame — slot 6 adds `Math.random()` to node positions on the line *after* it counts which nodes have arrived — so "has it risen since last time?" was true whenever the rate gate reopened. The gate stopped being a safety limit and became the clock. Measured: slot 6 at 6.7 onsets/s, which reads as vibration, and **slot 7 (BOMBO) at a dead-steady ~83 BPM, which reads as a drum machine**. Each slot now runs a Schmitt trigger on a slow EMA baseline (`makeExcursionEmitter`): the measure must rise ~35% above what it has lately been doing and return to normal before speaking again. Slot 4 keeps the plain counter — its revolutions are genuinely monotonic. After: 0.05–1.35 onsets/s across the six, irregular.
+- **Slot 8 (POLVO) had never fired once.** Its measure was `dIdx`, the drop-line count, which is `dropCount × (LAYERS-1)` where `dropCount` depends only on the noiseFilt fader — the same integer on every frame, so the emitter's rise test was never true. It now watches a layer *overflowing* its own level, which is both a real cache eviction and a quantity that genuinely varies.
+- **`perc` and `dust` gaps widened**, 0.14→0.55 s and 0.07→0.40 s, in both `15_slot_voices.scd` and `slotVoice.ts`. They were set as safety limits on the assumption the events would be sparse; with the excursion trigger in front of them they are limits again rather than the tempo.
+
 ### Slot A answers with the forest (2026-08-07)
 
 #### Fixed

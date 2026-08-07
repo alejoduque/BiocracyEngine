@@ -184,8 +184,19 @@ now, from their own structural events — the screen plays the instrument:
 | 5 | CAMPANAS | an edge forms — two nodes that were not connected now are |
 | 6 | PERCUSIÓN | a node arrives at its target — a rebalance has actually completed |
 | 7 | BOMBO | a target is acquired — a ray crosses a sweep |
-| 8 | POLVO | a block spills to the next cache level — an eviction |
+| 8 | POLVO | a layer overflows its own level — blocks spilling past the edge |
 | 9 | MUESTRAS | a hash collision — and *which* bucket collided picks the recording |
+
+**A slot speaks on an EXCURSION, not on a change.** These counts jitter every
+frame — slot 6 adds `Math.random()` to node positions on the line after it counts
+which nodes have arrived, so "arrived" is frame noise by construction. A naive
+"has it risen since last time?" is therefore true whenever the rate gate reopens,
+and the gate stops being a limit and becomes the clock: measured, slot 6 fired
+8×/s (a vibration) and slot 7 at a dead-steady ~83 BPM (a drum machine). Neither
+was the structure speaking; both were the rate limiter. Each slot now runs a
+Schmitt trigger on a slow baseline — the measure has to rise ~35% above what it
+has lately been doing, and come back down before it can speak again. Measured
+after: 0.05–1.35 onsets/s, irregular.
 
 **The slot does not decide whether the note happens.** The beat engine already
 owns when kick, perc and dust speak, and the ETH handler owns the bell; a slot

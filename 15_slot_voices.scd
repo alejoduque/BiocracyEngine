@@ -49,12 +49,20 @@
 // the drone is a sustained bed and a re-pitch is a structural event, the dust
 // is granular and wants to be able to swarm, the sample layer is 30-second
 // field recordings and two a second would be a collage rather than a chamber.
+//
+// perc and dust were 0.14 and 0.07, and both were wrong in a way only a live
+// listen exposed: the browser's structural counts jitter every frame, so "has
+// it risen since last time" was true whenever the gate reopened, and the gate
+// stopped being a limit and became the metronome. Every slot fired at exactly
+// its minimum gap — slot 6 at eight per second, which is a vibration, and slot
+// 7 at a dead-steady ~83 BPM, which is a drum machine. The browser triggers on
+// genuine excursions now, and these are back to being limits.
 ~slotVoiceGap = (
     drone:  6.0,
     pad:    0.90,
-    perc:   0.14,
+    perc:   0.55,
     kick:   0.80,
-    dust:   0.07,
+    dust:   0.40,
     sample: 1.60
 );
 
