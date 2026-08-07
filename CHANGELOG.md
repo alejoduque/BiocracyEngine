@@ -7,6 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Slot A answers with the forest (2026-08-07)
+
+#### Fixed
+- **Article 47 was scored on bytes, not on habitat.** 105 of 261 corpus clips carried the wrong opacity and **90 were under-protected**: `Bosque de galería y-o ripario` (47 clips) should be 0.80 and `Lagunas, lagos y ciénagas naturales` (33) should be 0.85, both stored as 0.4 — which is not a habitat score but the default from a failed lookup. The detector's `events.json` carries habitat names in NFD (macOS decomposes, and these came from a directory tree) while `HABITAT_OPACITY` is keyed in NFC: same glyphs, different bytes, and dict lookup is byte equality. `opacityFloor` is the control that withholds the corpus from analysis, projection and the laser, and it acts on this number. Normalised at the lookup and in the table's own keys; re-ran the build, which is idempotent, so all 725 audio files were skipped and only `manifest.json` was rewritten. 261 of 261 now score against a real entry.
+- **`samplePlayer*` had no opacity veil at all.** The corpus path enforces Article 47 in three places and this one in none, so routing recorded material through it would have sounded what the Chamber withheld. It now carries the same `Lag.kr((opacity < (1.0 - floorVal)).max(0), 0.02)` as `\corpusVoice`, plus the eligibility filter before selection and the suppression of `/voice/sample` for opaque clips. This closes the hole for slot 9 as well.
+- **The envelope never had to fit the recording.** `atk+hold+rel` comes to ≈2.15 × the hold and that span was computed nowhere — survivable while every file ran 51–360 s, wrong the moment a 2-second grain arrived: two seconds of forest followed by eight of silence holding one of twelve voices. The span is built explicitly now and scaled to the material when it overruns. Which also makes true what `10_sample_system.scd`'s own comment always claimed — the two short MP3s (ranas 4.9 s, oropéndola 6.2 s) are heard **whole**; a 10.75 s envelope over a 6.2 s file ran off its own end.
+- **`~createSampleSynths` fired on successes, not attempts.** One unreadable file meant the counter never reached the total and `~triggerSample` and the whole `/sample/*` OSC surface were never created — the layer did not degrade, it vanished, leaving one error line in the boot log.
+- **`index.asFloat / 7`** hard-coded the bank size into what the projector receives; `samplePlayer*` also omitted `BufRateScale`, which `\corpusVoice` has always applied.
+
+#### Added
+- **Slot A can answer with the actual site** (`16_corpus_calls.scd`). Twelve sources shared seven MP3s — four species split the *aves* bed alone — while 261 clips of the survey sat unreachable, because the ring plays them on the 365-day calendar and a calendar is not a call. The bank now carries **116 two-second grains** (already cut by `build_corpus.py` from each ring day's highest-confidence events) and **six geophony stems**, ≈114 MB resident.
+- **LLUVIA and VIENTO sound.** They carried `smp: -1` and were drawn on screen and never heard; the corpus has geophony stems, so the call is now sent and SC answers.
+- **New verb `/antifonia/call [src, smp, amp, rate, hpf, lpf, pan, dur, hour]`**, not an eighth argument on `/sample/trigger` — that address is shared with the SC GUI's seven buttons and with slot 9, and one verb should not mean two things depending on who sent it. `smp` rides along as the MP3 fallback for aircraft and tape, which the corpus cannot answer (its domains are biophony and transition).
+- **The species→role map lives in SuperCollider**, because the corpus carries ecological roles and no taxonomy — the same fact that makes Article 43's bancadas role-labelled. Selection weights confidence against hour proximity on a 24-hour ring through a Gaussian of σ ≈ 3 h. A linear falloff was tried and measured first: it spans only 5× across the whole clock, and the corpus is so nocturnal that a call at 20 h still drew a median grain from 03 h.
+
 ### The six screens play the instrument (2026-08-07)
 
 #### Added

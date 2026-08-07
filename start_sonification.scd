@@ -31,7 +31,10 @@
         "14_phenological_corpus.scd", // Cámara Fenológica: the AudioMoth corpus on the 365-day ring
         // Last: it arbitrates between the beat engine and the six slots, so
         // everything it schedules for has to exist first.
-        "15_slot_voices.scd"         // slots 4–9 request their own voice on /slot/voice
+        "15_slot_voices.scd",        // slots 4–9 request their own voice on /slot/voice
+        // Needs 10_'s buffers and ~triggerSample AND 14_'s parsed manifest, so
+        // it cannot load before either of them.
+        "16_corpus_calls.scd"        // slot A answers with the corpus on /antifonia/call
     ].do { |file|
         var path = basePath +/+ file;
         ("Loading " ++ file ++ "...").postln;

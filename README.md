@@ -138,7 +138,7 @@ nw_wrld Electron browser  (parliament.html)
        └─ Slot A  Antifonía            (Three.js · fetched module) ───────┘
                   ├─ forward: /tide/state → chorus density, votes → the room
                   │           speaks, __ednaBio → per-stratum weight
-                  ├─ events:  calls → /sample/trigger → the field recordings
+                  ├─ events:  calls → /antifonia/call → SC picks the recording
                   └─ reverse: chorus → /soneth/texturedepth, spread →
                               spatialspread, machine share → noiselevel
 
@@ -646,21 +646,62 @@ them. When the tide rises the forest speaks; when it falls, the machine holds
 the air. That inversion is literal: anthropophony's spawn weight is driven by
 `(1 - tide)`.
 
-**It really sounds.** Calls fire the seven field recordings in
-`10_sample_system.scd` through `/sample/trigger`, each opened in that call's
-frequency band and panned by its position.
+**It really sounds — and now with the forest's own voice.** A call goes out on
+`/antifonia/call`, and **SuperCollider chooses the recording** (`16_corpus_calls.scd`).
+
+Twelve sources shared seven MP3s: four species split the *aves* bed alone, and
+LLUVIA and VIENTO carried `smp: -1`, drawn on screen and never sounding at all.
+The corpus built from the AudioMoth survey holds 261 clips of the actual site,
+and slot A could not reach any of it — the ring in `14_phenological_corpus.scd`
+plays that material on the 365-day calendar, which is a calendar and not a call.
+
+The bank now carries **116 two-second grains** (already cut by `build_corpus.py`
+from each ring day's highest-confidence events) and **six geophony stems**, so
+rain and wind finally have a recording. ≈114 MB resident.
+
+**The species→role map lives in SuperCollider**, because the corpus carries
+ecological roles and *no taxonomy* — that is the same fact that makes Article
+43's bancadas role-labelled. A call therefore says *who* is speaking and *at what
+hour*; SC decides which recording answers:
+
+| Source | answers from |
+|---|---|
+| aullador · rana · murciélago | `nocturnal_voice` (the bat weighted toward clips that carry ultrasound) |
+| chicharra · arriera | `insect_chorus` |
+| aves · oropéndola · paujil | `dusk_` / `dawn_chorus_participant` |
+| **lluvia · viento** | **geophony stems** |
+| avión · cinta | their MP3s — the corpus has no anthropophony to offer |
+
+Selection weights confidence against **hour proximity on a 24-hour ring**, through
+a Gaussian of σ ≈ 3 h, about the width of a dawn chorus. A linear falloff was
+tried first and does not work: it spans only 5× across the whole clock, and the
+corpus is so nocturnal that the mass of far clips outvoted the near ones — a call
+at 20 h still drew a median grain from 03 h. The Gaussian gives ~8×, which is the
+difference between a preference and a rounding error.
+
+**Article 47 is enforced before the clip is chosen and again in the voice.**
+`opacityFloor` (CC 15) filters the eligible pool exactly as it does for the ring,
+and `samplePlayer*` now carries the same veil `\corpusVoice` has always had —
+that SynthDef had *none*, so routing recorded material through it would have
+sounded what the Chamber had withheld. Measured: floor 0 admits 114 of 122 corpus
+entries, 0.5 admits 73, 0.8 admits 23.
 
 A call **opens a window into** the recording rather than truncating it. Five of
-the seven files are 51–360 s soundscape beds, not isolated calls, so a call's
+the seven MP3s are 51–360 s soundscape beds, not isolated calls, so a call's
 duration shapes an envelope — attack, hold, release — over an excerpt taken from
-a varying offset. The two short files (ranas 4.9 s, oropéndola 6.2 s) still read
-whole. Previously the duration was a hard `.free`, which cut a 51-second howler
-after 3% of itself with no release at all: a broadband click on every call, and
-because the reverb and delay live *inside* the voice, the acoustic space vanished
-with it. Geophony sources are drawn but
-silent — there is no rain or wind recording yet — and the HUD says so out loud
-rather than letting the gap disappear. Adding one is a file in `samples/` and a
-line in `~samplePaths`.
+a varying offset. Previously the duration was a hard `.free`, which cut a
+51-second howler after 3% of itself with no release at all: a broadband click on
+every call, and because the reverb and delay live *inside* the voice, the acoustic
+space vanished with it.
+
+> **The envelope now has to fit the recording.** Its span is atk+hold+rel ≈ 2.15 ×
+> the hold, and that span was never computed anywhere — survivable while every
+> file ran 51–360 s, wrong the moment a 2-second grain arrived: it became two
+> seconds of forest followed by eight of silence holding one of twelve voices.
+> The span is built explicitly now and scaled to the material when it overruns.
+> Which also makes true, at last, what this section always claimed: the two short
+> MP3s (ranas 4.9 s, oropéndola 6.2 s) are heard **whole**. They were not — a
+> 10.75 s envelope over a 6.2 s file ran off its own end.
 
 Only biophony is published to `__activeSpecies`: rain is not a species and
 neither is an aircraft, and that field feeds the parliament's living census and
