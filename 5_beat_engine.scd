@@ -505,6 +505,11 @@
                 // cuánta energía hay en su banda. El espectro dice qué se está
                 // oyendo; esto dice qué acaba de empezar. Sin el ataque, un
                 // visual reacciona siempre tarde y difuso.
+                // Stamped outside the ~visualsDest guard on purpose: this is
+                // not telemetry, it is the arbitration clock 15_slot_voices.scd
+                // reads to decide whether a slot may speak here. It has to be
+                // true whether or not anything is watching.
+                if(~lastVoiceAt.notNil) { ~lastVoiceAt[\kick] = now };
                 if(~visualsDest.notNil) {
                     ~visualsDest.sendMsg('/voice/kick',
                         (~beatParams.masterAmp * (0.5 + (density * 0.2)) * accent).clip(0, 1));
@@ -579,6 +584,7 @@
                 // it sounded in is what the browser's FREQ column reports.
                 ~speciesVotes[speciesIdx] = ~speciesVotes[speciesIdx] + 1;
                 ~speciesFreq[speciesIdx]  = baseFreq;
+                if(~lastVoiceAt.notNil) { ~lastVoiceAt[\perc] = now };
                 if(~visualsDest.notNil) {
                     // freq normalizada además del ataque: la percusión cambia
                     // de registro con la melodía y el visual debe seguirla.
@@ -665,6 +671,7 @@
 
             // ── 3. DUST — probability-based, not grid-locked ─────────────────────
             if((dustProb * tideDensity).coin) {
+                if(~lastVoiceAt.notNil) { ~lastVoiceAt[\dust] = now };
                 if(~visualsDest.notNil) {
                     ~visualsDest.sendMsg('/voice/dust',
                         (0.3 + (density * 0.35)).clip(0, 1));

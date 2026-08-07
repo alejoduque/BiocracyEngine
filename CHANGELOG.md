@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### The six screens play the instrument (2026-08-07)
+
+#### Added
+- **Slots 4–9 emit their own voice** (`15_slot_voices.scd`, `src/projector/slotVoice.ts`). They were listeners — each bound to one SC voice, reading its band and its onset. They now also play it, from their own structural events: a hash collision sounds a field recording (and *which* bucket collided picks it), a cache eviction sounds a grain, a tree rotation sounds a percussion hit, an edge forming sounds a bell, a target acquisition sounds the sub, a completed radar sweep transposes the drone bed.
+- **A single scheduling owner in SC.** The beat engine already decides when kick, perc and dust speak and the ETH handler owns the bell; a slot deciding the same thing would be a second owner of one rule — the failure the seven removed `/rhythm/` toggles and the single-point tide exclusivity both exist to avoid. Slots therefore *request* on `/slot/voice [voiceIdx, amp, tone]` and `15_slot_voices.scd` decides. Both it and the engine stamp one shared onset clock (`~lastVoiceAt`, declared in `0_parameters.scd` since four files touch it), and a request inside a voice's minimum gap is dropped rather than layered. Measured: 100 requests/second on `dust` is capped to 13.7 onsets/s, and a slot kick immediately after an engine kick is refused.
+- **`/slot/voices/enable 0|1`** returns all six to listening without unmounting them; the browser stops emitting on its own side too.
+
+#### Notes
+- The trigger is never audio. A slot firing its own voice from its own band energy would be a feedback loop — it would play because it is playing. Every emitter reads the simulation.
+- The sample pool needed no new cap: `10_sample_system.scd` already owns one (`~sampleMaxVoices` + oldest-first stealing).
+- Slot A (Antifonía) is unchanged. It keeps its own `/sample/trigger` path, which is a different layer with its own call logic.
+
 ### The species reach the sound, and the surfaces stop lying (2026-08-07)
 
 #### Added

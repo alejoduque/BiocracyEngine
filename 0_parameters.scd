@@ -146,6 +146,12 @@
 ];
 
 // ─── Derived lookup tables ──────────────────────────────────────────────────
+// Shared voice-onset clock. Declared here, in the first file loaded, because
+// three files write it (5_beat_engine, 6_osc_handlers, 10_sample_system) and a
+// fourth arbitrates on it (15_slot_voices) — whoever runs first must not have
+// to care whether it exists yet.
+~lastVoiceAt = ~lastVoiceAt ?? { () };
+
 ~paramDefsByName = ();
 ~paramDefs.do { |def| ~paramDefsByName[def[\name]] = def };
 

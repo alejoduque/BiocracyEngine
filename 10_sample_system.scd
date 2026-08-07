@@ -354,6 +354,7 @@ s.doWhenBooted({
                 // Onset de muestra hacia los visuales — slot 9 es el
                 // instrumento de esta voz. Se manda el índice para que el
                 // visual pueda distinguir aullador de avión.
+                if(~lastVoiceAt.notNil) { ~lastVoiceAt[\sample] = SystemClock.seconds };
                 if(~visualsDest.notNil) {
                     ~visualsDest.sendMsg('/voice/sample',
                         (ov[\sampleAmp] ? 0.7).asFloat.clip(0, 1),

@@ -140,6 +140,10 @@ s.doWhenBooted({
             };
             ~visualsDest.sendMsg('/voice/pad', (ba * pc).clip(0, 1), (bf / 900).clip(0, 1));
         };
+                    // Arbitration clock for 15_slot_voices.scd — see the note
+                    // at the kick in 5_beat_engine.scd. Outside the visuals
+                    // guard because it is a rule, not a readout.
+                    if(~lastVoiceAt.notNil) { ~lastVoiceAt[\pad] = SystemClock.seconds };
                     ~bellStats[\spawned] = ~bellStats[\spawned] + 1;
                     ~bellStats[\lastPoly] = pc;
                 } {

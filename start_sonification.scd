@@ -28,7 +28,10 @@
         "9_spatial_headphone_sim.scd", // 4-channel headphone simulation
         "10_sample_system.scd",     // Sample playback system with paulstretch
         "11_recording_system.scd",  // Multichannel recording system
-        "14_phenological_corpus.scd" // Cámara Fenológica: the AudioMoth corpus on the 365-day ring
+        "14_phenological_corpus.scd", // Cámara Fenológica: the AudioMoth corpus on the 365-day ring
+        // Last: it arbitrates between the beat engine and the six slots, so
+        // everything it schedules for has to exist first.
+        "15_slot_voices.scd"         // slots 4–9 request their own voice on /slot/voice
     ].do { |file|
         var path = basePath +/+ file;
         ("Loading " ++ file ++ "...").postln;

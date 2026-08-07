@@ -174,6 +174,43 @@ projects into. The binding it announced is the real one and it survives
 untouched: each slot still reads its own band of the spectrum and its own
 voice's onsets, per the table above.
 
+**And now they play it.** Each of the six was a listener: bound to one voice,
+reading that voice's band and onset, drawing what it heard. They also *speak*
+now, from their own structural events — the screen plays the instrument:
+
+| Slot | Voice | The structure's own event |
+|---|---|---|
+| 4 | DRONE | the reticule completes a full sweep → the bed transposes (consensus picks the pitch) |
+| 5 | CAMPANAS | an edge forms — two nodes that were not connected now are |
+| 6 | PERCUSIÓN | a node arrives at its target — a rebalance has actually completed |
+| 7 | BOMBO | a target is acquired — a ray crosses a sweep |
+| 8 | POLVO | a block spills to the next cache level — an eviction |
+| 9 | MUESTRAS | a hash collision — and *which* bucket collided picks the recording |
+
+**The slot does not decide whether the note happens.** The beat engine already
+owns when kick, perc and dust speak, and the ETH handler owns the bell; a slot
+deciding the same thing would be a second owner of one rule, which is the
+failure this codebase keeps having to undo — the seven `/rhythm/` toggles that
+were removed for it, the tide exclusivity enforced in exactly one place.
+
+So a slot *requests*, on `/slot/voice [voiceIdx, amp, tone]`, and
+`15_slot_voices.scd` decides. Both the engine and the scheduler stamp one shared
+onset clock, `~lastVoiceAt`, and a request landing inside a voice's minimum gap
+is dropped rather than layered. A slot can therefore only speak where the engine
+has left room — the pulse stays the engine's, the punctuation is the slot's.
+Measured: a runaway emitter at 100 requests/second is capped to 13.7 onsets/s on
+`dust`, and a slot asking for a kick immediately after the engine fired one is
+refused.
+
+Gaps are set by what the voice is *for*, not by taste: `drone` 6 s (a re-pitch
+is structural), `dust` 0.07 s (granular, it should be able to swarm), `sample`
+1.6 s (these are 30-second field recordings, and two a second is a collage).
+`/slot/voices/enable 0` puts all six back to listening without unmounting them.
+
+> **The trigger never comes from audio.** A slot firing its own voice from its
+> own band energy is a feedback loop — it would play because it is playing.
+> Every emitter is driven by the simulation, which is also the whole point.
+
 **They react to the sound, not to the intention.** `\masterScope` analyses the
 master bus *after* the limiter and sends 16 log-spaced bands at 20 Hz — that had
 been arriving all along with nothing listening, so the spectrogram was running on

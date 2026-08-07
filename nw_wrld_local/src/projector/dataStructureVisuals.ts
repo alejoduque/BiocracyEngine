@@ -7,6 +7,7 @@ import { ShaderPass }      from "three/examples/jsm/postprocessing/ShaderPass.js
 import type { ParliamentState } from "./parliament/parliamentStore";
 import { getVizMotion, readVoteFlash, isAlarm } from "./vizMotion";
 import { getScAudio, bandRange, normLevel } from "./scAudio";
+import { makeEventEmitter } from "./slotVoice";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
 import {
     Viz,
@@ -185,6 +186,12 @@ export function mountTimeTravel(stageEl: HTMLElement, getLatestState: () => Parl
     // a sprite; it is gone. The binding it announced is the real one and
     // survives: this slot reads inst4's band and its voice's onsets.
     const inst4 = INSTRUMENTS.s4;
+    // This slot does not merely watch its voice, it plays it — see
+    // slotVoice.ts and 15_slot_voices.scd. The emitter is an edge
+    // detector: it fires when the structural count RISES, and its first
+    // observation only establishes a baseline, so mounting mid-set does
+    // not announce itself with a note.
+    const emitSweep4 = makeEventEmitter("drone");
 
     // ── AfterimagePass for ghost trails ──────────────────────────────────────
     const composer = new EffectComposer(renderer);
@@ -462,6 +469,14 @@ export function mountTimeTravel(stageEl: HTMLElement, getLatestState: () => Parl
           radarAngle += (isAlarm(vf4.type) ? -1 : 1) * vf4.flash * 0.06;
         }
         reticuleGroup.rotation.z = radarAngle;
+        // ── DRONE speaks ──────────────────────────────────────────────────
+        // The drone is sustained, so there is no attack to fire; the
+        // structural event transposes the bed instead. One full sweep of the
+        // reticule is the slot's own unit of "a pass has completed", and
+        // consensus chooses the new pitch — the assembly agreeing on where the
+        // bed sits. It glides (Lag on freq in \opalDrone), so this is a slow
+        // transposition rather than the step it would have been.
+        emitSweep4(Math.floor(radarAngle / (Math.PI * 2)), 0.5, consensus);
         const retSize = (H * 0.3 + resBody * H * 0.2) / 180;
         reticuleGroup.scale.setScalar(retSize);
         (axisLine.material as THREE.LineBasicMaterial).opacity = (0.12 + resBody * 0.2) * masterA;
@@ -584,6 +599,7 @@ export function mountDynamicGraphs(stageEl: HTMLElement, getLatestState: () => P
     // a sprite; it is gone. The binding it announced is the real one and
     // survives: this slot reads inst5's band and its voice's onsets.
     const inst5 = INSTRUMENTS.s5;
+    const emitEdge5 = makeEventEmitter("pad");
 
     const composer = new EffectComposer(renderer);
     composer.addPass(new RenderPass(scene, camera));
@@ -753,6 +769,12 @@ export function mountDynamicGraphs(stageEl: HTMLElement, getLatestState: () => P
             }
         }
         edgeGeo.setDrawRange(0, edgeCount * 2);
+        // ── CAMPANAS speak ────────────────────────────────────────────────
+        // An edge forming is the graph's own event: two nodes that were not
+        // connected now are. The bell rings for the connection, and how full
+        // the graph already is chooses the pitch.
+        emitEdge5(edgeCount, 0.35 + Math.min(1, edgeCount / 24) * 0.5,
+            Math.min(1, edgeCount / 32));
         edgeGeo.attributes.position.needsUpdate = true;
         edgeMat.opacity = (0.3 + vol * 0.5) * masterA;
         edgeMat.linewidth = 0.5 + noiseF * 1.5;
@@ -905,6 +927,7 @@ export function mountDynamicOptimality(stageEl: HTMLElement, getLatestState: () 
     // a sprite; it is gone. The binding it announced is the real one and
     // survives: this slot reads inst6's band and its voice's onsets.
     const inst6 = INSTRUMENTS.s6;
+    const emitArrive6 = makeEventEmitter("perc");
 
     const composer = new EffectComposer(renderer);
     composer.addPass(new RenderPass(scene, camera));
@@ -1063,6 +1086,11 @@ export function mountDynamicOptimality(stageEl: HTMLElement, getLatestState: () 
         const treeWidth = lerp(0.4, 0.95, spatSp);
 
         let childIdx = 0;
+        // ── PERCUSIÓN speaks ──────────────────────────────────────────────
+        // The tree is always lerping toward a new layout; a node ARRIVING is
+        // when a rotation has actually completed. That is the slot's own
+        // discrete event and the pulse is the register for it.
+        let arrived6 = 0;
         nodeData.forEach((n, i) => {
             if (i === maxIdx) {
                 n.tx = rootX;
@@ -1089,6 +1117,7 @@ export function mountDynamicOptimality(stageEl: HTMLElement, getLatestState: () 
                 0.05 + (1 - consensus) * 0.35 * (0.5 + tDil) + (vf6 ? vf6.flash * 0.55 : 0), 1);
             n.x = lerp(n.x, n.tx, snap);
             n.y = lerp(n.y, n.ty, snap);
+            if (Math.abs(n.x - n.tx) < 1.2 && Math.abs(n.y - n.ty) < 1.2) arrived6++;
             if (consensus < 0.8) {
                 n.x += (Math.random() - 0.5) * 10 * (1 - consensus);
                 n.y += (Math.random() - 0.5) * 10 * (1 - consensus);
@@ -1123,6 +1152,10 @@ export function mountDynamicOptimality(stageEl: HTMLElement, getLatestState: () 
             n.innerMesh.scale.setScalar((glW * innerPulse) / 10);
             (n.innerMesh.material as THREE.MeshBasicMaterial).opacity = (0.3 + vol * 0.5) * masterA;
         });
+        // How high in the tree the arrival happened chooses the register: a
+        // rebalance near the leaves is a lighter hit than one at the root.
+        emitArrive6(arrived6, 0.3 + Math.min(1, arrived6 / 10) * 0.55,
+            1 - Math.min(1, arrived6 / 14));
 
         // Edges from all non-root nodes to root
         const rootNode = nodeData[maxIdx];
@@ -1227,6 +1260,7 @@ export function mountGeometry(stageEl: HTMLElement, getLatestState: () => Parlia
     // a sprite; it is gone. The binding it announced is the real one and
     // survives: this slot reads inst7's band and its voice's onsets.
     const inst7 = INSTRUMENTS.s7;
+    const emitTarget7 = makeEventEmitter("kick");
 
     const composer = new EffectComposer(renderer);
     composer.addPass(new RenderPass(scene, camera));
@@ -1524,6 +1558,12 @@ export function mountGeometry(stageEl: HTMLElement, getLatestState: () => Parlia
         }
         // Hide unused target circles
         for (let i = tcIdx; i < maxTargets; i++) targetCircles[i].visible = false;
+        // ── BOMBO speaks ──────────────────────────────────────────────────
+        // A target acquisition — a ray crossing a sweep — is this slot's
+        // discrete event, and the sub is the register that can carry it. The
+        // count of simultaneous acquisitions sets how hard, and how low.
+        emitTarget7(tcIdx, 0.4 + Math.min(1, tcIdx / 12) * 0.5,
+            1 - Math.min(1, tcIdx / 16));
 
         // Glitch rects from txInfluence
         let grIdx = 0;
@@ -1623,6 +1663,7 @@ export function mountMemoryHierarchy(stageEl: HTMLElement, getLatestState: () =>
     // a sprite; it is gone. The binding it announced is the real one and
     // survives: this slot reads inst8's band and its voice's onsets.
     const inst8 = INSTRUMENTS.s8;
+    const emitSpill8 = makeEventEmitter("dust");
 
     const composer = new EffectComposer(renderer);
     composer.addPass(new RenderPass(scene, camera));
@@ -1869,6 +1910,11 @@ export function mountMemoryHierarchy(stageEl: HTMLElement, getLatestState: () =>
 
             cy += baseH + layerGap;
         }
+        // ── POLVO speaks ──────────────────────────────────────────────────
+        // Drop lines are what spills from one level of the hierarchy to the
+        // next — an eviction. Granular is exactly the register for it: each
+        // spill is a grain, and a hierarchy under pressure swarms.
+        emitSpill8(dIdx, 0.3 + Math.min(1, dIdx / 40) * 0.55, Math.min(1, dIdx / 48));
         dropGeo.setDrawRange(0, dIdx * 2);
         dropGeo.attributes.position.needsUpdate = true;
         const dmR = lerp(0.78, 1.0, droneMix); const dmG = lerp(1.0, 0.67, droneMix);
@@ -1959,6 +2005,7 @@ export function mountHashing(stageEl: HTMLElement, getLatestState: () => Parliam
     // a sprite; it is gone. The binding it announced is the real one and
     // survives: this slot reads inst9's band and its voice's onsets.
     const inst9 = INSTRUMENTS.s9;
+    const emitCollision9 = makeEventEmitter("sample");
 
     const composer = new EffectComposer(renderer);
     composer.addPass(new RenderPass(scene, camera));
@@ -2116,6 +2163,21 @@ export function mountHashing(stageEl: HTMLElement, getLatestState: () => Parliam
             mapTargets.push(mapped);
             bucketHits[mapped]++;
         }
+        // ── MUESTRAS speak ────────────────────────────────────────────────
+        // A collision is the hash table's own failure and its most legible
+        // event: two keys landing in one bucket. It sounds a field recording,
+        // and WHICH bucket collided chooses which one — so the collision
+        // pattern becomes the score rather than a decoration on top of it.
+        let collided9 = 0;
+        let firstColl9 = 0;
+        for (let b = 0; b < NUM_BUCKETS; b++) {
+            if (bucketHits[b] > 1) {
+                if (collided9 === 0) firstColl9 = b;
+                collided9++;
+            }
+        }
+        emitCollision9(collided9, 0.35 + Math.min(1, collided9 / 5) * 0.5,
+            NUM_BUCKETS > 1 ? firstColl9 / (NUM_BUCKETS - 1) : 0.5);
 
         // Update key boxes
         let pathIdx = 0, collIdx = 0;
