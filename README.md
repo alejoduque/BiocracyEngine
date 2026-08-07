@@ -331,8 +331,12 @@ and putting the forest into the same instrument a currency is quoted with says
 out loud what the whole apparatus does — try to measure nature in real time,
 with the wrong tool, leaving the seam visible.
 
-The candles are **immersed**. Canopy sources sing from a **bird actually
-crossing the stand** — seven of them fly at canopy and emergent height, wings
+The candles are **immersed**. The howler sings from **one of two red howlers
+(*Alouatta seniculus*) moving through the ceiba's branches** — body, head and
+prehensile tail, pausing long between moves as the animal does. They can only
+be in the ceiba, because it is the one emergent: the same confinement that
+already governed the call, now visible. Other canopy sources sing from a **bird
+actually crossing the stand** — seven of them fly at canopy and emergent height, wings
 beating, and the sky empties outside their hours. First you see who is
 speaking, then what they said. Failing a bird, the call takes a **perch**: a
 tree in this stand tall enough to reach its stratum. The howler can only be in
@@ -423,10 +427,17 @@ which is why the level barely responded to `masterVolume` or `masterAmp`. The
 cause was singular: the pad layer summed **linearly** with concurrency (20 pads
 = 1.96) while every other layer was ≤ 0.17.
 
-Pads now get polyphony compensation (`1/√n`, so the layer grows as `√n`), the
-per-layer trims set the balance around the drone as reference, and a single
-`~trimMaster` sets the absolute level. Measured across a full arc at
-`vol/amp 0.70`: `outPk` p90 **0.78**, `gr` median **1.00**.
+Pads get polyphony compensation (`1/√n`, so the layer grows as `√n`), and a
+single `~trimMaster` sets the absolute level.
+
+The balance was then wrong in a second way, which peak measurements could not
+see. Calibrating on the **crest** left nothing holding the **floor**: measured
+over a full tidal arc the mix was below 0.05 — inaudible — in **48% of
+windows**, with a 340:1 crest factor. Half the piece was silence punctuated by
+peaks. The drone is now the **bed** rather than a quiet reference, the tidal
+trough thins to 0.42 instead of 0.15, and the field recordings sustain and
+cross-fade instead of punctuating. Result: **inaudible 48% → 16%**, crest
+340:1 → **37:1**, median level ×1.8, `outPk` p90 0.745.
 
 ---
 

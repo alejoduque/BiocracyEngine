@@ -179,7 +179,7 @@ class Antifonia extends BaseThreeJsModule {
   // es la superficie sobre la que se sostiene todo lo demás, y con la mezcla
   // aditiva un terreno ralo no se ve tenue, se ve AUSENTE: el rodal quedaba
   // flotando sobre nada.
-  static CLOUD = { scale: 0.42, ground: 26000, shrub: 620 };
+  static CLOUD = { scale: 0.42, ground: 38000, shrub: 620 };
 
   // ── Metros → unidades de escena, en HORIZONTAL ──────────────────────────
   // La vertical ya la convierte _yFromAGL (metros sobre el suelo → y del
@@ -190,7 +190,15 @@ class Antifonia extends BaseThreeJsModule {
   // La parcela son 100 m ↔ PLOT*2 unidades.
   static M = (9.0 * 2) / 100;
 
-  static BIRDS = 7;             // aves en vuelo — ocupan el estrato de las velas
+  static BIRDS = 5;             // aves en vuelo — ocupan el estrato de las velas
+  // Dos monos aulladores rojos (Alouatta seniculus) en las ramas de la ceiba.
+  // No son decorado: el aullador ya era una de las fuentes de la bancada de
+  // biofonía —la de registro más grave, ventana 4.3-8.0 h— y hasta ahora sus
+  // llamadas salían de una percha genérica. Ahora salen DE ELLOS, así que la
+  // voz más reconocible del bosque seco tiene por fin un cuerpo que se mueve.
+  // Y sólo pueden estar en la ceiba, porque es la única emergente del rodal:
+  // el mismo confinamiento que ya regía sus llamadas, ahora visible.
+  static HOWLERS = 2;
   static GLYPH_POOL = 220;      // techo duro de velas vivas
   static NICHE_KEEP = 260;      // llamadas retenidas en la franja del nicho
   static PLOT = 9.0;            // media anchura de la parcela, en unidades de escena
@@ -280,6 +288,8 @@ class Antifonia extends BaseThreeJsModule {
 
     this._buildCloud();
     this._buildBirds();
+    // Después de _buildCloud: necesitan la ceiba, que se siembra allí.
+    this._buildHowlers();
     this._buildStrata();
     this._buildGlyphs();
     this._buildNiche();
@@ -435,7 +445,12 @@ class Antifonia extends BaseThreeJsModule {
       const a = rnd() * Math.PI * 2;
       const t = Math.sqrt(rnd());                 // uniforme en área
       if (rnd() < Math.pow(t, 3.4)) continue;     // ralea sólo el borde exterior
-      const r = t * W * lobe(a);
+      // 1.55x reach. The stand read as an island: the ground stopped almost
+      // exactly where the canopy did, so the eye found the edge of the plot
+      // instead of a forest continuing past the frame. The rim thinning below
+      // still fades it out — it just fades out further away now, and the
+      // mycelium that already runs past the boundary has ground to run over.
+      const r = t * W * lobe(a) * 1.55;
       const x = Math.cos(a) * r, z = Math.sin(a) * r;
       // Intensidad baja: el suelo devuelve mucho pero no es lo que hay que
       // mirar. A 0.55-1.0 se comía las copas por brillo.
@@ -614,6 +629,7 @@ class Antifonia extends BaseThreeJsModule {
           points: this._cloudTotal,
           mycoSegments: this._mycoSegs,
           birds: Antifonia.BIRDS,
+          howlers: Antifonia.HOWLERS,
           seed: 20221109,
         };
       }
@@ -846,6 +862,146 @@ class Antifonia extends BaseThreeJsModule {
     const b = cand[(Math.random() * cand.length) | 0];
     b.lit = 1;
     return b;
+  }
+
+  // ══ aulladores rojos ═══════════════════════════════════════════════════
+  //
+  // Alouatta seniculus, dos, en la copa de la ceiba. Se desplazan por las
+  // ramas —arco de un punto a otro dentro de la copa, con pausas largas,
+  // porque un aullador pasa la mayor parte del día quieto— y cuando la fuente
+  // "aullador" canta, la vela sale del que esté más arriba.
+  //
+  // Se dibuja el cuerpo, la cabeza y la COLA PREHENSIL, que es lo que hace
+  // reconocible a un mono del Nuevo Mundo a cualquier distancia: la curva de
+  // la cola cuenta más que la silueta del cuerpo. Rojo apagado, como el
+  // animal.
+  _buildHowlers() {
+    const N = Antifonia.HOWLERS;
+    // 6 segmentos por mono: 2 cuerpo, 1 cabeza, 3 cola.
+    const SEG = 6;
+    const pos = new Float32Array(N * SEG * 2 * 3);
+    const col = new Float32Array(N * SEG * 2 * 3);
+    const g = new THREE.BufferGeometry();
+    g.setAttribute("position", new THREE.BufferAttribute(pos, 3));
+    g.setAttribute("color", new THREE.BufferAttribute(col, 3));
+    this._howlerGeo = g;
+    this._howlerMesh = new THREE.LineSegments(g, new THREE.LineBasicMaterial({
+      vertexColors: true, transparent: true, opacity: 1.0,
+      depthWrite: false, depthTest: false, blending: THREE.AdditiveBlending,
+    }));
+    this._howlerMesh.renderOrder = 900;   // por delante de la nube
+    this._howlerMesh.frustumCulled = false;
+    this.scene.add(this._howlerMesh);
+
+    // La ceiba, para saber dónde están las ramas.
+    this._ceiba = (this._trees || []).find((t) => t.kind === "ceiba") || null;
+    this.howlers = [];
+    for (let i = 0; i < N; i++) this.howlers.push(this._spawnHowler(i));
+  }
+
+  _spawnHowler(i) {
+    const c = this._ceiba;
+    const cx = c ? c.x : 0, cz = c ? c.z : 0, cr = c ? c.r : 2;
+    const pick = () => {
+      const a = Math.random() * Math.PI * 2;
+      const rr = (0.25 + Math.random() * 0.7) * cr;
+      return {
+        x: cx + Math.cos(a) * rr,
+        z: cz + Math.sin(a) * rr,
+        // dentro de la copa: entre el arranque de las bandejas y la cima
+        agl: 24 + Math.random() * 15,
+      };
+    };
+    const from = pick(), to = pick();
+    return {
+      from, to, t: Math.random(),
+      // Lento. Un aullador se mueve poco y descansa mucho; esto es lo que
+      // separa un mono de un pájaro a simple vista.
+      speed: 0.018 + Math.random() * 0.022,
+      pause: Math.random() * 6,
+      lit: 0, side: i === 0 ? -1 : 1,
+      px: cx, pz: cz, py: 0,
+    };
+  }
+
+  _updateHowlers(dt) {
+    if (!this.howlers || !this._howlerGeo) return;
+    const pos = this._howlerGeo.attributes.position.array;
+    const col = this._howlerGeo.attributes.color.array;
+    const red = new THREE.Color("#C4462A");        // aullador rojo
+    const hot = new THREE.Color("#FF8A5B");
+    const SEG = 6;
+
+    for (let i = 0; i < this.howlers.length; i++) {
+      const h = this.howlers[i];
+      h.lit *= Math.exp(-dt * 1.4);
+      if (h.pause > 0) {
+        h.pause -= dt;                       // quieto en la rama
+      } else {
+        h.t += dt * h.speed;
+        if (h.t >= 1) {
+          h.from = h.to;
+          h.to = this._spawnHowler(i).to;
+          h.t = 0;
+          h.pause = 2 + Math.random() * 8;   // descansa al llegar
+        }
+      }
+      const e = h.t * h.t * (3 - 2 * h.t);    // arranque y frenado suaves
+      const agl = h.from.agl + (h.to.agl - h.from.agl) * e;
+      const x = h.from.x + (h.to.x - h.from.x) * e;
+      const z = h.from.z + (h.to.z - h.from.z) * e;
+      // se descuelga entre rama y rama en vez de flotar en línea recta
+      const sag = Math.sin(Math.PI * h.t) * 1.6;
+      const y = this._yFromAGL(agl) - sag * 0.12;
+      h.px = x; h.pz = z; h.py = y; h.agl = agl;
+
+      const yaw = Math.atan2(this.camera.position.x - x, this.camera.position.z - z);
+      // 0.055 -> 0.17. At the first size a howler was ~0.1 units across in a
+      // stand ±9 wide: present in the data, invisible on screen. An animal
+      // this loud should be findable in the crown without hunting for it.
+      const ux = Math.cos(yaw) * 0.17, uz = -Math.sin(yaw) * 0.17;
+      const o = i * SEG * 6;
+      const P = (k, ax, ay, az, bx, by, bz) => {
+        pos[o + k * 6 + 0] = ax; pos[o + k * 6 + 1] = ay; pos[o + k * 6 + 2] = az;
+        pos[o + k * 6 + 3] = bx; pos[o + k * 6 + 4] = by; pos[o + k * 6 + 5] = bz;
+      };
+      const sw = Math.sin(this._last * 2.2 + i) * 0.5;   // balanceo
+      // cuerpo (dos tramos), cabeza, y la cola en tres tramos que se enroscan
+      P(0, x - ux, y, z - uz, x + ux, y + 0.18, z + uz);
+      P(1, x + ux, y + 0.18, z + uz, x + ux * 1.6, y + 0.18, z + uz * 1.6);
+      P(2, x + ux * 1.6, y + 0.18, z + uz * 1.6, x + ux * 2.3, y + 0.30, z + uz * 2.3);
+      P(3, x - ux, y, z - uz, x - ux * 1.9, y - 0.15 + sw * 0.06, z - uz * 1.9);
+      P(4, x - ux * 1.9, y - 0.15 + sw * 0.06, z - uz * 1.9,
+           x - ux * 2.6, y - 0.39 + sw * 0.12, z - uz * 2.6);
+      P(5, x - ux * 2.6, y - 0.39 + sw * 0.12, z - uz * 2.6,
+           x - ux * 2.2, y - 0.58 + sw * 0.15, z - uz * 2.2);
+
+      const c = red.clone().lerp(hot, Math.min(1, h.lit));
+      // Brighter than the canopy around it, so the eye finds it. Additive
+      // blending over white points needs real headroom to register as red.
+      const k = 1.25 + h.lit * 1.9;
+      for (let v = 0; v < SEG * 2; v++) {
+        col[o + v * 3 + 0] = c.r * k;
+        col[o + v * 3 + 1] = c.g * k;
+        col[o + v * 3 + 2] = c.b * k;
+      }
+    }
+    this._howlerGeo.attributes.position.needsUpdate = true;
+    this._howlerGeo.attributes.color.needsUpdate = true;
+  }
+
+  // El aullador que esté más alto canta. Devuelve su posición para que la vela
+  // salga de él y no de una percha genérica.
+  _howlerFor(src) {
+    if (src.key !== "aullador" || !this.howlers || this.howlers.length === 0) return null;
+    let best = null;
+    for (const h of this.howlers) {
+      if (h.py === undefined) continue;
+      if (!best || h.py > best.py) best = h;
+    }
+    if (!best) return null;
+    best.lit = 1;
+    return best;
   }
 
   // ══ micelio ════════════════════════════════════════════════════════════
@@ -1289,6 +1445,7 @@ class Antifonia extends BaseThreeJsModule {
     this._advanceClock(dt);
     this._spawn(dt);
     this._updateBirds(dt);
+    this._updateHowlers(dt);
     this._updateCalls(dt);
     this._updateCloud(dt);
     this._drawNiche();
@@ -1461,15 +1618,18 @@ class Antifonia extends BaseThreeJsModule {
     // Primero un ave en vuelo (si la fuente es de dosel y hay alguna cruzando),
     // luego una percha, y sólo si no hay ninguna de las dos, aire abierto.
     // Ese orden es el que hace que se vea primero quién habla.
-    const bird = scored ? null : this._birdFor(src);
-    const perch = (scored || bird) ? null : this._perchFor(src);
+    // Orden: aullador → un mono real; dosel → un ave que esté cruzando;
+    // si no, una percha; y sólo entonces aire abierto.
+    const howler = scored ? null : this._howlerFor(src);
+    const bird = (scored || howler) ? null : this._birdFor(src);
+    const perch = (scored || howler || bird) ? null : this._perchFor(src);
     const agl = scored ? scored.heightAGL
-      : (bird ? bird.agl : (perch ? perch.agl
-        : this._stratumMeters(src.stratum) * (0.75 + Math.random() * 0.5)));
-    const x = bird ? bird.px : (perch ? perch.x
-      : (scored ? scored.x : (Math.random() * 2 - 1)) * Antifonia.PLOT * spread);
-    const z = bird ? bird.pz : (perch ? perch.z
-      : (scored ? scored.z : (Math.random() * 2 - 1)) * Antifonia.PLOT * spread);
+      : (howler ? howler.agl : (bird ? bird.agl : (perch ? perch.agl
+        : this._stratumMeters(src.stratum) * (0.75 + Math.random() * 0.5))));
+    const x = howler ? howler.px : (bird ? bird.px : (perch ? perch.x
+      : (scored ? scored.x : (Math.random() * 2 - 1)) * Antifonia.PLOT * spread));
+    const z = howler ? howler.pz : (bird ? bird.pz : (perch ? perch.z
+      : (scored ? scored.z : (Math.random() * 2 - 1)) * Antifonia.PLOT * spread));
     const lo = scored ? scored.lo : src.lo;
     const hi = scored ? scored.hi : src.hi;
     const dur = scored ? scored.dur : (0.5 + Math.random() * 2.2);
@@ -1491,7 +1651,7 @@ class Antifonia extends BaseThreeJsModule {
     const call = {
       key: src.key, cls: src.cls, smp: src.smp,
       lo, hi, agl, x, z, dur,
-      y: bird ? bird.py : this._yFromAGL(agl),
+      y: howler ? howler.py : (bird ? bird.py : this._yFromAGL(agl)),
       age: 0,
       life: Math.max(1.2, dur * 1.8),
       hour: this.hour,

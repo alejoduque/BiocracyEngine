@@ -331,7 +331,13 @@
             tide = ~tideCompute.(if(rs.notNil and: { rs[\blockPeriod] > 0 }) {
                 rs[\blockPeriod]
             } { 12.0 });
-            tideDensity = tide.linlin(0, 1, 0.15, 1.0);
+            // Floor 0.15 -> 0.42. A trough at 0.15 thinned percussion and dust to
+            // near nothing, and combined with the pads only firing on chain
+            // activity the whole piece went silent for half of every arc. The
+            // tide should THIN the texture, not empty it — the swell reads just
+            // as well between 0.42 and 1.0, and there is always something in
+            // the room.
+            tideDensity = tide.linlin(0, 1, 0.42, 1.0);
             // The previous tick's interval is the tick length; jitter is scaled
             // to it so it stays musical whether the chain is fast or slow.
             jitTick = ~tideJitter.(~beatParams.lastInterval ? 0.5);

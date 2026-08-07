@@ -86,10 +86,35 @@ s.doWhenBooted({
     // The absolute output drops relative to what was previously heard — that
     // was a clamped signal pinned near full scale — and the performer takes it
     // back with the level controls, which now actually do something.
-    ~trimMaster = 0.07;
+    // 0.07 -> 0.055. With the bed raised, the whole mix sat above the ceiling
+    // (p90 1.10) and the limiter rode at gr 0.12 — back in the compressor
+    // regime this budget exists to avoid. This drops everything ~20% together,
+    // which preserves the balance that was just fixed and gives the limiter
+    // its headroom back.
+    ~trimMaster = 0.055;
 
-    ~trimDrone = 1.00 * ~trimMaster;   // reference layer
-    ~trimPad   = 0.30 * ~trimMaster;
+    // 1.00 -> 2.40. Measured over a full tidal arc at vol/amp 0.70, the mix was
+    // below 0.05 — effectively inaudible — in 48% of windows, with a 340:1
+    // crest factor (min 0.005, max 1.72). The calibration had been done on the
+    // CREST, which is brief; nothing was holding the floor, so half the piece
+    // was silence punctuated by peaks. That is exactly "I cannot hear the
+    // synths, drones or bells".
+    //
+    // The drone is the one continuously-present voice, so it is what the bed
+    // has to be made of. Raising it lifts the floor without touching the
+    // crest, which is the only move that reduces crest factor rather than
+    // just moving the whole thing up into the limiter.
+    // 8.0. The arithmetic: the drone measures 0.10 raw, so at ratio 3.10 it
+    // reached 3.10 * 0.07 * 0.10 = 0.022 — 40x below the 0.92 ceiling, i.e. a
+    // "bed" nobody can hear. At 8.0 it sits near 0.056, about -24 dB from the
+    // ceiling, which is a bed you notice is there without it being in front.
+    ~trimDrone = 8.00 * ~trimMaster;   // the BED — continuous, holds the floor
+    // 0.30 -> 0.20 -> 0.45. The 0.20 pass was a mistake: it optimised the crest
+    // factor, and the pads ARE the bells — so lowering them worked directly
+    // against "I cannot hear the bells". The crest is the limiter's problem,
+    // not the mix's; gr dipping on a pad burst is a limiter doing its job,
+    // whereas an inaudible bell layer is a broken instrument.
+    ~trimPad   = 0.45 * ~trimMaster;
     ~trimKick  = 1.00 * ~trimMaster;
     ~trimPerc  = 0.45 * ~trimMaster;
     ~trimDust  = 0.60 * ~trimMaster;

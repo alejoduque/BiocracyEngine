@@ -208,8 +208,10 @@ s.doWhenBooted({
             // outside the budget entirely: amp 0.7 against a drone reference
             // of 0.10, straight past a limiter calibrated for everything else.
             // Falls back to the same number if 10_ is loaded standalone —
-            // keep the two in step (1.55 * 0.07), or a standalone load is
+            // keep the two in step (1.55 * 0.055), or a standalone load is
             // silently at a different level than the ecosystem it mirrors.
+            // This drifted once already when ~trimMaster moved and only the
+            // table was updated — hence the check that compares them.
             // La envolvente, con la misma forma de cuatro tramos que usa
             // \elektronBell (3_synthdefs.scd). Su doneAction es lo único que
             // libera el nodo, así que la cola de reverb alcanza a sonar.
@@ -224,7 +226,7 @@ s.doWhenBooted({
             );
 
             sig = sig * env * controlAmp.clip(0, 1) * distanceAmp.clip(0.1, 1)
-                * (~trimSample ? 0.1085);
+                * (~trimSample ? 0.0853);
 
             // Panner chosen from the REAL output channel count, at graph-build
             // time — same fix as the five voices in 3_synthdefs.scd. PanAz(4)
@@ -297,7 +299,11 @@ s.doWhenBooted({
                 // GUI) se sostiene el búfer entero, que es lo que esos botones
                 // siempre debieron hacer.
                 bufSecs = buf.numFrames / s.sampleRate.max(1);
-                holdSecs = if(duration.notNil, { duration }, { bufSecs });
+                // Minimum 5 s. The call duration is 0.5-2.7 s, which reads as a
+                // blip against material this long and gives the layer nothing
+                // to sustain — the samples announced themselves and vanished
+                // instead of becoming part of the air.
+                holdSecs = if(duration.notNil, { duration.max(5.0) }, { bufSecs });
                 // El arranque varía por disparo, salvo que quepa entera: las
                 // dos grabaciones cortas (ranas, oropéndola) se oyen completas,
                 // las largas se abren por un sitio distinto cada vez.
@@ -307,9 +313,14 @@ s.doWhenBooted({
                     \buf, buf,
                     \loop, ((ov[\sampleLoop] ? 0).asInteger),
                     \startPos, startFrac,
-                    \atk,  (holdSecs * 0.10).clip(0.01, 0.25),
-                    \hold, (holdSecs * 0.80).clip(0.05, 600),
-                    \rel,  (holdSecs * 0.35).clip(0.08, 4.0)
+                    // Long attack and a release longer than the hold: the point
+                    // is for one call to still be fading while the next is
+                    // rising, so the layer cross-fades with itself and with the
+                    // engine instead of punctuating it. Short envelopes made
+                    // each sample a separate event sitting on top of the mix.
+                    \atk,  (holdSecs * 0.35).clip(0.15, 3.0),
+                    \hold, (holdSecs * 0.70).clip(0.05, 600),
+                    \rel,  (holdSecs * 1.10).clip(1.2, 12.0)
                 ];
 
                 // Connect all sample control buses if they exist

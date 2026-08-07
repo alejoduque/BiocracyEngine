@@ -89,7 +89,14 @@ s.doWhenBooted({
         // todos los cortos posteriores, n crecía sin parar y 1/sqrt(n) dejaba
         // cada pad nuevo más flojo que el anterior — exactamente el fallo de
         // "los pads no se oyen" que la compensación existe para arreglar.
-        ~padLive = ~padLive.reject { |t| t <= now };
+        // .as(List) is not cosmetic: List:reject returns an ARRAY, and
+        // ArrayedCollection:add only mutates in place while there is spare
+        // capacity — past that it returns a new array and the caller's
+        // reference is unchanged. Line ~124 does a bare `~padLive.add(...)`
+        // with no reassignment, so once the array filled, every subsequent
+        // pad was silently untracked: ~padLive.size under-counted, the
+        // polyphony compensation went too high and the cap stopped applying.
+        ~padLive = ~padLive.reject { |t| t <= now }.as(List);
         n = ~padLive.size.max(1);
         // 1/sqrt(n): the correct law for uncorrelated sources. Bounds the sum
         // as voices pile up without making one pad as loud as thirty together.
