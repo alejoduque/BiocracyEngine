@@ -162,6 +162,9 @@ export class BaseThreeJsModule extends ModuleBase {
     },
   ];
 
+  /** Timer that feeds controls.autoRotateSpeed from window.__vizMotion. */
+  _autoRotateTimer: ReturnType<typeof setInterval> | null = null;
+
   constructor(container: HTMLElement | null) {
     super(container);
 
@@ -212,8 +215,51 @@ export class BaseThreeJsModule extends ModuleBase {
     this.controls.autoRotate = false;
     this.controls.autoRotateSpeed = 2.0;
 
-    // Add event listener for controls
-    this.controls.addEventListener("change", this.render);
+    // NO "change" → render listener any more.
+    //
+    // With enableDamping on, OrbitControls fires "change" on every update(),
+    // and every module that owns these controls already renders once per frame
+    // from its own RAF (or, for slot 0, from animationManager). So this
+    // listener was a second full render per frame for the same picture — and
+    // switching autoRotate on would have made that unconditional rather than
+    // only-while-dragging. estratos.js:673 had already removed it locally for
+    // exactly this reason; doing it here fixes it for all seven at once.
+    //
+    // Anything that renders on demand rather than continuously must call
+    // render() itself. Nothing in this repo does.
+
+    // ── Idle auto-rotation ──────────────────────────────────────────────
+    // Driven from window.__vizMotion (see vizMotion.ts), on a slow timer
+    // rather than per frame: autoRotateSpeed only has to be approximately
+    // right, and controls.update() — which every one of these modules already
+    // calls every frame — is what actually advances the angle.
+    //
+    // This is the whole of the rotation work for slots 0, P, F, B, E, R and A.
+    // One place, because there is exactly one OrbitControls in the tree.
+    this.controls.autoRotate = true;
+    this.controls.autoRotateSpeed = 0;
+    // Observability. The mounted module is whichever constructed last (only
+    // one slot is ever mounted), so this is a reliable handle on "the Three
+    // scene currently on screen". It exists because auto-rotation is
+    // otherwise unverifiable from outside: a WebGL canvas without
+    // preserveDrawingBuffer reads back blank, so no pixel probe can see it
+    // move. Same discipline as [MON] and __antifoniaStand — if it can't be
+    // checked, it can't be trusted.
+    try {
+      (window as unknown as { __vizActiveThree?: unknown }).__vizActiveThree = this;
+    } catch { /* ignore */ }
+
+    this._autoRotateTimer = setInterval(() => {
+      if (this.destroyed || !this.controls) return;
+      const m = (window as unknown as {
+        __vizMotion?: { speed: number };
+      }).__vizMotion;
+      const speed = m && typeof m.speed === "number" ? m.speed : 0;
+      // OrbitControls measures autoRotateSpeed in "turns per 60 frames"; the
+      // shared value is radians per second. 30/π converts, and the sign keeps
+      // the assembly turning the same way the parliament stage always has.
+      this.controls.autoRotateSpeed = speed * (30 / Math.PI);
+    }, 200);
 
     // Bind resize event
     window.addEventListener("resize", this.onWindowResize);
@@ -931,6 +977,14 @@ export class BaseThreeJsModule extends ModuleBase {
    * Implements the 'destroy' method for cleanup.
    */
   destroy() {
+    // Before anything else: the auto-rotation timer holds `this` and would
+    // keep firing against a torn-down controls object every 200 ms for the
+    // rest of the session, once per slot switch.
+    if (this._autoRotateTimer) {
+      clearInterval(this._autoRotateTimer);
+      this._autoRotateTimer = null;
+    }
+
     const disposeObject = (object) => {
       try {
         if (object.geometry) {
@@ -970,10 +1024,27 @@ export class BaseThreeJsModule extends ModuleBase {
           object.parent.remove(object);
         }
 
-        // Nullify properties to help with garbage collection
-        for (const propName in object) {
-          if (typeof object[propName] === "object" && object[propName] !== null) {
-            object[propName] = null;
+        // Nullify properties to help with garbage collection.
+        //
+        // ONLY on objects this module actually owns. This loop used to run on
+        // whatever it was handed, and destroy() hands it every field on `this`
+        // — so a module that merely HELD A REFERENCE to a shared global got
+        // that global gutted on unmount. Antifonía cached window.__scAudio in
+        // a field; switching away from the slot nulled __scAudio.voices and
+        // __scAudio.bands, and scAudio.ts's tick loop then threw
+        // "Cannot read properties of null" on every subsequent frame, for the
+        // rest of the session, from a slot that was no longer mounted.
+        //
+        // THREE objects are safe to gut — they are ours and they are being
+        // disposed. Plain data objects are not: we do not know who else holds
+        // them.
+        const owned = object.isObject3D || object.isMaterial
+          || object.isBufferGeometry || object.isTexture;
+        if (owned) {
+          for (const propName in object) {
+            if (typeof object[propName] === "object" && object[propName] !== null) {
+              object[propName] = null;
+            }
           }
         }
       } catch {

@@ -85,7 +85,13 @@ const PHENO_LIVE_KEYS = ["opacityFloor", "seasonalWeight"];
 // Bancada (Art. 43 §1) is a season-taxon grouping and `mode` is which strata
 // are present — the semantics line up one-to-one, so this is a direct map.
 // Index 0 ("todas") means "no pin": eco signals get the mode back.
-const BANCADA_MODE = ["", "desierto", "pantano", "aire", "mar"];
+// Index is the bancada position (0 = todas → "" = release to the eco poll).
+// Positions 1-4 are the detector's ecological roles, not temporadas, so the
+// stratum each one pins follows where that role is heard: night voices in the
+// swamp, insect stridulation in the dry, choruses in the air, and a community
+// shift across the whole water column. Kept in step with BANCADA_NAMES in
+// phenology/breath.ts and BANCADA_ROLES in tools/build_corpus.py.
+const BANCADA_MODE = ["", "pantano", "desierto", "aire", "mar"];
 // Set while a bancada other than "todas" is selected. An explicit human act
 // outranks the ETH eco bias, which is why wireEcoFromStore checks it.
 let _bancadaMode = "";

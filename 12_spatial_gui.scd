@@ -10,6 +10,11 @@
     var fieldSize, centerX, centerY, speakerRadius;
     var mouseDown, draggedNode, dragOffset;
     var mainTheme, controlPanel, modeButton, roomKnob, distanceKnob, resetButton;
+    // The two readouts under the knobs. They used to be anonymous StaticTexts
+    // built inline with the literal strings "0.80" and "0.50" and no handle to
+    // update them, so the numbers under ROOM SIZE and DISTANCE were wrong from
+    // the first time anyone moved a knob and stayed wrong for the session.
+    var roomLabel, distanceLabel;
     var statusText, coordText;
     
     "Creating Spatial Control GUI...".postln;
@@ -343,8 +348,13 @@
         .value_(~spatialParams.roomSize)
         .action_({ |knob|
             ~spatialParams.roomSize = knob.value;
-            ~spatialBuses.roomSize.set(knob.value);
-            "Room size: %".format(knob.value.round(0.01)).postln;
+            // ~spatialBuses is nil when ~buses was not yet populated at load
+            // time (see the guard where it is built) — without this the first
+            // knob move throws instead of just doing nothing.
+            if(~spatialBuses.notNil and: { ~spatialBuses.roomSize.notNil }) {
+                ~spatialBuses.roomSize.set(knob.value);
+            };
+            if(roomLabel.notNil) { roomLabel.string = knob.value.round(0.01).asString };
         });
     
     // Distance effect control
@@ -355,8 +365,10 @@
         .value_(~spatialParams.distanceEffect)
         .action_({ |knob|
             ~spatialParams.distanceEffect = knob.value;
-            ~spatialBuses.distanceEffect.set(knob.value);
-            "Distance effect: %".format(knob.value.round(0.01)).postln;
+            if(~spatialBuses.notNil and: { ~spatialBuses.distanceEffect.notNil }) {
+                ~spatialBuses.distanceEffect.set(knob.value);
+            };
+            if(distanceLabel.notNil) { distanceLabel.string = knob.value.round(0.01).asString };
         });
     
     // Reset positions button
@@ -381,16 +393,22 @@
         modeButton
     ));
     
+    roomLabel = StaticText()
+        .string_(~spatialParams.roomSize.round(0.01).asString)
+        .stringColor_(mainTheme.yellow).align_(\center);
     controlPanel.layout.add(VLayout(
         StaticText().string_("ROOM SIZE").stringColor_(mainTheme.foreground).align_(\center),
         roomKnob,
-        StaticText().string_("0.80").stringColor_(mainTheme.yellow).align_(\center)
+        roomLabel
     ));
     
+    distanceLabel = StaticText()
+        .string_(~spatialParams.distanceEffect.round(0.01).asString)
+        .stringColor_(mainTheme.red).align_(\center);
     controlPanel.layout.add(VLayout(
         StaticText().string_("DISTANCE").stringColor_(mainTheme.foreground).align_(\center),
         distanceKnob,
-        StaticText().string_("0.50").stringColor_(mainTheme.red).align_(\center)
+        distanceLabel
     ));
     
     controlPanel.layout.add(VLayout(

@@ -37,7 +37,31 @@
     // Transaction-influenced parameters
     transactionInfluence: 0.3,
     lastTransactionTime: 0,
-    transactionDensity: 0
+    transactionDensity: 0,
+
+    // ── Marea · tidal rhythm state ──────────────────────────────────────
+    // The rhythm is no longer a 16-step grid deciding what sounds; it is a
+    // slow swell deciding how LIKELY anything is to sound. These four are
+    // mirrored from the registry (\tideShort/\tideMedia/\tideLarga/
+    // \tidePulse via beatParam:), so every surface — browser checkbox,
+    // MIDI CC 17–20, SC GUI button — lands here through ~setParam.
+    tideShort: 0,
+    tideMedia: 1,
+    tideLarga: 0,
+    tidePulse: 1,
+    // Derived each tick, read by the [MON] line. A toggle whose effect
+    // cannot be observed is a toggle that cannot be debugged — that is the
+    // lesson the seven removed rhythm toggles paid for.
+    // nil, not 0: SystemClock.seconds is measured from sclang start, so 0 is a
+    // perfectly legal epoch (it is the value during the first moments of a
+    // session). Using 0 as the "unset" sentinel re-seeded the phase on every
+    // tick until the clock had run a while, which held the tide at its trough
+    // exactly when the piece is starting.
+    tideEpoch: nil,
+    tidePhase: 0,
+    tideValue: 0.65,
+    tideArc: \media,
+    lastKickBlock: 0
 );
 
 // Note: control buses for beat params are allocated here but only after the server is running.
@@ -76,6 +100,62 @@
     });
 };
 
+// ─── Cámara de las Especies: the five seats, as voices ──────────────────────
+// The browser shows five species with a Presence and an Activity fader each,
+// and until now both faders sent OSC that nothing in SuperCollider received.
+// This is where they land.
+//
+// The corpus cannot carry them: it is indexed by ecological ROLE, not by
+// taxon — 14_phenological_corpus.scd says so where it defines the bancadas.
+// So a species becomes audible here instead, in the percussion layer, which
+// already owns a pitch pool and a trigger.
+//
+// The division of labour is deliberate: the POOL still chooses the degree
+// (that whole hop-selection design above survives untouched) and the SPECIES
+// only chooses the register. One seat does not get to overwrite the melody;
+// it gets to say which octave the chamber hears it in.
+//
+// Registers are ~5-semitone steps ordered low to high, which is also roughly
+// descending body size across the default roster — a spectacled bear does not
+// call where a cotton-top tamarin calls. When the roster changes the ordering
+// stops meaning that, and the register is simply the seat's assigned range.
+//
+// They transpose UPWARD ONLY, and seat 0 is unity. Two reasons, both measured
+// against the actual pool (~computePitchPool spans about 35–250 Hz depending
+// on harmonicRich and transaction pressure):
+//
+//   · A symmetric set around 1.0 puts the lower seats under the 40 Hz floor
+//     that \opalPerc enforces, and a clipped seat is not a seat — at the
+//     bottom of the harmonicRich fader two or three of them collapsed onto
+//     40 Hz and became the same voice. Measured: 21 clipped notes and an
+//     adjacent-seat ratio of 1.00 (identical) for a symmetric set, against
+//     0 clipped and a full 1.33 throughout for this one.
+//   · Unity at seat 0 means the layer's original register is not lost, it is
+//     simply assigned to the first seat. With the default presences the first
+//     seat is also the most likely pick, so the percussion still sits where it
+//     always sat and the other four open the register upward from it.
+//
+// Top of the range works out at ~780 Hz, inside \opalPerc's own 900 Hz ceiling.
+~speciesBand     = #[1.0, 1.33, 1.78, 2.37, 3.16];
+~speciesPresence = ~speciesPresence ?? { Array.fill(5, 0.5) };
+~speciesActivity = ~speciesActivity ?? { Array.fill(5, 0.5) };
+// A species votes by sounding. This is the count the browser's VOT column has
+// been showing as a hardcoded 0 for its entire existence.
+~speciesVotes    = ~speciesVotes    ?? { Array.fill(5, 0) };
+~speciesFreq     = ~speciesFreq     ?? { Array.fill(5, 0.0) };
+
+// Weighted pick over presence × activity: a species that is present but silent
+// rarely speaks, and one that is absent does not speak at all. Falls back to a
+// uniform pick when every weight is ~0, so an empty chamber thins the layer's
+// register spread rather than stopping it — an error here would be raised
+// inside the beat Routine, and an error in a Routine stops it for the session.
+~pickSpecies = {
+    var w = Array.fill(5, { |i|
+        (~speciesPresence[i] ? 0.5).clip(0, 1) * (~speciesActivity[i] ? 0.5).clip(0, 1)
+    });
+    if(w.sum < 1e-6) { 5.rand } { w.normalizeSum.windex.clip(0, 4) };
+};
+
 // ─── Helper: Select voicing strategy from control values ───
 ~selectVoicing = { |resBdy=0.4, texDep=0.2|
     case
@@ -91,8 +171,69 @@
 };
 
 // Enhanced Beat Engine with transaction influence
+// ─── Marea: the density arc ──────────────────────────────────────────────
+// Which arc is active, and how many BLOCKS it spans. Blocks rather than
+// seconds because the whole engine is already locked to the chain's measured
+// cadence (~rhythmState[\blockPeriod]) — an arc counted in wall-clock seconds
+// would drift against the bar the moment the chain sped up or stalled.
+//   corto ~3.5 blocks ~ 40-50 s   ·   medio ~8 ~ 1.5-2 min
+//   largo ~25 blocks ~ 4-6 min
+// Exclusivity is guaranteed upstream by ~setParam's \exclusiveGroup, so at
+// most one of the three is ever set; the ordering here is only a tiebreak for
+// a hand-edited state.
+~tideArc = {
+    var p = ~beatParams;
+    case
+    { (p.tideShort ? 0) > 0.5 } { [\corto, 3.5]  }
+    { (p.tideMedia ? 0) > 0.5 } { [\medio, 8.0]  }
+    { (p.tideLarga ? 0) > 0.5 } { [\largo, 25.0] }
+    { [\plano, 0] };            // all off - flat, no swell
+};
+
+// Phase 0->1 over one arc, and the swell itself. A raised cosine is used
+// rather than a ramp so the crest and the trough are both plateaus and the
+// motion between them is gradual - the difference between weather and a
+// sawtooth. Flat mode holds a constant mid-high value so "no arc" still
+// plays steadily instead of going quiet.
+~tideCompute = { |blockPeriod = 12.0|
+    var arc = ~tideArc.value, span, phase, tide, now;
+    if(arc[1] <= 0) {
+        ~beatParams.tidePhase = 0;
+        ~beatParams.tideValue = 0.65;
+        ~beatParams.tideArc = arc[0];
+        0.65
+    } {
+        now = SystemClock.seconds;
+        if(~beatParams.tideEpoch.isNil) { ~beatParams.tideEpoch = now };
+        // blockPeriod is clamped because a single late or duplicated block
+        // timestamp must not stretch the arc to something that never
+        // completes inside a set, nor collapse it into a tremolo.
+        span  = arc[1] * blockPeriod.clip(4.0, 30.0);
+        phase = ((now - ~beatParams.tideEpoch) / span).mod(1.0);
+        tide  = (1 - cos(2pi * phase)) * 0.5;
+        ~beatParams.tidePhase = phase;
+        ~beatParams.tideValue = tide;
+        ~beatParams.tideArc = arc[0];
+        tide
+    };
+};
+
+// Per-event timing jitter, +/-45% of a tick, delivered as a timestamped
+// bundle so it displaces the EVENT without displacing the clock. Nothing
+// lands on an audible grid even though the scheduler still ticks regularly.
+// The base offset is half a tick, which keeps the jittered time strictly
+// positive - a negative bundle time is in the past and plays immediately,
+// which is exactly the grid we are trying to leave.
+~tideJitter = { |interval = 0.5|
+    (interval * 0.5) + rrand(interval.neg * 0.45, interval * 0.45)
+};
+
 ~beatEngine = {
-    if(~beatRoutine.notNil) { ~beatRoutine.stop };
+    // .stop AND nil. The GUI's Beat Engine light used to test ~beatRoutine.notNil,
+    // which stayed true forever because this line only stopped it — so the light
+    // reported a dead engine as running. The light now watches ~lastBeatTime
+    // (stamped once per step below), and this keeps the two in agreement.
+    if(~beatRoutine.notNil) { ~beatRoutine.stop; ~beatRoutine = nil };
     if(~opalDroneSynth.notNil) { ~opalDroneSynth.set(\gate, 0) };
     
     // Start the continuous ambient drone immediately
@@ -108,7 +249,14 @@
 
     ~opalDroneSynth = Synth(\opalDrone, [
         \freq, 55, // Low ambient anchor
-        \amp, ~beatParams.masterAmp * (~beatParams.transportGain ? 1) *0.8,
+        // masterAmp NO va aquí: \opalDrone lo lee en vivo por masterAmpBus más
+        // abajo. Estaba en los dos sitios, así que el drone respondía al mando
+        // aproximadamente al cuadrado y —peor— con la mitad del producto
+        // congelada en el valor que tuviera al arrancar el motor: mover el
+        // fader a mitad de sesión sólo bajaba el factor del bus, y reiniciar
+        // con el mismo fader daba otro nivel. Todas las demás capas lo aplican
+        // una sola vez.
+        \amp, (~beatParams.transportGain ? 1) * 0.8,
         \masterVolBus, ~bi.(\masterVolume),
         \pitchBus,     ~bi.(\pitchShift),
         \timeBus,      ~bi.(\timeDilation),
@@ -128,7 +276,9 @@
         \droneSpaceBus,   ~bi.(\droneSpace),
         \droneMixBus,     ~bi.(\droneMix),
         // delayFeedback had no reader at all until now.
-        \delayFeedbackBus, ~bi.(\delayFeedback)
+        \delayFeedbackBus, ~bi.(\delayFeedback),
+        // Matrix mixer: this layer's live level.
+        \mixDroneBus, ~bi.(\mixDrone)
     ], target: if(~defaultGroup.notNil, { ~defaultGroup }, { s.defaultGroup }));
     
     ~beatRoutine = Routine({
@@ -140,7 +290,6 @@
         // 4 per bar, not 2: the old two-hit pattern was too sparse to read as
         // a pulse. Four gives a low beat you can lean on while staying far
         // from beat-machine motion.
-        var kickPattern   = #[1,0,0,0, 1,0,0,0, 1,0,0,0, 1,0,0,0];
         var percDivisor   = 8;    // polyrhythmic divisor — shifts each phrase
         var dustProb      = 0.12; // base probability for dust hits
         var droneBaseFreq = 55;   // drone pitch — drifts over time
@@ -166,6 +315,13 @@
             var bMVol, bPitch, bTime, bSpec, bSpat, bText, bAtmo, bMem, bHarm, bRes;
             var elapsed = now % 300; // 5-minute macro cycle
             var rs, priorityRatio, accent;
+            var tide, tideDensity, jitTick, blockEdge, percProb;
+
+            // Proof of life for the GUI's Beat Engine light, stamped before the
+            // guarded body so it reflects the loop turning rather than the loop
+            // succeeding — a run of bad frames should still read as "running".
+            ~lastBeatTime = now;
+            ~beatStepCount = (~beatStepCount ? 0) + 1;
 
             // ⚠ An uncaught error inside a Routine STOPS IT, permanently and
             // silently. That is how a single nil read killed the kick and
@@ -235,6 +391,31 @@
 
             density = ~beatParams.transactionDensity ? 0;
 
+            // ── Marea ── the swell that replaces the grid.
+            // Everything below asks "how likely is an onset right now" rather
+            // than "which step are we on". tideDensity never reaches zero: a
+            // trough thins the texture to a trickle, it does not mute it, so
+            // the piece cannot arrive at a silence it has no way out of.
+            tide = ~tideCompute.(if(rs.notNil and: { rs[\blockPeriod] > 0 }) {
+                rs[\blockPeriod]
+            } { 12.0 });
+            // Floor 0.15 -> 0.42. A trough at 0.15 thinned percussion and dust to
+            // near nothing, and combined with the pads only firing on chain
+            // activity the whole piece went silent for half of every arc. The
+            // tide should THIN the texture, not empty it — the swell reads just
+            // as well between 0.42 and 1.0, and there is always something in
+            // the room.
+            tideDensity = tide.linlin(0, 1, 0.42, 1.0);
+            // The previous tick's interval is the tick length; jitter is scaled
+            // to it so it stays musical whether the chain is fast or slow.
+            jitTick = ~tideJitter.(~beatParams.lastInterval ? 0.5);
+            // A block boundary is the only place the kick may land. blockAt is
+            // the arrival timestamp maintained by the /eth/block handler, so
+            // this is true exactly once per block regardless of tick rate.
+            blockEdge = rs.notNil and: { rs[\blockAt] > 0 }
+                and: { rs[\blockAt] != (~beatParams.lastKickBlock ? 0) };
+            if(blockEdge) { ~beatParams.lastKickBlock = rs[\blockAt] };
+
             // ── (7) Silence as material ──  [needs `density`, hence its place]
             // Deep listening needs the floor to drop out. The rest is RELATIVE
             // to the chain's own recent rate: an absolute "8 s with no
@@ -272,18 +453,9 @@
                 bar = bar + 1;
                 if(bar % 4 == 0) {
                     phrase = phrase + 1;
-                    // Rotate kick pattern: shift downbeat, add/remove ghost hits
-                    kickPattern = Array.fill(16, { |i|
-                        if(i == 0, { 1 }, {          // downbeat always
-                        if(i == (8 + (phrase % 5)),   // moving secondary hit
-                            { 1 },
-                            { if((density > 0.4) and: { (i % (3 + (phrase % 3))) == 0 },
-                                { 0.6.coin.asInteger },  // density-gated fills
-                                { 0 })
-                            })
-                        })
-                    });
-                    // Shift polyrhythmic divisor — sparse, drone-friendly cadence
+                    // (the 16-step kickPattern that used to be rotated here is
+                    //  gone with the grid — the kick now follows block seams)
+                    // Shift the percussion base rate — sparse, drone-friendly
                     percDivisor = #[6, 8, 12, 7, 10].wrapAt(phrase);
                     // Evolve dust probability with density (kept low: crackle
                     // as occasional texture, not a constant rain)
@@ -300,12 +472,44 @@
             // Gas deviation → accent: how far this actor bid over base fee.
             accent = if(priorityRatio > 0) { 0.85 + (priorityRatio * 0.9) } { 1.0 };
 
-            // ── 1. KICK — evolving pattern instead of fixed 0,8 ──────────────────
-            if(kickPattern.wrapAt(step) == 1) {
+            // ── 1. KICK — one per block at most, gated by the tide ───────────────
+            // The 16-step kickPattern is gone. A kick on a grid is the single
+            // loudest tell that a machine is counting, and it is the opposite
+            // of the register asked for. Now the low end can only occur where
+            // the chain itself has a seam — a new block — and even there it is
+            // probabilistic: tide.squared, so it is near-certain at the crest
+            // and effectively absent through the trough.
+            //
+            // PULSO overrides that: one hit per block regardless of phase, a
+            // heartbeat that survives the troughs. It is the anchor to switch
+            // on when the tide alone leaves the piece too unmoored.
+            // ⚠ PARÉNTESIS OBLIGATORIOS. En sclang todos los selectores binarios
+            // tienen la MISMA precedencia y se evalúan de izquierda a derecha,
+            // así que `A and: {B} or: {C}` es `(A and: B) or: C`, no
+            // `A and: (B or: C)`. Sin ellos, con PULSO apagado el bombo dejaba
+            // de mirar blockEdge por completo y disparaba con la moneda de la
+            // marea en CADA tick —uno cada ~0.5 s en vez de uno por bloque de
+            // ~12 s— y toda la regla "el bombo sólo ocurre donde la cadena
+            // tiene una costura" quedaba anulada.
+            //
+            // No se detectó en vivo porque la prueba se hizo con PULSO
+            // ENCENDIDO, que es justo el caso donde la rama izquierda es
+            // verdadera y el paréntesis no cambia nada.
+            if(blockEdge and: { ((~beatParams.tidePulse ? 0) > 0.5) or: { tide.squared.coin } }) {
                 // Subtle frequency drift: ±5Hz per bar for organic feel
                 var kickFreq = 50 + ((bar % 7) - 3 * 1.5);
                 ~beatParams.kickCount = (~beatParams.kickCount ? 0) + 1;
-                Synth(\opalKick, [
+                // ── Onset → visuals ──────────────────────────────────────
+                // Los slots 4-9 son ahora los seis instrumentos del motor, uno
+                // cada uno, y necesitan saber CUÁNDO suena el suyo — no sólo
+                // cuánta energía hay en su banda. El espectro dice qué se está
+                // oyendo; esto dice qué acaba de empezar. Sin el ataque, un
+                // visual reacciona siempre tarde y difuso.
+                if(~visualsDest.notNil) {
+                    ~visualsDest.sendMsg('/voice/kick',
+                        (~beatParams.masterAmp * (0.5 + (density * 0.2)) * accent).clip(0, 1));
+                };
+                s.makeBundle(s.latency + jitTick, { Synth(\opalKick, [
                     \out,         0,
                     \freq,        kickFreq,
                     \amp,         ~beatParams.masterAmp * (~beatParams.transportGain ? 1) *(0.5 + (density * 0.2)) * accent,
@@ -316,13 +520,23 @@
                     \textureBus,   bText,
                     \spectralBus,  bSpec,
                     \atmosphereBus, bAtmo,
-                    \spatialBus,   bSpat
-                ], targetGrp);
+                    \spatialBus,   bSpat,
+                    // Matrix mixer: this layer's live level.
+                    \mixKickBus, ~bi.(\mixKick)
+                ], targetGrp) });
             };
 
-            // ── 2. PERC — shifting polyrhythm + melodic variation ────────────────
-            if((step % percDivisor == 0) or: {
-                (step % 10 == 0) and: { transactionInfluence > 0.6 } and: { 0.3.coin }
+            // ── 2. PERC — tidal probability, not a polyrhythmic divisor ──────────
+            // percDivisor survives as the BASE RATE (it is still rotated each
+            // phrase, so the average spacing keeps moving) but it no longer
+            // picks the moment: 1.6/divisor is the crest probability per tick,
+            // scaled by the tide. At divisor 8 that runs ~0.20 at the crest and
+            // ~0.03 in the trough, which is the swell-and-thin the arcs exist
+            // to produce. The transaction clause is kept — a burst of chain
+            // activity should still be able to push through a trough.
+            percProb = ((1.6 / percDivisor) * tideDensity).clip(0.0, 0.9);
+            if(percProb.coin or: {
+                (transactionInfluence > 0.6) and: { (0.12 * tideDensity).coin }
             }) {
                 // Degree selection. Stepping +1 through an ordered pool is a
                 // scale run whatever the pool contains — that was the other
@@ -343,15 +557,40 @@
                 // never repeats a note, never steps to a neighbour, and has no
                 // fixed cycle to lock into (verified full pool coverage at
                 // every size 4–7).
-                var baseFreq = pitchPool.wrapAt(poolIdx);
+                //
+                // Which seat speaks, and therefore in which register. The pool
+                // still supplies the degree; ~speciesBand only transposes it.
+                var speciesIdx = ~pickSpecies.value;
+                // Presence as prominence, not as a gate — absence is already
+                // handled upstream, where a weight of 0 simply stops that seat
+                // being picked. Centred so the 0.5 default is unity gain and
+                // the layer sounds exactly as it did before any of this.
+                var speciesGain = 0.55
+                    + ((~speciesPresence[speciesIdx] ? 0.5).clip(0, 1) * 0.9);
+                var baseFreq = (pitchPool.wrapAt(poolIdx)
+                    * ~speciesBand[speciesIdx]).clip(40, 900);
                 poolIdx = if(rs.notNil and: { rs[\addrSig] > 0 }) {
                     ((rs[\addrSig] >> 2) + rs[\txIndex]) % pitchPool.size
                 } {
                     (poolIdx + rrand(2, pitchPool.size - 1)) % pitchPool.size
                 };
                 ~beatParams.percCount = (~beatParams.percCount ? 0) + 1;
+                // The vote is cast at the moment of sounding, and the register
+                // it sounded in is what the browser's FREQ column reports.
+                ~speciesVotes[speciesIdx] = ~speciesVotes[speciesIdx] + 1;
+                ~speciesFreq[speciesIdx]  = baseFreq;
+                if(~visualsDest.notNil) {
+                    // freq normalizada además del ataque: la percusión cambia
+                    // de registro con la melodía y el visual debe seguirla.
+                    ~visualsDest.sendMsg('/voice/perc',
+                        (0.2 + (transactionInfluence * 0.15)).clip(0, 1),
+                        (baseFreq / 900).clip(0, 1));
+                };
 
                 // ─ Voicing: single note, dyad, or triad based on texture control ─
+                // ONE bundle for the whole case: every voice of a dyad or triad
+                // must share the same jitter, or the chord arpeggiates itself.
+                s.makeBundle(s.latency + jitTick, {
                 case
                 { voicingMode == \single } {
                     // Single pitched note
@@ -359,7 +598,7 @@
                     Synth(\opalPerc, [
                         \out,          0,
                         \freq,         percFreq,
-                        \amp,          ~beatParams.masterAmp * (~beatParams.transportGain ? 1) *(0.2 + (transactionInfluence * 0.15)) * accent,
+                        \amp,          ~beatParams.masterAmp * (~beatParams.transportGain ? 1) *(0.2 + (transactionInfluence * 0.15)) * accent * speciesGain,
                         \masterVolBus, bMVol,
                         \harmonicBus,  bHarm,
                         \textureBus,   bText,
@@ -368,7 +607,9 @@
                         \timeBus,      bTime,
                         \memoryBus,    bMem,
                         \atmosphereBus, bAtmo,
-                        \spatialBus,   bSpat
+                        \spatialBus,   bSpat,
+                        // Matrix mixer: this layer's live level.
+                        \mixPercBus, ~bi.(\mixPerc)
                     ], targetGrp);
                 }
                 { voicingMode == \dyad } {
@@ -378,7 +619,7 @@
                         Synth(\opalPerc, [
                             \out,          0,
                             \freq,         harmFreq,
-                            \amp,          ~beatParams.masterAmp * (~beatParams.transportGain ? 1) *(0.2 + (transactionInfluence * 0.15)) * accent * [1.0, 0.6][voice],
+                            \amp,          ~beatParams.masterAmp * (~beatParams.transportGain ? 1) *(0.2 + (transactionInfluence * 0.15)) * accent * speciesGain * [1.0, 0.6][voice],
                             \masterVolBus, bMVol,
                             \harmonicBus,  bHarm,
                             \textureBus,   bText,
@@ -387,7 +628,9 @@
                             \timeBus,      bTime,
                             \memoryBus,    bMem,
                             \atmosphereBus, bAtmo,
-                            \spatialBus,   bSpat
+                            \spatialBus,   bSpat,
+                            // Matrix mixer: this layer's live level.
+                            \mixPercBus, ~bi.(\mixPerc)
                         ], targetGrp);
                     };
                 }
@@ -402,7 +645,7 @@
                         Synth(\opalPerc, [
                             \out,          0,
                             \freq,         harmFreq,
-                            \amp,          ~beatParams.masterAmp * (~beatParams.transportGain ? 1) *(0.2 + (transactionInfluence * 0.15)) * accent * (1.0 / (h + 1.5)),
+                            \amp,          ~beatParams.masterAmp * (~beatParams.transportGain ? 1) *(0.2 + (transactionInfluence * 0.15)) * accent * speciesGain * (1.0 / (h + 1.5)),
                             \masterVolBus, bMVol,
                             \harmonicBus,  bHarm,
                             \textureBus,   bText,
@@ -411,15 +654,22 @@
                             \timeBus,      bTime,
                             \memoryBus,    bMem,
                             \atmosphereBus, bAtmo,
-                            \spatialBus,   bSpat
+                            \spatialBus,   bSpat,
+                            // Matrix mixer: this layer's live level.
+                            \mixPercBus, ~bi.(\mixPerc)
                         ], targetGrp);
                     };
                 };
+                });
             };
 
             // ── 3. DUST — probability-based, not grid-locked ─────────────────────
-            if(dustProb.coin) {
-                Synth(\opalDust, [
+            if((dustProb * tideDensity).coin) {
+                if(~visualsDest.notNil) {
+                    ~visualsDest.sendMsg('/voice/dust',
+                        (0.3 + (density * 0.35)).clip(0, 1));
+                };
+                s.makeBundle(s.latency + jitTick, { Synth(\opalDust, [
                     \out,         0,
                     \amp,         ~beatParams.masterAmp * (~beatParams.transportGain ? 1) *(0.3 + (density * 0.35)) * accent,
                     \masterVolBus, bMVol,
@@ -429,8 +679,10 @@
                     \pitchBus,     bPitch,
                     \memoryBus,    bMem,
                     \atmosphereBus, bAtmo,
-                    \spatialBus,   bSpat
-                ], targetGrp);
+                    \spatialBus,   bSpat,
+                    // Matrix mixer: this layer's live level.
+                    \mixDustBus, ~bi.(\mixDust)
+                ], targetGrp) });
             };
 
             // Broadcast current state to visuals bridge
@@ -438,6 +690,42 @@
                 ~visualsDest.sendMsg('/bio/nutrient', transactionInfluence.linlin(0, 1, 0.1, 0.9));
                 ~visualsDest.sendMsg('/bio/consensus', density.linlin(0, 1, 0.2, 0.8));
                 ~visualsDest.sendMsg('/bio/density', density);
+                // The tide itself, so the browser can follow the same swell the
+                // audio is following. Slot A thins its chorus through the
+                // trough and lets the machine bench carry the crest-to-trough
+                // transition; without this it would have to guess, or invent a
+                // second envelope that drifts against this one. Arc periods are
+                // 40 s to 6 min, so a ~1.5 s update is ample resolution.
+                ~visualsDest.sendMsg('/tide/state', tide, ~beatParams.tidePhase ? 0);
+
+                // ── The chamber reports back ────────────────────────────────
+                // /agent/species/state and /agent/edna/state have been parsed
+                // by parliamentStore.ts since it was written, in exactly this
+                // argument order, with nothing on the other end sending them.
+                // That is why the browser's ACOUSTIC SPECIES panel showed a
+                // hardcoded 440 Hz and 0 votes for every session. These are
+                // the emitters.
+                5.do { |i|
+                    ~visualsDest.sendMsg('/agent/species/state',
+                        i,
+                        (~speciesPresence[i] ? 0.5),
+                        (~speciesActivity[i] ? 0.5),
+                        (~speciesVotes[i] ? 0),
+                        (~speciesFreq[i] ? 0.0));
+                };
+                // Validation is how recently the site was last attested: a
+                // reading nobody has touched for two minutes is no longer a
+                // validated one. Decays rather than dropping, so the bar reads
+                // as confidence draining rather than a feed going down.
+                if(~ednaBiodiversity.notNil and: { ~ednaTouchedAt.notNil }) {
+                    8.do { |i|
+                        var since = SystemClock.seconds - (~ednaTouchedAt[i] ? 0);
+                        ~visualsDest.sendMsg('/agent/edna/state',
+                            i,
+                            (~ednaBiodiversity[i] ? 0.5),
+                            (1.0 - (since / 120.0)).clip(0, 1));
+                    };
+                };
             };
 
             // Step + interval
@@ -482,107 +770,16 @@
     ~beatRoutine.play;
 };
 
-// Enhanced Beat Controls with fixed GUI
-~addBeatControls = {
-    var controls = ();
-    var values = ~beatParams.copy;
-    
-    if(~beatWindow.notNil and: { ~beatWindow.isClosed.not }) {
-        ~beatWindow.close;
-    };
-
-    ~beatWindow = Window("Ethereum Beat Controls", Rect(500, 100, 400, 700));
-    ~beatWindow.view.decorator = FlowLayout(~beatWindow.bounds, Point(10, 10), Point(10, 5));
-
-    // Parameter groups
-    [
-        // Group 1: Rhythm
-        ["RHYTHM", [
-            [\beatTempo, [0.5, 2.0, \exp], "Tempo"],
-            [\transactionInfluence, [0.0, 1.0, \lin], "TX Influence"]
-        ]],
-        
-        // Group 2: Drone
-        ["DRONE", [
-            [\droneFade, [0.5, 4.0, \exp], "Fade Time"],
-            [\droneSpace, [0.0, 1.0, \lin], "Space"],
-            [\droneMix, [0.0, 1.0, \lin], "Layer Mix"],
-            [\droneRes, [0.1, 0.9, \lin], "Resonance"],
-            [\droneDepth, [0.0, 1.0, \lin], "Depth"]
-        ]],
-        
-        // Group 3: Effects
-        ["EFFECTS", [
-            [\noiseLevel, [0.0, 0.3, \lin], "Noise Level"],
-            [\noiseFilt, [0.1, 0.8, \lin], "Noise Filter"],
-            [\delayFeedback, [0.0, 0.8, \lin], "Delay Feedback"],
-            [\filterCutoff, [0.1, 1.0, \exp], "Filter Cutoff"]
-        ]],
-        
-        // Group 4: Master
-        ["MASTER", [
-            [\masterAmp, [0.0, 1.0, \lin], "Master Level"]
-        ]]
-    ].do { |group|
-        var groupName = group[0];
-        var params = group[1];
-        
-        // Add group header
-        StaticText(~beatWindow, 380@25)
-            .string_(groupName)
-            .align_(\center)
-            .background_(Color.grey(0.9));
-            
-        params.do { |spec|
-            var name = spec[0];
-            var range = spec[1];
-            var label = spec[2];
-            
-            StaticText(~beatWindow, 380@20)
-                .string_(label)
-                .align_(\left);
-            
-            controls[name] = Slider(~beatWindow, 380@20)
-                .value_(values[name].linlin(range[0], range[1], 0, 1))
-                .action_({ |sl|
-                    var mappedValue = sl.value.linlin(0, 1, range[0], range[1]);
-                    values[name] = mappedValue;
-                    ~beatParams[name] = mappedValue;
-                    ~controlBuses[name].set(mappedValue);
-                    if(name == \beatTempo) {
-                        ~beatEngine.value;
-                    };
-                });
-        };
-        
-        // Add spacing between groups
-        StaticText(~beatWindow, 380@10);
-    };
-
-    // Transaction Monitor
-    StaticText(~beatWindow, 380@30)
-        .string_("TRANSACTION MONITOR")
-        .align_(\center)
-        .background_(Color.grey(0.9));
-
-    ~transactionCount = StaticText(~beatWindow, 380@20)
-        .string_("Transactions: 0")
-        .align_(\center);
-        
-    ~valueDisplay = StaticText(~beatWindow, 380@20)
-        .string_("Last Value: 0 ETH")
-        .align_(\center);
-        
-    ~activityMeter = UserView(~beatWindow, 380@20)
-        .drawFunc_({ |view|
-            var activity = ~beatParams.transactionDensity;
-            Pen.fillColor = Color.blue(0.6, 0.5);
-            Pen.fillRect(Rect(0, 0, view.bounds.width * activity, view.bounds.height));
-        })
-        .animate_(true);
-
-    ~beatWindow.front;
-};
+// The 'Enhanced Beat Controls' window that used to live here is gone.
+// ~addBeatControls was never called from anywhere in the repo: it built a
+// second control surface with twelve 380-px sliders whose ranges contradicted
+// the canonical registry (droneFade 0.5-4.0 against 0.1-5 exp, filterCutoff
+// 0.1-1.0 exp against 0-1 lin, noiseLevel 0-0.3 against 0-0.5), and it wrote
+// through ~controlBuses[name].set() -- the pre-registry path that bypasses
+// ~setParam, so nothing it touched would have reached the GUI knob, the MIDI
+// mirror or the browser slider. Its three readouts (~transactionCount,
+// ~valueDisplay, ~activityMeter) were the only reason the deferred GUI-refresh
+// block in 6_osc_handlers.scd existed; that is deleted too.
 
 // Initialize beat engine only after server is booted and SynthDefs are registered.
 // s.doWhenBooted fires after the server is confirmed running. Adding s.sync + 0.5s extra

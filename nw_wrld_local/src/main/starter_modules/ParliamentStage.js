@@ -82,6 +82,26 @@ const AMBER_BRIGHT = 0xffcc44;
 const AMBER_PALE   = 0x331a00;
 const BG           = 0x000804;
 
+// White phosphorous. Everything in this chamber was one hue, which made the
+// image read as a single instrument panel rather than an assembly — nothing
+// could stand apart from the amber because nothing was allowed to. Two
+// elements now burn white: the outermost radar ring (the boundary of what the
+// instrument can see) and one orbiting body. A trace of green keeps it a
+// phosphor rather than a UI white, so it still belongs to the same screen.
+const PHOSPHOR        = 0xf2fff4;
+const PHOSPHOR_BRIGHT = 0xffffff;
+const PHOSPHOR_DIM    = 0x5a6b5e;
+
+// Which of the five species orbits in white. Index 3 is Alouatta, the howler —
+// Article 46 of the Cámara Fenológica gives it the one alert protocol in the
+// statute, obliging the Corporation to attend to its silence. The species the
+// instrument is bound to listen for is the species that is not amber.
+const PHOSPHOR_SPECIES = 3;
+// Index into RINGS. The outermost is the only one with real presence
+// (base opacity 0.28 against 0.06), so it is the one where a change of hue is
+// actually seen rather than inferred.
+const PHOSPHOR_RING    = 3;
+
 // ─── Layout ──────────────────────────────────────────────────────────────────
 const SPECIES_R = 4.2;
 const EDNA_R    = 7.8;
@@ -174,6 +194,12 @@ class ParliamentStage extends BaseThreeJsModule {
     this._smoothEmergency  = 0.0;
     this._smoothCo2        = 0.0;
     this._smoothWarmth     = 0.5;
+
+    // Vote flash — decays, so a vote reads as an EVENT rather than latching a
+    // colour on for the rest of the session (which is what it used to do).
+    this._lastVoteAt = 0;
+    this._voteFlash  = 0;
+    this._voteAlarm  = false;
 
     // ─── Renderer ─────────────────────────────────────────────────────────
     this.renderer.setClearColor(BG, 1);
@@ -273,7 +299,8 @@ class ParliamentStage extends BaseThreeJsModule {
 
     RINGS.forEach((r, i) => {
       const baseOp = i === RINGS.length - 1 ? 0.28 : 0.06;
-      const ring = makeCircle(r, 128, AMBER, baseOp);
+      // Only opacity is animated per frame, so this hue survives the update.
+      const ring = makeCircle(r, 128, i === PHOSPHOR_RING ? PHOSPHOR : AMBER, baseOp);
       this._radarGroup.add(ring);
       this._radarRings.push(ring);
       this._radarBaseOpacities.push(baseOp);
@@ -332,9 +359,13 @@ class ParliamentStage extends BaseThreeJsModule {
 
     for (let i = 0; i < 5; i++) {
       const group = new THREE.Group();
+      // The howler burns white rather than carrying its IUCN hue. Its status is
+      // not what marks it here — its audibility is.
+      const phos = i === PHOSPHOR_SPECIES;
+      const coreHex = phos ? PHOSPHOR : iucnColors[i];
 
       const wireMat = new THREE.MeshBasicMaterial({
-        color: AMBER_BRIGHT,
+        color: phos ? PHOSPHOR_BRIGHT : AMBER_BRIGHT,
         wireframe: true,
         transparent: true,
         opacity: 0.7,
@@ -342,8 +373,8 @@ class ParliamentStage extends BaseThreeJsModule {
       const wireMesh = new THREE.Mesh(geometries[i], wireMat);
 
       const solidMat = new THREE.MeshPhongMaterial({
-        color: iucnColors[i],
-        emissive: iucnColors[i],
+        color: coreHex,
+        emissive: coreHex,
         emissiveIntensity: 0.4,
         transparent: true,
         opacity: 0.15,
@@ -353,7 +384,7 @@ class ParliamentStage extends BaseThreeJsModule {
       group.add(solidMesh);
       group.add(wireMesh);
 
-      const halo = makeParticleHalo(120, 0.65, AMBER);
+      const halo = makeParticleHalo(120, 0.65, phos ? PHOSPHOR : AMBER);
       group.add(halo);
       this.speciesHalos.push(halo);
       this.speciesSolidMats.push(solidMat);
@@ -505,6 +536,10 @@ class ParliamentStage extends BaseThreeJsModule {
   updateStage() {
     const state   = this.parliamentState;
     const elapsed = this.clock.getElapsedTime();
+    // Frame delta, for the decays below. getDelta() is not used because other
+    // code in this file already consumes the clock via getElapsedTime().
+    const dt = Math.min(0.1, Math.max(0.001, elapsed - (this._lastElapsed ?? elapsed)));
+    this._lastElapsed = elapsed;
 
     const phase      = state ? state.phase      : (elapsed / 120) % 1;
     const consensus  = state ? state.consensus  : 0.5 + Math.sin(elapsed * 0.3) * 0.3;
@@ -569,7 +604,18 @@ class ParliamentStage extends BaseThreeJsModule {
     this._vignettePass.uniforms.darkness.value = lerp(1.1, 2.2, this._smoothEmergency);
 
     // ── Point light ───────────────────────────────────────────────────────
-    this.controls.autoRotateSpeed = 0.2 + this._smoothConsensus * 0.5;
+    // Consensus sets how briskly the assembly turns; the shared idle drift
+    // (window.__vizMotion, fed by ROTATION SPD) sets whether it turns at all
+    // when nobody is at the desk. This line used to be a bare assignment, so
+    // it overwrote whatever threeBase had just set 200 ms earlier and slot 0
+    // was the one place the slider could never reach.
+    {
+      const vm = (typeof window !== "undefined") ? window.__vizMotion : null;
+      const drift = (vm && typeof vm.speed === "number") ? vm.speed * (30 / Math.PI) : 0;
+      // The stage has always turned on its own; the drift adds to that floor
+      // rather than replacing it, so slot 0 never comes to a dead stop.
+      this.controls.autoRotateSpeed = 0.2 + this._smoothConsensus * 0.5 + drift;
+    }
     this._ptLight.intensity = 0.8 + consensusW * 1.2;
     this._ptLight.position.set(
       Math.sin(elapsed * 0.3) * 1.5,
@@ -623,12 +669,18 @@ class ParliamentStage extends BaseThreeJsModule {
 
       // Wireframe: fully transparent at presence=0, fully bright at presence=1
       wfm.material.opacity = sp.presence;
-      // Color: orange-dim (dormant) → amber-bright (active) with smooth blend
+      // Color: dim (dormant) → bright (active) with smooth blend. The howler
+      // climbs the same three steps on its own phosphor ramp, so it reads as
+      // the same state machine in a different substance — not as a node stuck
+      // at one colour while the rest of the chamber breathes.
+      const ramp = i === PHOSPHOR_SPECIES
+        ? [PHOSPHOR_DIM, PHOSPHOR, PHOSPHOR_BRIGHT]
+        : [AMBER_DIM, AMBER, AMBER_BRIGHT];
       const wireHex = sp.activity > 0.7
-        ? AMBER_BRIGHT
+        ? ramp[2]
         : sp.activity > 0.4
-          ? AMBER
-          : AMBER_DIM;
+          ? ramp[1]
+          : ramp[0];
       wfm.material.color.setHex(wireHex);
 
       // Solid core: very visible glow at high presence
@@ -774,12 +826,34 @@ class ParliamentStage extends BaseThreeJsModule {
     }
 
     // ── Vote event: flash ────────────────────────────────────────────────
-    if (state && state.events.voteResult) {
-      const passed = state.events.voteResult.passed;
-      for (const grp of this.speciesGroups)
-        grp.children[1].material.color.setHex(passed ? AMBER_BRIGHT : AMBER_DIM);
-      parliamentStore.consumeEvents();
+    // Two things were wrong here. It read state.events.voteResult, which only
+    // /parliament/vote ever sets — so START, STOP and EMERGENCY were invisible
+    // to slot 0, one of five types. And it SET a colour with no decay, so
+    // after the first vote the species markers stayed AMBER_BRIGHT for the
+    // rest of the session: a one-time state change wearing the costume of an
+    // event.
+    //
+    // Now it polls the same window.__voteEvent every other slot polls, keeps
+    // its own decay, and distinguishes assent from alarm.
+    {
+      const ev = (typeof window !== "undefined") ? window.__voteEvent : null;
+      if (ev && ev.time !== this._lastVoteAt) {
+        this._lastVoteAt = ev.time;
+        this._voteFlash = 1.0;
+        this._voteAlarm = (ev.type === "failed" || ev.type === "emergency" || ev.type === "stop");
+      }
+      if (this._voteFlash > 0.001) {
+        this._voteFlash *= Math.exp(-dt * 1.6);
+        const k = this._voteFlash;
+        const hot = this._voteAlarm ? 0xff5a39 : AMBER_BRIGHT;
+        for (const grp of this.speciesGroups) {
+          const m = grp.children[1].material;
+          m.color.setHex(AMBER_DIM);
+          m.color.lerp(new THREE.Color(hot), k);
+        }
+      }
     }
+    if (state && state.events.voteResult) parliamentStore.consumeEvents();
   }
 
   static methods = [...BaseThreeJsModule.methods];

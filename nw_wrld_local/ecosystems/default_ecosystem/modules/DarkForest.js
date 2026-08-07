@@ -704,13 +704,26 @@ class DarkForest extends BaseThreeJsModule {
     this.focusY = THREE.MathUtils.lerp(botY, topY, this.ctl.pitch);
     // ETH inflow → vitality (feeds reverse-breath drone)
     this.vitality = Math.min(1, this.vitality + this.ethPressure * dt * 0.16);
+    // Consenso → rectitud de los vectores de flujo. Acuerdo alto: los
+    // intercambios van derecho de un estrato a otro. Acuerdo bajo: serpentean.
+    this.flowJitter = (1 - this.coherence) * 0.5;
   }
 
   // Spectral Shift → palette temperature on structural lines (cool↔warm)
   _structureColor() {
     const P = DarkForest.PALETTE;
     const cool = new THREE.Color(P.gridHi), warm = new THREE.Color(P.carbon);
-    return cool.lerp(warm, Math.max(0, Math.min(1, (this.ctl.spectral - 0.4) * 1.6 + 0.1)));
+    const c = cool.lerp(warm, Math.max(0, Math.min(1, (this.ctl.spectral - 0.4) * 1.6 + 0.1)));
+    // CONSENSO. Hasta ahora `coherence` entraba por setCoherence, se suavizaba
+    // en _updateControls y no la leía NINGUNA ruta de dibujo: el deslizador de
+    // consenso llegaba a este slot y moría en un campo. Sólo salía otra vez
+    // como harmonicrich hacia SC, es decir, cambiaba el sonido y otros slots
+    // pero nunca esta imagen.
+    //
+    // Ahora la estructura se ORDENA con el acuerdo: a consenso alto las
+    // líneas del estrato se afirman y enfrían; a consenso bajo se apagan y
+    // se enturbian, que es lo que un bosque desacordado debería parecer.
+    return c.multiplyScalar(0.55 + this.coherence * 0.65);
   }
 
   _updateStrata(dt) {
@@ -762,6 +775,8 @@ class DarkForest extends BaseThreeJsModule {
   }
 
   _updateFlows(dt) {
+    // Vector de trabajo para el jitter, para no tocar los puntos guardados.
+    const _jitPt = this._jitPt || (this._jitPt = new THREE.Vector3());
     const td = this.ctl.time;
     const drawSpeed = THREE.MathUtils.lerp(2.4, 0.7, td);
     const up = new THREE.Vector3(0, 1, 0);
@@ -785,7 +800,23 @@ class DarkForest extends BaseThreeJsModule {
       const rw = 0.6 + (this.stratumW[f.sIdx !== undefined ? f.sIdx : 0] * 0.4);
       f.mat.opacity = (0.25 + 0.6 * env) * glowBase * rw;
 
-      f.head.position.copy(headPt);
+      // Consenso → rectitud. La cabeza del flujo serpentea cuando la sala no
+      // está de acuerdo y va derecha cuando sí. Es el mismo campo que ya
+      // entraba por setCoherence y que hasta ahora no leía nada.
+      // headPt es una REFERENCIA a f.pts[...], el arreglo de puntos guardado
+      // de la curva. Sumarle el jitter ahí desplazaba el punto de forma
+      // ACUMULATIVA: a consenso 0.5 hasta ±0.055 por cuadro, sin reinicio, así
+      // que en los 3-5 s de vida del flujo el punto se alejaba caminando de su
+      // propia línea, la punta de flecha se orientaba desde un punto corrompido
+      // y, en cuanto `drawn` avanzaba, la deriva quedaba grabada en la
+      // trayectoria almacenada. El desplazamiento tiene que ser POR CUADRO.
+      const jit = this.flowJitter || 0;
+      _jitPt.copy(headPt);
+      if (jit > 0.001) {
+        _jitPt.x += Math.sin(this._t * 3.1 + i * 1.7) * jit * 0.22;
+        _jitPt.y += Math.sin(this._t * 2.3 + i * 2.9) * jit * 0.16;
+      }
+      f.head.position.copy(_jitPt);
       f.head.material.opacity = env * 0.9 * glowBase;
       f.head.scale.setScalar(0.35 + 0.25 * Math.sin(this._t * 6 + i) * env + 0.25 * env);
 

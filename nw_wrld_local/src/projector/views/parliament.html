@@ -113,15 +113,23 @@
             color: var(--text-dim);
             letter-spacing: 0.5px;
         }
-        /* Right panel: telemetry readouts */
+        /* Right panel: telemetry readouts.
+           Scrolls, like the left panel, with the same hidden scrollbar. It was
+           `overflow: hidden`, which does not mean "nothing overflows" — it
+           means whatever does not fit is silently cut off the bottom, and the
+           Cámara Fenológica · Corpus block sits there. On a short display the
+           corpus cursor simply was not on screen and nothing said so. */
         #right-panel {
             width: 300px;
             flex-shrink: 0;
             border-left: 1px solid var(--border);
             display: flex;
             flex-direction: column;
-            overflow: hidden;
+            overflow-y: auto;
+            overflow-x: hidden;
+            scrollbar-width: none;
         }
+        #right-panel::-webkit-scrollbar { display: none; }
         #footer {
             border-top: 1px solid var(--border);
             padding: 3px 12px;
@@ -202,6 +210,56 @@
             text-align: right;
             font-size: 14px;
         }
+        /* ── Marea · arco de densidad ────────────────────────────────────
+           Recovered from the removed /rhythm/ toggles (9f7b51d7). The four
+           tide controls are booleans, and a checkbox reads as a boolean at a
+           glance in a way a 0–1 slider does not. */
+        .rhythm-row {
+            display: flex;
+            align-items: flex-start;
+            gap: 8px;
+            margin-bottom: 7px;
+            cursor: pointer;
+        }
+        .rhythm-row input[type="checkbox"] {
+            -webkit-appearance: none;
+            appearance: none;
+            flex: 0 0 auto;
+            width: 14px;
+            height: 14px;
+            margin: 2px 0 0 0;
+            border: 1px solid var(--text-dim);
+            background: transparent;
+            cursor: pointer;
+            position: relative;
+        }
+        .rhythm-row input[type="checkbox"]:checked {
+            background: var(--text-bright, #fff);
+            border-color: var(--text-bright, #fff);
+        }
+        .rhythm-row input[type="checkbox"]:checked::after {
+            content: "";
+            position: absolute;
+            inset: 3px;
+            background: #000;
+        }
+        .rhythm-row .rhythm-text { display: flex; flex-direction: column; gap: 1px; }
+        .rhythm-row .rhythm-name {
+            color: var(--text-dim);
+            font-size: 13px;
+            text-transform: uppercase;
+            letter-spacing: 0.4px;
+        }
+        .rhythm-row input[type="checkbox"]:checked ~ .rhythm-text .rhythm-name {
+            color: var(--text-bright, #fff);
+        }
+        .rhythm-row .rhythm-src {
+            color: var(--text-dim);
+            opacity: 0.55;
+            font-size: 11px;
+            text-transform: none;
+            letter-spacing: 0;
+        }
         input[type="range"] {
             flex: 1;
             -webkit-appearance: none;
@@ -234,15 +292,36 @@
         .uicn-LC { color: #88aa00; border-color: #88aa00; }
 
         /* ─── BIOTOKEN FORMULA ─── */
+        /* Two columns rather than three wrapped lines: the terms are a list of
+           readings now, and a reading wants its number on the same baseline as
+           its name. Denser than the old prose form despite carrying six live
+           values it did not carry before. */
         #biotoken-section .formula {
             color: var(--text-dim);
-            font-size: 14px;
-            line-height: 1.6;
+            font-size: 11px;
+            line-height: 1.45;
             border: 1px solid rgba(255,136,0,0.12);
-            padding: 5px;
+            padding: 4px 5px;
             margin-top: 4px;
         }
         #biotoken-section .formula .var { color: var(--amber); }
+        #biotoken-section .formula-head {
+            font-size: 10px;
+            letter-spacing: 0.4px;
+            padding-bottom: 3px;
+            margin-bottom: 3px;
+            border-bottom: 1px solid rgba(255,136,0,0.12);
+        }
+        #biotoken-section .formula-term {
+            display: flex;
+            justify-content: space-between;
+            gap: 8px;
+        }
+        #biotoken-section .formula-term .fterm { white-space: nowrap; }
+        #biotoken-section .formula-term .fval {
+            color: var(--amber);
+            font-variant-numeric: tabular-nums;
+        }
         #biotoken-value {
             font-size: 28px;
             color: var(--amber-bright);
@@ -311,17 +390,28 @@
             margin-top: 2px;
         }
 
-        /* ─── BIOME MAP (text art) ─── */
-        #biome-map {
+        /* ─── CORPUS SITE + RING CURSOR (1-bit, cites the Cámara palette) ─── */
+        #corpus-site {
             font-size: 12px;
-            color: var(--text-dim);
-            line-height: 1.4;
+            color: #fff;
+            line-height: 1.45;
             letter-spacing: 0.3px;
-            padding: 4px;
-            border: 1px solid rgba(255,136,0,0.08);
-            margin-top: 4px;
+            padding: 5px 4px;
+            border: 1px solid rgba(255,255,255,0.18);
+            margin-bottom: 6px;
         }
-        #biome-map .biome-active { color: var(--amber); }
+        #corpus-site .corpus-site-dim {
+            color: rgba(255,255,255,0.45);
+            font-size: 11px;
+        }
+        #corpus-cursor {
+            font-size: 11px;
+            color: rgba(255,255,255,0.7);
+            letter-spacing: 0.4px;
+            padding: 4px;
+            margin-top: 4px;
+            border-top: 1px solid rgba(255,255,255,0.12);
+        }
 
         /* ─── VIZ SWITCHER HUD ─── */
         #viz-hud {
@@ -515,24 +605,28 @@
             </div>
 
             <!-- Acoustic Species Controls (injected by JS from live IUCN data).
-                 VIZ-only: emit /agents/species/activity, which SC does not
-                 handle (SC species sound comes from MIDI /midi/note + ETH). -->
+                 These were VIZ-only for as long as they existed: they emitted
+                 /agents/species/* into UDP 57120 where no OSCdef received them.
+                 6_osc_handlers.scd now does, and 5_beat_engine.scd sounds them —
+                 activity weights how often a seat is picked for a percussion
+                 hit, presence how loudly it speaks and which register it owns.
+                 The seat reports back on /agent/species/state (ACT / FREQ / VOT
+                 in the right rail). -->
             <div class="tele-section">
-                <div class="tele-section-title">Species Activity → VIZ</div>
+                <div class="tele-section-title">Species Activity → SC + VIZ</div>
                 <div id="species-activity-ctrl"></div>
             </div>
 
-            <!-- Species Presence (injected by JS). VIZ-only: /agents/species/presence
-                 has no SC handler. -->
             <div class="tele-section">
-                <div class="tele-section-title">Species Presence → VIZ</div>
+                <div class="tele-section-title">Species Presence → SC + VIZ</div>
                 <div id="species-presence-ctrl"></div>
             </div>
 
-            <!-- eDNA biodiversity controls (dynamic from IUCN feed). VIZ-only:
-                 /agents/edna/biodiversity has no SC handler. -->
+            <!-- eDNA biodiversity (dynamic from IUCN feed). Same story:
+                 /agents/edna/biodiversity is received now, and the site's
+                 validation reading is echoed back on /agent/edna/state. -->
             <div class="tele-section">
-                <div class="tele-section-title">eDNA Biodiversity → VIZ</div>
+                <div class="tele-section-title">eDNA Biodiversity → SC + VIZ</div>
                 <div id="edna-ctrl-rows"></div><!-- injected by JS -->
             </div>
 
@@ -596,13 +690,20 @@
                         data-osc="/pheno/bancada">
                     <span class="ctrl-val" id="disp-pheno-bancada">0.00</span>
                 </div>
-                <!-- Bancada radio (Art. 43 §1): 5 discrete season-taxon groupings -->
+                <!-- Bancada radio (Art. 43). These were labelled by temporada,
+                     which duplicated the jump-season row below and named
+                     something the bancada bus does not select. Art. 43 defines
+                     the bancadas taxonomically (FLORA/AVES/AMPHIBIA/REPTILIA/
+                     MAMMALIA), but the AudioMoth corpus carries no taxonomy —
+                     the detector yields ecological roles. Those are what the
+                     filter can honestly act on. Dawn and dusk chorus share a
+                     seat: dawn alone is 6 events in 261. -->
                 <div class="pheno-bancada-row" id="pheno-bancada-row">
                     <button class="pheno-bancada-btn active" data-bancada="0">Todas</button>
-                    <button class="pheno-bancada-btn" data-bancada="1">Seca</button>
-                    <button class="pheno-bancada-btn" data-bancada="2">1as Lluv</button>
-                    <button class="pheno-bancada-btn" data-bancada="3">Med Seco</button>
-                    <button class="pheno-bancada-btn" data-bancada="4">2as Lluv</button>
+                    <button class="pheno-bancada-btn" data-bancada="1">Nocturna</button>
+                    <button class="pheno-bancada-btn" data-bancada="2">Insectos</button>
+                    <button class="pheno-bancada-btn" data-bancada="3">Coro</button>
+                    <button class="pheno-bancada-btn" data-bancada="4">Cambio</button>
                 </div>
                 <!-- Jump-to-season (Art. 42 §) -->
                 <div class="pheno-btn-row">
@@ -610,6 +711,59 @@
                     <button class="pheno-btn" data-season="primeras_lluvias">1as Lluv</button>
                     <button class="pheno-btn" data-season="medio_seco">Med Seco</button>
                     <button class="pheno-btn" data-season="segundas_lluvias">2as Lluv</button>
+                </div>
+            </div>
+
+            <!-- ─── Matrix mixer (CC 42–49 · /mix/*) ─── -->
+            <!-- The only controls on this surface that change how LOUD a layer
+                 is rather than how it sounds. Until these existed the balance
+                 between voices lived in the hardcoded gain budget of
+                 3_synthdefs.scd and could not be touched while playing.
+                 Unity is 1.0 at mid-throw, so 0.5 here is the boot state. -->
+            <div class="tele-section tele-section--pheno">
+                <div class="tele-section-title">
+                    Matrix Mixer · Layer Levels
+                    <span class="pheno-art">CC 42–49 · 0=mute 0.5=unity</span>
+                </div>
+                <div class="ctrl-row">
+                    <label>Drone</label>
+                    <input type="range" min="0" max="1" step="0.01" value="0.5" data-osc="/mix/drone">
+                    <span class="ctrl-val" id="disp-mix-drone">0.50</span>
+                </div>
+                <div class="ctrl-row">
+                    <label>Pad</label>
+                    <input type="range" min="0" max="1" step="0.01" value="0.5" data-osc="/mix/pad">
+                    <span class="ctrl-val" id="disp-mix-pad">0.50</span>
+                </div>
+                <div class="ctrl-row">
+                    <label>Kick</label>
+                    <input type="range" min="0" max="1" step="0.01" value="0.5" data-osc="/mix/kick">
+                    <span class="ctrl-val" id="disp-mix-kick">0.50</span>
+                </div>
+                <div class="ctrl-row">
+                    <label>Perc</label>
+                    <input type="range" min="0" max="1" step="0.01" value="0.5" data-osc="/mix/perc">
+                    <span class="ctrl-val" id="disp-mix-perc">0.50</span>
+                </div>
+                <div class="ctrl-row">
+                    <label>Dust</label>
+                    <input type="range" min="0" max="1" step="0.01" value="0.5" data-osc="/mix/dust">
+                    <span class="ctrl-val" id="disp-mix-dust">0.50</span>
+                </div>
+                <div class="ctrl-row">
+                    <label>Sample</label>
+                    <input type="range" min="0" max="1" step="0.01" value="0.5" data-osc="/mix/sample">
+                    <span class="ctrl-val" id="disp-mix-sample">0.50</span>
+                </div>
+                <div class="ctrl-row">
+                    <label>Corpus</label>
+                    <input type="range" min="0" max="1" step="0.01" value="0.5" data-osc="/mix/corpus">
+                    <span class="ctrl-val" id="disp-mix-corpus">0.50</span>
+                </div>
+                <div class="ctrl-row">
+                    <label>Ultra</label>
+                    <input type="range" min="0" max="1" step="0.01" value="0.5" data-osc="/mix/ultra">
+                    <span class="ctrl-val" id="disp-mix-ultra">0.50</span>
                 </div>
             </div>
 
@@ -752,6 +906,47 @@
                         data-osc="/soneth/txInfluence">
                     <span class="ctrl-val" id="disp-soneth-txInfluence">0.50</span>
                 </div>
+                <!-- Marea · arco de densidad. The rhythm is probabilistic, not
+                     gridded: a slow swell raises and lowers how likely any
+                     onset is. These pick how long one swell takes, measured in
+                     BLOCKS so the arc stays locked to the chain's cadence.
+                     The three arcs are mutually exclusive and SC owns that
+                     rule (~setParam's exclusiveGroup) — ticking one here
+                     unticks the others via the echo, so this panel, the SC GUI
+                     and MIDI CC 17–19 can never disagree. All three off is a
+                     legal state: flat density, no swell. -->
+                <div class="tele-section-title" style="font-size:12px;opacity:0.5;margin-top:8px">
+                    MAREA · ARCO DE DENSIDAD
+                    <span class="pheno-art">CC 17–20 · toggles</span>
+                </div>
+                <label class="rhythm-row">
+                    <input type="checkbox" data-osc="/tide/short">
+                    <span class="rhythm-text">
+                        <span class="rhythm-name">Arco Corto</span>
+                        <span class="rhythm-src">~3.5 bloques (40–50 s) · la marea sube y baja rápido</span>
+                    </span>
+                </label>
+                <label class="rhythm-row">
+                    <input type="checkbox" data-osc="/tide/media" checked>
+                    <span class="rhythm-text">
+                        <span class="rhythm-name">Arco Medio</span>
+                        <span class="rhythm-src">~8 bloques (1.5–2 min) · respiración media</span>
+                    </span>
+                </label>
+                <label class="rhythm-row">
+                    <input type="checkbox" data-osc="/tide/larga">
+                    <span class="rhythm-text">
+                        <span class="rhythm-name">Arco Largo</span>
+                        <span class="rhythm-src">~25 bloques (4–6 min) · el movimiento de una obra entera</span>
+                    </span>
+                </label>
+                <label class="rhythm-row">
+                    <input type="checkbox" data-osc="/tide/pulse" checked>
+                    <span class="rhythm-text">
+                        <span class="rhythm-name">Pulso</span>
+                        <span class="rhythm-src">un golpe grave por bloque, atraviesa los valles de la marea</span>
+                    </span>
+                </label>
             </div>
 
             <!-- Configs: save/load the full control state. SC owns the JSON
@@ -800,7 +995,7 @@
                 <div id="parliament-stage"></div>
                 <div id="canvas-overlay">
                     <!-- 3D-tracked species labels injected by JS -->
-                    <div id="viz-hint">0–9 · P · F · B · E · R · switch viz</div>
+                    <div id="viz-hint">0–9 · P · F · B · E · R · A · switch viz</div>
                     <div id="viz-hud">[0] Parliament of All Things</div>
                 </div>
             </div>
@@ -857,10 +1052,23 @@
                 <div class="tele-section-title">BioToken V3 · Live</div>
                 <div id="biotoken-value">0.000</div>
                 <div id="biotoken-mult">IUCN ×<span id="bt-iucn">1.0</span>  eDNA ×<span id="bt-edna">1.0</span>  Fungi ×<span id="bt-fungi">1.0</span></div>
+                <!-- The formula was static text, and it disagreed with the code
+                     it claimed to describe: it said "Duration" where
+                     bioTokenTerms() has always used activity, and it printed
+                     IUCN as the raw ×5 multiplier while the factor applied is
+                     that over 5. Two of its six terms (Fungi.chem, AI.optim)
+                     were frozen constants left behind when the Fungi Networks
+                     and Gaia AI Core panels were removed. Every term now
+                     carries its live value, so the token can be read as the
+                     product it is rather than taken on faith. -->
                 <div class="formula">
-                    <span class="var">BT</span> = Presence × Duration<br>
-                    &nbsp;&nbsp;× eDNA.biodiv × Fungi.chem<br>
-                    &nbsp;&nbsp;× AI.optim × IUCN.weight
+                    <div class="formula-head"><span class="var">BT</span> = ∏ of six factors</div>
+                    <div class="formula-term"><span class="fterm">Presence</span><span class="fval" id="bt-t-presence">—</span></div>
+                    <div class="formula-term"><span class="fterm">Activity</span><span class="fval" id="bt-t-activity">—</span></div>
+                    <div class="formula-term"><span class="fterm">eDNA.biodiv</span><span class="fval" id="bt-t-edna">—</span></div>
+                    <div class="formula-term"><span class="fterm">Fungi.chem</span><span class="fval" id="bt-t-fungi">—</span></div>
+                    <div class="formula-term"><span class="fterm">AI.optim</span><span class="fval" id="bt-t-ai">—</span></div>
+                    <div class="formula-term"><span class="fterm">IUCN.weight</span><span class="fval" id="bt-t-iucn">—</span></div>
                 </div>
             </div>
 
@@ -872,7 +1080,7 @@
 
             <!-- eDNA Sites -->
             <div class="tele-section">
-                <div class="tele-section-title">eDNA Sites · Colombia</div>
+                <div class="tele-section-title">eDNA Site · Córdoba</div>
                 <div id="edna-tele"></div>
             </div>
 
@@ -910,19 +1118,39 @@
                 </div>
             </div>
 
-            <!-- Colombian Biome Map -->
-            <div class="tele-section">
-                <div class="tele-section-title">Biome Network · Colombia</div>
-                <div id="biome-map">
-                    <div id="bm-CHO">CHO · Chocó Biogeog.</div>
-                    <div id="bm-AMZ">AMZ · Amazonia</div>
-                    <div id="bm-COR">COR · E.Cordillera</div>
-                    <div id="bm-CAR">CAR · Caribbean</div>
-                    <div id="bm-ORI">ORI · Orinoquía</div>
-                    <div id="bm-PAC">PAC · Pacific Coast</div>
-                    <div id="bm-MAG">MAG · Magdalena</div>
-                    <div id="bm-GUA">GUA · Guayana</div>
+            <!-- ─── Cámara Fenológica · Corpus (Capítulo VI, Art. 42) ─── -->
+            <!-- Replaces the eight-region "Biome Network · Colombia" text art.
+                 The Reserva is one biome in one place — bosque seco tropical
+                 of the Sinú valley, Córdoba — so a national biome map listed
+                 seven regions this instrument has never recorded and had no
+                 way to reach. The space now carries the field-recording layer:
+                 its transport and its fader, which is what the corpus needs to
+                 be playable and had nowhere to live. -->
+            <div class="tele-section tele-section--pheno">
+                <div class="tele-section-title">
+                    Cámara Fenológica · Corpus
+                    <span class="pheno-art">CC 21–22 · AudioMoth</span>
                 </div>
+                <div id="corpus-site">
+                    Bosque seco tropical · Córdoba<br>
+                    <span class="corpus-site-dim">Cabecera Planeta Rica · cuenca del Sinú · SN-26</span>
+                </div>
+                <div class="ctrl-row">
+                    <label>Corpus Lvl</label>
+                    <input type="range" min="0" max="1" step="0.01" value="0.5"
+                        data-osc="/pheno/corpusLevel">
+                    <span class="ctrl-val" id="disp-pheno-corpusLevel">0.50</span>
+                </div>
+                <!-- Art. 42: how fast the ring of 365 turns. Exponential spec,
+                     so 0.28 here is one day per minute (a 6h05m year) and the
+                     top of the fader scrubs the whole year in 91 s. -->
+                <div class="ctrl-row">
+                    <label>Ring Rate</label>
+                    <input type="range" min="0" max="1" step="0.01" value="0.28"
+                        data-osc="/pheno/rate">
+                    <span class="ctrl-val" id="disp-pheno-rate">0.28</span>
+                </div>
+                <div id="corpus-cursor">doy — · — · quórum —</div>
             </div>
 
         </div><!-- /right-panel -->

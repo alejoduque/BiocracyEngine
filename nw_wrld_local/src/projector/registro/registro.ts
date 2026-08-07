@@ -148,7 +148,16 @@ function wireForwardVotes() {
     const ev = (window as unknown as { __voteEvent?: { type: string; intensity: number; time: number } }).__voteEvent;
     if (!ev || ev.time === _lastVoteTime) return;
     _lastVoteTime = ev.time;
-    try { _instance.pulse!({ intensity: 1.0 }); } catch { /* ignore */ }
+    // The type was read off the event and then thrown away, so every vote
+    // wrote an identical line. Pass it through, with the same five-way
+    // intensity the other bridges derive.
+    let intensity = 1.0;
+    if (ev.type === "passed") intensity = 1.0 + Math.max(0, Math.min(1, ev.intensity)) * 1.5;
+    else if (ev.type === "failed") intensity = 1.6;
+    else if (ev.type === "emergency") intensity = 3.2;
+    else if (ev.type === "start") intensity = 1.6;
+    else if (ev.type === "stop") intensity = 0.6;
+    try { _instance.pulse!({ intensity, type: ev.type }); } catch { /* ignore */ }
   }, 90);
 }
 

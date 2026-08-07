@@ -32,10 +32,10 @@ s.doWhenBooted({
     // Python is never fatal — the engine simply runs on its own clock.
     ~rhythmState = ~rhythmState ?? {
         (
-            blockNum: 0, blockHash: "", blockSeed: 0,
+            blockNum: 0, blockHash: "",
             blockTxCount: 0, blockBaseFee: 0.0, blockAt: 0.0,
             blockPeriod: 12.0,      // Ethereum's nominal cadence, refined live
-            txIndex: 0, txSinceBlock: 0, lastBarSlot: -1,
+            txIndex: 0, txSinceBlock: 0,
             priorityRatio: 0.5,     // 0–1: how far over base fee this TX bid
             addrSig: 0, nonce: 0, calldataLen: 0,
             txIntervals: [],        // ring of the last N inter-arrival gaps
@@ -72,9 +72,36 @@ s.doWhenBooted({
     // growing without limit or lagging into the next bar.
     ~padQueue = ~padQueue ?? { List.new };
     ~padQueueMax = 24;
-    ~padSynthMax = 48;   // was 16 — the denser kick pattern pushed the total
-                         // synth count past it and the cap became the binding
-                         // constraint on the pad layer (measured cap:32 skips).
+    ~padSynthMax = 24;   // 16 -> 48 -> 24. At 48 the pad layer alone reached
+                         // 2-3x full scale (it sums LINEARLY with concurrency),
+                         // which is what pinned the limiter at 90-98% reduction.
+
+    // Live pad count, for polyphony compensation. Each spawn records when its
+    // envelope will have finished (atk+dec+sus+rel are all known here); expired
+    // entries are dropped before counting. No NodeWatcher, no server round-trip.
+    ~padLive = ~padLive ?? { List.new };
+    ~padPolyComp = {
+        var now = SystemClock.seconds, n;
+        // Filtrar la lista entera, no sacar de la cabeza. Las envolventes
+        // duran cosas distintas (life va de ~1.75 s a ~8.6 s antes del x2.2),
+        // así que ~padLive NO está ordenada por vencimiento: un pad largo
+        // encolado primero se quedaba en el índice 0 bloqueando la salida de
+        // todos los cortos posteriores, n crecía sin parar y 1/sqrt(n) dejaba
+        // cada pad nuevo más flojo que el anterior — exactamente el fallo de
+        // "los pads no se oyen" que la compensación existe para arreglar.
+        // .as(List) is not cosmetic: List:reject returns an ARRAY, and
+        // ArrayedCollection:add only mutates in place while there is spare
+        // capacity — past that it returns a new array and the caller's
+        // reference is unchanged. Line ~124 does a bare `~padLive.add(...)`
+        // with no reassignment, so once the array filled, every subsequent
+        // pad was silently untracked: ~padLive.size under-counted, the
+        // polyphony compensation went too high and the cap stopped applying.
+        ~padLive = ~padLive.reject { |t| t <= now }.as(List);
+        n = ~padLive.size.max(1);
+        // 1/sqrt(n): the correct law for uncorrelated sources. Bounds the sum
+        // as voices pile up without making one pad as loud as thirty together.
+        1 / n.sqrt
+    };
 
     if(~padDrainRoutine.notNil) { ~padDrainRoutine.stop };
     ~padDrainRoutine = Routine({
@@ -85,9 +112,36 @@ s.doWhenBooted({
             };
             if(~padQueue.notNil and: { ~padQueue.size > 0 }) {
                 args = ~padQueue.removeAt(0);
-                if(s.numSynths < ~padSynthMax) {
-                    Synth(\elektronBell, args);
+                // Cuenta PADS, no todos los nodos del servidor. s.numSynths
+                // incluye el limitador, el osciloscopio, el drone, el bombo,
+                // la percusión, el polvo y —desde el slot A— hasta doce voces
+                // de grabación de campo. En un coro del amanecer eso suma 22-23
+                // por sí solo, así que el tope de 24 se alcanzaba sin un solo
+                // pad vivo y la capa entera enmudecía justo cuando más pasa.
+                // Los dos topes se dimensionaron por separado y su suma excedía
+                // el presupuesto compartido.
+                if(~padLive.size < ~padSynthMax) {
+                    var pc = ~padPolyComp.value;
+                    var life = 0;
+                    // Envelope end time, so the voice expires from ~padLive on
+                    // its own schedule rather than being guessed at.
+                    args.pairsDo { |k, v|
+                        if(#[\atk, \dec, \sus, \rel].includes(k)) { life = life + v };
+                    };
+                    ~padLive.add(SystemClock.seconds + (life * 2.2).clip(0.5, 20));
+                    Synth(\elektronBell, args ++ [\polyComp, pc]);
+        // Onset del pad hacia los visuales (slot 5 es el instrumento de esta
+        // voz). Se manda la amplitud efectiva y la frecuencia normalizada.
+        if(~visualsDest.notNil) {
+            var bf = 440, ba = 0.3;
+            args.pairsDo { |k, v|
+                if(k == \freq) { bf = v };
+                if(k == \amp)  { ba = v };
+            };
+            ~visualsDest.sendMsg('/voice/pad', (ba * pc).clip(0, 1), (bf / 900).clip(0, 1));
+        };
                     ~bellStats[\spawned] = ~bellStats[\spawned] + 1;
+                    ~bellStats[\lastPoly] = pc;
                 } {
                     ~bellStats[\skipCap] = ~bellStats[\skipCap] + 1;
                 };
@@ -96,6 +150,13 @@ s.doWhenBooted({
         };
     });
     ~padDrainRoutine.play(SystemClock);
+
+    // ── Sample system OSC ───────────────────────────────────────────────
+    // /sample/trigger · /sample/param · /sample/stop · /sample/stopall are
+    // registered in 10_sample_system.scd, not here: they close over
+    // ~triggerSample and ~sampleBuses, which that file defines four files
+    // AFTER this one. Registering them here would capture nils. Pointer left
+    // so the canonical OSC list still leads to them.
 
     ~monitorLine = {
         var rs = ~rhythmState, b = ~bellStats;
@@ -130,6 +191,28 @@ s.doWhenBooted({
             // move with block cadence and density, and sit at the fixed-grid
             // value when the feed stops.
             ++ " int:" ++ (~beatParams !? { ~beatParams.lastInterval } ? 0).round(0.001)
+            // tide: which arc is running, its phase 0->1, and the swell value
+            // it currently yields; puls: the sub-bass heartbeat switch. Four
+            // toggles were added with the tidal rhythm and every one of them
+            // is legible here — the seven rhythm toggles removed earlier in
+            // this session failed largely because their effect could not be
+            // checked, which turned every question into rounds of guessing.
+            // If ticking an arc does not change tide: here, the control did
+            // not reach the engine and nothing about the sound will tell you.
+            ++ "  tide:" ++ (~beatParams !? { ~beatParams.tideArc } ? \none)
+                ++ "/" ++ (~beatParams !? { ~beatParams.tidePhase } ? 0).round(0.01)
+                ++ "=" ++ (~beatParams !? { ~beatParams.tideValue } ? 0).round(0.01)
+            ++ " puls:" ++ if((~beatParams !? { ~beatParams.tidePulse } ? 0) > 0.5, "on", "off")
+            // smp: field recordings — cumulative triggers / live voices / cap.
+            // The seven samples were previously reachable only from a GUI
+            // button and appeared nowhere on this line, so "the forest is not
+            // speaking" had no reading. live is the number that matters: if it
+            // pins at the cap the chorus is being culled, and if it stays 0
+            // while fired climbs the buffers never loaded.
+            ++ "  smp:" ++ (~sampleStats !? { ~sampleStats[\fired] } ? 0)
+                ++ "/" ++ (~activeSampleSynths !? { ~activeSampleSynths.size } ? 0)
+                ++ "/" ++ (~sampleMaxVoices ? 0)
+            ++ " padPoly:" ++ (~bellStats !? { ~bellStats[\lastPoly] } ? 1).round(0.01)
             // srv: is the AUDIO SERVER alive. Everything else on this line is
             // counted in sclang and keeps incrementing whether or not scsynth
             // exists — bells, kicks and perc all climbed happily through a
@@ -234,11 +317,10 @@ s.doWhenBooted({
     // Deterministic per-block pattern seed. Same block always yields the same
     // rhythmic cell, so a session is reproducible while never repeating —
     // the same trick the Estratos module uses for its layout.
-    ~rhythmSeededRand = { |seed, n|
-        var h = (seed + (n * 2654435761)) & 0x7FFFFFFF;
-        h = (h bitXor: (h >> 13)) * 1274126177;
-        ((h bitXor: (h >> 16)) & 0x7FFFFFFF) / 2147483647.0
-    };
+    // (~rhythmSeededRand vivía aquí: un hash-PRNG de cinco líneas sin un solo
+    //  sitio de llamada, resto de los siete tickers de ritmo que se quitaron.
+    //  Los campos blockSeed / blockPulse / lastBarSlot que alimentaba corren
+    //  la misma suerte más abajo por la misma razón: escritos, nunca leídos.)
 
     // Handler for Python's /eth/block [number, hash, txCount, baseFeeGwei, ts].
     // Blocks land on a ~12 s cadence that is given from outside the instrument:
@@ -254,19 +336,17 @@ s.doWhenBooted({
         };
         ~rhythmState[\blockNum]     = msg[1].asInteger;
         ~rhythmState[\blockHash]    = hash;
-        ~rhythmState[\blockSeed]    = hash.hash.abs;
         ~rhythmState[\blockTxCount] = msg[3].asInteger.max(1);
         ~rhythmState[\blockBaseFee] = msg[4].asFloat;
         ~rhythmState[\blockAt]      = now;
         ~rhythmState[\txSinceBlock] = 0;
         // Let the beat engine know a bar boundary just happened
-        if(~beatParams.notNil) { ~beatParams.blockPulse = now };
     }, '/eth/block');
 
     // Shared function: sonify a transaction and broadcast to visuals
     ~handleTransaction = { |noteNum, velocity, value, gasPrice, txHash, time|
         var baseFreq, synthArgs, nutrient, consensus;
-        var valLog, priorityRatio, accent, relScale, minGap, sounds, queued;
+        var valLog, priorityRatio, accent, minGap, queued;
 
         baseFreq = noteNum.midicps;
         // Add hash-based micro-variation
@@ -292,7 +372,6 @@ s.doWhenBooted({
         accent = if(~rhythmState.notNil) {
             0.85 + (~rhythmState[\priorityRatio] * 0.9)
         } { 1.0 };
-        relScale = 1.0;
 
         // Calculate abstract values for visuals.
         // consensus was gasPrice.linlin(1, 200, 0, 1) — at post-Dencun gas that
@@ -307,6 +386,12 @@ s.doWhenBooted({
         };
 
         // Update global state
+        // ~lastEthTime / ~ethNoteCount feed the GUI's ETH light and Notes
+        // counter. Stamped here rather than in each of the three entry points
+        // (/eth/note, /tx, and the block handler) because this is the one
+        // funnel they all pass through.
+        ~lastEthTime = SystemClock.seconds;
+        ~ethNoteCount = (~ethNoteCount ? 0) + 1;
         ~globalState.transactionCount = ~globalState.transactionCount + 1;
         ~globalState.lastValue = value;
         ~globalState.lastHash = txHash ? "";
@@ -388,7 +473,7 @@ s.doWhenBooted({
             \susLvl, 0.55 + (priorityRatio * 0.2),
             // tails shortened so silence can open between bursts instead of
             // the pads fusing into one continuous wash
-            \rel, valLog.linlin(0, 1, 0.7, 2.8) * relScale,
+            \rel, valLog.linlin(0, 1, 0.7, 2.8),
             \pan, if(txHash.notNil, { txHash.hash.fold(-1.0, 1.0) }, { 0 })
         ];
 
@@ -406,7 +491,6 @@ s.doWhenBooted({
         // as an event, and the cap counts ALL synths so it also stops the pads
         // starving the beat engine.
         minGap = 0.45;
-        sounds = true;
         queued = false;
 
         // Instead of firing on raw arrival, only transactions whose position in
@@ -460,20 +544,21 @@ s.doWhenBooted({
         // dead feed.
         // (Skipped when the pad was queued — the drain routine will sound it,
         // and forcing an immediate spawn as well would double it.)
-        if(queued.not and: { (time - ~lastPadTime) > 6.0 }) { sounds = true; minGap = 0 };
+        // Guardia de inanición: si nada se ha encolado y hace más de 6 s que
+        // no suena un pad, se fuerza el paso. (`sounds` se quitó: se ponía en
+        // true y nunca en false, así que la rama { sounds.not } del case era
+        // inalcanzable y `relScale` era un 1.0 que sólo multiplicaba por uno.)
+        if(queued.not and: { (time - ~lastPadTime) > 6.0 }) { minGap = 0 };
         // Every branch is counted so the monitor can say WHY a pad did or did
         // not sound — "it seems random" is otherwise impossible to check.
         case
         { queued } {
             // already handed to ~padDrainRoutine — not a skip, not a spawn
         }
-        { sounds.not } {
-            ~bellStats[\skipBar] = ~bellStats[\skipBar] + 1;
-        }
         { (time - ~lastPadTime) <= minGap } {
             ~bellStats[\skipGate] = ~bellStats[\skipGate] + 1;
         }
-        { s.numSynths >= ~padSynthMax } {
+        { ~padLive.size >= ~padSynthMax } {
             ~bellStats[\skipCap] = ~bellStats[\skipCap] + 1;
         }
         {
@@ -485,16 +570,13 @@ s.doWhenBooted({
             ~bellStats[\lastAmp] = velocity.linlin(30, 120, 0.10, 0.26) * accent;
         };
 
-        // Update GUI
-        {
-            if(~transactionCount.notNil) {
-                ~transactionCount.string = "Transactions: %".format(~globalState.transactionCount);
-            };
-            if(~valueDisplay.notNil) {
-                ~valueDisplay.string = "Last Value: % ETH".format(value.round(0.001));
-            };
-            if(~activityMeter.notNil) { ~activityMeter.refresh };
-        }.defer;
+        // The GUI refresh that used to live here drove ~transactionCount,
+        // ~valueDisplay and ~activityMeter — three views belonging to
+        // ~addBeatControls, a second control window in 5_beat_engine.scd that
+        // was never called from anywhere. The globals were therefore never
+        // assigned, every branch was a .notNil that failed, and the whole
+        // block was a deferred no-op on every transaction. Both are gone now;
+        // the live counters are in 4_gui.scd, fed from ~globalState.
 
         if(~addTrendValue.notNil) { ~addTrendValue.value(value) };
     };
@@ -525,6 +607,7 @@ s.doWhenBooted({
         var iv, gap, priorityGwei, baseGwei;
 
         // Store for the next /eth/note to use
+        ~lastEthTime = now;
         ~globalState.lastValue = value;
         ~globalState.lastGasPrice = gasPrice;
         ~globalState.lastHash = txHash;
@@ -584,6 +667,7 @@ s.doWhenBooted({
                 // native units via the registry spec, sets the bus, mirrors
                 // ~beatParams (beatTempo/txInfluence), syncs the GUI knob and
                 // echoes 0–1 back on the canonical path.
+                ~lastOscTime = SystemClock.seconds;
                 ~setParamNorm.(paramName, msg[1].asFloat, \osc);
             }, oscPath);
         };
@@ -607,6 +691,52 @@ s.doWhenBooted({
             ~beatParams.transactionInfluence = (~beatParams.transactionInfluence ? 0.0) + 0.6;
         };
     }, "/pheno/jumpSeason");
+
+    // ── Cámara de las Especies: the five seats the browser actually shows ──
+    // These three addresses were reaching this port and being dropped on the
+    // floor. They cannot go through the registry loop above: that one is built
+    // from ~paramDefs and every handler it makes reads a single float at
+    // msg[1], while these carry [agentId, value] — one message per seat. So
+    // they get their own defs, and the arrays they write are read by the
+    // percussion trigger in 5_beat_engine.scd, which is where a species
+    // becomes audible.
+    //
+    // ~lastBrowserOscTime is stamped for the same reason every other
+    // browser-origin handler stamps it: the Bridge RX light is the only
+    // confirmation that HTML→bridge→SC is alive, and a surface that moves five
+    // faders without lighting it would be lying about the path.
+    ~speciesPresence   = ~speciesPresence   ?? { Array.fill(5, 0.5) };
+    ~speciesActivity   = ~speciesActivity   ?? { Array.fill(5, 0.5) };
+    ~ednaBiodiversity  = ~ednaBiodiversity  ?? { Array.fill(8, 0.5) };
+    ~ednaTouchedAt     = ~ednaTouchedAt     ?? { Array.fill(8, 0.0) };
+
+    OSCdef(\speciesPresence).free;
+    OSCdef(\speciesPresence, { |msg|
+        // Values arrive from a browser, so clamp rather than trust: an out of
+        // range index here would throw inside the beat routine, and an error
+        // in a Routine stops it permanently (see 5_beat_engine.scd:260).
+        var id = msg[1].asInteger.clip(0, 4);
+        ~speciesPresence[id] = msg[2].asFloat.clip(0, 1);
+        ~lastBrowserOscTime = SystemClock.seconds;
+    }, "/agents/species/presence");
+
+    OSCdef(\speciesActivity).free;
+    OSCdef(\speciesActivity, { |msg|
+        var id = msg[1].asInteger.clip(0, 4);
+        ~speciesActivity[id] = msg[2].asFloat.clip(0, 1);
+        ~lastBrowserOscTime = SystemClock.seconds;
+    }, "/agents/species/activity");
+
+    OSCdef(\ednaBiodiv).free;
+    OSCdef(\ednaBiodiv, { |msg|
+        var id = msg[1].asInteger.clip(0, 7);
+        ~ednaBiodiversity[id] = msg[2].asFloat.clip(0, 1);
+        // When the site was last attested. The browser reports this back as
+        // "validation": a reading nobody has touched in a while is not a
+        // validated one.
+        ~ednaTouchedAt[id] = SystemClock.seconds;
+        ~lastBrowserOscTime = SystemClock.seconds;
+    }, "/agents/edna/biodiversity");
 
     // NOTE: /soneth/beatTempo and /soneth/txInfluence are handled by the
     // registry-generated OSCdefs above — their entries carry a beatParam

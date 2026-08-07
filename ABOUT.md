@@ -6,7 +6,9 @@
 
 ## Premise
 
-BiocracyEngine treats three nominally-separate domains — a public blockchain, a deliberative parliament, and a tropical species inventory — as parts of the same instrument. They share control surfaces (Faderfox LC2 MIDI, an HTML slider GUI, a SuperCollider GUI), they share state (a single OSC/WebSocket bridge), and they feed each other in both directions.
+BiocracyEngine treats four nominally-separate domains — a public blockchain, a deliberative parliament, a tropical species inventory, and the acoustic record of one forest — as parts of the same instrument. They share control surfaces (Faderfox LC2 MIDI, an HTML slider GUI, a SuperCollider GUI), they share state (a single OSC/WebSocket bridge), and they feed each other in both directions.
+
+The fourth domain arrived last and is the only one that is not a model: 261 AudioMoth recordings made in the bosque seco tropical of the Sinú valley, Córdoba. The other three describe the forest; this one is the forest, and it is silent for 331 of the 365 days it is played across.
 
 The piece does not "visualize data." It performs a coupling.
 
@@ -46,6 +48,8 @@ Slot P (the Phenological Calendar) deliberately departs from the rest of the ins
 - **A SuperCollider beat engine** (`5_beat_engine.scd`) whose pitch pool, voicing mode, and harmonic count are derived live from the control matrix and ETH activity, with smooth exponential decay back to silence.
 - **Slots 0–9** — Reactive Radar Grid, Asteroid, LowEarth point cloud, Perlin blob, TimeTravel, DynGraph, Splay, Geometry, MemHier, Hashing — all converted to Three.js with full 20-knob wiring.
 - **Slot P** — the 1-bit Phenological Calendar described above, built from the Manakai species inventory and the IUCN Red List.
+- **The Cámara Fenológica corpus layer** (`14_phenological_corpus.scd`) — 261 AudioMoth field recordings placed on the 365-day ring of Article 42 and played as the ring turns. Absence is the dominant material: nothing is interpolated between the two recorded arcs, and the `absenceWeight` fader decides whether the gaps stay silent or sound the ×8 ultrasonic layer, in which what fills the silence is precisely what human hearing cannot reach.
+- **A matrix mixer** (CC 42–49) — one live fader per audible layer. Every other control shapes timbre; these are the only ones that change how loud one voice sits against another.
 - **IUCN Red List integration** with a 3-tier fallback (local RLI cache → IUCN API → hardcoded), token via `.env` + webpack `DefinePlugin`.
 - **A diagnostic monitor** (Shift+D) showing parameter freshness across all 10 slots in a scrollable table.
 - **4-channel quadraphonic spatial audio** with MOTU 828x auto-detection and Core Audio stereo fallback.

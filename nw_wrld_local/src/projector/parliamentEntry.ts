@@ -11,6 +11,8 @@ import {
 } from "./phenology/breath";
 import { initSwitcher, getActiveThreeStage, updateSpeciesRoster } from "./visualizationSwitcher";
 import { initLaserTap } from "./laserTap";
+import { startVizMotion } from "./vizMotion";
+import { publishScAudio, noteVoiceOnset, tickScAudio, type ScAudio } from "./scAudio";
 import { fetchSpeciesRoster, computeIUCNMults } from "./speciesFetcher";
 import * as THREE from "three";
 
@@ -40,6 +42,10 @@ const phenoParams: Record<string, number> = {
   opacityFloor: 0.0,
   pulseGain: 0.5,
   bancada: 0,
+  // The corpus layer's transport and fader (14_phenological_corpus.scd).
+  // rate 0.28 normalized is one ring day per minute on the exponential spec.
+  rate: 0.28,
+  corpusLevel: 0.5,
   seasonalWeight: 0.5,
   activeFraction: 0,
 };
@@ -49,12 +55,24 @@ const phenoParams: Record<string, number> = {
 let controlWS: WebSocket | null = null;
 let controlWsReady = false;
 
+// Set by init() once the sliders exist. connectControlWS lives out here at
+// module scope and needs to re-push the /agents/* replicas whenever the socket
+// (re)opens, which is the one moment SC is listening and the panel already
+// knows what it is showing.
+let resyncReplicaSliders: ((sendToSC: boolean) => void) | null = null;
+
 function connectControlWS() {
   controlWS = new WebSocket("ws://localhost:3334");
   controlWS.onopen = () => {
     controlWsReady = true;
     // Populate the CONFIGS dropdown: SC answers with /preset/names
     try { controlWS?.send(JSON.stringify({ direction: "toSC", address: "/preset/list", args: [] })); } catch { /* ignore */ }
+    // Push the /agents/* replicas to SC (and only those — see the note on
+    // syncStoreFromSliders). On a cold start this is what the sliders were
+    // rendered with; on a reconnect it is whatever the performer has dialled
+    // in since. Either way SC's ~speciesPresence should agree with the surface
+    // rather than with its own defaults.
+    resyncReplicaSliders?.(true);
   };
   controlWS.onclose = () => {
     controlWsReady = false;
@@ -88,6 +106,26 @@ function connectControlWS() {
             sel.appendChild(o);
           });
           if (names.includes(cur)) sel.value = cur;
+        }
+        return;
+      }
+
+      // The ring's own reading of where it is, pushed once per phenological
+      // day by 14_phenological_corpus.scd:
+      //   /pheno/cursor  doy, temporada, admitted clips, gap depth, quórum
+      // Read-only telemetry, so it deliberately does not touch phenoParams —
+      // those mirror controls, and the cursor is not one.
+      if (address === "/pheno/cursor") {
+        const el = document.getElementById("corpus-cursor");
+        if (el) {
+          const [doy, temporada, clips, gap, quorum] = args as unknown as [
+            number, string, number, number, number,
+          ];
+          const body = Number(clips) > 0
+            ? `${clips} clip${Number(clips) === 1 ? "" : "s"}`
+            : `ausencia · ${gap}d`;
+          el.textContent =
+            `doy ${doy} · ${temporada} · ${body} · quórum ${Number(quorum).toFixed(2)}`;
         }
         return;
       }
@@ -136,6 +174,75 @@ function connectControlWS() {
       //      (instance setters clamp + persist state)
       //   3. The reverse-breath loop in breath.ts picks up the new state
       //      on its next 320ms tick → harmonicrich/texturedepth follow
+      // ── Marea · the swell itself (/tide/state) ──────────────────────
+      // Distinct from the /tide/* toggles below: those are the four booleans
+      // choosing an arc, this is the value that arc currently yields. SC owns
+      // it — it is computed inside the beat engine and drives the audio — so
+      // the browser reflects rather than recomputes. A module that derived its
+      // own envelope would drift against the sound within one arc, and the
+      // whole point of slot A's crossfade is that the two agree.
+      // ── The engine's own sound (/spectrum, /voice/*) ─────────────────
+      // SC's \masterScope analyses the master bus AFTER the limiter and sends
+      // 16 log-spaced band amplitudes at 20 Hz. That has been arriving all
+      // along and NOTHING was listening: __onScSpectrum was defined further
+      // down and never called from anywhere, so the spectrogram fell through
+      // to its synthetic fallback and no slot could reach the real sound at
+      // all. Hooked up here, and published as a global so the six instrument
+      // slots can each read their own register.
+      if (address === "/spectrum") {
+        const bands = args.filter((a: unknown) => typeof a === "number") as number[];
+        if (bands.length >= 8) {
+          const w = window as unknown as {
+            __onScSpectrum?: (v: number[]) => void;
+            __scAudio?: ScAudio;
+          };
+          if (typeof w.__onScSpectrum === "function") w.__onScSpectrum(bands);
+          publishScAudio(bands);
+        }
+        return;
+      }
+      // Per-voice ONSETS. The spectrum says what is being heard; these say
+      // what has just begun. Without the attack a visual is always late and
+      // smeared — energy in a band tells you a bell is ringing, not that it
+      // was struck.
+      if (address.startsWith("/voice/")) {
+        const name = address.slice("/voice/".length);
+        noteVoiceOnset(name, Number(args[0]) || 0, Number(args[1]) || 0);
+        return;
+      }
+
+      if (address === "/tide/state") {
+        const v = args[0];
+        const ph = args[1];
+        if (typeof v === "number" && isFinite(v)) {
+          (window as unknown as { __tideState?: { value: number; phase: number; t: number } })
+            .__tideState = {
+              value: Math.max(0, Math.min(1, v)),
+              phase: typeof ph === "number" && isFinite(ph) ? ph : 0,
+              t: Date.now() / 1000,
+            };
+        }
+        return;
+      }
+
+      // ── Marea · arco de densidad (/tide/*) ──────────────────────────
+      // SC echoes the normalized value on the canonical path after ANY origin
+      // changes it — MIDI CC 17–20, the SC GUI button, or a preset load — AND
+      // after it enforces arc exclusivity, which emits a 0 for each sibling it
+      // unticked. Ticking a box here is therefore what makes the other two
+      // visibly clear themselves. Setting .checked fires no change event, so a
+      // browser-origin toggle echoes back harmlessly.
+      if (address.startsWith("/tide/")) {
+        const v = args[0];
+        if (typeof v === "number" && isFinite(v)) {
+          const box = document.querySelector<HTMLInputElement>(
+            `input[type='checkbox'][data-osc='${address}']`
+          );
+          if (box) box.checked = v >= 0.5;
+        }
+        return;
+      }
+
       if (address.startsWith("/pheno/")) {
         const key = address.slice("/pheno/".length);
 
@@ -171,6 +278,21 @@ function connectControlWS() {
 
         // 2. Apply to the calendar instance (no-op if slot P not mounted)
         applyPhenoControl(key, v);
+      }
+
+      // Matrix mixer echo. Level only — nothing here reaches a visual, so it
+      // syncs the slider and its readout and stops. SC is the owner: a mute
+      // pressed on the SC GUI arrives as 0.0 and the fader here follows.
+      if (address.startsWith("/mix/")) {
+        const v = args[0];
+        if (typeof v !== "number" || !isFinite(v)) return;
+        const layer = address.slice("/mix/".length);
+        const slider = document.querySelector<HTMLInputElement>(
+          `input[type='range'][data-osc='${address}']`
+        );
+        if (slider) slider.value = String(v);
+        const dispEl = document.getElementById(`disp-mix-${layer}`);
+        if (dispEl) dispEl.textContent = v.toFixed(2);
       }
     } catch (_) { }
   };
@@ -218,19 +340,33 @@ function sendOSCString(address: string, value: string) {
     // Visual burst: slam brightness down, red shift across all slots
     triggerVoteVisualBurst("emergency", args[0]);
   } else if (address === "/parliament/vote") {
-    // Vote: manual trigger always passes — performer tool, not a quorum check.
-    // Boost consensus briefly to reflect the affirmative intent.
+    // ── The motion is put to the chamber ─────────────────────────────────
+    // It used to pass unconditionally: "performer tool, not a quorum check".
+    // That made the VOTE button a flash generator rather than a vote, and it
+    // is why the five slots that branch on type === "failed" had dead code —
+    // nothing in the entire system could ever produce a rejection.
+    //
+    // A motion now CARRIES only if the chamber agrees. The threshold is the
+    // consensus already on the panel, so the performer decides the odds by
+    // where they leave that fader: high consensus and motions carry, low
+    // consensus and the chamber refuses. Pressing VOTE at consensus 0.2 and
+    // watching it fail is the point — a parliament that cannot say no is not
+    // deliberating, it is applauding.
     const prevConsensus = st.consensus;
-    st.consensus = Math.min(1.0, Math.max(st.consensus, 0.5) + 0.15);
+    const QUORUM = 0.5;
+    const carried = st.consensus >= QUORUM;
+    st.consensus = carried
+      ? Math.min(1.0, Math.max(st.consensus, 0.5) + 0.15)
+      : Math.max(0, st.consensus - 0.08);
     st.events.voteResult = {
       consensus: st.consensus,
-      passed: true,
+      passed: carried,
       yes: Math.round(st.votes * st.consensus),
       total: st.votes,
     };
     parliamentStore.notifyListeners();
     // Visual burst: bloom flash + color surge across all slots
-    triggerVoteVisualBurst("passed", st.consensus);
+    triggerVoteVisualBurst(carried ? "passed" : "failed", carried ? st.consensus : 1 - st.consensus);
     // Decay consensus back over 4 s
     const decayStart = st.consensus;
     const decayTarget = prevConsensus;
@@ -260,6 +396,14 @@ function sendOSCString(address: string, value: string) {
 
 // ─── Vote/Emergency visual burst across ALL 4 visualization slots ──────────
 function triggerVoteVisualBurst(type: string, intensity: number) {
+  // Publish the event FIRST, unconditionally. This used to sit at the bottom
+  // of the function behind an early return on __applySonethToViz — so before
+  // that global was assigned (it is set late, inside the DOM-ready init), a
+  // vote silently reached no slot at all. The sonETH ramp below is a bonus;
+  // __voteEvent is the actual channel every slot polls, and it must not be
+  // hostage to an unrelated global.
+  (window as any).__voteEvent = { type, intensity, time: performance.now() };
+
   const applyViz = (window as any).__applySonethToViz;
   if (typeof applyViz !== "function") return;
 
@@ -319,7 +463,6 @@ function triggerVoteVisualBurst(type: string, intensity: number) {
   }
 
   // Broadcast event flag to p5.js slots for custom flash effects
-  (window as any).__voteEvent = { type, intensity, time: performance.now() };
 }
 
 // ─── Project 3D world pos to CSS px ───
@@ -584,17 +727,59 @@ function buildFftBins(state: ParliamentState | null, elapsed: number, numBins = 
   return bins;
 }
 
+// ─── eDNA sites the Reserva actually occupies ───
+// Module scope rather than local to init() because calcBioToken needs it: the
+// token used to average biodiversity over all eight regions while only this
+// one has a slider, so seven frozen 0.5s permanently damped it and no amount
+// of moving the Córdoba fader could lift the token past a fraction of its
+// range. state.edna stays eight wide — the seven unsurfaced entries are still
+// there, they simply no longer vote on a number nobody can influence.
+const EDNA_SITES: ReadonlyArray<{ i: number; label: string }> = [
+  { i: 3, label: "B.s.T · Córdoba" },  // CAR — Sinú valley, the Reserva
+];
+
 // ─── BioToken V3 calculation ───
-function calcBioToken(state: ParliamentState): number {
-  if (!state || !Array.isArray(state.species) || !Array.isArray(state.edna) || !Array.isArray(state.fungi)) return 0;
-  const avgPresence = state.species.reduce((s, sp) => s + sp.presence, 0) / 5;
-  const avgActivity = state.species.reduce((s, sp) => s + sp.activity, 0) / 5;
-  const avgEdnaBio = state.edna.reduce((s, e) => s + e.biodiversity, 0) / 8;
-  const avgFungiChem = state.fungi.reduce((s, f) => s + f.chemical, 0) / 4;
+// The six factors, and where each one comes from. This used to be three live
+// numbers and three lies: the panel's formula said "Duration" where the code
+// has always used activity, and Fungi.chem and AI.optim were constants left
+// behind when their panels were removed. Both now read live ETH-derived state
+// (see the /bio/nutrient and /bio/density branches in parliamentStore.ts).
+export interface BioTokenTerms {
+  presence: number;
+  activity: number;
+  ednaBio: number;
+  fungiChem: number;
+  aiOpt: number;
+  iucn: number;
+  value: number;
+}
+
+function bioTokenTerms(state: ParliamentState): BioTokenTerms {
+  const zero: BioTokenTerms = {
+    presence: 0, activity: 0, ednaBio: 0, fungiChem: 0, aiOpt: 0, iucn: 0, value: 0,
+  };
+  if (!state || !Array.isArray(state.species) || !Array.isArray(state.edna) || !Array.isArray(state.fungi)) {
+    return zero;
+  }
+  const presence = state.species.reduce((s, sp) => s + sp.presence, 0) / 5;
+  const activity = state.species.reduce((s, sp) => s + sp.activity, 0) / 5;
+  const ednaBio =
+    EDNA_SITES.reduce((s, { i }) => s + (state.edna[i]?.biodiversity ?? 0), 0) /
+    Math.max(1, EDNA_SITES.length);
+  const fungiChem = state.fungi.reduce((s, f) => s + f.chemical, 0) / 4;
   const aiOpt = state.ai?.optimization / 127 || 0;
-  // IUCN weight: highest urgency species dominates
-  const maxIucnMult = Math.max(...IUCN_MULT) / 5; // normalize to 0-1
-  return avgPresence * avgActivity * avgEdnaBio * avgFungiChem * aiOpt * maxIucnMult;
+  // IUCN weight: highest urgency species dominates, normalised to 0–1 against
+  // the CR multiplier of 5. The panel used to print the RAW multiplier next to
+  // the formula, so the number shown was five times the factor being applied.
+  const iucn = Math.max(...IUCN_MULT) / 5;
+  return {
+    presence, activity, ednaBio, fungiChem, aiOpt, iucn,
+    value: presence * activity * ednaBio * fungiChem * aiOpt * iucn,
+  };
+}
+
+function calcBioToken(state: ParliamentState): number {
+  return bioTokenTerms(state).value;
 }
 
 async function init() {
@@ -607,6 +792,26 @@ async function init() {
   // getActiveThreeStage() returns the live ParliamentStage when slot 0 is active.
   initSwitcher(container, hudEl!, () => currentState);
 
+  // ── window.__scAudio ────────────────────────────────────────────────────
+  // The sound the machine is actually making, for whoever wants it. Mutated in
+  // place like __vizMotion and __ednaBio, so a slot can hold the reference and
+  // read it every frame without allocating.
+  //
+  // Slots 4-9 are the six voices of the engine, one each, so this carries both
+  // the continuous picture (bands, and three coarse registers) and the
+  // discrete one (when each voice last fired, and how hard).
+
+  // Idle-driven auto-rotation + the shared vote-flash reader. Publishes
+  // window.__vizMotion, which every slot reads for its own drift.
+  startVizMotion();
+
+  // NOTE on "failed": there is no /parliament/vote/result ingress. An earlier
+  // version subscribed to parliamentStore for it, which was dead code —
+  // nothing in the repo (no .scd, no bridge, no python) has ever emitted that
+  // address, and its dedupe key went NaN on a short message, which would have
+  // strobed all sixteen slots had it ever arrived. The outcome is decided
+  // where the vote is cast, in sendParliamentAction above.
+
   // ─── Laser projection feed (ILDA / Helios DAC via laser-bridge:3337) ──────
   // Streams the active module's vector scene (default: slot-P year-ring +
   // active-species marker) to the forest laser. No-op + quiet retry if the
@@ -614,12 +819,19 @@ async function init() {
   initLaserTap();
 
   // ─── Build eDNA control rows ───
+  // Only the site the Reserva actually occupies gets a slider. The other seven
+  // regions named a national survey this instrument has never recorded and has
+  // no way to reach — Chocó, Amazonia and Orinoquía are not places the
+  // AudioMoth has ever been. EDNA_SITES lists the indices that are real here.
+  //
+  // state.edna stays eight wide on purpose, but the BioToken now averages only
+  // over EDNA_SITES (module scope, above bioTokenTerms) rather than over all
+  // eight — seven frozen 0.5s were damping a factor no control could reach.
   const ednaCtrlRows = document.getElementById("edna-ctrl-rows");
-  const ednaShortNames = ["Chocó", "Amazon", "E.Cord", "Caribb", "Orinoc", "Pacific", "Magdal", "Guayan"];
   if (ednaCtrlRows) {
-    ednaCtrlRows.innerHTML = EDNA_IDS.map((id, i) => `
+    ednaCtrlRows.innerHTML = EDNA_SITES.map(({ i, label }) => `
       <div class="ctrl-row">
-        <label>${ednaShortNames[i]}</label>
+        <label>${label}</label>
         <input type="range" min="0" max="1" step="0.01" value="0.85"
           data-osc="/agents/edna/biodiversity" data-agent-id="${i}">
         <span class="ctrl-val" id="disp-edna-bio-${i}">0.85</span>
@@ -629,32 +841,45 @@ async function init() {
   }
 
   // ─── Build species control rows (left panel) ───
+  // Called twice: once at boot, and again when the IUCN roster resolves and
+  // the five names change. The second call used to rebuild the markup from the
+  // literals below, which silently threw away anything the performer had
+  // already dialled in — the fader jumped back to 0.95 mid-set while the store
+  // kept the value they had chosen. `seeded` makes the literals the opening
+  // position only; after that the live store is the source of truth.
+  const PRESENCE_DEFAULTS = [0.95, 0.80, 0.90, 0.70, 0.50];
+  let speciesSlidersSeeded = false;
+
   function renderSpeciesSliders() {
     const actCtrl = document.getElementById("species-activity-ctrl");
     const presCtrl = document.getElementById("species-presence-ctrl");
+    const live = speciesSlidersSeeded ? parliamentStore.state?.species : null;
+
     if (actCtrl) {
       actCtrl.innerHTML = SPECIES_NAMES.map((name, i) => {
         const shortName = name.length > 14 ? name.slice(0, 13) + "…" : name;
+        const v = live?.[i]?.activity ?? 0.50;
         return `<div class="ctrl-row">
           <label title="${name}">${shortName}</label>
-          <input type="range" min="0" max="1" step="0.01" value="0.50"
+          <input type="range" min="0" max="1" step="0.01" value="${v.toFixed(2)}"
             data-osc="/agents/species/activity" data-agent-id="${i}">
-          <span class="ctrl-val" id="disp-sp-act-${i}">0.50</span>
+          <span class="ctrl-val" id="disp-sp-act-${i}">${v.toFixed(2)}</span>
         </div>`;
       }).join("");
     }
     if (presCtrl) {
       presCtrl.innerHTML = SPECIES_NAMES.map((name, i) => {
         const shortName = name.length > 14 ? name.slice(0, 13) + "…" : name;
-        const defVal = [0.95, 0.80, 0.90, 0.70, 0.50][i] ?? 0.50;
+        const v = live?.[i]?.presence ?? PRESENCE_DEFAULTS[i] ?? 0.50;
         return `<div class="ctrl-row">
           <label title="${name}">${shortName}</label>
-          <input type="range" min="0" max="1" step="0.01" value="${defVal.toFixed(2)}"
+          <input type="range" min="0" max="1" step="0.01" value="${v.toFixed(2)}"
             data-osc="/agents/species/presence" data-agent-id="${i}">
-          <span class="ctrl-val" id="disp-sp-pres-${i}">${defVal.toFixed(2)}</span>
+          <span class="ctrl-val" id="disp-sp-pres-${i}">${v.toFixed(2)}</span>
         </div>`;
       }).join("");
     }
+    speciesSlidersSeeded = true;
   }
   renderSpeciesSliders();
 
@@ -680,9 +905,10 @@ async function init() {
 
   const ednaTele = document.getElementById("edna-tele");
   if (ednaTele) {
-    ednaTele.innerHTML = EDNA_IDS.map((id, i) => `
+    // Same narrowing as the control rows above: report the site that exists.
+    ednaTele.innerHTML = EDNA_SITES.map(({ i }) => `
       <div class="tele-row" style="margin-bottom:2px">
-        <span class="lbl" style="min-width:28px">${id}</span>
+        <span class="lbl" style="min-width:28px">${EDNA_IDS[i]}</span>
         <div class="tele-bar-wrap"><div class="tele-bar" id="ed-bar-${i}" style="width:85%"></div></div>
         <span class="val" id="ed-bio-${i}" style="min-width:32px">—</span>
         <span class="val" id="ed-val-${i}" style="min-width:32px;color:var(--text-dim)">—</span>
@@ -690,18 +916,9 @@ async function init() {
     `).join("");
   }
 
-  const fungiTele = document.getElementById("fungi-tele");
-  const fungiNames = ["N.Myco", "C.Spore", "S.Web", "Coastal"];
-  if (fungiTele) {
-    fungiTele.innerHTML = fungiNames.map((name, i) => `
-      <div class="tele-row" style="margin-bottom:2px">
-        <span class="lbl" style="min-width:40px">${name}</span>
-        <div class="tele-bar-wrap"><div class="tele-bar" id="fg-bar-${i}" style="width:60%"></div></div>
-        <span class="val" id="fg-chem-${i}">—</span>
-        <span class="val" id="fg-conn-${i}" style="color:var(--text-dim)">—</span>
-      </div>
-    `).join("");
-  }
+  // The Fungi Networks tele builder that stood here has been removed with the
+  // rest of that panel. It wrote markup into #fungi-tele, an element deleted
+  // from parliament.html, so it built four rows into nothing on every boot.
 
   // ─── Canvas labels ───
   const overlay = document.getElementById("canvas-overlay");
@@ -1006,7 +1223,13 @@ async function init() {
           // Time dilation → rotation damping (high = slow, inverted)
           if (activeViz.cameraSettings) {
             const base = (window as any).__slot2Soneth?.txInfluence ?? 0.5;
-            activeViz.cameraSettings.cameraSpeed = (0.1 + base * 7.9) * (1.1 - v * 0.9);
+            activeViz.cameraSettings.cameraSpeed =
+              // Compose, do not overwrite. applyState writes
+              // (0.1 + avgActivity*7.9 + idleDrift) here too; this used to
+              // replace that outright with a txInfluence-derived number, so the
+              // two raced every notify and the "resolved" race in
+              // visualizationSwitcher only fixed one of the two writers.
+              (activeViz.cameraSettings?.cameraSpeed ?? 1) * (1.1 - v * 0.9);
           }
           break;
         case "spectralshift":
@@ -1275,6 +1498,18 @@ async function init() {
     "/pheno/pulseGain":         "disp-pheno-pulseGain",
     "/pheno/opacityFloor":      "disp-pheno-opacityFloor",
     "/pheno/bancada":           "disp-pheno-bancada",
+    "/pheno/rate":              "disp-pheno-rate",
+    "/pheno/corpusLevel":       "disp-pheno-corpusLevel",
+    // Matrix mixer — without these the default prefix would derive
+    // "disp-drone-" from /mix/drone and the readout would never update.
+    "/mix/drone":  "disp-mix-drone",
+    "/mix/pad":    "disp-mix-pad",
+    "/mix/kick":   "disp-mix-kick",
+    "/mix/perc":   "disp-mix-perc",
+    "/mix/dust":   "disp-mix-dust",
+    "/mix/sample": "disp-mix-sample",
+    "/mix/corpus": "disp-mix-corpus",
+    "/mix/ultra":  "disp-mix-ultra",
   };
 
   // ─── Replica → instrument macros ───────────────────────────────────────────
@@ -1359,39 +1594,108 @@ async function init() {
     },
   };
 
-  function wireSlider(slider: HTMLInputElement) {
-    if ((slider as any)._sliderWired) return; // already wired
-    (slider as any)._sliderWired = true;
-
-    const addr = slider.dataset.osc!;
+  // Everything a slider does when it moves, in one named place so the boot
+  // sweep below can do exactly the same thing without re-implementing it.
+  function applySlider(slider: HTMLInputElement) {
+    const addr = slider.dataset.osc;
+    if (!addr) return;
     const agentId = slider.dataset.agentId;
     const prefix = SLIDER_DISP_PREFIX[addr] ?? `disp-${addr.split("/").pop()}-`;
-
-    // Derive display element — agent sliders use prefix+id, global sliders use prefix alone
     const dispId = agentId !== undefined ? `${prefix}${agentId}` : prefix;
     const dispEl = document.getElementById(dispId);
 
-    slider.addEventListener("input", () => {
-      const v = parseFloat(slider.value);
-      const id = agentId !== undefined ? parseInt(agentId) : null;
-      if (dispEl) dispEl.textContent = v.toFixed(2);
+    const v = parseFloat(slider.value);
+    const id = agentId !== undefined ? parseInt(agentId) : null;
+    if (dispEl) dispEl.textContent = v.toFixed(2);
 
-      // 1. Send to SC
-      if (id !== null) sendOSCArgs(addr, [id, v]);
-      else sendOSC(addr, v);
+    // 1. Send to SC
+    if (id !== null) sendOSCArgs(addr, [id, v]);
+    else sendOSC(addr, v);
 
-      // 2. Patch local store immediately for instant visual feedback
-      patchStoreFromSlider(addr, id, v);
+    // 2. Patch local store immediately for instant visual feedback
+    patchStoreFromSlider(addr, id, v);
 
-      // 3. If this is a parliament/agent replica (no direct SC handler), bias
-      //    the instrument via its conceptually-matching /soneth slider.
-      const macro = REPLICA_MACROS[addr];
-      if (macro) macro(v);
+    // 3. If this is a parliament/agent replica, bias the instrument via its
+    //    conceptually-matching /soneth slider. (Species presence and activity
+    //    now ALSO reach SC directly — 6_osc_handlers.scd receives
+    //    /agents/species/* and 5_beat_engine.scd sounds it — so this is a
+    //    second, faster path rather than the only one.)
+    const macro = REPLICA_MACROS[addr];
+    if (macro) macro(v);
+  }
+
+  function wireSlider(slider: HTMLInputElement) {
+    if ((slider as any)._sliderWired) return; // already wired
+    (slider as any)._sliderWired = true;
+    slider.addEventListener("input", () => applySlider(slider));
+  }
+
+  // ── Boot: make the store agree with what the panel is showing ────────────
+  // Every slider renders with a default in its markup, and none of those
+  // defaults were ever applied to anything: the store initialised at its own
+  // (species presence 0.5, eDNA 0.5) and only a human dragging a fader could
+  // reconcile the two. So the left rail read 0.95 while the right rail read
+  // 0.50 for the same species, and the BioToken was computed from numbers
+  // nobody had chosen.
+  //
+  // WHAT THIS DELIBERATELY DOES NOT DO is push every slider to SuperCollider.
+  // SC owns every address in ~paramDefs — /soneth/, /pheno/, /mix/, /tide/ —
+  // and restores them from presets/_autosave at boot, then echoes them down to
+  // these sliders. Blasting the markup defaults up at connect time would
+  // overwrite the performer's restored config with whatever is hardcoded in
+  // parliament.html, and it would do it again on every reconnect. Only the
+  // /agents/* replicas are sent: they have no SC-side authority and no echo,
+  // so the browser is the only place their opening value exists.
+  //
+  // Macros are not fired here either. REPLICA_MACROS drive /soneth/ faders,
+  // which is the same stomp by another route — and a macro is a response to a
+  // gesture, not an initial condition. Presence reaches SC directly now.
+  function syncStoreFromSliders(sendToSC = true) {
+    document
+      .querySelectorAll<HTMLInputElement>("input[type='range'][data-osc]")
+      .forEach((el) => {
+        const addr = el.dataset.osc;
+        if (!addr) return;
+        const agentId = el.dataset.agentId;
+        const id = agentId !== undefined ? parseInt(agentId) : null;
+        const v = parseFloat(el.value);
+
+        const dispPrefix = SLIDER_DISP_PREFIX[addr] ?? `disp-${addr.split("/").pop()}-`;
+        const dispEl = document.getElementById(id !== null ? `${dispPrefix}${id}` : dispPrefix);
+        if (dispEl) dispEl.textContent = v.toFixed(2);
+
+        patchStoreFromSlider(addr, id, v);
+
+        if (sendToSC && addr.startsWith("/agents/")) {
+          if (id !== null) sendOSCArgs(addr, [id, v]);
+          else sendOSC(addr, v);
+        }
+      });
+    parliamentStore.notifyListeners();
+  }
+  resyncReplicaSliders = syncStoreFromSliders;
+
+  // ── Marea · arco de densidad: tide toggles (/tide/*) ────────────────────
+  // Same contract as wireSlider, but the value is 0/1. SC's registry entries
+  // use a stepped ControlSpec(0,1,\lin,1), so ~setParamNorm snaps whatever it
+  // receives — MIDI CC, preset load or this checkbox — to one of two states.
+  //
+  // Note what this deliberately does NOT do: it does not untick the sibling
+  // arcs. Mutual exclusion is SC's rule, enforced once in ~setParam, and the
+  // browser only reflects the echo. Implementing it here as well would give
+  // the same rule two owners that could disagree — which is precisely the
+  // failure the seven removed /rhythm/ toggles had.
+  function wireToggle(el: HTMLInputElement) {
+    const addr = el.dataset.osc;
+    if (!addr) return;
+    el.addEventListener("change", () => {
+      sendOSC(addr, el.checked ? 1 : 0);
     });
   }
 
   // Wire all currently-present range sliders (includes static HTML ones)
   document.querySelectorAll<HTMLInputElement>("input[type='range'][data-osc]").forEach(wireSlider);
+  document.querySelectorAll<HTMLInputElement>("input[type='checkbox'][data-osc]").forEach(wireToggle);
 
   // ── CONFIGS: save/load the full control state ──────────────────────────
   // SC owns the preset files (presets/*.json); loading routes every value
@@ -1419,12 +1723,19 @@ async function init() {
     if (el) el.querySelectorAll<HTMLInputElement>("input[type='range'][data-osc]").forEach(wireSlider);
   });
 
+  // Every slider is wired now, so reconcile the store with the panel. Local
+  // only on this pass — the socket may still be opening, and connectControlWS's
+  // onopen fires the same sweep with sendToSC on, which is what puts the
+  // /agents/* opening position on the wire.
+  syncStoreFromSliders(false);
+
   // ─── Cámara Fenológica button wiring (Capítulo VI) ──────────────────────
   // The bancada row + jump-season row are not range sliders, so they need
   // their own click handlers. Both send OSC to SC, which echoes back so
   // every other surface (MIDI knob, SC GUI, HTML slider) stays in sync.
 
   // Bancada radio group: 5 buttons → CC 16 / OSC /pheno/bancada (0..4 → 0..1)
+  // 0 is "todas"; 1..4 are the detector's ecological roles.
   document.querySelectorAll<HTMLButtonElement>(".pheno-bancada-btn").forEach((btn) => {
     btn.addEventListener("click", () => {
       const idx = parseInt(btn.dataset.bancada ?? "0", 10);
@@ -1501,6 +1812,8 @@ async function init() {
   // (denied, no device, insecure origin) falls back to the synthetic bins, so
   // the panel never goes blank.
   let micAnalyser: AnalyserNode | null = null;
+  let micStream: MediaStream | null = null;
+  let micCtx: AudioContext | null = null;
   // Explicit ArrayBuffer backing: getByteFrequencyData's lib.dom signature
   // requires Uint8Array<ArrayBuffer>, not the ArrayBufferLike default.
   let micBuf: Uint8Array<ArrayBuffer> | null = null;
@@ -1508,6 +1821,16 @@ async function init() {
     const btn = document.getElementById("spectro-src-btn");
     btn?.addEventListener("click", async () => {
       if (micAnalyser) {   // already live — revert to the synthetic source
+        // Release the hardware, not just the reference. Nulling the analyser
+        // left the MediaStream and the AudioContext unreachable but ALIVE: the
+        // OS mic-in-use indicator stayed lit for the rest of the session after
+        // one toggle-off, and each re-enable leaked another stream and another
+        // context until the browser's AudioContext cap was hit and the button
+        // silently fell through to the denied path.
+        try { micStream?.getTracks().forEach((t) => t.stop()); } catch { /* ignore */ }
+        try { void micCtx?.close(); } catch { /* ignore */ }
+        micStream = null;
+        micCtx = null;
         micAnalyser = null;
         micBuf = null;
         btn.textContent = "SPECTRUM ▸ MIC";
@@ -1515,11 +1838,14 @@ async function init() {
         return;
       }
       try {
+        // Held in the outer scope so the off-branch can actually stop them.
         const stream = await navigator.mediaDevices.getUserMedia({
           audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: false },
         });
         const AC = window.AudioContext ?? (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
         const ctx = new AC();
+        micStream = stream;
+        micCtx = ctx;
         if (ctx.state === "suspended") await ctx.resume();
         const analyser = ctx.createAnalyser();
         analyser.fftSize = 1024;
@@ -1586,6 +1912,9 @@ async function init() {
   // Animate loop: push spectrogram + update stage FFT exposure
   (function animLoop() {
     elapsed += 0.016;
+    // One place decays the voice envelopes; six slots reading their own would
+    // drift apart from each other and from the sound.
+    tickScAudio(0.016);
     // Source priority: real engine output > microphone > synthetic fallback.
     // Same bin count as buildFftBins' default, so the renderer sees one shape.
     const bins = scBins(256) ?? micBins(256) ?? buildFftBins(currentState, elapsed);
@@ -1645,21 +1974,30 @@ async function init() {
     setBar("bar-rotation", Math.min(state.rotation / 2, 1)); setVal("val-rotation", state.rotation.toFixed(3));
     setBar("bar-votes", state.votes / 26); setVal("val-votes", String(state.votes));
 
-    // BioToken breakdown
-    const avgEdna = state.edna.reduce((s, e) => s + e.biodiversity, 0) / 8;
-    const avgFungi = state.fungi.reduce((s, f) => s + f.chemical, 0) / 4;
-    const btVal = calcBioToken(state);
-    setVal("biotoken-value", btVal.toFixed(4));
+    // BioToken breakdown — every factor of the product, live. bioTokenTerms()
+    // returns exactly what calcBioToken multiplies, so the six rows below and
+    // the number above them cannot drift apart the way the old static text did.
+    const bt6 = bioTokenTerms(state);
+    setVal("biotoken-value", bt6.value.toFixed(4));
     setVal("bt-iucn", String(iucnMult));
-    setVal("bt-edna", avgEdna.toFixed(2));
-    setVal("bt-fungi", avgFungi.toFixed(2));
+    setVal("bt-edna", bt6.ednaBio.toFixed(2));
+    setVal("bt-fungi", bt6.fungiChem.toFixed(2));
+    setVal("bt-t-presence", bt6.presence.toFixed(3));
+    setVal("bt-t-activity", bt6.activity.toFixed(3));
+    setVal("bt-t-edna", bt6.ednaBio.toFixed(3));
+    setVal("bt-t-fungi", bt6.fungiChem.toFixed(3));
+    setVal("bt-t-ai", bt6.aiOpt.toFixed(3));
+    setVal("bt-t-iucn", bt6.iucn.toFixed(3));
 
-    // Species
+    // Species. freq and votes arrive from SC (/agent/species/state, emitted by
+    // 5_beat_engine.scd once the seat has actually sounded); a species that has
+    // not spoken yet reports 0 Hz, and "—" is the honest way to show that
+    // rather than printing a frequency nothing is playing.
     state.species.forEach((sp, i) => {
       setBar(`sp-bar-pres-${i}`, sp.presence);
       setVal(`sp-val-${i}`, sp.presence.toFixed(2));
       setVal(`sp-act-${i}`, sp.activity.toFixed(2));
-      setVal(`sp-frq-${i}`, sp.freq.toFixed(0) + "Hz");
+      setVal(`sp-frq-${i}`, sp.freq > 0 ? sp.freq.toFixed(0) + "Hz" : "—");
       setVal(`sp-vot-${i}`, String(sp.votes));
     });
 
@@ -1668,23 +2006,14 @@ async function init() {
       setBar(`ed-bar-${i}`, ed.biodiversity);
       setVal(`ed-bio-${i}`, ed.biodiversity.toFixed(3));
       setVal(`ed-val-${i}`, ed.validation.toFixed(3));
-      // Highlight biome map row
-      const bm = document.getElementById(`bm-${EDNA_IDS[i]}`);
-      if (bm) bm.className = ed.biodiversity > 0.7 ? "biome-active" : "";
     });
 
-    // Fungi
-    state.fungi.forEach((fg, i) => {
-      setBar(`fg-bar-${i}`, fg.chemical);
-      setVal(`fg-chem-${i}`, fg.chemical.toFixed(2));
-      setVal(`fg-conn-${i}`, fg.connectivity.toFixed(2));
-    });
-
-    // AI
-    setBar("bar-ai-c", state.ai.consciousness);
-    setVal("val-ai-c", state.ai.consciousness.toFixed(3));
-    setBar("bar-ai-o", state.ai.optimization / 127);
-    setVal("val-ai-o", String(Math.round(state.ai.optimization)));
+    // The per-agent Fungi and AI writes that used to sit here are gone. Their
+    // panels were removed (see the note in parliament.html where Fungi Networks
+    // and Gaia AI Core used to be) and the ids they addressed have not existed
+    // since; setBar/setVal null-guard, so they were a silent no-op on every
+    // frame. Both quantities now surface where they are actually used, as
+    // Fungi.chem and AI.optim in the BioToken breakdown above.
 
     // Eco
     setBar("bar-co2", state.eco.co2 / 127); setVal("val-co2", state.eco.co2.toFixed(0));

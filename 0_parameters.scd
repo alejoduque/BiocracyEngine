@@ -83,11 +83,66 @@
     (name: \absenceWeight,     spec: ControlSpec(0, 1, \lin),       default: 0.3,  path: "/pheno/absenceWeight",     cc: 13),
     (name: \pulseGain,         spec: ControlSpec(0.0, 2.0, \lin),   default: 1.0,  path: "/pheno/pulseGain",         cc: 14),
     (name: \opacityFloor,      spec: ControlSpec(0.0, 0.7, \lin),   default: 0.0,  path: "/pheno/opacityFloor",      cc: 15),
+    // Five positions: 0 = todas, then one per ecological role the AudioMoth
+    // detector actually yields. Art. 43 defines the bancadas taxonomically,
+    // but the corpus carries no taxonomy — only roles — so roles are what this
+    // filter can honestly act on. dawn and dusk chorus are one bancada: dawn
+    // alone has 6 events in 261, too few to convene a seat of its own.
     (name: \bancada,           spec: ControlSpec(0, 4, \lin, 1),    default: 0,    path: "/pheno/bancada",           cc: 16),
+    // Ring speed, in phenological days per second (Art. 42: the calendar is a
+    // ring of 365, not a line). Exponential because the useful span is four
+    // orders of magnitude: 4.0 scrubs the whole year in 91 s; the 0.0167
+    // default is one day per minute, so a recorded day lasts exactly as long
+    // as one AudioMoth clip and the full ring takes 6h05m; 0.002 is the deep
+    // reading where one day is 8 minutes — the same x8 the ultrasonic tier
+    // uses, so the bat's time becomes the calendar's.
+    (name: \phenoRate,         spec: ControlSpec(0.002, 4.0, \exp),  default: 0.0167, path: "/pheno/rate",            cc: 21),
+    // Level of the field-recording layer against the synthesis. Its own fader
+    // because the corpus is a fourth actor, not an effect on the other three.
+    (name: \corpusLevel,       spec: ControlSpec(0, 1, \lin),       default: 0.5,  path: "/pheno/corpusLevel",       cc: 22),
+
+    // ── Row 8: Matrix mixer — one live fader per audible layer ──────────
+    // Until now the balance between layers lived only in the hardcoded gain
+    // budget of 3_synthdefs.scd (~trimDrone, ~trimPad, …), which is fixed at
+    // load and unreachable while playing. Every other control shapes timbre;
+    // none of them changed how loud one voice is against another, so there was
+    // no way to mix the instrument.
+    //
+    // Unity is 1.0 and sits mid-fader: at boot these multiply by exactly 1 and
+    // the engine sounds as it did before. 0 is a true mute, 2.0 is +6 dB.
+    // These multiply the trims, they do not replace them.
+    (name: \mixDrone,  spec: ControlSpec(0, 2, \lin), default: 1.0, path: "/mix/drone",  cc: 42),
+    (name: \mixPad,    spec: ControlSpec(0, 2, \lin), default: 1.0, path: "/mix/pad",    cc: 43),
+    (name: \mixKick,   spec: ControlSpec(0, 2, \lin), default: 1.0, path: "/mix/kick",   cc: 44),
+    (name: \mixPerc,   spec: ControlSpec(0, 2, \lin), default: 1.0, path: "/mix/perc",   cc: 45),
+    (name: \mixDust,   spec: ControlSpec(0, 2, \lin), default: 1.0, path: "/mix/dust",   cc: 46),
+    (name: \mixSample, spec: ControlSpec(0, 2, \lin), default: 1.0, path: "/mix/sample", cc: 47),
+    (name: \mixCorpus, spec: ControlSpec(0, 2, \lin), default: 1.0, path: "/mix/corpus", cc: 48),
+    (name: \mixUltra,  spec: ControlSpec(0, 2, \lin), default: 1.0, path: "/mix/ultra",  cc: 49),
 
     // ── Beat engine (no control bus — lives in ~beatParams) ─────────────
     (name: \beatTempo, spec: ControlSpec(0.5, 2.0, \exp), default: 1.0, path: "/soneth/beatTempo",
-        hasBus: false, beatParam: \beatTempo)
+        hasBus: false, beatParam: \beatTempo),
+
+    // ── Marea · arco de densidad (toggles 0/1) ──────────────────────────
+    // The rhythm is tidal rather than gridded: onsets are probabilistic and
+    // their likelihood follows a slow swell. These pick how long that swell
+    // takes. The three arcs are MUTUALLY EXCLUSIVE — enforced in one place,
+    // the /tide/ handler in 6_osc_handlers.scd, which unticks the others and
+    // echoes all four back. The previous seven rhythm toggles were independent
+    // booleans with undefined interactions and no single owner of the state,
+    // which is a large part of why they had to be removed.
+    // All three off = no arc, flat density.
+    (name: \tideShort, exclusiveGroup: \tideArc, spec: ControlSpec(0, 1, \lin, 1), default: 0, path: "/tide/short",
+        hasBus: false, beatParam: \tideShort, cc: 17),
+    (name: \tideMedia, exclusiveGroup: \tideArc, spec: ControlSpec(0, 1, \lin, 1), default: 1, path: "/tide/media",
+        hasBus: false, beatParam: \tideMedia, cc: 18),
+    (name: \tideLarga, exclusiveGroup: \tideArc, spec: ControlSpec(0, 1, \lin, 1), default: 0, path: "/tide/larga",
+        hasBus: false, beatParam: \tideLarga, cc: 19),
+    // Independent axis: the sub-bass heartbeat, one per block, surviving the
+    // troughs the tide would otherwise empty.
+    (name: \tidePulse, spec: ControlSpec(0, 1, \lin, 1), default: 1, path: "/tide/pulse",
+        hasBus: false, beatParam: \tidePulse, cc: 20)
 ];
 
 // ─── Derived lookup tables ──────────────────────────────────────────────────
@@ -118,7 +173,9 @@
 // which SC 3.14 does not implement (it threw on every parameter write).
 ~labelCase = { |name|
     var s = name.asString;
-    if(s.size > 0) { s[0].toUpper.asString ++ s[1..] } { s };
+    // ALL CAPS: the GUI is a 1-bit monospace surface and mixed case broke the
+    // grid. Callers that want a sentence build one themselves.
+    if(s.size > 0) { s.toUpper } { s };
 };
 
 // ─── The single write path ──────────────────────────────────────────────────
@@ -141,6 +198,25 @@
         // 2 · beat-engine mirror (routine reads ~beatParams directly)
         if(def[\beatParam].notNil and: { ~beatParams.notNil }) {
             ~beatParams[def[\beatParam]] = val;
+        };
+
+        // 2b · exclusive group (radio behaviour)
+        //     Enforced HERE rather than in the OSC handler because ~setParam is
+        //     the one path every surface already shares — OSC from the browser,
+        //     MIDI CC, and the SC GUI button all land here. Enforcing it in the
+        //     handler would leave MIDI and the GUI able to tick two arcs at
+        //     once. Turning one ON turns its siblings OFF (which recurses once,
+        //     harmlessly: val is 0 there, so the branch is not re-entered) and
+        //     each sibling echoes its own new state to the browser and the GUI.
+        //     Turning one OFF is unconstrained — all-off is a legal state.
+        if(def[\exclusiveGroup].notNil and: { val > 0.5 }) {
+            ~paramDefs.do { |other|
+                if(other[\exclusiveGroup] == def[\exclusiveGroup]
+                    and: { other[\name] != name }
+                    and: { (~controlValues[other[\name]] ? 0) > 0.5 }) {
+                    ~setParam.(other[\name], 0, source);
+                };
+            };
         };
 
         // 3 · language-side cache

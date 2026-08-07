@@ -24,5 +24,11 @@ archive/
 # Audio captures (large, ephemeral)
 recordings/
 
+# Derived phenological corpus (~4.5 GB, rebuildable from the AudioMoth
+# originals with tools/build_corpus.py). The manifest is small and is the
+# thing the engine actually reads, so it is tracked.
+corpus/*
+!corpus/manifest.json
+
 # Session autosave state — machine-local, not a shareable preset
 presets/_autosave.json

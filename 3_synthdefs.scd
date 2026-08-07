@@ -33,6 +33,119 @@ s.doWhenBooted({
     // needs a literal integer; passing it as a SynthDef arg makes it an
     // OutputProxy and the def fails to compile ("numChannels must be a
     // nonzero positive integer"). Read once from the booted server.
+    // ── Gain budget ─────────────────────────────────────────────────────
+    // Measured before this: the master bus ran at outPk 3-6 against a full
+    // scale of 1.0, with the limiter holding back 90-98% continuously (gr
+    // 0.02-0.11) — compressing constantly instead of catching peaks, which is
+    // why the mix read squashed however the layers were balanced.
+    //
+    // The cause was singular: the pad layer sums LINEARLY with concurrency
+    // (20 pads = 1.96, 30 = 2.93) while every other layer was <= 0.17. Pads
+    // now get polyphony compensation in sclang (1/sqrt(n), so the layer grows
+    // as sqrt(n) instead of n) and the trim below finishes the job.
+    //
+    // These are MULTIPLIERS on layers that already had a level, not target
+    // levels — the distinction matters and the first attempt got it wrong.
+    // Writing 0.18 beside a kick measured at 0.10 gives 0.018, which is
+    // inaudible under a drone at 0.10; the whole mix came to 0.224 and only
+    // the pads could be heard. Each value here is therefore
+    // allowance / measured_peak:
+    //
+    //   drone  0.10 measured -> 1.00  the REFERENCE. The performer has said
+    //                                 this layer sounds right, so it is the
+    //                                 one thing that must not move; unity is
+    //                                 deliberate, not a placeholder.
+    //   pads   1.96/20 each  -> 0.30  0.098 * sqrt(24) * 0.30 = 0.144 at the
+    //                                 cap, i.e. just above the drone
+    //   kick   0.10 measured -> 1.00  unchanged; it now fires once per block,
+    //                                 so it has to land when it does
+    //   perc   0.17 measured -> 0.45  sits under the drone
+    //   dust   0.085 measured-> 0.60  texture, under everything
+    //
+    // Those ratios set the BALANCE. ~trimMaster sets the absolute level, and
+    // it is a separate number because the two were measured separately and
+    // fail separately: a wrong ratio makes a layer inaudible, a wrong master
+    // makes the limiter a compressor.
+    //
+    // Measured live, sweeping both performer controls:
+    //     vol/amp 0.376  outPk max 1.79      vol/amp 0.70   max 24.3
+    //     vol/amp 0.50   outPk max 5.98      vol 1.0/0.85   max 25.8
+    // with gr at 0.00-0.04 throughout, i.e. the limiter holding back 96-100%
+    // continuously. That is why the level barely responded to the controls:
+    // everything above the ceiling was flattened to the same output, so
+    // masterVolume and masterAmp had almost no audible range to work in.
+    //
+    // Calibrated against the CREST, not the average. With a tidal rhythm most
+    // samples sit in a trough where little is playing, so the median describes
+    // the quiet part of the arc and says nothing about whether the loud part
+    // clips — an average-based calibration reads "fine" while the crests are
+    // still 4x over. Measured across a full medio arc at vol/amp 0.70:
+    //     trimMaster 0.15 -> p90 1.64, max 3.55, gr >= 0.9 only 33% of the time
+    // p90 scales linearly with this constant, so 0.15 * (0.8 / 1.64) = 0.073.
+    //
+    // The absolute output drops relative to what was previously heard — that
+    // was a clamped signal pinned near full scale — and the performer takes it
+    // back with the level controls, which now actually do something.
+    // 0.07 -> 0.055. With the bed raised, the whole mix sat above the ceiling
+    // (p90 1.10) and the limiter rode at gr 0.12 — back in the compressor
+    // regime this budget exists to avoid. This drops everything ~20% together,
+    // which preserves the balance that was just fixed and gives the limiter
+    // its headroom back.
+    ~trimMaster = 0.055;
+
+    // 1.00 -> 2.40. Measured over a full tidal arc at vol/amp 0.70, the mix was
+    // below 0.05 — effectively inaudible — in 48% of windows, with a 340:1
+    // crest factor (min 0.005, max 1.72). The calibration had been done on the
+    // CREST, which is brief; nothing was holding the floor, so half the piece
+    // was silence punctuated by peaks. That is exactly "I cannot hear the
+    // synths, drones or bells".
+    //
+    // The drone is the one continuously-present voice, so it is what the bed
+    // has to be made of. Raising it lifts the floor without touching the
+    // crest, which is the only move that reduces crest factor rather than
+    // just moving the whole thing up into the limiter.
+    // 8.0. The arithmetic: the drone measures 0.10 raw, so at ratio 3.10 it
+    // reached 3.10 * 0.07 * 0.10 = 0.022 — 40x below the 0.92 ceiling, i.e. a
+    // "bed" nobody can hear. At 8.0 it sits near 0.056, about -24 dB from the
+    // ceiling, which is a bed you notice is there without it being in front.
+    ~trimDrone = 8.00 * ~trimMaster;   // the BED — continuous, holds the floor
+    // 0.30 -> 0.20 -> 0.45. The 0.20 pass was a mistake: it optimised the crest
+    // factor, and the pads ARE the bells — so lowering them worked directly
+    // against "I cannot hear the bells". The crest is the limiter's problem,
+    // not the mix's; gr dipping on a pad burst is a limiter doing its job,
+    // whereas an inaudible bell layer is a broken instrument.
+    ~trimPad   = 0.45 * ~trimMaster;
+    ~trimKick  = 1.00 * ~trimMaster;
+    ~trimPerc  = 0.45 * ~trimMaster;
+    ~trimDust  = 0.60 * ~trimMaster;
+    // Field recordings (10_sample_system.scd). Kept in this table rather than
+    // beside the sample SynthDef so the whole budget stays readable in one
+    // place — a layer that sets its own level somewhere else is exactly how
+    // the pad explosion went unnoticed.
+    //
+    // Derived from MEASUREMENT, not from the nominal amp. The first attempt
+    // reasoned from \samplePlayer*'s amp default of 0.7 and set 0.25, on the
+    // assumption that a recording at amp 0.7 arrives at 0.7. It does not: a
+    // field recording has far lower RMS than a synth voice at the same amp,
+    // and the chain then costs it more (HPF, RLPF, FreeVerb2, distance). With
+    // the engine ducked and 12 voices held at amp 1.0, the whole layer read
+    // outPk 0.005 — under the drone's 0.007, so a call was quieter than the
+    // bed it was supposed to speak over.
+    //
+    // Measured per voice at amp 1.0: ~0.0014 (they sum incoherently, so the
+    // layer grows as sqrt(n)). A working chorus is ~5 voices at amp ~0.5, and
+    // should sit just above the drone at ~0.012:
+    //     0.0014 * sqrt(5) * 0.5 * k = 0.012  ->  k ~ 7.5
+    // so 0.25 * 7.5 ~ 1.9. Higher than every other ratio in this table, which
+    // is the correct answer for a source that arrives quiet.
+    // 1.90 -> 1.55. The ratio was calibrated when a call was cut dead at 1.5 s,
+    // so ~5 voices overlapped. With the envelope owning the lifetime a call
+    // now sustains its full hold plus release, and the measured concurrency
+    // went to 9 — the layer grows as sqrt(n) for incoherent sources, so
+    // sqrt(9/5) = 1.34x more energy from the same trim. Measured with slot A
+    // live at vol/amp 0.70: outPk p90 0.933, just over the 0.5-0.9 band.
+    ~trimSample = 1.55 * ~trimMaster;
+
     ~limiterChans = s.options.numOutputBusChannels;
     SynthDef(\masterLimiter, { |ceiling = 0.92|
         var sig = In.ar(0, ~limiterChans);
@@ -69,7 +182,7 @@ s.doWhenBooted({
         // susLvl. Defaults keep any caller that does not pass them sounding
         // close to the previous three-stage shape.
         atk=2.0, dec=1.0, sus=0.8, susLvl=0.6, rel=1.5,
-        tone=0.3, res=0.4, pan=0,
+        tone=0.3, res=0.4, pan=0, polyComp=1.0,
         // Bus indices for real-time MIDI control (merged parameter set)
         masterVolBus=(-1), pitchBus=(-1), timeBus=(-1), spectralBus=(-1), spatialBus=(-1),
         textureBus=(-1), atmosphereBus=(-1), memoryBus=(-1), harmonicBus=(-1), resonantBus=(-1),
@@ -77,7 +190,11 @@ s.doWhenBooted({
         masterAmpBus=(-1), filterCutoffBus=(-1), noiseLevelBus=(-1), noiseFiltBus=(-1),
         droneDepthBus=(-1), droneFadeBus=(-1), droneSpaceBus=(-1), droneMixBus=(-1),
         // Spatial positioning buses
-        spatialXBus=(-1), spatialYBus=(-1), roomSizeBus=(-1), distanceEffectBus=(-1);
+        spatialXBus=(-1), spatialYBus=(-1), roomSizeBus=(-1), distanceEffectBus=(-1),
+        // Matrix mixer: this layer's live level (0 = mute, 1 = unity). Named
+        // to match the \mixPad bus, so the generic wiring in 6_osc_handlers
+        // connects it without the spawn site listing it.
+        mixPadBus=(-1);
 
         var env, sig, mod, carrier, grains, wet, noise, distance, distanceAmp, quadSig;
         // MIDI bus inputs - Lawrence English ambient style with bus parameter fallbacks
@@ -208,8 +325,13 @@ s.doWhenBooted({
         // settings. masterAmp rides on top as the pad-layer trim (also previously
         // read and dropped) — it is the same control the beat engine scales its
         // percussion with, so the two layers now balance from one slider.
+        // polyComp is 1/sqrt(live pad count), computed in sclang at spawn —
+        // pads are the one layer that sums linearly with concurrency, and at
+        // 20-30 voices they alone reached 2-3x full scale while every other
+        // layer sat under 0.17.
         sig = sig * (amp * masterVol.clip(0.01, 1) * distanceAmp.clip(0.1, 1)
-            * Lag.kr(legacyAmp, 0.3).linlin(0, 1, 0.05, 1.4));
+            * Lag.kr(legacyAmp, 0.3).linlin(0, 1, 0.05, 1.4)) * polyComp * ~trimPad
+            * Lag.kr(Select.kr(mixPadBus >= 0, [1.0, In.kr(mixPadBus, 1)]), 0.08);
         
         // Quadraphonic spatial positioning
         // Panner chosen from the REAL output channel count, at graph-build time
@@ -234,7 +356,9 @@ s.doWhenBooted({
     // opalKick: Deep FM/Distortion kick (Gem style)
     SynthDef(\opalKick, {
         arg out=0, freq=50, amp=0.5, atk=0.001, dec=0.4,
-        masterVolBus=(-1), timeBus=(-1), harmonicBus=(-1), textureBus=(-1), spectralBus=(-1), atmosphereBus=(-1), spatialBus=(-1);
+        masterVolBus=(-1), timeBus=(-1), harmonicBus=(-1), textureBus=(-1), spectralBus=(-1), atmosphereBus=(-1), spatialBus=(-1),
+        // Matrix mixer: this layer's live level (0 = mute, 1 = unity).
+        mixKickBus=(-1);
 
         var vol   = Select.kr(masterVolBus >= 0, [0.3, In.kr(masterVolBus, 1)]);
         var tStretch= Select.kr(timeBus >= 0, [2.0, In.kr(timeBus, 1)]);
@@ -260,7 +384,8 @@ s.doWhenBooted({
         // Reverb tail
         sig = sig + FreeVerb.ar(sig, revM * 0.5, 0.7, 0.2);
 
-        sig = sig * env * amp * vol;
+        sig = sig * env * amp * vol * ~trimKick
+            * Lag.kr(Select.kr(mixKickBus >= 0, [1.0, In.kr(mixKickBus, 1)]), 0.08);
         
         // Quadraphonic spatial positioning
         // PanAz's position is already a -1..1 traversal of the ring, which is
@@ -288,7 +413,9 @@ s.doWhenBooted({
     SynthDef(\opalPerc, {
         arg out=0, freq=400, amp=0.3, 
         masterVolBus=(-1), harmonicBus=(-1), textureBus=(-1), resonantBus=(-1), spectralBus=(-1), timeBus=(-1),
-        memoryBus=(-1), atmosphereBus=(-1), spatialBus=(-1);
+        memoryBus=(-1), atmosphereBus=(-1), spatialBus=(-1),
+        // Matrix mixer: this layer's live level (0 = mute, 1 = unity).
+        mixPercBus=(-1);
 
         var vol   = Select.kr(masterVolBus >= 0, [0.3, In.kr(masterVolBus, 1)]);
         var tStretch= Select.kr(timeBus >= 0, [2.0, In.kr(timeBus, 1)]);
@@ -343,7 +470,8 @@ s.doWhenBooted({
         sig = sig + wet;
         sig = sig + FreeVerb.ar(sig, revM, 0.8, 0.5);
 
-        sig = sig * amp * vol;
+        sig = sig * amp * vol * ~trimPerc
+            * Lag.kr(Select.kr(mixPercBus >= 0, [1.0, In.kr(mixPercBus, 1)]), 0.08);
         
         // PanAz's position is already a -1..1 traversal of the ring, which is
         // exactly the range spatialSpread has. The old atan2(x, 0) collapsed
@@ -378,7 +506,9 @@ s.doWhenBooted({
         // a bus that reached no UGen. They shape the drone here.
         masterAmpBus=(-1), filterCutoffBus=(-1),
         droneDepthBus=(-1), droneFadeBus=(-1), droneSpaceBus=(-1), droneMixBus=(-1),
-        delayFeedbackBus=(-1);
+        delayFeedbackBus=(-1),
+        // Matrix mixer: this layer's live level (0 = mute, 1 = unity).
+        mixDroneBus=(-1);
 
         var vol   = Select.kr(masterVolBus >= 0, [0.3, In.kr(masterVolBus, 1)]);
         var pShift= Select.kr(pitchBus >= 0, [0.0, In.kr(pitchBus, 1)]);
@@ -402,8 +532,24 @@ s.doWhenBooted({
         
         env = EnvGen.kr(Env.asr(4.0, 1.0, 6.0), gate, doneAction: 2);
         
-        // Pitch mapping
-        baseFreq = freq * (pShift.clip(-24, 24) / 12).midiratio;
+        // Pitch mapping.
+        //
+        // freq is LAGGED. The beat engine re-pitches this drone every four bars
+        // (5_beat_engine.scd walks #[55, 62, 73, 82, 49, 65, 55, 41] on the
+        // phrase counter), which at the usual tempo lands about every 45–50 s,
+        // and it did it with a bare .set — so a drone that had been holding one
+        // note for the better part of a minute stepped a fifth or a sixth
+        // instantly. On a continuous voice that reads as a fault rather than a
+        // change. Now it glides.
+        //
+        // The glide time rides droneFade, like every other continuous control
+        // in this SynthDef, so the same fader that sets how the filter and the
+        // space breathe also sets how far the pitch slides — 0.1 s is nearly
+        // the old step, 5 s is a portamento that takes a tenth of the phrase.
+        // Doubled because a pitch move wants noticeably longer than a filter
+        // move to stop sounding like an edit.
+        baseFreq = Lag.kr(freq, (dFade * 2.0).clip(0.2, 10.0))
+            * (pShift.clip(-24, 24) / 12).midiratio;
         
         // Complex oscillator using native UGens instead of SuperSaw to avoid plugin dependency
         mod = LFNoise2.kr(0.1 + (tStretch * 0.5)).range(0.9, 1.1) * fmR * 2.0;
@@ -472,7 +618,8 @@ s.doWhenBooted({
             1
         );
 
-        sig = sig * env * amp * vol * Lag.kr(mAmp, dFade).linlin(0, 1, 0.05, 1.4) * 0.4;
+        sig = sig * env * amp * vol * Lag.kr(mAmp, dFade).linlin(0, 1, 0.05, 1.4) * ~trimDrone
+            * Lag.kr(Select.kr(mixDroneBus >= 0, [1.0, In.kr(mixDroneBus, 1)]), 0.08);
         
         // Same fix as the other voices; the slow LFNoise wander stays on top.
         // Panner chosen from the REAL output channel count, at graph-build time.
@@ -496,7 +643,9 @@ s.doWhenBooted({
     SynthDef(\opalDust, {
         arg out=0, amp=0.2,
         masterVolBus=(-1), textureBus=(-1), spectralBus=(-1), timeBus=(-1), pitchBus=(-1),
-        memoryBus=(-1), atmosphereBus=(-1), spatialBus=(-1);
+        memoryBus=(-1), atmosphereBus=(-1), spatialBus=(-1),
+        // Matrix mixer: this layer's live level (0 = mute, 1 = unity).
+        mixDustBus=(-1);
 
         var vol   = Select.kr(masterVolBus >= 0, [0.3, In.kr(masterVolBus, 1)]);
         var dens  = Select.kr(textureBus >= 0, [0.2, In.kr(textureBus, 1)]);
@@ -525,7 +674,12 @@ s.doWhenBooted({
         sig = sig + wet;
         sig = sig + FreeVerb.ar(sig, revM, 0.8, 0.5);
 
-        sig = sig * env * amp * vol * 2.0; // Volume compensation
+        // The "* 2.0 volume compensation" is gone. Dust is the brightest layer
+        // in the mix and this doubled it on the way out, against a master bus
+        // that was already running 3-6x over full scale. Gain budget for this
+        // layer is 0.08 — crackle as occasional texture, not a constant rain.
+        sig = sig * env * amp * vol * ~trimDust
+            * Lag.kr(Select.kr(mixDustBus >= 0, [1.0, In.kr(mixDustBus, 1)]), 0.08);
         
         // PanAz's position is already a -1..1 traversal of the ring, which is
         // exactly the range spatialSpread has. The old atan2(x, 0) collapsed

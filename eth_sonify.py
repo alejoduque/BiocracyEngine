@@ -1,6 +1,41 @@
+"""sonETH — Ethereum mainnet → OSC → SuperCollider.
+
+OSC CONTRACT (UDP to SC on 57120). This is the whole outward surface of this
+process; SC's handlers live in 6_osc_handlers.scd.
+
+  /eth/block   [num:int, hash:str(18), txCount:int, baseFeeGwei:float, ts:float]
+      Once per block. The ~12 s cadence is a real, externally-given pulse, and
+      SC measures blockPeriod from the arrival gap — that period is what the
+      beat engine's bar length and the marea's arc are locked to, so this
+      message is load-bearing even though nothing reads its fields directly.
+
+  /eth/tx_info [hash:str(10), valueEth:float, gasGwei:float, to:str(8),
+                txIndex:int, priorityGwei:float, baseGwei:float,
+                addrSig:int, nonce:int, calldataLen:int]
+      Per sounding transaction, sent BEFORE /eth/note so SC has the real values
+      when the note fires. Args 1-4 are the original set; 5-10 were appended
+      and an older SC simply ignores the tail.
+        txIndex     position in the block = priority rank (blocks are fee-ordered)
+        priority/base   the live gas signal, used for accent
+        addrSig     stable voice identity per counterparty
+        nonce       how many times this sender has acted
+        calldataLen how complex the act was
+
+  /eth/note    [note:int, velocity:int, instrument:str, duration:float]
+      Per sounding transaction. The trigger.
+
+LOGGING. One line per block, not one per transaction. Mainnet runs 150-600 tx
+per block on a ~12 s cadence, so the per-transaction line was emitting tens of
+lines a second and burying everything else in the terminal — including the
+errors this process needs to be able to report. Set ETH_VERBOSE=1 to get the
+per-transaction detail back when debugging.
+"""
+
 import asyncio
 import math
 import os
+import sys
+import time
 from collections import deque
 from web3 import Web3
 from pythonosc import udp_client
@@ -21,6 +56,21 @@ w3 = Web3(Web3.HTTPProvider(ETH_NODE_URL))
 
 # Create OSC client
 osc_client = udp_client.SimpleUDPClient(OSC_IP, OSC_PORT)
+
+# Per-transaction detail is opt-in. On mainnet it is tens of lines a second.
+VERBOSE = os.environ.get("ETH_VERBOSE", "") not in ("", "0", "false", "no")
+
+
+def log(msg):
+    """One line, flushed. The launcher redirects this to a log file, and an
+    unflushed stream means the last thing before a crash is the thing you do
+    not get to see."""
+    print(msg, flush=True)
+
+
+def vlog(msg):
+    if VERBOSE:
+        print(msg, flush=True)
 
 # Map Ethereum value to a musical note (MIDI note)
 def map_value_to_note(value, min_note=36, max_note=84):
@@ -89,9 +139,9 @@ def get_instrument(tx_data):
 
 # Poll for new blocks and transactions
 async def poll_transactions(poll_interval=3):
-    print(f"Starting to poll for new blocks every {poll_interval} seconds...")
+    log(f"sondeo cada {poll_interval} s")
     last_block_num = w3.eth.block_number
-    print(f"Current block: {last_block_num}")
+    log(f"bloque actual: {last_block_num}")
 
     # Track processed transaction hashes to avoid duplicates.
     # deque evicts OLDEST first — the previous set-slicing kept an arbitrary
@@ -103,7 +153,8 @@ async def poll_transactions(poll_interval=3):
 
     # Define minimum value threshold (0.0001 ETH)
     min_value_threshold = w3.to_wei(0.0001, 'ether')
-    print(f"Minimum transaction value threshold: {w3.from_wei(min_value_threshold, 'ether')} ETH")
+    log(f"umbral: {w3.from_wei(min_value_threshold, 'ether')} ETH  ·  detalle por tx: "
+          f"{'ON' if VERBOSE else 'OFF (ETH_VERBOSE=1)'}")
 
     while True:
         try:
@@ -111,23 +162,33 @@ async def poll_transactions(poll_interval=3):
 
             # If we have new blocks
             if current_block_num > last_block_num:
-                print(f"New block(s) detected! Processing from {last_block_num+1} to {current_block_num}")
+                # (no line here: the per-block summary below says everything
+                #  this did, and said it once per block instead of twice)
 
                 # Process each new block
                 for block_num in range(last_block_num + 1, current_block_num + 1):
                     try:
                         # Get block with full transaction objects
                         block = w3.eth.get_block(block_num, full_transactions=True)
-                        print(f"Block {block_num} has {len(block['transactions'])} transactions")
+                        vlog(f"block {block_num}: {len(block['transactions'])} tx")
+                        # Counters for the one summary line this block will emit.
+                        n_sounded = 0
+                        n_skipped_dust = 0
+                        v_min = None
+                        v_max = 0.0
 
                         # ── Block-level message ────────────────────────────
                         # Ethereum blocks land on a ~12 s cadence — a real,
-                        # externally-given pulse. Emitting it lets SC use the
-                        # block as a BAR (rhythmBlockBar) and seed that bar's
-                        # pattern from the block hash (rhythmHashSeed) instead
-                        # of running a metronome the chain merely decorates.
-                        # Sent unconditionally; SC ignores it unless a scheme
-                        # that wants it is enabled.
+                        # externally-given pulse. SC measures blockPeriod from
+                        # the gap between these and locks the bar length AND
+                        # the marea's density arc to it, so this message is
+                        # load-bearing even though nothing reads its fields
+                        # directly. Sent unconditionally.
+                        #
+                        # (It used to say this fed rhythmBlockBar and
+                        #  rhythmHashSeed. Those were two of seven rhythm
+                        #  toggles removed a while back; the comment outlived
+                        #  them by several commits.)
                         block_hash = block['hash'].hex() if hasattr(block['hash'], 'hex') else str(block['hash'])
                         base_fee = block.get('baseFeePerGas')
                         osc_client.send_message("/eth/block", [
@@ -155,6 +216,7 @@ async def poll_transactions(poll_interval=3):
 
                             # Skip transactions with value less than threshold
                             if tx_dict['value'] < min_value_threshold:
+                                n_skipped_dust += 1
                                 continue
 
                             # Extract parameters
@@ -174,8 +236,11 @@ async def poll_transactions(poll_interval=3):
                             # Determine duration based on value (larger values = longer notes)
                             duration = min(2.0, 0.2 + float(w3.from_wei(value, 'ether')) / 100)
 
-                            # Print info
-                            print(f"TX: {tx_hash[:10]}... Value: {w3.from_wei(value, 'ether'):.5f} ETH → Note: {note}, Vel: {velocity}")
+                            eth = float(w3.from_wei(value, 'ether'))
+                            n_sounded += 1
+                            v_min = eth if v_min is None else min(v_min, eth)
+                            v_max = max(v_max, eth)
+                            vlog(f"  tx {tx_hash[:10]} {eth:.5f} ETH  note {note} vel {velocity}")
 
                             # Send tx_info FIRST so SC has the real values when /eth/note fires.
                             # Args 1–4 are unchanged (SC reads msg[1..4]); 5–10 are
@@ -209,29 +274,40 @@ async def poll_transactions(poll_interval=3):
                             # Add a small delay between transactions to spread out the sounds
                             await asyncio.sleep(0.05)
 
+                        # ── One line per block ─────────────────────────
+                        # Everything the per-transaction spam used to say,
+                        # aggregated: how many actually sounded, how many were
+                        # dust below the threshold, the value range that drove
+                        # the note mapping, and the gas the accent came from.
+                        base_gwei = float(w3.from_wei(base_fee, 'gwei')) if base_fee else 0.0
+                        span = f"{v_min:.4f}-{v_max:.4f}" if v_min is not None else "-"
+                        log(f"blk {block_num}  tx {len(block['transactions']):>4}"
+                            f"  sonando {n_sounded:>3}  polvo {n_skipped_dust:>4}"
+                            f"  ETH {span}  base {base_gwei:.2f} gwei")
+
                     except Exception as e:
-                        print(f"Error processing block {block_num}: {e}")
+                        log(f"error en el bloque {block_num}: {e}")
 
                 # Update last processed block
                 last_block_num = current_block_num
 
         except Exception as e:
-            print(f"Error in main polling loop: {e}")
+            log(f"error en el bucle principal: {e}")
 
         # Wait before checking for new blocks again
         await asyncio.sleep(poll_interval)
 
 # Main function
 async def main():
-    print("Connecting to Ethereum network...")
+    log("conectando…")
 
     if not w3.is_connected():
-        print(f"Failed to connect to Ethereum node at {ETH_NODE_URL}")
-        print("Please check your connection and Infura Project ID")
+        log(f"sin conexión a {ETH_NODE_URL}")
+        log("revisa la conexión y el Project ID de Infura")
         return
 
-    print(f"Connected to Ethereum! Latest block: {w3.eth.block_number}")
-    print(f"Sending OSC messages to {OSC_IP}:{OSC_PORT}")
+    log(f"conectado · bloque {w3.eth.block_number}")
+    log(f"OSC → {OSC_IP}:{OSC_PORT}")
 
     # Start polling for new blocks
     await poll_transactions()

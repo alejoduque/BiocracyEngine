@@ -250,10 +250,20 @@ class ParliamentStore {
       const v = args[0] ?? 0;
       s.eco.co2 = v * 127;
       s.eco.mycoPulse = v * 4;
+      // Fungi.chem is one of the six BioToken factors and it had no feed at
+      // all: /agent/fungi/state has no emitter, and its control sliders were
+      // removed with the Fungi Networks panel, so it sat at its 0.5 default
+      // for every session and quietly halved the token forever. The mycelial
+      // pulse this same message already carries is the nearest thing the
+      // instrument actually measures, so the factor now moves with it.
+      for (const f of s.fungi) f.chemical = Math.max(0, Math.min(1, v));
     } else if (address === "/bio/density") {
       const v = args[0] ?? 0;
       s.eco.nitrogen = v * 127;
       s.eco.phosphorus = v * 100;
+      // Same story for AI.optim, frozen at 64/127. Transaction density is the
+      // optimisation pressure the engine is under; that is what it now reads.
+      s.ai.optimization = Math.max(0, Math.min(1, v)) * 127;
     } else if (address === "/bio/consensus") {
       if (typeof args[0] === "number") s.consensusWave = args[0];
     }
