@@ -39,6 +39,7 @@ import re
 import shutil
 import subprocess
 import sys
+import unicodedata
 from concurrent.futures import ProcessPoolExecutor, as_completed
 from datetime import date, datetime
 from pathlib import Path
@@ -98,6 +99,11 @@ HABITAT_OPACITY = {
     "Otros cultivos transitorios": 0.15,
     "Pastos limpios": 0.10,
     "Tierras desnudas y degradadas": 0.00,
+}
+# Normalise the keys too, so the table cannot drift out of the form the lookup
+# normalises to if this file is ever re-saved by an editor that decomposes.
+HABITAT_OPACITY = {
+    unicodedata.normalize("NFC", k): v for k, v in HABITAT_OPACITY.items()
 }
 
 # Article 43 as the data can honestly support it: the detector yields ecological
@@ -284,7 +290,20 @@ def scan() -> list[dict]:
         when = datetime.fromisoformat(stamp)
         doy = when.timetuple().tm_yday
         iso = when.date().isoformat()
-        habitat = meta.get("habitat", "")
+        # NFC, and not optionally. The detector's events.json carries habitat
+        # names in NFD — macOS writes decomposed filenames and the strings came
+        # from a directory tree — so "galería" arrives as g-a-l-e-r-i+◌́-a while
+        # HABITAT_OPACITY below is keyed in composed form. Same glyphs, different
+        # bytes, and dict lookup is byte equality: every accented habitat missed
+        # and fell through to the 0.4 default.
+        #
+        # That is not a cosmetic bug. It is Article 47 scored wrong for 105 of
+        # 261 clips, 90 of them UNDER-protected — Bosque de galería (47 clips)
+        # should be 0.80 and Lagunas/ciénagas (33) should be 0.85, the two most
+        # sensitive habitats in the survey, both stored as 0.4 and therefore
+        # audible and projectable at opacity floors that should have withheld
+        # them.
+        habitat = unicodedata.normalize("NFC", meta.get("habitat", ""))
         day = daily.get(iso, {})
 
         def cv(field: str) -> float:
