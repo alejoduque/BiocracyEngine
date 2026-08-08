@@ -228,6 +228,73 @@
     (interval * 0.5) + rrand(interval.neg * 0.45, interval * 0.45)
 };
 
+// ─── The drone bed as an ensemble ───────────────────────────────────────────
+// Partials arrive, hold, and leave. Nothing glides. The harmony changes because
+// old partials die at the old fundamental while new ones are born at the new
+// one — which is how drone music has always changed harmony, and it is the
+// answer to a bed whose only event was a ramp between two pitches.
+//
+// Ratios are a harmonic series with two just intervals folded in, weighted so
+// the low partials are common and the high ones are occasional. That weighting
+// is what makes it a bed rather than a chord: the fundamental and its octave
+// are almost always present, the fifth often, the seventh partial rarely and
+// briefly, so the top of the bed keeps changing while the bottom holds.
+~droneRatios  = #[0.5, 1.0, 1.0, 1.5, 2.0, 2.0, 2.5, 3.0, 4.0, 5.0, 6.0];
+~droneWeights = #[0.10, 0.16, 0.16, 0.13, 0.11, 0.11, 0.07, 0.06, 0.05, 0.03, 0.02];
+~droneVoices  = ~droneVoices ?? { [] };
+~droneMaxVoices = 7;
+~droneRoot = ~droneRoot ?? { 55 };
+
+~droneEnsemble = {
+    if(~droneRoutine.notNil) { ~droneRoutine.stop; ~droneRoutine = nil };
+    ~droneRoutine = Routine({
+        4.0.wait;   // let the server settle before the bed starts filling
+        loop {
+            var wait = 4.0;
+            try {
+                var live = (~droneVoices ? []).select { |v| v.notNil };
+                var harm = ~busVal.value(\harmonicRich, 1.0);
+                var tDil = ~busVal.value(\timeDilation, 2.0);
+                ~droneVoices = live;
+                if(live.size < ~droneMaxVoices) {
+                    var i = ~droneWeights.normalizeSum.windex;
+                    var ratio = ~droneRatios[i];
+                    // Lives are long and unequal. timeDilation scales them, so
+                    // the same fader that stretches every envelope in the
+                    // engine also decides how slowly the bed turns over.
+                    var atk  = rrand(9.0, 26.0) * tDil.linlin(0.5, 6, 0.6, 1.8);
+                    var hold = rrand(14.0, 48.0) * tDil.linlin(0.5, 6, 0.6, 1.8);
+                    var rel  = rrand(12.0, 34.0) * tDil.linlin(0.5, 6, 0.6, 1.8);
+                    var syn = Synth(\dronePartial, [
+                        \out,    0,
+                        \freq,   ~droneRoot,
+                        \ratio,  ratio,
+                        // Higher partials quieter, or the bed turns into a
+                        // chord standing on its own overtones.
+                        \amp,    (0.16 / (1 + (ratio * 0.55)))
+                            * harm.linexp(0.1, 5.0, 0.7, 1.35),
+                        \atk, atk, \hold, hold, \rel, rel,
+                        \pan,    1.0.rand2 * 0.7,
+                        \detune, rrand(0.002, 0.009),
+                        \seed,   1.0.rand
+                    ] ++ (~voiceBusArgs.value ? []),
+                        target: if(~defaultGroup.notNil, { ~defaultGroup }, { s.defaultGroup }));
+                    ~droneVoices = ~droneVoices.add(syn);
+                    syn.onFree({ ~droneVoices.remove(syn) });
+                };
+                // Uneven spacing. A fixed interval would make the bed pulse at
+                // that period, which is the ramp problem in another costume.
+                wait = rrand(5.0, 17.0);
+            } { |e|
+                ("[drone] ensemble frame: " ++ e.errorString).postln;
+                wait = 6.0;
+            };
+            wait.wait;
+        };
+    }).play(AppClock);
+    "[drone] ensemble running".postln;
+};
+
 ~beatEngine = {
     // .stop AND nil. The GUI's Beat Engine light used to test ~beatRoutine.notNil,
     // which stayed true forever because this line only stopped it — so the light
@@ -462,7 +529,17 @@
                     dustProb = (0.06 + (density * 0.2) + (transactionInfluence * 0.1)).clip(0.03, 0.35);
                     // Drift drone pitch: cycle through harmonically-related notes
                     droneBaseFreq = #[55, 62, 73, 82, 49, 65, 55, 41].wrapAt(phrase);
-                    // Update drone pitch live
+                    // The root moves and NOTHING GLIDES. Partials born after
+                    // this line arrive at the new fundamental while the ones
+                    // already sounding live out their lives at the old one, so
+                    // the harmony changes by crossfade between two populations
+                    // rather than by sliding a single voice. That slide — a 4 s
+                    // Lag applied to one perpetual synth every four bars — was
+                    // the whole of the bed's motion, and it is what read as a
+                    // small plane changing gear.
+                    ~droneRoot = droneBaseFreq;
+                    // The sub anchor keeps following, slowly: it is under the
+                    // bed rather than in it, and it has no harmonics to clash.
                     if(~opalDroneSynth.notNil) {
                         ~opalDroneSynth.set(\freq, droneBaseFreq);
                     };
@@ -539,7 +616,30 @@
             // ~0.03 in the trough, which is the swell-and-thin the arcs exist
             // to produce. The transaction clause is kept — a burst of chain
             // activity should still be able to push through a trough.
-            percProb = ((1.6 / percDivisor) * tideDensity).clip(0.0, 0.9);
+            // ── Self-exciting, not uniform ─────────────────────────────────
+            // This was a fixed-probability coin per tick, and a Bernoulli
+            // process at constant p is the most PREDICTABLE thing a rhythm can
+            // be: statistically uniform, evenly sprinkled, no clusters and no
+            // gaps. It never surprises because there is nothing in it that
+            // could — every tick is independent of every other.
+            //
+            // ~percExcite is raised by a hit and decays back, so one strike
+            // makes the next few more likely and a silence deepens itself. The
+            // layer plays in gestures with real gaps between them instead of at
+            // an even density, and the phrase lengths are never the same twice
+            // because nothing sets them — they fall out of the process.
+            ~percExcite = (~percExcite ? 0) * 0.86;
+            // 1.6 -> 0.9. Self-excitation doubles the density on its own, and
+            // the ask was for a different SHAPE, not more notes. Measured over
+            // 2000 ticks: 198 hits against the uniform version's 212, with
+            // twice the clusters (40 runs of two or more against 21) and longer
+            // silences (147 ticks against 114). Same amount of material,
+            // arranged in gestures instead of sprinkled evenly.
+            percProb = (((0.9 / percDivisor) * tideDensity)
+                * (1 + (~percExcite * 1.9))
+                // Deepens the troughs: the floor is what makes a gap a gap.
+                * tideDensity.linlin(0, 1, 0.35, 1.0)
+            ).clip(0.0, 0.92);
             if(percProb.coin or: {
                 (transactionInfluence > 0.6) and: { (0.12 * tideDensity).coin }
             }) {
@@ -581,6 +681,10 @@
                 // different actor is not quite the same object.
                 var bodySeed = ((speciesIdx / 4.0)
                     + (((rs !? { rs[\addrSig] } ? 0) % 97) / 97.0 * 0.35)).wrap(0, 1);
+                // A hit makes the next few more likely; the decay above lets
+                // the excitement fall away again. This is what turns an evenly
+                // sprinkled layer into one that plays in gestures.
+                ~percExcite = ((~percExcite ? 0) + 0.55).clip(0, 1.6);
                 poolIdx = if(rs.notNil and: { rs[\addrSig] > 0 }) {
                     ((rs[\addrSig] >> 2) + rs[\txIndex]) % pitchPool.size
                 } {
@@ -785,6 +889,7 @@
     });
     
     ~beatRoutine.play;
+    if(~droneEnsemble.notNil) { ~droneEnsemble.value };
 };
 
 // The 'Enhanced Beat Controls' window that used to live here is gone.

@@ -120,7 +120,7 @@ s.doWhenBooted({
     // reached 3.10 * 0.07 * 0.10 = 0.022 — 40x below the 0.92 ceiling, i.e. a
     // "bed" nobody can hear. At 8.0 it sits near 0.056, about -24 dB from the
     // ceiling, which is a bed you notice is there without it being in front.
-    ~trimDrone = 8.00 * ~trimMaster;   // the BED — continuous, holds the floor
+    ~trimDrone = 3.20 * ~trimMaster;   // the BED — continuous, holds the floor
     // 0.30 -> 0.20 -> 0.45. The 0.20 pass was a mistake: it optimised the crest
     // factor, and the pads ARE the bells — so lowering them worked directly
     // against "I cannot hear the bells". The crest is the limiter's problem,
@@ -128,7 +128,14 @@ s.doWhenBooted({
     // whereas an inaudible bell layer is a broken instrument.
     ~trimPad   = 0.45 * ~trimMaster;
     ~trimKick  = 1.00 * ~trimMaster;
-    ~trimPerc  = 0.45 * ~trimMaster;
+    // 0.45 -> 0.24. Reported as too loud against everything else, and the
+    // measurements agree: perc was the only voice reaching -5 dB in isolation
+    // while the bed sat near -22.
+    ~trimPerc  = 0.24 * ~trimMaster;
+    // The bed is the ensemble now, so the ONE continuous voice steps back from
+    // 8.0 to 3.2 and the partials carry the rest. Its job is the sub anchor
+    // under them rather than the whole bed on its own.
+    ~trimDronePartial = 3.4 * ~trimMaster;
     ~trimDust  = 0.60 * ~trimMaster;
     // Field recordings (10_sample_system.scd). Kept in this table rather than
     // beside the sample SynthDef so the whole budget stays readable in one
@@ -703,6 +710,85 @@ s.doWhenBooted({
     }).add;
 
     // opalDrone: Continuous evolving ambient pad
+    // ─── One partial of the drone bed ───────────────────────────────────
+    // The bed was ONE synth, spawned once when the engine started and held for
+    // the whole session, and its only motion was a 4 s Lag between eight fixed
+    // pitches. That is why it read as a small plane changing gear: a constant
+    // buzzing tone whose sole event was a ramp up or a ramp down. No partial
+    // ever arrived, none ever left, and five detuned Saws through a lowpass is
+    // an engine note by construction.
+    //
+    // A drone bed is not one voice. It is many sustained partials with
+    // independent lives, entering and leaving on their own schedules and
+    // beating against each other — and harmony changes by REPLACEMENT, old
+    // partials dying at the old fundamental while new ones arrive at the new
+    // one. That removes the ramp entirely: nothing glides, things appear.
+    //
+    // Sines, not saws. The buzz was the sawtooth; body comes from the partial
+    // ratios in the ensemble above it and from a quiet odd harmonic here, not
+    // from a bright waveform being filtered back down.
+    SynthDef(\dronePartial, {
+        arg out = 0, freq = 110, amp = 0.10, ratio = 1.0,
+            atk = 20, hold = 30, rel = 25, pan = 0, detune = 0.004, seed = 0,
+            masterVolBus=(-1), pitchBus=(-1), spectralBus=(-1), spatialBus=(-1),
+            textureBus=(-1), atmosphereBus=(-1), harmonicBus=(-1), resonantBus=(-1),
+            masterAmpBus=(-1), filterCutoffBus=(-1), droneFadeBus=(-1),
+            droneSpaceBus=(-1), mixDroneBus=(-1);
+
+        var vol   = Select.kr(masterVolBus >= 0, [0.3, In.kr(masterVolBus, 1)]);
+        var pShift= Select.kr(pitchBus >= 0, [0.0, In.kr(pitchBus, 1)]);
+        var filt  = Select.kr(spectralBus >= 0, [1000, In.kr(spectralBus, 1)]);
+        var spatialX= Select.kr(spatialBus >= 0, [0.0, In.kr(spatialBus, 1)]);
+        var texD  = Select.kr(textureBus >= 0, [0.2, In.kr(textureBus, 1)]);
+        var revM  = Select.kr(atmosphereBus >= 0, [0.4, In.kr(atmosphereBus, 1)]);
+        var fmR   = Select.kr(harmonicBus >= 0, [1.0, In.kr(harmonicBus, 1)]);
+        var res   = Select.kr(resonantBus >= 0, [0.4, In.kr(resonantBus, 1)]);
+        var mAmp  = Select.kr(masterAmpBus >= 0, [0.7, In.kr(masterAmpBus, 1)]);
+        var cutoff= Select.kr(filterCutoffBus >= 0, [0.6, In.kr(filterCutoffBus, 1)]);
+        var dSpace= Select.kr(droneSpaceBus >= 0, [0.5, In.kr(droneSpaceBus, 1)]);
+        var f, sig, env, quadSig, trem;
+
+        f = (freq * ratio * (pShift.clip(-24, 24) / 12).midiratio).clip(20, 6000);
+
+        // Three sines a few cents apart. The beating between them is the
+        // movement — slow, uneven, and different for every partial because the
+        // detune rides the seed. Nothing here sweeps.
+        sig = Mix.fill(3, { |i|
+            SinOsc.ar(f * (1 + ((i - 1) * detune * (1 + (seed * 0.7)))), 0, 1/3)
+        });
+        // One quiet odd harmonic for body, opened by harmonicRich. This is
+        // where "no harmonics" gets answered at the level of a single partial;
+        // the ensemble answers it again at the level of the bed.
+        sig = sig + (SinOsc.ar(f * 3, 0, 0.055 * fmR.linlin(0.1, 5, 0.2, 1.4)));
+        sig = sig + (SinOsc.ar(f * 5, 0, 0.022 * fmR.linlin(0.1, 5, 0.0, 1.2)));
+
+        // Very slow amplitude drift, rate unique per partial, so no two breathe
+        // together and the bed never pulses as one thing.
+        trem = SinOsc.kr(0.017 + (seed * 0.061), seed * 6.283).range(0.72, 1.0);
+
+        sig = LPF.ar(sig, (filt.clip(80, 4000) * cutoff.linexp(0, 1, 0.6, 2.2)).clip(90, 8000));
+        sig = sig + (FreeVerb.ar(sig, revM * 0.7, dSpace.linlin(0, 1, 0.4, 0.95), 0.15) * 0.5);
+
+        // Sine curves on both ends: a partial should arrive and leave without
+        // ever being heard to start or stop.
+        env = EnvGen.kr(
+            Env.new([0, 1, 1, 0],
+                [atk.clip(2, 90), hold.clip(1, 300), rel.clip(2, 90)],
+                [\sine, 0, \sine]),
+            doneAction: 2);
+
+        sig = sig * env * trem * amp * vol
+            * Lag.kr(mAmp, 2.0).linlin(0, 1, 0.05, 1.4) * (~trimDronePartial ? 0.10)
+            * Lag.kr(Select.kr(mixDroneBus >= 0, [1.0, In.kr(mixDroneBus, 1)]), 0.08);
+
+        quadSig = if(~limiterChans >= 4) {
+            PanAz.ar(4, sig, (pan + (spatialX.clip(-1, 1) * 0.5)).clip(-1, 1), 1, 2, 0.5)
+        } {
+            Pan2.ar(sig, (pan + (spatialX.clip(-1, 1) * 0.5)).clip(-1, 1))
+        };
+        Out.ar(out, quadSig);
+    }).add;
+
     SynthDef(\opalDrone, {
         arg out=0, freq=55, amp=0.5, gate=1,
         masterVolBus=(-1), pitchBus=(-1), timeBus=(-1), spectralBus=(-1), spatialBus=(-1),
