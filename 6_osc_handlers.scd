@@ -205,6 +205,7 @@ s.doWhenBooted({
             // Added after a dark ETH light could not be explained from a log
             // that plainly showed transactions being handled — the age was the
             // one number nobody could read.
+            ++ "  osc-addrs:" ++ (~oscSeen ? ()).size
             ++ "  age(eth/osc/midi/bridge/beat):"
             ++ ~monAge.(~lastEthTime) ++ "/" ++ ~monAge.(~lastOscTime)
             ++ "/" ++ ~monAge.(~lastMidiTime) ++ "/" ++ ~monAge.(~lastBrowserOscTime)
@@ -715,6 +716,55 @@ s.doWhenBooted({
             ~beatParams.transactionInfluence = (~beatParams.transactionInfluence ? 0.0) + 0.6;
         };
     }, "/pheno/jumpSeason");
+
+    // ─── The OSC tap ────────────────────────────────────────────────────
+    // ~lastOscTime used to be stamped in exactly ONE place — the registry
+    // slider handler below — so the light labelled OSC only lit while somebody
+    // was moving a browser fader. Everything else arriving on this port
+    // (species, slot voices, Antifonía calls, parliament buttons, presets, the
+    // whole chain feed) stamped a different variable, so the broadest-sounding
+    // light on the row was in fact the narrowest, and nearly redundant with
+    // BRIDGE RX.
+    //
+    // A catch-all OSCdef — path nil matches every incoming message — stamps it
+    // now, so OSC means what the label says: something is talking to this port.
+    //
+    // Messages from scsynth itself are excluded. /done, /status.reply, /n_end
+    // and the rest arrive constantly and would pin the light lit whether or not
+    // anything external existed, which is the same as no light at all.
+    // thisProcess.addOSCRecvFunc, NOT OSCdef with a nil path. OSCdef dispatches
+    // by matching the address against a registered path, so a nil path
+    // registers under nil and matches nothing at all — verified: the light lit
+    // from the old single stamp site while the tap recorded zero addresses.
+    // addOSCRecvFunc is the hook that genuinely sees every message.
+    ~oscSeen = ~oscSeen ?? { () };
+    if(~oscTapFunc.notNil) { thisProcess.removeOSCRecvFunc(~oscTapFunc) };
+    ~oscTapFunc = { |msg, time, addr, recvPort|
+        if(addr.isNil or: { s.addr.isNil } or: { addr.port != s.addr.port }) {
+            ~lastOscTime = Main.elapsedTime;
+            ~oscSeen[msg[0]] = Main.elapsedTime;
+        };
+    };
+    thisProcess.addOSCRecvFunc(~oscTapFunc);
+
+    // What has this port actually heard, and how long ago. This is the readout
+    // that settles an argument about a dark light: if an address is not in this
+    // list, SuperCollider never received it and the fault is upstream; if it is
+    // in the list with a small age and its light is dark, the fault is the
+    // light. Call ~oscReport.value in the post window.
+    ~oscReport = {
+        var now = Main.elapsedTime;
+        "─── OSC seen this session ───".postln;
+        if((~oscSeen ? ()).size == 0) {
+            "  NOTHING has arrived on this port.".postln;
+        } {
+            ~oscSeen.keys.asArray.sort.do { |k|
+                ("  " ++ k.asString.padRight(28)
+                    ++ (now - ~oscSeen[k]).round(0.1).asString.padLeft(8) ++ " s ago").postln;
+            };
+        };
+        "─────────────────────────────".postln;
+    };
 
     // ── Cámara de las Especies: the five seats the browser actually shows ──
     // These three addresses were reaching this port and being dropped on the
