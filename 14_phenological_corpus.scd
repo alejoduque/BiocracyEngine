@@ -144,7 +144,12 @@ s.waitForBoot {
     // as a foreground element, without burying the engine. AudioMoth material
     // is quiet at source (peaks well below full scale), which is why this trim
     // is so much larger than the synthesised voices'.
-    ~trimCorpus = 27.0 * (~trimMaster ? 0.055);
+    // 27 measured at -12.3 dB against the master bus and was reported still too
+    // quiet, so this is a second raise on the same evidence: 60 puts it near
+    // -5 dB, which is a foreground layer rather than a supporting one. That is
+    // the right end of the range for this piece — the recordings ARE the
+    // subject, and the corpusLevel fader is still there to pull them back.
+    ~trimCorpus = 60.0 * (~trimMaster ? 0.055);
 
     SynthDef(\corpusVoice, {
         // out: routed to the chain-processing bus when 17_ is running, and

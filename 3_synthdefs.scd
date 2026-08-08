@@ -135,7 +135,11 @@ s.doWhenBooted({
     // The bed is the ensemble now, so the ONE continuous voice steps back from
     // 8.0 to 3.2 and the partials carry the rest. Its job is the sub anchor
     // under them rather than the whole bed on its own.
-    ~trimDronePartial = 3.4 * ~trimMaster;
+    // Raised 3.4 -> 13.0 because the bed now carries the bottom on its own.
+    // \opalDrone contributed an effective 0.2944 and the five-partial bed
+    // 0.0526; removing the former without this would drop the drone layer by
+    // about 15 dB and leave the mix with no floor at all.
+    ~trimDronePartial = 13.0 * ~trimMaster;
     ~trimDust  = 0.60 * ~trimMaster;
     // Field recordings (10_sample_system.scd). Kept in this table rather than
     // beside the sample SynthDef so the whole budget stays readable in one
@@ -693,11 +697,18 @@ s.doWhenBooted({
         // whose centre is resampled by LFNoise0 several times a second. It
         // shrieks at a pitch that jumps mid-strike. Sits above the body, tuned
         // off it, so it reads as part of the same object.
+        // These two stages did NOT follow the body down two octaves, which is
+        // most of "still too high". The scream sat at freq x 2-8 and then
+        // jittered up to x1.7 on top of that — at the upper seats it was
+        // shrieking above 2 kHz over a body ringing at 190 Hz, so the layer
+        // read as high however low the fundamental went. Now x1-3, jittering
+        // narrowly, so it is an overtone OF the strike rather than a separate
+        // high voice sitting on it.
         scream = BPF.ar(exciter,
-            (freq * (2 + (bodySeed * 6)) * LFNoise0.kr(9 + (bodySeed * 20)).range(0.85, 1.7))
-                .clip(60, 13000),
+            (freq * (1 + (bodySeed * 2)) * LFNoise0.kr(9 + (bodySeed * 20)).range(0.9, 1.35))
+                .clip(30, 9000),
             0.0018) * 70 * res.linlin(0.1, 0.8, 0.5, 1.2);
-        sig = sig + (scream * fmD.linlin(0, 1, 0.40, 1.15));
+        sig = sig + (scream * fmD.linlin(0, 1, 0.22, 0.75));
 
         // 2 · The tail bends. "saw scratching" and "shifty feedback": a comb
         // with a wandering delay time doppler-shifts whatever is inside it, so
@@ -723,7 +734,7 @@ s.doWhenBooted({
         // for every seat, because the ring length and clock come off bodySeed.
         steps = Stepper.ar(Impulse.ar(14 + (bodySeed * 46)), 0,
             1, (4 + (bodySeed * 9)).round, 1);
-        micro = SinOsc.ar((freq * steps.linlin(1, 13, 1.0, 3.4)).clip(40, 9000))
+        micro = SinOsc.ar((freq * steps.linlin(1, 13, 1.0, 2.0)).clip(22, 6000))
             * EnvGen.ar(Env.perc(0.002, 0.07 + (fmD * 0.25)));
         sig = sig + (micro * fmD.linlin(0, 1, 0.20, 0.62));
 

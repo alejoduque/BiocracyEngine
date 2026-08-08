@@ -84,7 +84,17 @@
 // Ratios instead of multiples: the pool spans about an octave and a half of a
 // usable mode rather than six rungs of a ladder, so any order through it is
 // musical rather than a run.
-~pitchDegrees = #[1.0, 1.2, 1.3333, 1.5, 1.8, 2.0, 2.4];
+// Widened from #[1.0, 1.2, 1.3333, 1.5, 1.8, 2.0, 2.4], which spanned only 1.26
+// octaves. Two octaves down that put the whole pool inside 26-61 Hz — a 36 Hz
+// band at the bottom of the range, where pitch discrimination is poor and
+// adjacent degrees are 3.2 semitones apart on a resonator whose fundamental is
+// barely periodic. It measured as seven notes and heard as one, which is the
+// "almost always the same note".
+//
+// This spans 3.6x — 1.85 octaves — with wider gaps low down where the ear needs
+// them and closer steps up top. Same intervals in character, enough room
+// between them to be heard as different notes in the register they now sit in.
+~pitchDegrees = #[1.0, 1.25, 1.5, 1.8, 2.25, 2.7, 3.6];
 
 // `root` is the DRONE's fundamental. The default of 35 doubles to the 70 this
 // used to hardcode, so a caller that passes nothing behaves exactly as before.
@@ -350,7 +360,9 @@
 // are almost always present, the fifth often, the seventh partial rarely and
 // briefly, so the top of the bed keeps changing while the bottom holds.
 ~droneRatios  = #[0.5, 1.0, 1.0, 1.5, 2.0, 2.0, 2.5, 3.0, 4.0, 5.0, 6.0];
-~droneWeights = #[0.10, 0.16, 0.16, 0.13, 0.11, 0.11, 0.07, 0.06, 0.05, 0.03, 0.02];
+// Bottom octave weighted up now that nothing else supplies it: 0.10 -> 0.22 on
+// the 0.5 ratio, so the bed reliably keeps a sub partial alive.
+~droneWeights = #[0.22, 0.16, 0.14, 0.11, 0.09, 0.09, 0.06, 0.05, 0.04, 0.02, 0.02];
 ~droneVoices  = ~droneVoices ?? { [] };
 ~droneMaxVoices = 7;
 ~droneRoot = ~droneRoot ?? { 55 };
@@ -463,39 +475,27 @@
             { ~buses[name].getSynchronous }, { default });
     };
 
-    ~opalDroneSynth = Synth(\opalDrone, [
-        \freq, 55, // Low ambient anchor
-        // masterAmp NO va aquí: \opalDrone lo lee en vivo por masterAmpBus más
-        // abajo. Estaba en los dos sitios, así que el drone respondía al mando
-        // aproximadamente al cuadrado y —peor— con la mitad del producto
-        // congelada en el valor que tuviera al arrancar el motor: mover el
-        // fader a mitad de sesión sólo bajaba el factor del bus, y reiniciar
-        // con el mismo fader daba otro nivel. Todas las demás capas lo aplican
-        // una sola vez.
-        \amp, (~beatParams.transportGain ? 1) * 0.8,
-        \masterVolBus, ~bi.(\masterVolume),
-        \pitchBus,     ~bi.(\pitchShift),
-        \timeBus,      ~bi.(\timeDilation),
-        \spectralBus,  ~bi.(\spectralShift),
-        \spatialBus,   ~bi.(\spatialSpread),
-        \textureBus,   ~bi.(\textureDepth),
-        \atmosphereBus,~bi.(\atmosphereMix),
-        \memoryBus,    ~bi.(\memoryFeed),
-        \harmonicBus,  ~bi.(\harmonicRich),
-        \resonantBus,  ~bi.(\resonantBody),
-        // Drone/level buses — \opalDrone now reads these (see 3_synthdefs.scd).
-        // Without them the six matching sliders moved a bus no UGen listened to.
-        \masterAmpBus,    ~bi.(\masterAmp),
-        \filterCutoffBus, ~bi.(\filterCutoff),
-        \droneDepthBus,   ~bi.(\droneDepth),
-        \droneFadeBus,    ~bi.(\droneFade),
-        \droneSpaceBus,   ~bi.(\droneSpace),
-        \droneMixBus,     ~bi.(\droneMix),
-        // delayFeedback had no reader at all until now.
-        \delayFeedbackBus, ~bi.(\delayFeedback),
-        // Matrix mixer: this layer's live level.
-        \mixDroneBus, ~bi.(\mixDrone)
-    ], target: if(~defaultGroup.notNil, { ~defaultGroup }, { s.defaultGroup }));
+    // ─── The propeller is gone ──────────────────────────────────────────────
+    // \opalDrone — five detuned Saws through a lowpass — was still being
+    // spawned here as a "sub anchor" AFTER the bed was rebuilt around it, and
+    // its level made that a fiction. Measured from the live node tree against
+    // the trims: amp 0.8 x trimDrone gave it an effective 0.2944, while one
+    // \dronePartial ran at 0.0235 and five of them summed to about 0.0526. The
+    // old voice was 15 dB louder than the ENTIRE new bed.
+    //
+    // So every measurement of the rebuild was of a layer buried 15 dB under the
+    // exact sound the rebuild was meant to remove, and the drone went on
+    // sounding like a propeller because a propeller was still the loudest thing
+    // in it. That is why three rounds of work changed nothing audible.
+    //
+    // The bed does not need a separate anchor: ~droneRatios already contains
+    // 0.5, so the ensemble grows its own bottom octave out of the same voice as
+    // everything else. Nothing here spawns \opalDrone any more. The SynthDef
+    // stays defined — the slot voices and the emergency handlers still reference
+    // it — and every ~opalDroneSynth.set below is .notNil-guarded, so leaving
+    // this nil is a safe no-op rather than a dangling reference.
+    ~opalDroneSynth = nil;
+
     
     ~beatRoutine = Routine({
         var step = 0;
@@ -847,8 +847,16 @@
                 // own melodic motion rather than becoming a bed follower.
                 var bedHz = if(0.34.coin) { (~droneVoiceHz ? ()).values.choose } { nil };
                 var baseFreq = (if(bedHz.notNil) {
+                        // Folded into the pool's OWN register. This used to
+                        // fold to 70 Hz and stop, which was written when the
+                        // perc lived an octave above the root; after the drop
+                        // it put every bed-struck hit above the entire pool, so
+                        // a third of the layer sat in a different band from the
+                        // rest — two registers alternating rather than one
+                        // instrument, and neither of them the one asked for.
                         var f = bedHz;
-                        while({ f < 70 }, { f = f * 2 });
+                        while({ f < 26 }, { f = f * 2 });
+                        while({ f > 105 }, { f = f * 0.5 });
                         f
                     } {
                         pitchPool.wrapAt(poolIdx)
