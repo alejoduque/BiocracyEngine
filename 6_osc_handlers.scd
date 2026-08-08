@@ -892,6 +892,34 @@ s.doWhenBooted({
         };
     }, "/parliament/emergency");
 
+    // ─── Galvo-safety scope from the laser bridge ───────────────────────────
+    // laser-bridge.js sends this at 12 Hz whenever it is running. It carries
+    // the frame AFTER sanitisation — the signal the Helios DAC actually
+    // receives — plus the two compliance measures computed over every sample
+    // rather than over the decimated copy drawn on screen.
+    //
+    // ~laserScope stays nil until the bridge speaks, and the GUI reads that as
+    // "no bridge" rather than as a safe reading, which matters: a scope that
+    // shows compliant when nothing is connected is worse than no scope.
+    OSCdef(\laserScope, { |msg|
+        var n = (msg[8] ? 0).asInteger;
+        var pts = Array.fill(n, { |i|
+            [msg[9 + (i * 3)].asFloat, msg[10 + (i * 3)].asFloat,
+             msg[11 + (i * 3)].asFloat]
+        });
+        ~laserScope = (
+            dac:       msg[1].asInteger,      // 1 = Helios detected, 0 = dry run
+            pps:       msg[2].asInteger,
+            points:    msg[3].asInteger,
+            maxStep:   msg[4].asFloat,        // the configured limit
+            peakStep:  msg[5].asFloat,        // the worst step in this frame
+            overspeed: msg[6].asInteger,      // samples exceeding the limit
+            dwellUs:   msg[7].asFloat,        // longest unblanked stationary run
+            xy:        pts,
+            at:        Main.elapsedTime
+        );
+    }, "/laser/scope");
+
     OSCdef(\startHandler, { |msg|
         ~lastBrowserOscTime = Main.elapsedTime;
         "Parliament START — restoring beat engine".postln;

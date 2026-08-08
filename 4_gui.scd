@@ -18,7 +18,7 @@
     var statusView, counterView, controlView, controlViewRow2, controlViewRow3, controlViewRow5, controlViewRow6, controlViewRow7;
     var mixerView;
     var sampleView, sampleControlView, sampleHeader, sampleButtonView, stopButton;
-    var container, recordingView, presetView;
+    var container, recordingView, presetView, laserView;
     var mainTheme, accentColor, backgroundColor, textColor;
     
     "Creating enhanced GUI with oscilloscope styling...".postln;
@@ -1325,6 +1325,91 @@
         presetView.layout.add(~presetLoadButton);
         ~refreshPresetMenu.value;
         
+        // ─── LASER · galvo-safety scope ─────────────────────────────────────
+        // What a laser projector is driven by IS a waveform: at the DAC's point
+        // rate each point is one sample, X on the left channel and Y on the
+        // right. That is a .wav in every respect, and this draws it — the real
+        // post-sanitisation signal the Helios receives, streamed from
+        // laser-bridge.js, not a reconstruction of what it ought to be.
+        //
+        // The row is a status block on the left and the scope filling the
+        // horizontal space to its right.
+        laserView = View().background_(backgroundColor.blend(mainTheme.accent, 0.05))
+            .layout_(HLayout().margins_(4).spacing_(8));
+        laserView.fixedHeight = 74;
+
+        ~laserStatusText = StaticText()
+            .string_("LASER: no bridge")
+            .stringColor_(mainTheme.dim)
+            .font_(Font(~monoFont, 9))
+            .fixedWidth_(190);
+        laserView.layout.add(~laserStatusText);
+
+        ~laserScopeView = UserView()
+            .background_(Color.black)
+            // drawFunc_, not drawFunc. The bare name is the GETTER: calling it
+            // with a function returns the view's current (nil) draw function,
+            // so the whole builder chain evaluated to nil and ~laserScopeView
+            // was never a view at all — the row laid out an empty stretch and
+            // the scope simply did not exist, without erroring.
+            .drawFunc_({ |uv|
+                var b = uv.bounds;
+                var w = b.width, h = b.height;
+                var sc = ~laserScope;
+                var live = sc.notNil and: { (Main.elapsedTime - sc[\at]) < 2.0 };
+                var midX = h * 0.29, midY = h * 0.71;
+
+                // Two zero lines: the X channel above, the Y channel below.
+                Pen.width = 1;
+                Pen.strokeColor = Color.gray(0.22);
+                [midX, midY].do { |y|
+                    Pen.moveTo(0 @ y); Pen.lineTo(w @ y); Pen.stroke;
+                };
+
+                if(live.not) {
+                    Pen.stringAtPoint(
+                        if(sc.isNil) { "no laser bridge — start with LASER=1" }
+                            { "bridge silent > 2 s" },
+                        8 @ (h * 0.45),
+                        Font(~monoFont, 9), Color.gray(0.45));
+                } {
+                    var pts = sc[\xy] ? [];
+                    var n = pts.size.max(1);
+                    var amp = h * 0.22;
+                    // The waveform, drawn per channel. Blanked samples are the
+                    // beam OFF — still present in the signal, still driving the
+                    // mirrors, so they are drawn dim rather than omitted: the
+                    // scope is of the electrical signal, not of what is visible
+                    // on the forest.
+                    [[0, midX], [1, midY]].do { |ch|
+                        var idx = ch[0], zero = ch[1];
+                        pts.do { |p, i|
+                            var x0 = i / n * w;
+                            var y0 = zero - (p[idx].clip(-1, 1) * amp);
+                            Pen.strokeColor = if(p[2] > 0.5)
+                                { Color.gray(0.30) } { mainTheme.accent };
+                            if(i == 0) { Pen.moveTo(x0 @ y0) } { Pen.lineTo(x0 @ y0) };
+                            Pen.stroke; Pen.moveTo(x0 @ y0);
+                        };
+                    };
+                    // The limit itself, as a pair of rails on the X trace, so
+                    // "complies" is something to SEE rather than to be told.
+                    Pen.strokeColor = Color.gray(0.35);
+                    [midX - (sc[\maxStep] * amp), midX + (sc[\maxStep] * amp)].do { |y|
+                        Pen.moveTo(0 @ y); Pen.lineTo(w @ y); Pen.stroke;
+                    };
+                    // A violation is not a decoration: the whole field goes
+                    // white-barred so it cannot be missed at a glance.
+                    if((sc[\overspeed] > 0) or: { sc[\dwellUs] > 2000 }) {
+                        Pen.strokeColor = Color.white;
+                        Pen.width = 2;
+                        Pen.moveTo(0 @ 1); Pen.lineTo(w @ 1); Pen.stroke;
+                        Pen.moveTo(0 @ (h - 1)); Pen.lineTo(w @ (h - 1)); Pen.stroke;
+                    };
+                };
+            });
+        laserView.layout.add(~laserScopeView, stretch: 1);
+
         // Add all views to the scroll canvas (5 control rows + samples + REC)
         ~scrollCanvas.layout.add(~header);
         ~scrollCanvas.layout.add(statusView);
@@ -1338,6 +1423,7 @@
         ~scrollCanvas.layout.add(controlViewRow6);
         ~scrollCanvas.layout.add(sampleView);
         ~scrollCanvas.layout.add(recordingView);
+        ~scrollCanvas.layout.add(laserView);
         ~scrollCanvas.layout.add(presetView);
 
         // Add footer
@@ -1388,6 +1474,50 @@
                     ~statusLights.eth.setProperty(\status, ~ledAlive.(~lastEthTime, 30.0));
                     ~statusLights.midi.setProperty(\status, ~ledAlive.(~lastMidiTime));
                     ~statusLights.bridge.setProperty(\status, ~ledAlive.(~lastBrowserOscTime));
+
+                    // ── Galvo-safety scope ─────────────────────────────────
+                    // The verdict is stated in words as well as drawn, because
+                    // "the trace looks fine" is not a safety judgement. dwell
+                    // is reported in microseconds against a 2 ms threshold: a
+                    // beam standing still is the hazard the speed limit does
+                    // not catch, and a frame can sit inside every step limit
+                    // and still be dangerous by not moving.
+                    if(~laserStatusText.notNil) {
+                        var sc = ~laserScope;
+                        var live = sc.notNil and: { (Main.elapsedTime - sc[\at]) < 2.0 };
+                        if(live.not) {
+                            ~laserStatusText.string = "LASER: no bridge";
+                            ~laserStatusText.stringColor = mainTheme.dim;
+                        } {
+                            var bad = (sc[\overspeed] > 0) or: { sc[\dwellUs] > 2000 };
+                            ~laserStatusText.string =
+                                (if(sc[\dac] > 0) { "HELIOS DAC" } { "DRY RUN (no DAC)" })
+                                ++ "\n" ++ sc[\pps] ++ " pps · " ++ sc[\points] ++ " pts"
+                                ++ "\npeak step " ++ sc[\peakStep].round(0.001)
+                                ++ " / " ++ sc[\maxStep].round(0.001)
+                                ++ "\ndwell " ++ sc[\dwellUs].round(1) ++ " us"
+                                // Name the fault that actually occurred. The
+                                // first draft always reported over-speed, so a
+                                // parked beam read "UNSAFE: 0 over-speed" —
+                                // which points the operator at the one measure
+                                // that was fine.
+                                ++ "\n" ++ case
+                                    { (sc[\overspeed] > 0) and: { sc[\dwellUs] > 2000 } } {
+                                        "UNSAFE: " ++ sc[\overspeed] ++ " over-speed + parked"
+                                    }
+                                    { sc[\overspeed] > 0 } {
+                                        "UNSAFE: " ++ sc[\overspeed] ++ " over-speed"
+                                    }
+                                    { sc[\dwellUs] > 2000 } {
+                                        "UNSAFE: beam parked "
+                                            ++ (sc[\dwellUs] / 1000).round(0.1) ++ " ms"
+                                    }
+                                    { true } { "galvo-safe" };
+                            ~laserStatusText.stringColor =
+                                if(bad) { Color.white } { mainTheme.dim };
+                        };
+                        if(~laserScopeView.notNil) { ~laserScopeView.refresh };
+                    };
 
                     // The number under each light. Same stamps, same clock —
                     // so a dark light with a small age means the light is

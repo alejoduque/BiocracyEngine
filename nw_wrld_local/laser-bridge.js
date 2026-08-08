@@ -35,6 +35,7 @@
 
 const { WebSocketServer } = require("ws");
 const fs = require("fs");
+const osc = require("osc");
 
 const WS_PORT      = parseInt(process.env.LASER_WS_PORT || "3337", 10);
 const DEFAULT_PPS  = parseInt(process.env.LASER_PPS || "30000", 10);
@@ -46,6 +47,15 @@ const MAX_STEP     = parseFloat(process.env.LASER_MAX_STEP || "0.25");
 const DEADMAN_MS   = 500;
 const FRAME_HZ     = 45;                 // output cadence
 const ILD_OUT      = process.env.LASER_ILD_OUT || null;
+// Where the SC GUI's galvo scope listens. sclang binds 57120.
+const SC_OSC_HOST  = process.env.LASER_SC_HOST || "127.0.0.1";
+const SC_OSC_PORT  = parseInt(process.env.LASER_SC_PORT || "57120", 10);
+const SCOPE_HZ     = 12;    // scope refresh; the eye needs no more
+const SCOPE_POINTS = 96;    // points sent per frame for drawing
+// A galvo parked with the beam unblanked is the actual burn hazard — far more
+// so than moving too fast, which merely distorts. Anything under this step is
+// treated as not moving.
+const DWELL_EPS    = 0.0008;
 
 // ─── internal point model ──────────────────────────────────────────────────
 // {x,y in −1..1, r,g,b in 0..255, blank}. Frames are arrays of these.
@@ -167,6 +177,85 @@ function initHelios() {
   }
 }
 
+
+// ─── Galvo-safety scope telemetry ───────────────────────────────────────────
+// What the SC GUI draws is the WAVEFORM this frame becomes once it reaches the
+// DAC: at _pps points per second each point is one sample, X on the left
+// channel and Y on the right, which is exactly the .wav a galvo pair is driven
+// by. Sending it here rather than reconstructing it in SuperCollider means the
+// scope shows the real post-sanitisation signal — after interpolateJumps has
+// inserted its blanked intermediate points — instead of an idealisation of it.
+//
+// Two compliance measures travel with it, and they are the two opposite ways a
+// galvo signal becomes unsafe:
+//
+//   overspeed  consecutive samples farther apart than MAX_STEP. The mirrors
+//              cannot accelerate that hard; they overshoot and ring, which
+//              draws streaks and mechanically stresses the scanner. After
+//              interpolateJumps this should read 0, and the scope showing 0 is
+//              what makes the interpolation verifiable rather than assumed.
+//
+//   dwell      the longest run of samples that barely move while UNBLANKED,
+//              reported in microseconds. This is the one that burns: a
+//              stationary beam deposits its entire power into one spot. A
+//              frame can be perfectly within the speed limit and still be
+//              dangerous by standing still, so speed alone is not compliance.
+let _oscOut = null;
+let _scopeAt = 0;
+try {
+  _oscOut = new osc.UDPPort({ localAddress: "0.0.0.0", localPort: 0, metadata: true });
+  _oscOut.open();
+} catch (e) {
+  console.log(`[laser] OSC scope disabled (${e.message})`);
+  _oscOut = null;
+}
+
+function scopeSend(frame) {
+  const now = Date.now();
+  if (!_oscOut || now - _scopeAt < 1000 / SCOPE_HZ) return;
+  _scopeAt = now;
+
+  let overspeed = 0, maxStep = 0, dwellRun = 0, dwellWorst = 0;
+  for (let i = 1; i < frame.length; i++) {
+    const a = frame[i - 1], b = frame[i];
+    const d = Math.hypot(b.x - a.x, b.y - a.y);
+    if (d > maxStep) maxStep = d;
+    if (d > MAX_STEP) overspeed++;
+    // Only an UNBLANKED stationary beam is a hazard; a blanked one is dark.
+    if (d < DWELL_EPS && !b.blank) {
+      dwellRun++;
+      if (dwellRun > dwellWorst) dwellWorst = dwellRun;
+    } else dwellRun = 0;
+  }
+  const dwellUs = (dwellWorst / Math.max(_pps, 1)) * 1e6;
+
+  // Decimated for drawing only; the measures above used every sample.
+  const step = Math.max(1, Math.floor(frame.length / SCOPE_POINTS));
+  const pts = [];
+  for (let i = 0; i < frame.length; i += step) {
+    const p = frame[i];
+    pts.push({ type: "f", value: p.x }, { type: "f", value: p.y },
+             { type: "f", value: p.blank ? 1 : 0 });
+  }
+
+  try {
+    _oscOut.send({
+      address: "/laser/scope",
+      args: [
+        { type: "i", value: heliosReady ? 1 : 0 },
+        { type: "i", value: _pps },
+        { type: "i", value: frame.length },
+        { type: "f", value: MAX_STEP },
+        { type: "f", value: maxStep },
+        { type: "i", value: overspeed },
+        { type: "f", value: dwellUs },
+        { type: "i", value: pts.length / 3 },
+        ...pts,
+      ],
+    }, SC_OSC_HOST, SC_OSC_PORT);
+  } catch { /* the scope is never worth killing the laser path for */ }
+}
+
 // Convert a sanitized frame to the Helios 12-bit field and write it, gated on
 // GetStatus (1 = ready). HeliosPoint: x,y ∈ [0,4095], r,g,b,i ∈ [0,255].
 function heliosWrite(frame, pps) {
@@ -275,6 +364,7 @@ function outputLoop() {
     console.warn(`[laser] ${frame.length} pts x ${FRAME_HZ}Hz needs ${frame.length * FRAME_HZ} pps > ${_pps} pps — reduce points or raise pps`);
   }
 
+  scopeSend(frame);
   heliosWrite(frame, _pps);
   // The Helios needs the frame re-sent continuously, but the .ild capture
   // only wants NEW content — the old unconditional write duplicated every
