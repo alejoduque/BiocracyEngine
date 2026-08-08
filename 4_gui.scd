@@ -171,6 +171,96 @@
         ~ledOff = Color(0.10, 0.10, 0.10);
         ~ledRim = Color.gray(0.35);
 
+        // ─── The wiring ring ────────────────────────────────────────────
+        // A hairline circle around every knob saying WHICH SuperCollider voices
+        // that control actually reaches. The point is to be able to see, across
+        // the whole surface at once, what is shapeable and what is not — a knob
+        // with two lit slices out of eight is a knob that cannot sculpt much,
+        // and that is information the surface never carried.
+        //
+        // Two things make it readable rather than decorative:
+        //
+        //  · The slices are at FIXED positions. Every voice owns the same arc
+        //    of the circle on every knob, so PERC is always at the same clock
+        //    position and you learn the layout once instead of decoding each
+        //    ring. Unwired slices are drawn very faint rather than omitted, so
+        //    the gap is as legible as the fill.
+        //
+        //  · The colours are the SLOT hues from dataStructureVisuals.ts. A ring
+        //    segment is the same colour as the screen that visualises that
+        //    voice, so the GUI and the projection share one code.
+        //
+        // The map itself is DERIVED, from SynthDescLib, rather than written
+        // down here. A hand-kept table of what reads what is exactly the kind
+        // of thing this repo keeps finding out of date; this one cannot drift,
+        // because it is read from the compiled SynthDefs themselves.
+        ~voiceOrder = [\opalDrone, \elektronBell, \opalPerc, \opalKick,
+                       \opalDust, \samplePlayerMono, \corpusVoice, \corpusUltrasonic];
+        ~voiceLabels = (
+            opalDrone: "DRONE", elektronBell: "CAMPANAS", opalPerc: "PERC",
+            opalKick: "BOMBO", opalDust: "POLVO", samplePlayerMono: "MUESTRAS",
+            corpusVoice: "CORPUS", corpusUltrasonic: "ULTRA"
+        );
+        ~voiceColors = (
+            opalDrone:        Color.hsv(0.09, 0.85, 1.00),
+            elektronBell:     Color.hsv(0.13, 0.85, 1.00),
+            opalPerc:         Color.hsv(0.33, 0.75, 0.95),
+            opalKick:         Color.hsv(0.02, 0.85, 1.00),
+            opalDust:         Color.hsv(0.52, 0.75, 1.00),
+            samplePlayerMono: Color.hsv(0.75, 0.70, 1.00),
+            corpusVoice:      Color.hsv(0.60, 0.75, 1.00),
+            corpusUltrasonic: Color.hsv(0.68, 0.60, 1.00)
+        );
+
+        // param -> the SynthDef arg spellings it can arrive as. The ten core
+        // controls are declared under short names in the voices and long names
+        // in the registry, which is the only reason this table is needed at all.
+        ~voiceArgAlias = (
+            masterVolume: [\masterVolBus], pitchShift: [\pitchBus, \samplePitchBus],
+            timeDilation: [\timeBus], spectralShift: [\spectralBus],
+            spatialSpread: [\spatialBus], textureDepth: [\textureBus],
+            atmosphereMix: [\atmosphereBus], memoryFeed: [\memoryBus],
+            harmonicRich: [\harmonicBus], resonantBody: [\resonantBus]
+        );
+
+        // Controls that reach a voice WITHOUT a bus, because the spawning code
+        // multiplies them in at note time. They are real reaches and belong on
+        // the ring, but they are not live: moving the knob changes the next
+        // note, not the one sounding. Drawn hollow for that reason.
+        //
+        // This one IS hand-kept, because it lives in language-side arithmetic
+        // that cannot be read back off a SynthDef. Keep it in step with the amp
+        // expressions in 5_beat_engine.scd.
+        ~voiceSpawnReach = (
+            masterAmp: [\opalPerc, \opalKick, \opalDust],
+            transactionInfluence: [\opalPerc, \opalKick],
+            beatTempo: [\opalPerc, \opalKick, \opalDust]
+        );
+
+        // Derived once the server has the defs. Returns nil until then, which
+        // the ring reads as "not known yet" and draws as a plain dim circle.
+        ~computeParamVoices = {
+            var out = ();
+            var known = ~voiceOrder.select { |v| SynthDescLib.global[v].notNil };
+            if(known.size == 0) { nil } {
+                (~paramDefs ? []).do { |d|
+                    var p = d[\name];
+                    var names = (~voiceArgAlias[p] ? []) ++ [(p.asString ++ "Bus").asSymbol];
+                    var live = ~voiceOrder.select { |v|
+                        var desc = SynthDescLib.global[v];
+                        // samplePlayerStereo is the same voice as Mono; only the
+                        // channel count differs, so it does not get its own slice.
+                        if(v == \samplePlayerMono) {
+                            desc = desc ?? { SynthDescLib.global[\samplePlayerStereo] };
+                        };
+                        desc.notNil and: { names.any { |n| desc.controlNames.includes(n) } };
+                    };
+                    out[p] = (live: live, spawn: (~voiceSpawnReach[p] ? []));
+                };
+                out;
+            };
+        };
+
         ~makeStatusLight = { |label|
             var container, indicator, labelText, ageText;
 
@@ -300,6 +390,37 @@
             counterView.layout.add(~counters[key].parent);
         });
 
+        // ─── Legend for the knob rings ──────────────────────────────────
+        // Without it the ring is a decoration. With it, one glance says which
+        // arc belongs to which voice, and the colours are the same ones the
+        // projection uses for the same voices.
+        ~voiceLegend = UserView()
+            .fixedHeight_(26)
+            .background_(backgroundColor)
+            .drawFunc_({ |uv|
+                var x = 4, order = ~voiceOrder ? [];
+                Pen.font = Font(~monoFont, 8);
+                order.do { |v, i|
+                    var col = (~voiceColors[v] ? Color.gray(0.5));
+                    var txt = (~voiceLabels[v] ? v.asString);
+                    // The swatch is drawn as the same wedge shape the rings
+                    // use, at the same clock position, so the legend reads as
+                    // a key to the geometry rather than a separate colour list.
+                    Pen.width = 2.2;
+                    Pen.strokeColor = col;
+                    Pen.addAnnularWedge(Point(x + 9, 13), 6.5, 8.5,
+                        (i / order.size.max(1) * 2pi) - (pi/2) - 0.35,
+                        0.7);
+                    Pen.stroke;
+                    Pen.strokeColor = Color.gray(0.30);
+                    Pen.addOval(Rect(x + 2.5, 6.5, 13, 13));
+                    Pen.stroke;
+                    Pen.stringAtPoint(txt, Point(x + 20, 7), Font(~monoFont, 8), col);
+                    x = x + 20 + (txt.size * 5.6) + 10;
+                };
+            });
+        counterView.layout.add(~voiceLegend);
+
         // Control specs and values come from the canonical registry
         // (0_parameters.scd) — the duplicated literals that used to live here
         // had drifted from the MIDI and OSC copies of the same ranges.
@@ -356,7 +477,7 @@
 
         // Enhanced knob function with oscilloscope aesthetics
         ~makeKnob = { |label, minVal, maxVal, defaultVal=0.5, mapping=\lin|
-            var container, knobContainer, spec, knob, displayStr, valueLabel, paramName;
+            var container, knobContainer, spec, knob, displayStr, valueLabel, paramName, ring;
 
             container = View().background_(backgroundColor);
             container.layout_(VLayout().margins_(2).spacing_(2));
@@ -369,13 +490,42 @@
             // knobs now leave trailing space instead of stretching.
             container.fixedWidth_(132);
 
-            knobContainer = View().background_(backgroundColor);
-            knobContainer.layout_(HLayout().margins_(0).spacing_(0));
+            // No layout on this one: the ring has to sit under the knob at an
+            // absolute position, and a layout would stack them instead. 72 px
+            // holds a 60 px knob inset by 6, leaving the annulus for the ring.
+            knobContainer = View().background_(backgroundColor)
+                .fixedWidth_(72).fixedHeight_(72);
+
+            paramName = label.asSymbol;
+            ring = UserView(knobContainer, Rect(0, 0, 72, 72))
+                .background_(backgroundColor)
+                .drawFunc_({ |uv|
+                    var wiring = if(~paramVoices.notNil) { ~paramVoices[paramName] };
+                    var order = ~voiceOrder ? [];
+                    var n = order.size.max(1);
+                    var gap = 0.16;   // radians of dark between slices
+                    order.do { |v, i|
+                        var a0 = (i / n * 2pi) - (pi/2) + (gap/2);
+                        var a1 = ((i + 1) / n * 2pi) - (pi/2) - (gap/2);
+                        var live  = wiring.notNil and: { wiring[\live].includes(v) };
+                        var spawn = wiring.notNil and: { wiring[\spawn].includes(v) };
+                        var col = (~voiceColors[v] ? Color.gray(0.5));
+                        // Lit: the voice reads this control live off a bus, so
+                        // the knob changes a note already sounding. Hollow: it
+                        // is applied when the note spawns, so the knob shapes
+                        // the NEXT one. Nearly dark: no reach at all.
+                        Pen.width = if(live) { 2.2 } { 1.2 };
+                        Pen.strokeColor = case
+                            { live }  { col }
+                            { spawn } { col.alpha_(0.38) }
+                            { Color.gray(0.16) };
+                        Pen.addAnnularWedge(Point(36, 36), 32.5, 34.5, a0, a1 - a0);
+                        Pen.stroke;
+                    };
+                });
 
             spec = ControlSpec(minVal, maxVal, mapping);
-            knob = Knob()
-                .maxHeight_(60)
-                .maxWidth_(60)
+            knob = Knob(knobContainer, Rect(6, 6, 60, 60))
                 .mode_(\vert)
                 .color_([mainTheme.background, accentColor, mainTheme.foreground, mainTheme.foreground.alpha_(0.2)])
                 .value_(spec.unmap(defaultVal));
@@ -391,9 +541,10 @@
                 .font_(Font(~monoFont, 10))  // 2px smaller
                 .align_(\center);
 
-            knobContainer.layout.add(knob);
             container.layout.add(knobContainer);
             container.layout.add(valueLabel);
+            ~knobRings = ~knobRings ?? ();
+            ~knobRings[paramName] = ring;
 
             // Define parameter name for both action and storage
             paramName = label.asSymbol;  // Use exact parameter name (already camelCase)
@@ -1275,6 +1426,22 @@
                         };
                     };
 
+                    // The wiring map is derived from the compiled SynthDefs, and
+                    // 3_synthdefs.scd adds them inside waitForBoot — so at the
+                    // moment this GUI is built SynthDescLib is usually still
+                    // empty. Computed on the first tick that finds them, then
+                    // left alone; the rings redraw once and stay.
+                    if(~paramVoices.isNil and: { ~computeParamVoices.notNil }) {
+                        ~paramVoices = ~computeParamVoices.value;
+                        if(~paramVoices.notNil) {
+                            (~knobRings ? ()).do { |r| if(r.notNil) { r.refresh } };
+                            if(~voiceLegend.notNil) { ~voiceLegend.refresh };
+                            ("[gui] wiring map: "
+                                ++ ~paramVoices.keys.size ++ " params over "
+                                ++ ~voiceOrder.size ++ " voices").postln;
+                        };
+                    };
+
                     if(~globalState.notNil) {
                         ~counters.trans.string = (~globalState.transactionCount ? 0).asString;
                     };
@@ -1319,6 +1486,9 @@
             // simply logged it and carried on. The rest are the same class of
             // leak with quieter consequences.
             ~ledAges = nil;
+            ~knobRings = nil;
+            ~voiceLegend = nil;
+            ~paramVoices = nil;
             ~bancadaButtons = nil;
             ~bancadaSet = nil;
             ~bancadaShown = nil;
