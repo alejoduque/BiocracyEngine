@@ -91,7 +91,19 @@ s.doWhenBooted({
     // regime this budget exists to avoid. This drops everything ~20% together,
     // which preserves the balance that was just fixed and gives the limiter
     // its headroom back.
-    ~trimMaster = 0.055;
+    // 0.055 -> 0.115. That 0.055 was calibrated when the master chain was a
+    // limiter and nothing else, where the only way to keep the limiter out of
+    // the compressor regime was to run the whole mix far beneath it. Measured
+    // consequence: the full mix sat at an RMS median of 0.024, which is -32 dB
+    // from the ceiling. That is the "thin, small, no weight" directly — and it
+    // also meant any master processing set for a normal level did nothing at
+    // all, because the signal never reached its threshold.
+    //
+    // There is a proper glue compressor in front of the limiter now, which is
+    // the stage that is supposed to handle peaks, so the mix can sit where a
+    // mix belongs and the limiter goes back to being a safety net rather than
+    // the thing setting the level.
+    ~trimMaster = 0.115;
 
     // 1.00 -> 2.40. Measured over a full tidal arc at vol/amp 0.70, the mix was
     // below 0.05 — effectively inaudible — in 48% of windows, with a 340:1
@@ -147,11 +159,56 @@ s.doWhenBooted({
     ~trimSample = 1.55 * ~trimMaster;
 
     ~limiterChans = s.options.numOutputBusChannels;
-    SynthDef(\masterLimiter, { |ceiling = 0.92|
+    // ─── Master chain: glue, then weight, then safety ────────────────────
+    // This was sum -> LeakDC -> Limiter and nothing else. A limiter is a safety
+    // net: it can stop a mix being too loud and can do nothing whatever about a
+    // mix being thin. With the measured 340:1 crest factor the peaks set the
+    // ceiling and everything sustained sat far beneath them — the bed measures
+    // about -24 dB from the ceiling — which is the definition of small.
+    //
+    // Two stages in front of it, in the order a mastering chain uses them:
+    //
+    //  · GLUE. A slow bus compressor keyed off the mono sum, so the layers duck
+    //    each other rather than each being ridden alone. This raises the
+    //    AVERAGE without touching the crest, and average is what is heard as
+    //    weight. Slow on purpose (0.6 s release) so it breathes with the tidal
+    //    arc rather than pumping against it.
+    //
+    //  · SATURATION. tanh, mixed rather than replacing. Low-order harmonics
+    //    read as body, and a soft curve rounds the leading edge of the supersaw
+    //    and the Dust crackle — which is most of where "buzzy and digital"
+    //    lives. A limiter squares those edges; this does not.
+    //
+    // Both default modest rather than off, so an untouched boot is warmer and
+    // fuller rather than differently balanced. drive 0 is the clean path
+    // exactly, so the stage can be removed entirely.
+    SynthDef(\masterLimiter, { |ceiling = 0.92, glue = 0.55, drive = 0.40|
         var sig = In.ar(0, ~limiterChans);
         var clean = LeakDC.ar(sig);
-        var lim = Limiter.ar(clean, ceiling, 0.01);
-        var mono = Mix(clean) / ~limiterChans.max(1);
+        var key = Mix(clean) / ~limiterChans.max(1);
+        var comped, sat, lim, mono;
+
+        // slopeAbove 1.0 is no compression, 0.35 is about 3:1; glue rides
+        // between them so the amount is one number. Makeup is derived from that
+        // same number rather than given its own control, because the two only
+        // ever move together and a second knob is a way for them to disagree.
+        comped = Compander.ar(clean, key,
+            // Where the signal ACTUALLY sits, measured, not where a mix is
+            // conventionally assumed to sit: at p90 the mix reaches about 0.5
+            // and its median is an order of magnitude below that, so a 0.22
+            // threshold was never crossed by anything but the crest.
+            thresh: 0.10,
+            slopeBelow: 1.0,
+            slopeAbove: glue.linlin(0, 1, 1.0, 0.35),
+            clampTime: 0.02,
+            relaxTime: 0.6
+        ) * glue.linlin(0, 1, 1.0, 1.9);
+
+        sat = (comped * (1 + (drive * 2.2))).tanh / (1 + (drive * 0.9));
+        sig = XFade2.ar(comped, sat, drive.linlin(0, 1, -1, 1));
+
+        lim = Limiter.ar(sig, ceiling, 0.01);
+        mono = Mix(clean) / ~limiterChans.max(1);
         // Report pre-limiter level and how much the limiter is pulling back.
         // A sustained drone that sits near the ceiling makes the limiter squash
         // every transient on top of it — kicks and pads lose their attack and
