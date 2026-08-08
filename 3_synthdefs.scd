@@ -576,6 +576,7 @@ s.doWhenBooted({
         var fmR   = Select.kr(harmonicBus >= 0, [1.0, In.kr(harmonicBus, 1)]);
 
         var exciter, sig, wet, quadSig, partials, decays, inharm, damp, spread;
+        var scream, bend, shaped, micro, steps;
 
         // HARD-CLAMP the struck frequency, like \elektronBell's fundamental.
         // The caller can ask for almost anything: ~computePitchPool tops out at
@@ -594,7 +595,21 @@ s.doWhenBooted({
         // Noise Level sets how much of the strike is breath rather than tone,
         // and Noise Filt where that breath sits — the difference between a
         // bowed resonator and a struck one, on a fader.
+        // ─── A hit is a CLOUD, not an impulse ───────────────────────────────
+        // The old exciter was a noise burst and a sine ping — the same two
+        // things every time, so however the body was tuned the ATTACK was
+        // identical on every strike, and the attack is most of what an ear
+        // uses to tell one hit from another. That is why the layer stayed
+        // uninteresting after the body was made variable.
+        //
+        // "fey emissions" is the model: Dust into resonance. The dust fires at
+        // random moments inside the attack window, so no two strikes have the
+        // same microstructure even when they are the same note on the same
+        // body — some arrive as a clean rap, some as a torn rattle, and which
+        // one it is cannot be predicted.
         exciter = Mix([
+            Dust2.ar(900 + (nLevel * 9000))
+                * EnvGen.ar(Env.perc(0.001, 0.05 + (nFilt * 0.18))) * 1.5,
             BPF.ar(WhiteNoise.ar, (300 + (nFilt * 6000)).clip(200, 8000), 0.6 + (nFilt * 1.4))
                 * EnvGen.ar(Env.perc(0.01, 0.08 + (nFilt * 0.10)))
                 * nLevel.linlin(0, 0.5, 0.35, 2.2),
@@ -657,6 +672,50 @@ s.doWhenBooted({
         // rather than as a choice of instrument.
         sig = Ringz.ar(exciter, (freq * partials).clip(20, 12000), decays).sum
             * (1 + (inharm * 2.4)).reciprocal * 1.25;
+
+        // ─── Three things that happen TO the strike ─────────────────────────
+        // The body above is a good body, but a resonator excited once and left
+        // alone always says the same sentence: attack, ring, decay. What was
+        // missing is anything happening after the moment of contact.
+
+        // 1 · The scream. "fey emissions" runs Dust through a bandpass at
+        // rq 0.001 — absurdly narrow, right at the edge of self-oscillation —
+        // whose centre is resampled by LFNoise0 several times a second. It
+        // shrieks at a pitch that jumps mid-strike. Sits above the body, tuned
+        // off it, so it reads as part of the same object.
+        scream = BPF.ar(exciter,
+            (freq * (2 + (bodySeed * 6)) * LFNoise0.kr(9 + (bodySeed * 20)).range(0.85, 1.7))
+                .clip(60, 13000),
+            0.0018) * 70 * res.linlin(0.1, 0.8, 0.5, 1.2);
+        sig = sig + (scream * fmD.linlin(0, 1, 0.40, 1.15));
+
+        // 2 · The tail bends. "saw scratching" and "shifty feedback": a comb
+        // with a wandering delay time doppler-shifts whatever is inside it, so
+        // the ring does not just fade, it slides and detunes as it goes.
+        // delayFeedback decides how long it keeps folding back on itself.
+        bend = CombC.ar(sig * 0.45, 0.35,
+            LFNoise1.kr(0.6 + (bodySeed * 5)).range(0.004, 0.26).clip(0.001, 0.34),
+            dFeed.linlin(0, 0.8, 0.25, 3.5));
+        sig = sig + (LeakDC.ar(bend.tanh) * dMix.linlin(0, 1, 0.45, 1.15));
+
+        // 3 · The waveshape. "noise slurps": phase-modulating a sine BY the
+        // signal rather than filtering it. At low index it is a gentle
+        // thickening; pushed up it tears the strike into sidebands and the
+        // layer crosses into noise. textureDepth is the fader that decides how
+        // far, and at its top this is frankly electronic — which is the brief.
+        shaped = SinOsc.ar(0, sig * fmD.linlin(0, 1, 1.4, 7.5));
+        sig = XFade2.ar(sig, shaped, fmD.linlin(0, 1, -0.45, 0.9));
+
+        // 4 · And a sequence inside the hit. "short-loops": a Stepper walking
+        // a small integer ring, clocked far too fast to hear as rhythm, reads
+        // as a single gesture with pitch structure inside it — a chirp, a
+        // stutter, a tiny arpeggio, depending where the ring lands. Different
+        // for every seat, because the ring length and clock come off bodySeed.
+        steps = Stepper.ar(Impulse.ar(14 + (bodySeed * 46)), 0,
+            1, (4 + (bodySeed * 9)).round, 1);
+        micro = SinOsc.ar((freq * steps.linlin(1, 13, 1.0, 3.4)).clip(40, 9000))
+            * EnvGen.ar(Env.perc(0.002, 0.07 + (fmD * 0.25)));
+        sig = sig + (micro * fmD.linlin(0, 1, 0.20, 0.62));
 
         // Changed from BPF to LPF: BPF at high freq passes almost nothing (silence);
         // LPF at high freq is transparent — sound always passes through.
@@ -730,6 +789,10 @@ s.doWhenBooted({
     SynthDef(\dronePartial, {
         arg out = 0, freq = 110, amp = 0.10, ratio = 1.0,
             atk = 20, hold = 30, rel = 25, pan = 0, detune = 0.004, seed = 0,
+            // Where this partial sits across the three synthesis regimes. The
+            // ensemble spreads it across the bed so no two voices are made of
+            // the same thing at the same moment.
+            character = 0.5,
             masterVolBus=(-1), pitchBus=(-1), spectralBus=(-1), spatialBus=(-1),
             textureBus=(-1), atmosphereBus=(-1), harmonicBus=(-1), resonantBus=(-1),
             masterAmpBus=(-1), filterCutoffBus=(-1), droneFadeBus=(-1),
@@ -753,24 +816,80 @@ s.doWhenBooted({
         var strike = Lag.kr(
             Select.kr(strikeBus >= 0, [0.0, In.kr(strikeBus, 1)]), 0.7).clip(0, 1.6);
         var f, sig, env, quadSig, trem, respond;
+        var bands, fbk, fm, mode, r1, r2, r3, grit;
 
         f = (freq * ratio * (pShift.clip(-24, 24) / 12).midiratio).clip(20, 6000);
 
-        // Three sines a few cents apart. The beating between them is the
-        // movement — slow, uneven, and different for every partial because the
-        // detune rides the seed. Nothing here sweeps.
-        sig = Mix.fill(3, { |i|
-            SinOsc.ar(f * (1 + ((i - 1) * detune * (1 + (seed * 0.7)))), 0, 1/3)
-        });
-        // One quiet odd harmonic for body, opened by harmonicRich. This is
-        // where "no harmonics" gets answered at the level of a single partial;
-        // the ensemble answers it again at the level of the bed.
-        sig = sig + (SinOsc.ar(f * 3, 0, 0.055 * fmR.linlin(0.1, 5, 0.2, 1.4)));
-        sig = sig + (SinOsc.ar(f * 5, 0, 0.022 * fmR.linlin(0.1, 5, 0.0, 1.2)));
+        // ─── Why the previous version could only ever be a propeller ────────
+        //
+        // It was three sines a few cents apart, plus a 3rd and a 5th harmonic,
+        // under a slow sine tremolo. Detuned sines beat at a FIXED rate — at
+        // f=110 and detune 0.005 they throb at about half a hertz — and a
+        // harmonic series throbbing at a steady low rate is precisely how one
+        // synthesises an engine. Seven of them at once is a propeller. The
+        // report was not a matter of taste; the patch was built out of the
+        // ingredients of the sound it was accused of making.
+        //
+        // Nothing periodic survives here. Every modulator below is noise-driven
+        // at a rate that shares no factor with any other, so the voice never
+        // returns to a state it has already been in.
+        r1 = LFNoise1.kr(0.031 + (seed * 0.043));
+        r2 = LFNoise2.kr(0.017 + (seed * 0.071));
+        r3 = LFNoise1.kr(0.0083 + (seed * 0.029));
 
-        // Very slow amplitude drift, rate unique per partial, so no two breathe
-        // together and the bed never pulses as one thing.
-        trem = SinOsc.kr(0.017 + (seed * 0.061), seed * 6.283).range(0.72, 1.0);
+        // ── REGIME 1 · resonant noise bands ────────────────────────────────
+        // "blizzard" and "hedge trimmer": the pitch is a RESONANCE, not an
+        // oscillator. Noise forced through very narrow bandpasses sings at f,
+        // but it hisses and wanders while it does, because what is resonating
+        // is random. It can never lock into a beat with itself.
+        bands = Mix.fill(4, { |i|
+            var bf = f * (i + 1)
+                * (1 + (LFNoise1.kr(0.019 + (i * 0.013) + (seed * 0.031)) * 0.02));
+            BPF.ar(PinkNoise.ar(1.0), bf.clip(20, 14000),
+                (0.003 + (i * 0.0025) + r1.range(0.0, 0.008)).clip(0.001, 0.05))
+                * (i + 1).reciprocal
+        }) * 14;   // narrow bandpasses throw away most of the level
+
+        // ── REGIME 2 · modulated feedback ──────────────────────────────────
+        // "shifty feedback" and "saw scratching": a comb whose delay time
+        // moves is a doppler shift, so the feedback path glissandos against
+        // itself continuously and never settles. Fed from the bands, this is
+        // the layer that produces drifting, half-pitched smears — the thing
+        // the old drone tried to get from a 4-second Lag and could not.
+        // Tanh'd and LeakDC'd: a comb with a decay this long accumulates, and
+        // sustained input into it would otherwise run away.
+        fbk = LeakDC.ar(CombC.ar(bands * 0.22, 2.0,
+            LFTri.kr(0.037 + (seed * 0.13), seed * 4).range(0.03, 1.7),
+            (6 + r3.range(0, 22)).clip(1, 30)).tanh);
+
+        // ── REGIME 3 · nested FM ───────────────────────────────────────────
+        // "FM curio": a sine modulated by a sine modulated by a sine, with
+        // both indices on independent noise. The spectrum is inharmonic and
+        // reshuffles constantly, which is the opposite of a harmonic series.
+        fm = SinOsc.ar(f,
+            SinOsc.ar(f * (0.5 + (seed * 2.5)),
+                SinOsc.ar(f * 0.25, 0, r2.range(0.5, 9)),
+                r1.range(0.3, 7) * fmR.linlin(0.1, 5, 0.4, 2.2)),
+            0.30);
+
+        // ── and the change happens in between ──────────────────────────────
+        // The partial does not pick a regime, it MOVES through them: character
+        // places it and a slow drift carries it across the boundaries, so most
+        // of the time it is sounding something that is neither one thing nor
+        // the other. SelectX crossfades, so there are no seams to hear.
+        mode = (character + (LFNoise1.kr(0.0091 + (seed * 0.021)) * 0.45)).clip(0, 1);
+        sig = SelectX.ar(mode * 2, [bands, fbk, fm]);
+
+        // Internal incident. A drone with no events inside it is a held note
+        // however rich its spectrum — this is what stops it being constant.
+        // Dust fires rarely and unpredictably; each hit surges the voice and
+        // opens it, so the bed keeps producing things that were not announced.
+        grit = Decay2.kr(Dust.kr(0.04 + (seed * 0.22)), 0.4, 5.0).clip(0, 1);
+        sig = sig * (1 + (grit * 1.6));
+
+        // Aperiodic, replacing a fixed-rate sine. Same reason as everything
+        // else here: a steady tremolo is the propeller's amplitude signature.
+        trem = LFNoise2.kr(0.021 + (seed * 0.05)).range(0.55, 1.0);
 
         // Each partial answers the percussion by a DIFFERENT amount — some
         // barely at all, some strongly — so a busy passage lights parts of the
@@ -781,7 +900,9 @@ s.doWhenBooted({
         sig = LPF.ar(sig, (filt.clip(80, 4000) * cutoff.linexp(0, 1, 0.6, 2.2)
             // Percussive energy opens the partial: the bed brightens under a
             // cluster of strikes and darkens again in the silences.
-            * (1 + (strike * respond * 0.75))).clip(90, 8000));
+            * (1 + (strike * respond * 0.75))
+            // …and so does the voice's own internal incident.
+            * (1 + (grit * 1.8))).clip(90, 13000));
         sig = sig + (FreeVerb.ar(sig, revM * 0.7, dSpace.linlin(0, 1, 0.4, 0.95), 0.15) * 0.5);
 
         // Sine curves on both ends: a partial should arrive and leave without

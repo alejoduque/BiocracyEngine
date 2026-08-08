@@ -302,6 +302,11 @@
                         \pan,    1.0.rand2 * 0.7,
                         \detune, rrand(0.002, 0.009),
                         \seed,   1.0.rand,
+                        // Spread across the three regimes, weighted low so the
+                        // bed is mostly resonant noise and feedback with the
+                        // occasional FM voice cutting across it — and squared,
+                        // so the distribution is uneven rather than flat.
+                        \character, 1.0.rand.squared,
                         // The percussion's excitement reaches the bed here.
                         \strikeBus, ~droneStrikeBus.index
                     ] ++ (~voiceBusArgs.value ? []),
