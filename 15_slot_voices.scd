@@ -287,7 +287,9 @@
             var pool = ~computePitchPool.value(
                 ~sbv.(\harmonicRich, 1.0),
                 ~sbv.(\transactionInfluence, 0.3),
-                ((~beatParams !? { ~beatParams.transactionDensity }) ? 0.5));
+                ((~beatParams !? { ~beatParams.transactionDensity }) ? 0.5),
+                // Same fundamental as the bed and as the engine's own perc.
+                (~droneRoot ? 55));
             var band = (~speciesBand ? #[1.0]).wrapAt((t * 4).round.asInteger);
             var f = (pool.wrapAt((t * (pool.size - 1)).round.asInteger) * band
                 * rrand(0.95, 1.05)).clip(40, 900);

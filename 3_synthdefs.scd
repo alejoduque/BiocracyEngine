@@ -733,7 +733,7 @@ s.doWhenBooted({
             masterVolBus=(-1), pitchBus=(-1), spectralBus=(-1), spatialBus=(-1),
             textureBus=(-1), atmosphereBus=(-1), harmonicBus=(-1), resonantBus=(-1),
             masterAmpBus=(-1), filterCutoffBus=(-1), droneFadeBus=(-1),
-            droneSpaceBus=(-1), mixDroneBus=(-1);
+            droneSpaceBus=(-1), mixDroneBus=(-1), strikeBus=(-1);
 
         var vol   = Select.kr(masterVolBus >= 0, [0.3, In.kr(masterVolBus, 1)]);
         var pShift= Select.kr(pitchBus >= 0, [0.0, In.kr(pitchBus, 1)]);
@@ -746,7 +746,13 @@ s.doWhenBooted({
         var mAmp  = Select.kr(masterAmpBus >= 0, [0.7, In.kr(masterAmpBus, 1)]);
         var cutoff= Select.kr(filterCutoffBus >= 0, [0.6, In.kr(filterCutoffBus, 1)]);
         var dSpace= Select.kr(droneSpaceBus >= 0, [0.5, In.kr(droneSpaceBus, 1)]);
-        var f, sig, env, quadSig, trem;
+        // How excited the PERCUSSION layer is, right now. The beat engine
+        // already computes this to shape its own rhythm; writing it to a bus
+        // lets the bed feel it too. Lagged slowly, because the bed should seem
+        // to be resonating with the strikes rather than following them.
+        var strike = Lag.kr(
+            Select.kr(strikeBus >= 0, [0.0, In.kr(strikeBus, 1)]), 0.7).clip(0, 1.6);
+        var f, sig, env, quadSig, trem, respond;
 
         f = (freq * ratio * (pShift.clip(-24, 24) / 12).midiratio).clip(20, 6000);
 
@@ -766,7 +772,16 @@ s.doWhenBooted({
         // together and the bed never pulses as one thing.
         trem = SinOsc.kr(0.017 + (seed * 0.061), seed * 6.283).range(0.72, 1.0);
 
-        sig = LPF.ar(sig, (filt.clip(80, 4000) * cutoff.linexp(0, 1, 0.6, 2.2)).clip(90, 8000));
+        // Each partial answers the percussion by a DIFFERENT amount — some
+        // barely at all, some strongly — so a busy passage lights parts of the
+        // bed rather than pumping the whole thing as one block, which would
+        // just be ducking with the sign flipped.
+        respond = 0.15 + (seed * 0.85);
+
+        sig = LPF.ar(sig, (filt.clip(80, 4000) * cutoff.linexp(0, 1, 0.6, 2.2)
+            // Percussive energy opens the partial: the bed brightens under a
+            // cluster of strikes and darkens again in the silences.
+            * (1 + (strike * respond * 0.75))).clip(90, 8000));
         sig = sig + (FreeVerb.ar(sig, revM * 0.7, dSpace.linlin(0, 1, 0.4, 0.95), 0.15) * 0.5);
 
         // Sine curves on both ends: a partial should arrive and leave without
@@ -778,6 +793,9 @@ s.doWhenBooted({
             doneAction: 2);
 
         sig = sig * env * trem * amp * vol
+            // …and swells it. Small: this is the bed being rung by the strikes,
+            // not a second percussion layer.
+            * (1 + (strike * respond * 0.30))
             * Lag.kr(mAmp, 2.0).linlin(0, 1, 0.05, 1.4) * (~trimDronePartial ? 0.10)
             * Lag.kr(Select.kr(mixDroneBus >= 0, [1.0, In.kr(mixDroneBus, 1)]), 0.08);
 

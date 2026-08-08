@@ -86,8 +86,22 @@
 // musical rather than a run.
 ~pitchDegrees = #[1.0, 1.2, 1.3333, 1.5, 1.8, 2.0, 2.4];
 
-~computePitchPool = { |harmRich=1.0, txInfluence=0.0, density=0.5|
-    var basePitch = 70;
+// `root` is the DRONE's fundamental. The default of 35 doubles to the 70 this
+// used to hardcode, so a caller that passes nothing behaves exactly as before.
+//
+// This was the deepest reason the percussion and the bed sounded like two
+// unrelated pieces: the pool was built on a hardcoded 70 Hz while ~droneRoot
+// walked 41–82 Hz every four bars. They were in two different keys, one of them
+// fixed and one of them moving, and no amount of timbral or rhythmic work can
+// make that sound like one instrument. At root 55 the bed sounded 55/110/165/220
+// while the perc played 65/78/87/98/117/130/156 — almost none of which is a
+// harmonic of anything sounding underneath it.
+//
+// Doubling puts the perc an octave above the fundamental, which is the struck
+// register, and keeps the degrees exactly the intervals they already were. Now
+// when the phrase moves the root, both layers move with it.
+~computePitchPool = { |harmRich=1.0, txInfluence=0.0, density=0.5, root=35|
+    var basePitch = root * 2;
     var pitchShift = txInfluence * 50;   // TX activity nudges pitch gently
     // Range matched to the registry spec, which is now ControlSpec(0.1, 5):
     // the old 0.1–8.0 mapping could never reach its own top after that change.
@@ -245,6 +259,17 @@
 ~droneMaxVoices = 7;
 ~droneRoot = ~droneRoot ?? { 55 };
 
+// What each live partial is actually sounding, so the percussion can strike a
+// tone the bed is already holding rather than a tone that merely belongs to the
+// same scale. Keyed by the Synth itself and cleared in its onFree, so it cannot
+// outlive the voice it describes.
+~droneVoiceHz = ~droneVoiceHz ?? { IdentityDictionary.new };
+
+// The percussion layer's excitement, published for the bed to read. It is
+// already computed every tick to shape the rhythm; this just makes it audible
+// to something other than itself.
+~droneStrikeBus = ~droneStrikeBus ?? { Bus.control(s, 1).set(0) };
+
 ~droneEnsemble = {
     if(~droneRoutine.notNil) { ~droneRoutine.stop; ~droneRoutine = nil };
     ~droneRoutine = Routine({
@@ -276,11 +301,17 @@
                         \atk, atk, \hold, hold, \rel, rel,
                         \pan,    1.0.rand2 * 0.7,
                         \detune, rrand(0.002, 0.009),
-                        \seed,   1.0.rand
+                        \seed,   1.0.rand,
+                        // The percussion's excitement reaches the bed here.
+                        \strikeBus, ~droneStrikeBus.index
                     ] ++ (~voiceBusArgs.value ? []),
                         target: if(~defaultGroup.notNil, { ~defaultGroup }, { s.defaultGroup }));
                     ~droneVoices = ~droneVoices.add(syn);
-                    syn.onFree({ ~droneVoices.remove(syn) });
+                    ~droneVoiceHz[syn] = ~droneRoot * ratio;
+                    syn.onFree({
+                        ~droneVoices.remove(syn);
+                        ~droneVoiceHz.removeAt(syn);
+                    });
                 };
                 // Uneven spacing. A fixed interval would make the bed pulse at
                 // that period, which is the ramp problem in another costume.
@@ -499,7 +530,8 @@
 
 
             // ─── Compute melodic parameters from control matrix ───
-            pitchPool = ~computePitchPool.(harmRich, txInf, density * phenoMult);
+            pitchPool = ~computePitchPool.(harmRich, txInf, density * phenoMult,
+                (~droneRoot ? 55));
             voicingMode = ~selectVoicing.(resBdy, texDep);
             harmCount = ~getHarmonicCount.(harmRich);
 
@@ -629,6 +661,11 @@
             // an even density, and the phrase lengths are never the same twice
             // because nothing sets them — they fall out of the process.
             ~percExcite = (~percExcite ? 0) * 0.86;
+            // Publish it to the bed. Every live partial reads this bus and
+            // answers by its own amount — see \dronePartial — so a cluster of
+            // strikes brightens and swells the drone instead of sounding on top
+            // of an indifferent one.
+            if(~droneStrikeBus.notNil) { ~droneStrikeBus.set(~percExcite) };
             // 1.6 -> 0.9. Self-excitation doubles the density on its own, and
             // the ask was for a different SHAPE, not more notes. Measured over
             // 2000 ticks: 198 hits against the uniform version's 212, with
@@ -639,6 +676,13 @@
                 * (1 + (~percExcite * 1.9))
                 // Deepens the troughs: the floor is what makes a gap a gap.
                 * tideDensity.linlin(0, 1, 0.35, 1.0)
+                // …and the bed pushes back. A full ensemble thins the
+                // percussion; a sparse one invites it. The two layers TRADE
+                // rather than accumulate, which is most of what makes a pair of
+                // parts sound like they are listening to each other — and it
+                // costs nothing, because the density is already being tracked.
+                * ((~droneVoices ? []).size / (~droneMaxVoices ? 7))
+                    .clip(0, 1).linlin(0, 1, 1.30, 0.70)
             ).clip(0.0, 0.92);
             if(percProb.coin or: {
                 (transactionInfluence > 0.6) and: { (0.12 * tideDensity).coin }
@@ -672,8 +716,25 @@
                 // the layer sounds exactly as it did before any of this.
                 var speciesGain = 0.55
                     + ((~speciesPresence[speciesIdx] ? 0.5).clip(0, 1) * 0.9);
-                var baseFreq = (pitchPool.wrapAt(poolIdx)
-                    * ~speciesBand[speciesIdx]).clip(40, 900);
+                // About one hit in three lands on a tone the bed is actually
+                // HOLDING — not merely a note from the same scale, but the
+                // exact frequency of a partial currently sounding, folded up
+                // into the struck register. This is the strongest form of the
+                // coupling and the one that should be audible immediately: the
+                // strike excites something already there, so the resonance and
+                // the bed ring as one body instead of two.
+                //
+                // The other two hits in three come from the pool, which is now
+                // built on the same fundamental anyway — so the layer keeps its
+                // own melodic motion rather than becoming a bed follower.
+                var bedHz = if(0.34.coin) { (~droneVoiceHz ? ()).values.choose } { nil };
+                var baseFreq = (if(bedHz.notNil) {
+                        var f = bedHz;
+                        while({ f < 70 }, { f = f * 2 });
+                        f
+                    } {
+                        pitchPool.wrapAt(poolIdx)
+                    } * ~speciesBand[speciesIdx]).clip(40, 900);
                 // Which BODY is struck, as opposed to which note. The seat
                 // decides it — so the five species are five instruments and not
                 // one instrument at five registers — and the counterparty's
