@@ -34,10 +34,13 @@
         // ACTIVE control is inverted — black on white. That is the only state
         // signal, and it is legible at any size and in any reproduction.
         //
-        // The semantic keys are kept so the ~300 references to mainTheme.red,
-        // .green, .yellow and .purple elsewhere in this file keep resolving;
-        // they simply all resolve to white now, and the .blend() calls that
-        // used them produce the grey steps.
+        // The semantic keys that are still REFERENCED are kept, so the calls
+        // to mainTheme.red, .green, .yellow and .dim elsewhere in this file
+        // keep resolving; they simply all resolve to white now, and the
+        // .blend() calls that used them produce the grey steps. .purple and
+        // .border were carried along too and neither was ever read — audited
+        // at 0 uses each — so they are gone rather than sitting here implying
+        // a palette this interface does not have.
         mainTheme = (
             background: Color.black,
             foreground: Color.white,
@@ -45,9 +48,7 @@
             green: Color.white,
             red: Color.white,
             yellow: Color.white,
-            purple: Color.white,
-            dim: Color.gray(0.42),
-            border: Color.gray(0.30)
+            dim: Color.gray(0.42)
         );
 
         // One typeface everywhere. Menlo ships with macOS, so this never falls

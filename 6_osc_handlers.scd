@@ -872,9 +872,7 @@ s.doWhenBooted({
         "EMERGENCY consensus override — intensity %".format(intensity.round(0.01)).postln;
 
         // Drop drone pitch to sub-bass, increase noise
-        if(~opalDroneSynth.notNil) {
-            ~opalDroneSynth.set(\freq, 35);
-        };
+        if(~droneBedSet.notNil) { ~droneBedSet.value(1.0, 35) };
         if(~buses.notNil and: { ~buses[\noiseLevel].notNil }) {
             var origNoise = ~buses[\noiseLevel].getSynchronous;
             ~buses[\noiseLevel].set((origNoise + 0.15).clip(0, 0.3));
@@ -883,9 +881,7 @@ s.doWhenBooted({
                 if(~buses.notNil and: { ~buses[\noiseLevel].notNil }) {
                     ~buses[\noiseLevel].set(origNoise);
                 };
-                if(~opalDroneSynth.notNil) {
-                    ~opalDroneSynth.set(\freq, 55);
-                };
+                if(~droneBedSet.notNil) { ~droneBedSet.value(1.0, 55) };
                 nil;
             });
         };
@@ -905,9 +901,10 @@ s.doWhenBooted({
             // Restores the transport, leaving the performer's masterAmp alone.
             ~beatParams.transportGain = 1.0;
         };
-        if(~opalDroneSynth.notNil) {
-            ~opalDroneSynth.set(\freq, 55, \amp, 0.4);
-        };
+        // Restores the bed's level as well as its root: the stop handler
+        // scaled every live partial to 2%, and without this they stayed there
+        // until each one happened to expire.
+        if(~droneBedSet.notNil) { ~droneBedSet.value(1.0, 55) };
     }, "/parliament/start");
 
     OSCdef(\stopHandler, { |msg|
@@ -925,9 +922,10 @@ s.doWhenBooted({
         if(~beatParams.notNil) {
             ~beatParams.transportGain = 0.05;
         };
-        if(~opalDroneSynth.notNil) {
-            ~opalDroneSynth.set(\amp, 0.02);
-        };
+        // Ducks the live bed against each partial's own birth amplitude, so
+        // /parliament/start restores the balance exactly rather than flattening
+        // every partial to one level.
+        if(~droneBedSet.notNil) { ~droneBedSet.value(0.02) };
     }, "/parliament/stop");
 
     // ── Config save/load from the browser (CONFIGS block in parliament.html)

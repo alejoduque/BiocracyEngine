@@ -372,6 +372,38 @@
 // same scale. Keyed by the Synth itself and cleared in its onFree, so it cannot
 // outlive the voice it describes.
 ~droneVoiceHz = ~droneVoiceHz ?? { IdentityDictionary.new };
+// The amplitude each partial was born with, so the transport and the emergency
+// can scale the bed and put it back without losing the per-partial balance.
+~droneVoiceAmp = ~droneVoiceAmp ?? { IdentityDictionary.new };
+
+// ─── Acting on the bed ──────────────────────────────────────────────────────
+// Everything that used to be done to \opalDrone is done here instead. Those
+// call sites went on compiling and running after the supersaw was removed —
+// ~opalDroneSynth was nil and every one of them was .notNil-guarded, so they
+// silently became no-ops. Reading them, the emergency handler still looks like
+// it drops the drone to sub-bass and the stop handler still looks like it fades
+// the bed out. Neither did anything at all. That is exactly the kind of code
+// that misleads, so it is routed to the live ensemble here and deleted there.
+//
+// scale is applied against each partial's ORIGINAL amplitude rather than its
+// current one, so repeated calls do not compound and a restore is exact.
+~droneBedSet = { |scale = 1.0, root|
+    (~droneVoices ? []).do { |v|
+        if(v.notNil) {
+            var a0 = (~droneVoiceAmp ? ())[v];
+            if(a0.notNil) { v.set(\amp, a0 * scale) };
+            // SinOsc holds phase across a frequency change, so this is a pitch
+            // move rather than a click, even applied to seven sustained voices.
+            if(root.notNil) {
+                var hz = (~droneVoiceHz ? ())[v];
+                if(hz.notNil and: { (~droneRoot ? 55) > 0 }) {
+                    v.set(\freq, root);
+                };
+            };
+        };
+    };
+    if(root.notNil) { ~droneRoot = root };
+};
 
 // The percussion layer's excitement, published for the bed to read. It is
 // already computed every tick to shape the rhythm; this just makes it audible
@@ -416,7 +448,10 @@
                         // Higher partials quieter, or the bed turns into a
                         // chord standing on its own overtones.
                         \amp,    (0.16 / (1 + (ratio * 0.55)))
-                            * harm.linexp(0.1, 5.0, 0.7, 1.35),
+                            * harm.linexp(0.1, 5.0, 0.7, 1.35)
+                            // The bed was the one layer a transport stop never
+                            // reached, because the stop acted on \opalDrone.
+                            * (~beatParams.transportGain ? 1),
                         \atk, atk, \hold, hold, \rel, rel,
                         \pan,    1.0.rand2 * 0.7,
                         // How much the chain is SAYING widens the partial.
@@ -438,9 +473,13 @@
                         target: if(~defaultGroup.notNil, { ~defaultGroup }, { s.defaultGroup }));
                     ~droneVoices = ~droneVoices.add(syn);
                     ~droneVoiceHz[syn] = ~droneRoot * ratio;
+                    ~droneVoiceAmp[syn] = (0.16 / (1 + (ratio * 0.55)))
+                        * harm.linexp(0.1, 5.0, 0.7, 1.35)
+                        * (~beatParams.transportGain ? 1);
                     syn.onFree({
                         ~droneVoices.remove(syn);
                         ~droneVoiceHz.removeAt(syn);
+                        ~droneVoiceAmp.removeAt(syn);
                     });
                 };
                 // Uneven spacing. A fixed interval would make the bed pulse at
@@ -462,7 +501,6 @@
     // reported a dead engine as running. The light now watches ~lastBeatTime
     // (stamped once per step below), and this keeps the two in agreement.
     if(~beatRoutine.notNil) { ~beatRoutine.stop; ~beatRoutine = nil };
-    if(~opalDroneSynth.notNil) { ~opalDroneSynth.set(\gate, 0) };
     
     // Start the continuous ambient drone immediately
     // Safe bus index helper: returns bus index or -1 if bus missing
@@ -491,10 +529,10 @@
     // The bed does not need a separate anchor: ~droneRatios already contains
     // 0.5, so the ensemble grows its own bottom octave out of the same voice as
     // everything else. Nothing here spawns \opalDrone any more. The SynthDef
-    // stays defined — the slot voices and the emergency handlers still reference
-    // it — and every ~opalDroneSynth.set below is .notNil-guarded, so leaving
-    // this nil is a safe no-op rather than a dangling reference.
-    ~opalDroneSynth = nil;
+    // stays defined because the slot voices still spawn their own, and
+    // everything that used to be done TO the bed here now goes through
+    // ~droneBedSet, which acts on the live ensemble.
+    // Nothing spawns \opalDrone in the bed any more.
 
     
     ~beatRoutine = Routine({
@@ -687,12 +725,12 @@
                     // Lag applied to one perpetual synth every four bars — was
                     // the whole of the bed's motion, and it is what read as a
                     // small plane changing gear.
+                    // The phrase walk moves the ROOT and nothing else. There
+                    // is no separate anchor to keep in step any more, and no
+                    // synth here to set: partials born after this line arrive
+                    // at the new fundamental while the ones already sounding
+                    // live out their lives at the old one.
                     ~droneRoot = droneBaseFreq;
-                    // The sub anchor keeps following, slowly: it is under the
-                    // bed rather than in it, and it has no harmonics to clash.
-                    if(~opalDroneSynth.notNil) {
-                        ~opalDroneSynth.set(\freq, droneBaseFreq);
-                    };
                 };
             };
 
