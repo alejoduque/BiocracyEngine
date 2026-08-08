@@ -38,12 +38,66 @@ const fs = require("fs");
 const osc = require("osc");
 
 const WS_PORT      = parseInt(process.env.LASER_WS_PORT || "3337", 10);
-const DEFAULT_PPS  = parseInt(process.env.LASER_PPS || "30000", 10);
+// Derated from the datasheet maximum, not set to it. 30 kpps is the ceiling the
+// scanner is rated to reach, and running a galvo at its ceiling continuously is
+// how galvos die; 24 kpps is 80% and leaves the margin the word "conservative"
+// is asking for. LASER_PPS can raise it, and it is clamped to RATED_PPS below.
+const DEFAULT_PPS  = parseInt(process.env.LASER_PPS || "24000", 10);
 const MAX_POINTS   = parseInt(process.env.LASER_MAX_POINTS || "1200", 10);
-// Max galvo step between consecutive points (in the −1..1 field). Larger
-// jumps get blanked intermediate points inserted so the mirrors sweep
-// instead of slamming (overshoot draws visible streaks across the forest).
-const MAX_STEP     = parseFloat(process.env.LASER_MAX_STEP || "0.25");
+// ─── Scanner limits, derived from the fixture datasheet ────────────────────
+// Unity RAW 1.7W (DMX+ILDA), Pangolin/Kvant: closed-loop galvos, "Scan Speed
+// 30 kpps @ 8°", "Scan Angle 45°", ">1.7 W", "Divergence <1.1 mrad", beam
+// 5 x 3 mm, "Modulation Linear Analog - 50 kHz".
+//
+// The important thing about "30 kpps @ 8°" is that it is a RATE-ANGLE PAIR,
+// not a rate. A scanner that tracks 30,000 points per second across 8° cannot
+// track 30,000 points per second across 45° — the mirror has five times as far
+// to travel per point. The old limit ignored the angle completely: a step of
+// 0.25 in the −1..1 field is 5.6° of optical travel, and at 30 kpps that
+// commands 168,750°/s. A real 30K galvo peaks around 10,000-20,000°/s, so the
+// guard was roughly ten times too permissive and was never actually
+// constraining anything.
+const RATED_PPS    = parseFloat(process.env.LASER_RATED_PPS   || "30000");
+const RATED_ANGLE  = parseFloat(process.env.LASER_RATED_ANGLE || "8");   // deg
+const SCAN_ANGLE   = parseFloat(process.env.LASER_SCAN_ANGLE  || "45");  // deg, full field
+// The one modelling assumption, kept explicit and adjustable because the
+// datasheet does not publish the ILDA test pattern's point count: treat the
+// hardest move the scanner is rated for as traversing its rated angle in this
+// many points. 24 is deliberately conservative — it yields 10,000°/s, the
+// bottom of the range a 30K scanner is normally credited with rather than the
+// top. Lower this number for more headroom, raise it for a sharper image.
+const TRAVERSE_PTS = parseFloat(process.env.LASER_TRAVERSE_PTS || "24");
+// deg per normalised unit: ±1 spans the full field, so one unit is half of it.
+const DEG_PER_UNIT = SCAN_ANGLE / 2;
+// The angular speed ceiling, and the step ceiling that follows from it at
+// whatever rate we are actually running.
+const OMEGA_MAX    = (RATED_ANGLE * RATED_PPS) / TRAVERSE_PTS;   // deg/s
+function maxStepFor(pps) {
+  return OMEGA_MAX / Math.max(pps, 1) / DEG_PER_UNIT;
+}
+// Kept as an override only. Unset, the limit is computed from the angle above.
+const MAX_STEP_ENV = process.env.LASER_MAX_STEP
+  ? parseFloat(process.env.LASER_MAX_STEP) : null;
+let MAX_STEP = MAX_STEP_ENV !== null ? MAX_STEP_ENV : maxStepFor(DEFAULT_PPS);
+
+// ─── The other end: the beam must not stand still ──────────────────────────
+// A dwell threshold in bare microseconds was a guess. With the beam geometry
+// published it becomes a physical criterion: the beam should clear its OWN
+// width within the dwell window, or it is depositing successive points into
+// the same spot.
+const POWER_W      = parseFloat(process.env.LASER_POWER_W    || "1.7");
+const BEAM_MM      = parseFloat(process.env.LASER_BEAM_MM    || "5");    // major axis
+const DIVERGE_MRAD = parseFloat(process.env.LASER_DIVERGE    || "1.1");  // full angle
+const THROW_M      = parseFloat(process.env.LASER_THROW_M    || "10");
+const DWELL_MS     = parseFloat(process.env.LASER_DWELL_MS   || "1.0");
+// Beam width at the projection distance, and what that subtends from the head.
+const BEAM_MM_AT   = BEAM_MM + (DIVERGE_MRAD * THROW_M);      // mrad x m = mm
+const BEAM_DEG     = (BEAM_MM_AT / (THROW_M * 1000)) * (180 / Math.PI);
+// Minimum angular speed that still clears one beam width per window.
+const OMEGA_MIN    = BEAM_DEG / (DWELL_MS / 1000);            // deg/s
+function minStepFor(pps) {
+  return OMEGA_MIN / Math.max(pps, 1) / DEG_PER_UNIT;
+}
 const DEADMAN_MS   = 500;
 const FRAME_HZ     = 45;                 // output cadence
 const ILD_OUT      = process.env.LASER_ILD_OUT || null;
@@ -52,10 +106,6 @@ const SC_OSC_HOST  = process.env.LASER_SC_HOST || "127.0.0.1";
 const SC_OSC_PORT  = parseInt(process.env.LASER_SC_PORT || "57120", 10);
 const SCOPE_HZ     = 12;    // scope refresh; the eye needs no more
 const SCOPE_POINTS = 96;    // points sent per frame for drawing
-// A galvo parked with the beam unblanked is the actual burn hazard — far more
-// so than moving too fast, which merely distorts. Anything under this step is
-// treated as not moving.
-const DWELL_EPS    = 0.0008;
 
 // ─── internal point model ──────────────────────────────────────────────────
 // {x,y in −1..1, r,g,b in 0..255, blank}. Frames are arrays of these.
@@ -82,7 +132,13 @@ function interpolateJumps(points) {
       const dx = p.x - prev.x, dy = p.y - prev.y;
       const dist = Math.hypot(dx, dy);
       if (dist > MAX_STEP) {
-        const steps = Math.min(Math.ceil(dist / MAX_STEP) - 1, 32);
+        // Cap raised from 32. At the old 0.25 step nothing ever needed more
+        // than four inserted points, so 32 was unreachable headroom; at a
+        // datasheet-derived step around 0.02 a corner-to-corner jump needs
+        // about 90, and a cap of 32 would have silently left the residue
+        // over-speed while looking like it had been handled. MAX_POINTS and
+        // the scan budget are the real limits, and both are reported.
+        const steps = Math.min(Math.ceil(dist / MAX_STEP) - 1, 512);
         for (let s = 1; s <= steps && out.length < MAX_POINTS; s++) {
           const t = s / (steps + 1);
           out.push({ x: prev.x + (dx * t), y: prev.y + (dy * t), r: 0, g: 0, b: 0, blank: true });
@@ -215,27 +271,49 @@ function scopeSend(frame) {
   if (!_oscOut || now - _scopeAt < 1000 / SCOPE_HZ) return;
   _scopeAt = now;
 
+  const minStep = minStepFor(_pps);
   let overspeed = 0, maxStep = 0, dwellRun = 0, dwellWorst = 0;
+  let usedX = 0, usedY = 0;
   for (let i = 1; i < frame.length; i++) {
     const a = frame[i - 1], b = frame[i];
     const d = Math.hypot(b.x - a.x, b.y - a.y);
     if (d > maxStep) maxStep = d;
     if (d > MAX_STEP) overspeed++;
     // Only an UNBLANKED stationary beam is a hazard; a blanked one is dark.
-    if (d < DWELL_EPS && !b.blank) {
+    // The threshold is no longer a guessed epsilon: minStep is the step that
+    // just clears one beam width per dwell window at this distance.
+    if (d < minStep && !b.blank) {
       dwellRun++;
       if (dwellRun > dwellWorst) dwellWorst = dwellRun;
     } else dwellRun = 0;
+    usedX = Math.max(usedX, Math.abs(b.x));
+    usedY = Math.max(usedY, Math.abs(b.y));
   }
   const dwellUs = (dwellWorst / Math.max(_pps, 1)) * 1e6;
+  // How much of the field the frame actually uses, in optical degrees. This is
+  // the number that decides whether 30 kpps @ 8° is even the right rating to be
+  // holding the scanner to: a frame drawn across 40° is a far harder job.
+  const usedDeg = Math.max(usedX, usedY) * 2 * DEG_PER_UNIT;
+  // Scan budget: every point must be scanned FRAME_HZ times a second.
+  const budget = (frame.length * FRAME_HZ) / Math.max(_pps, 1);
 
   // Decimated for drawing only; the measures above used every sample.
+  // Each bucket also carries the WORST step inside it, not the step between the
+  // two surviving points — decimation would otherwise hide exactly the
+  // violations this is meant to show, and a compliance display computed from
+  // thinned data is worse than none.
   const step = Math.max(1, Math.floor(frame.length / SCOPE_POINTS));
   const pts = [];
   for (let i = 0; i < frame.length; i += step) {
     const p = frame[i];
+    let worst = 0;
+    for (let j = Math.max(i, 1); j < Math.min(i + step, frame.length); j++) {
+      const d = Math.hypot(frame[j].x - frame[j - 1].x, frame[j].y - frame[j - 1].y);
+      if (d > worst) worst = d;
+    }
     pts.push({ type: "f", value: p.x }, { type: "f", value: p.y },
-             { type: "f", value: p.blank ? 1 : 0 });
+             { type: "f", value: p.blank ? 1 : 0 },
+             { type: "f", value: worst });
   }
 
   try {
@@ -249,7 +327,12 @@ function scopeSend(frame) {
         { type: "f", value: maxStep },
         { type: "i", value: overspeed },
         { type: "f", value: dwellUs },
-        { type: "i", value: pts.length / 3 },
+        { type: "f", value: OMEGA_MAX },
+        { type: "f", value: maxStep * DEG_PER_UNIT * _pps },   // deg/s commanded
+        { type: "f", value: usedDeg },
+        { type: "f", value: RATED_ANGLE },
+        { type: "f", value: budget },
+        { type: "i", value: pts.length / 4 },
         ...pts,
       ],
     }, SC_OSC_HOST, SC_OSC_PORT);
@@ -387,7 +470,14 @@ wss.on("connection", (ws) => {
       if (msg.type === "laserFrame") {
         _frame = sanitize(msg.points);
         _frameSeq++;
-        if (Number.isFinite(msg.pps)) _pps = clamp(msg.pps | 0, 1000, 65000);
+        // Clamped to the fixture's rated ceiling, not to an arbitrary 65000.
+        // A browser asking for more than the scanner is rated for is asking for
+        // a damaged scanner, and the step limit is derived from the rate, so it
+        // is recomputed here rather than left at whatever the boot rate implied.
+        if (Number.isFinite(msg.pps)) {
+          _pps = clamp(msg.pps | 0, 1000, RATED_PPS);
+          if (MAX_STEP_ENV === null) MAX_STEP = maxStepFor(_pps);
+        }
         _lastFrameTime = Date.now();
         _stats.framesIn++;
       }

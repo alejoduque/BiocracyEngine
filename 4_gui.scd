@@ -1357,12 +1357,16 @@
                 var w = b.width, h = b.height;
                 var sc = ~laserScope;
                 var live = sc.notNil and: { (Main.elapsedTime - sc[\at]) < 2.0 };
-                var midX = h * 0.29, midY = h * 0.71;
+                // Three lanes: X, Y, and the thing that actually decides galvo
+                // safety — the step between consecutive samples. A step limit
+                // is a limit on SLOPE, and the first version drew it as a pair
+                // of amplitude rails across the X trace, which is a different
+                // quantity entirely and could never have shown a violation.
+                var laneX = h * 0.18, laneY = h * 0.45, laneS = h * 0.94;
 
-                // Two zero lines: the X channel above, the Y channel below.
                 Pen.width = 1;
                 Pen.strokeColor = Color.gray(0.22);
-                [midX, midY].do { |y|
+                [laneX, laneY].do { |y|
                     Pen.moveTo(0 @ y); Pen.lineTo(w @ y); Pen.stroke;
                 };
 
@@ -1375,13 +1379,9 @@
                 } {
                     var pts = sc[\xy] ? [];
                     var n = pts.size.max(1);
-                    var amp = h * 0.22;
-                    // The waveform, drawn per channel. Blanked samples are the
-                    // beam OFF — still present in the signal, still driving the
-                    // mirrors, so they are drawn dim rather than omitted: the
-                    // scope is of the electrical signal, not of what is visible
-                    // on the forest.
-                    [[0, midX], [1, midY]].do { |ch|
+                    var amp = h * 0.14;
+                    var lim = sc[\maxStep].max(1e-9);
+                    [[0, laneX], [1, laneY]].do { |ch|
                         var idx = ch[0], zero = ch[1];
                         pts.do { |p, i|
                             var x0 = i / n * w;
@@ -1392,15 +1392,23 @@
                             Pen.stroke; Pen.moveTo(x0 @ y0);
                         };
                     };
-                    // The limit itself, as a pair of rails on the X trace, so
-                    // "complies" is something to SEE rather than to be told.
-                    Pen.strokeColor = Color.gray(0.35);
-                    [midX - (sc[\maxStep] * amp), midX + (sc[\maxStep] * amp)].do { |y|
-                        Pen.moveTo(0 @ y); Pen.lineTo(w @ y); Pen.stroke;
+                    // The speed lane, scaled so the limit sits at half height:
+                    // anything reaching the marked line is at the scanner's
+                    // rated angular velocity, and anything above it is asking
+                    // the mirrors for an acceleration they do not have.
+                    Pen.strokeColor = Color.gray(0.40);
+                    Pen.moveTo(0 @ (laneS - (h * 0.13)));
+                    Pen.lineTo(w @ (laneS - (h * 0.13))); Pen.stroke;
+                    pts.do { |p, i|
+                        var x0 = i / n * w;
+                        var frac = (p[3] / lim).clip(0, 2.2);
+                        var y0 = laneS - (frac * h * 0.13);
+                        Pen.strokeColor = if(frac > 1.0)
+                            { Color.white } { mainTheme.accent };
+                        Pen.moveTo(x0 @ laneS); Pen.lineTo(x0 @ y0); Pen.stroke;
                     };
-                    // A violation is not a decoration: the whole field goes
-                    // white-barred so it cannot be missed at a glance.
-                    if((sc[\overspeed] > 0) or: { sc[\dwellUs] > 2000 }) {
+                    if((sc[\overspeed] > 0) or: { sc[\dwellUs] > 1000 }
+                        or: { sc[\budget] > 1.0 }) {
                         Pen.strokeColor = Color.white;
                         Pen.width = 2;
                         Pen.moveTo(0 @ 1); Pen.lineTo(w @ 1); Pen.stroke;
@@ -1487,6 +1495,40 @@
                         var live = sc.notNil and: { (Main.elapsedTime - sc[\at]) < 2.0 };
                         if(live.not) {
                             ~laserStatusText.string = "LASER: no bridge";
+                            ~laserStatusText.stringColor = mainTheme.dim;
+                        } {
+                            var bad = (sc[\overspeed] > 0)
+                                or: { sc[\dwellUs] > 1000 } or: { sc[\budget] > 1.0 };
+                            // Angular, because the datasheet is angular. "30 kpps
+                            // @ 8 deg" is a rate-ANGLE pair, so deg/s against the
+                            // rated ceiling is the number that says whether this
+                            // frame is inside the scanner's specification, and
+                            // the field width says whether 8 deg is even the
+                            // right rating to be holding it to.
+                            ~laserStatusText.string =
+                                (if(sc[\dac] > 0) { "HELIOS DAC" } { "DRY RUN (no DAC)" })
+                                ++ "\n" ++ sc[\pps] ++ " pps · " ++ sc[\points] ++ " pts"
+                                ++ "\n" ++ sc[\omegaNow].round(1) ++ " / "
+                                    ++ sc[\omegaMax].round(1) ++ " deg/s"
+                                ++ "\nfield " ++ sc[\usedDeg].round(0.1) ++ " deg"
+                                    ++ " (rated " ++ sc[\ratedDeg].round(0.1) ++ ")"
+                                ++ "\nscan budget " ++ (sc[\budget] * 100).round(1) ++ "%"
+                                ++ "\ndwell " ++ sc[\dwellUs].round(1) ++ " us"
+                                ++ "\n" ++ case
+                                    { sc[\overspeed] > 0 } {
+                                        "OVER-SPEED x" ++ sc[\overspeed]
+                                    }
+                                    { sc[\budget] > 1.0 } {
+                                        "TOO MANY POINTS for " ++ sc[\pps] ++ " pps"
+                                    }
+                                    { sc[\dwellUs] > 1000 } {
+                                        "BEAM PARKED "
+                                            ++ (sc[\dwellUs] / 1000).round(0.1) ++ " ms"
+                                    }
+                                    { sc[\usedDeg] > (sc[\ratedDeg] * 1.05) } {
+                                        "wide field — beyond the 30k rating"
+                                    }
+                                    { true } { "within scanner spec" };
                             ~laserStatusText.stringColor = mainTheme.dim;
                         } {
                             var bad = (sc[\overspeed] > 0) or: { sc[\dwellUs] > 2000 };
