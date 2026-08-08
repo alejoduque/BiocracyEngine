@@ -67,11 +67,19 @@
         ~guiScreen = Window.availableBounds;
         ~mainWindow = Window("SøNETH — BiocracyEngine Control", Rect(
             60, 40,
-            min(1100, ~guiScreen.width - 80),
+            // +270 for the laser column, which lives OUTSIDE the scroll area
+            // and so has to be paid for in window width rather than taken from
+            // the control surface.
+            min(1370, ~guiScreen.width - 60),
             min(1380, ~guiScreen.height - 60)
         )).background_(backgroundColor);
 
-        ~mainWindow.view.layout_(VLayout().margins_(0).spacing_(0));
+        // HLayout, not VLayout: the control surface scrolls, and anything added
+        // to it as another row can only be reached by scrolling to the bottom.
+        // The laser scope has to be readable WHILE the hands are on the knobs —
+        // a galvo-safety readout you have to go looking for is not a readout —
+        // so it sits in a fixed column beside the scroll area instead of in it.
+        ~mainWindow.view.layout_(HLayout().margins_(0).spacing_(0));
         // The horizontal scroller is ON. With it off, a row wider than the
         // window was not clipped with a warning — it was silently deleted from
         // the surface, which is how two knobs vanished out of row 5 and stayed
@@ -82,7 +90,7 @@
         ~scrollCanvas = View().background_(backgroundColor);
         ~scrollCanvas.layout_(VLayout().margins_(6).spacing_(5));
         ~scrollView.canvas = ~scrollCanvas;
-        ~mainWindow.layout.add(~scrollView);
+        ~mainWindow.layout.add(~scrollView, stretch: 1);
 
         // Create header
         ~header = StaticText()
@@ -1335,14 +1343,21 @@
         // The row is a status block on the left and the scope filling the
         // horizontal space to its right.
         laserView = View().background_(backgroundColor.blend(mainTheme.accent, 0.05))
-            .layout_(HLayout().margins_(4).spacing_(8));
-        laserView.fixedHeight = 74;
+            .layout_(VLayout().margins_(6).spacing_(6));
+        laserView.fixedWidth = 262;
+
+        laserView.layout.add(
+            StaticText().string_("LASER · GALVO SAFETY")
+                .stringColor_(mainTheme.accent)
+                .font_(Font(~monoFont, 10, true))
+                .fixedHeight_(14)
+        );
 
         ~laserStatusText = StaticText()
             .string_("LASER: no bridge")
             .stringColor_(mainTheme.dim)
             .font_(Font(~monoFont, 9))
-            .fixedWidth_(190);
+            .fixedHeight_(96);
         laserView.layout.add(~laserStatusText);
 
         ~laserScopeView = UserView()
@@ -1417,6 +1432,22 @@
                 };
             });
         laserView.layout.add(~laserScopeView, stretch: 1);
+        laserView.layout.add(
+            StaticText()
+                .string_("Not a safety system. Class 4: the interlock, E-stop,"
+                    " key, aperture mask and Scan Guard are what protect people."
+                    " This only keeps the engine inside the scanner's published"
+                    " mechanical envelope.")
+                .stringColor_(mainTheme.dim)
+                .font_(Font(~monoFont, 8))
+                .fixedHeight_(52)
+        );
+
+        // Attached here rather than beside the ScrollView at the top of the
+        // file, because HLayout adds left to right and laserView does not exist
+        // until now. The scroll area was added first, so this lands to its
+        // right and stays put while the surface scrolls under it.
+        ~mainWindow.layout.add(laserView);
 
         // Add all views to the scroll canvas (5 control rows + samples + REC)
         ~scrollCanvas.layout.add(~header);
@@ -1431,7 +1462,6 @@
         ~scrollCanvas.layout.add(controlViewRow6);
         ~scrollCanvas.layout.add(sampleView);
         ~scrollCanvas.layout.add(recordingView);
-        ~scrollCanvas.layout.add(laserView);
         ~scrollCanvas.layout.add(presetView);
 
         // Add footer

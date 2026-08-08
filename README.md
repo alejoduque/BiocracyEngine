@@ -895,6 +895,49 @@ browser laserTap ──WS:3337──► laser-bridge.js ──USB──► Helio
 1. `window.__laserFrame` — any module may publish its own vector scene.
 2. **slot-P default** — the phenological **year-ring** + a marker at today's active species (`window.__activeSpecies`). A **sensitive** species is *not* drawn: the opacity clause (Glissant) extended into physical space — the vulnerable being is never cast onto the real forest.
 
+### Scanner limits (Unity RAW 1.7 W, DMX + ILDA)
+
+A laser projector is driven **by a waveform**: at the DAC's point rate each point is one sample, X on the left channel and Y on the right. The limits below come from the fixture datasheet, and every one is an env var.
+
+`Scan Speed 30 kpps @ 8°` is a **rate–angle pair, not a rate**. A scanner that tracks 30 000 points/s across 8° cannot track 30 000 points/s across 45° — the mirror has five times as far to travel per point. So the step limit is derived from an angular-velocity ceiling rather than picked:
+
+```
+OMEGA_MAX  = RATED_ANGLE × RATED_PPS / TRAVERSE_PTS    =  8° × 30000 / 24  =  10 000 °/s
+MAX_STEP   = OMEGA_MAX / pps / (SCAN_ANGLE / 2)        ≈  0.0185 at 24 kpps
+```
+
+`TRAVERSE_PTS` is the one figure the datasheet does not publish (the ILDA test pattern's point count) and is set deliberately low, putting the ceiling at the **bottom** of the range a 30 K scanner is credited with.
+
+| Env | Default | Source |
+|---|---|---|
+| `LASER_PPS` | `24000` | derated to 80 % of the rating; clamped to `LASER_RATED_PPS` |
+| `LASER_RATED_PPS` | `30000` | *Scan Speed 30 kpps @ 8°* |
+| `LASER_RATED_ANGLE` | `8` | the angle that rating is quoted at |
+| `LASER_SCAN_ANGLE` | `45` | *Scan Angle 45°*, full field |
+| `LASER_TRAVERSE_PTS` | `24` | modelling constant — lower = more headroom |
+| `LASER_POWER_W` | `1.7` | *Power > 1.7 W* |
+| `LASER_BEAM_MM` / `LASER_DIVERGE` | `5` / `1.1` | *Beam 5 × 3 mm*, *< 1.1 mrad* |
+| `LASER_THROW_M` / `LASER_DWELL_MS` | `10` / `1.0` | projection distance; dwell window |
+| `LASER_MAX_STEP` | *(unset)* | override only — unset, it is computed above |
+
+**Dwell** is physical, not a guessed epsilon: the beam must clear **its own width** at the throw distance within `LASER_DWELL_MS`, or successive points are landing in the same spot.
+
+### Galvo-safety scope (SC GUI, right-hand column)
+
+`laser-bridge.js` sends `/laser/scope` to sclang at 12 Hz carrying the frame **after** sanitisation — the signal the DAC actually receives. The SC GUI draws it in a fixed column beside the scroll area, so it stays readable while the hands are on the knobs. Three lanes: **X**, **Y**, and the **step envelope** against the limit — a step limit is a limit on *slope*, so velocity is what the scope has to show. Decimated buckets carry the **worst** step inside them, never the step between surviving points.
+
+Four states, all reachable:
+
+| Condition | Reads |
+|---|---|
+| Within spec | `9274 / 10000 deg/s`, scan budget `48 %` |
+| Frame wider than the rating | `field 31.5 deg (rated 8.0)` → *wide field* |
+| Beam stopped moving | `BEAM PARKED 13.3 ms` |
+| Too dense to scan | `budget 180 %`, residual `OVER-SPEED ×460` |
+| Bridge absent | `no bridge` — never "compliant" |
+
+> **Not a safety system.** This is a **Class 4** fixture (> 1.7 W RGB). People are protected by the interlock, E-stop, key, aperture mask, the fixture's own Scan Guard, beam-path design and trained operation. The scope keeps the engine inside the scanner's published *mechanical* envelope and makes loss of beam motion visible. It does not make anything eye-safe.
+
 ---
 
 ## 6. Quick Start & Diagnostics
