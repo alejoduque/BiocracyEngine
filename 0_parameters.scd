@@ -100,6 +100,11 @@
     // Level of the field-recording layer against the synthesis. Its own fader
     // because the corpus is a fourth actor, not an effect on the other three.
     (name: \corpusLevel,       spec: ControlSpec(0, 1, \lin),       default: 0.5,  path: "/pheno/corpusLevel",       cc: 22),
+    // How much of the chain's own behaviour is allowed to act on the forest
+    // recordings. 0 is the corpus untouched; 1 is fully processed by what the
+    // chain is doing — see 17_chain_processing.scd for why this is the shape
+    // the coupling takes rather than the chain playing notes.
+    (name: \chainProcess,      spec: ControlSpec(0, 1, \lin),       default: 0.45, path: "/chain/process",           cc: 23),
 
     // ── Row 8: Matrix mixer — one live fader per audible layer ──────────
     // Until now the balance between layers lived only in the hardcoded gain

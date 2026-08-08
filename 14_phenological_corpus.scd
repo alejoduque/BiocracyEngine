@@ -126,7 +126,11 @@ s.waitForBoot {
     // In.kr(bus)]) — and every bus arg is named <busname>Bus so the auto-wiring
     // at 6_osc_handlers.scd:474 connects it without being told.
     SynthDef(\corpusVoice, {
-        arg buf = 0, amp = 0.7, gate = 1,
+        // out: routed to the chain-processing bus when 17_ is running, and
+        // straight to the main output when it is not. Hard-wired to 0 before,
+        // like \elektronBell was, which is why nothing could be placed across
+        // this layer as a group.
+        arg out = 0, buf = 0, amp = 0.7, gate = 1,
             atk = 2.0, hold = 55.0, rel = 6.0,
             rate = 1, startPos = 0, pan = 0,
             // literals used when a bus is absent
@@ -186,7 +190,7 @@ s.waitForBoot {
         } {
             Pan2.ar(sig, (pan + (spread * 0.5)).clip(-1, 1))
         };
-        Out.ar(0, quadSig);
+        Out.ar(out, quadSig);
     }).add;
 
     // The absence voice: what sounds on days the forest was not recorded, in
@@ -201,7 +205,7 @@ s.waitForBoot {
     // BEFORE expanding, so only what was genuinely inaudible arrives, at
     // 4.75-24 kHz. 160 s per file, which is also the right length for a gap.
     SynthDef(\corpusUltrasonic, {
-        arg buf = 0, amp = 0.5, gate = 1,
+        arg out = 0, buf = 0, amp = 0.5, gate = 1,
             atk = 8.0, hold = 240.0, rel = 12.0, pan = 0,
             absenceWeight = 0.3, corpusLevel = 0.5, opacityFloor = 0.0,
             spectralShift = 8000, atmosphereMix = 0.4, opacity = 0.0,
@@ -249,7 +253,7 @@ s.waitForBoot {
         } {
             Pan2.ar(sig, pan.clip(-1, 1))
         };
-        Out.ar(0, quadSig);
+        Out.ar(out, quadSig);
     }).add;
 
     s.sync;
@@ -454,7 +458,8 @@ s.waitForBoot {
                 \rel, (holdSecs * 0.2).clip(1, 20),
                 \startPos, 0,
                 \pan, 1.0.rand2 * 0.6,
-                \opacity, clip[\opacity]
+                \opacity, clip[\opacity],
+                \out, (~corpusOutBus ? 0)
             ] ++ ~phenoBusArgs.value,
                 target: if(~defaultGroup.notNil, { ~defaultGroup }, { s.defaultGroup }));
 
@@ -497,7 +502,8 @@ s.waitForBoot {
             \hold, holdSecs.clip(1, 560),
             \rel, (holdSecs * 0.3).clip(2, 30),
             \pan, 1.0.rand2 * 0.8,
-            \opacity, clip[\opacity]
+            \opacity, clip[\opacity],
+            \out, (~corpusOutBus ? 0)
         ] ++ ~phenoBusArgs.value,
             target: if(~defaultGroup.notNil, { ~defaultGroup }, { s.defaultGroup }));
         slot[\synth].onFree({ slot[\synth] = nil; slot[\key] = nil });

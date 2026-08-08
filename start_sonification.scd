@@ -34,7 +34,10 @@
         "15_slot_voices.scd",        // slots 4–9 request their own voice on /slot/voice
         // Needs 10_'s buffers and ~triggerSample AND 14_'s parsed manifest, so
         // it cannot load before either of them.
-        "16_corpus_calls.scd"        // slot A answers with the corpus on /antifonia/call
+        "16_corpus_calls.scd",       // slot A answers with the corpus on /antifonia/call
+        // Last: it sits ACROSS the corpus layer, so both corpus voices and the
+        // buses they read have to exist before it can be placed over them.
+        "17_chain_processing.scd"    // the chain processes the forest recordings
     ].do { |file|
         var path = basePath +/+ file;
         ("Loading " ++ file ++ "...").postln;

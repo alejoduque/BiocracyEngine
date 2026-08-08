@@ -472,7 +472,7 @@
             [\tideShort, \tideMedia, \tideLarga, \tidePulse],
             // Cámara Fenológica · Corpus: the field-recording layer's own fader,
             // with the bancada selector and the transport button beside it.
-            [\corpusLevel]
+            [\corpusLevel, \chainProcess]
         ];
 
         // Enhanced knob function with oscilloscope aesthetics
