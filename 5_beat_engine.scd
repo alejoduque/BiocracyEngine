@@ -528,7 +528,7 @@
                     \spatialBus,   bSpat,
                     // Matrix mixer: this layer's live level.
                     \mixKickBus, ~bi.(\mixKick)
-                ], targetGrp) });
+                ] ++ (~voiceBusArgs.value ? []), targetGrp) });
             };
 
             // ── 2. PERC — tidal probability, not a polyrhythmic divisor ──────────
@@ -616,7 +616,7 @@
                         \spatialBus,   bSpat,
                         // Matrix mixer: this layer's live level.
                         \mixPercBus, ~bi.(\mixPerc)
-                    ], targetGrp);
+                    ] ++ (~voiceBusArgs.value ? []), targetGrp);
                 }
                 { voicingMode == \dyad } {
                     // Two-note interval
@@ -637,7 +637,7 @@
                             \spatialBus,   bSpat,
                             // Matrix mixer: this layer's live level.
                             \mixPercBus, ~bi.(\mixPerc)
-                        ], targetGrp);
+                        ] ++ (~voiceBusArgs.value ? []), targetGrp);
                     };
                 }
                 { voicingMode == \triad } {
@@ -663,7 +663,7 @@
                             \spatialBus,   bSpat,
                             // Matrix mixer: this layer's live level.
                             \mixPercBus, ~bi.(\mixPerc)
-                        ], targetGrp);
+                        ] ++ (~voiceBusArgs.value ? []), targetGrp);
                     };
                 };
                 });
@@ -689,7 +689,7 @@
                     \spatialBus,   bSpat,
                     // Matrix mixer: this layer's live level.
                     \mixDustBus, ~bi.(\mixDust)
-                ], targetGrp) });
+                ] ++ (~voiceBusArgs.value ? []), targetGrp) });
             };
 
             // Broadcast current state to visuals bridge

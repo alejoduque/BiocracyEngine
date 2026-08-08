@@ -7,6 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Every knob says what it reaches, and most of them now reach further (2026-08-07)
+
+#### Added
+- **A hairline wiring ring on every knob.** Eight fixed slices, one per voice, in the slot hues — so a ring segment is the same colour as the screen that visualises that voice. Fixed positions mean PERC is at the same clock position on every knob and the layout is learned once; an unwired slice is drawn faint rather than omitted, so the gap reads as clearly as the fill. A **lit** slice means the voice reads that control live off a bus (the knob changes a note already sounding); a **hollow** one means it is applied at spawn (it shapes the next note). The map is derived from `SynthDescLib`, not written down, so it cannot drift from the SynthDefs.
+- **`~voiceBusArgs` in `3_synthdefs.scd`** — one argument list for every voice spawn. Three spawn sites were each maintaining a partial list, which is *why* eight controls reached only the drone and the pad: the SynthDefs would have read them, but nobody was passing them.
+
+#### Changed
+- **The struck voices can be sculpted.** `\opalKick` gains pitchShift (transposes the whole drop), noiseLevel/noiseFilt (a beater transient in front of the pitch drop), filterCutoff + resonantBody (an RLPF tilt under spectralShift), droneDepth (a sub an octave under), memoryFeed (a short slap) and droneFade as its smoothing time. `\opalPerc` gains pitchShift, noiseLevel/noiseFilt (how much of the strike is breath rather than tone, and where it sits), filterCutoff and delayFeedback (a comb tail). `\opalDust` gains harmonicRich + resonantBody (a Ringz that gives the crackle an actual pitch, which it never had), noiseLevel/noiseFilt (a band-passed bed under the grains), filterCutoff and delayFeedback.
+- Reach, before → after: pitchShift 4→6, memoryFeed 4→5, harmonicRich 4→5, resonantBody 4→6, filterCutoff 2→5, noiseLevel 2→5, noiseFilt 2→5, droneFade 2→5, droneDepth 2→3, delayFeedback 2→4.
+
+#### Notes
+- **Measured, and two additions trimmed as a result.** At default bus values the dust bed came in at +7.3 dB on that layer, which contradicts the gain-budget note directly above it (dust is deliberately occasional texture, not a constant rain) — halved to +1 dB. The kick beater came in at +2.5 dB and was cut to about +1.4. After trimming: kick RMS 0.0065 → 0.0067, perc −6.6 → −6.5 dB, dust −74.0 → −67.9, bell −63.0 → −62.0, drone −28.5 → −27.9. Nothing clips.
+- `masterAmp` was deliberately **not** given a bus on the struck voices: the beat engine already multiplies it in at spawn, and adding a live read would apply it twice — the same fault the drone had once, where it responded to the control approximately squared. It shows as three hollow slices instead.
+- `droneSpace` and `droneMix` stay on the drone. They are that voice's own room and dry/wet blend, and duplicating them onto voices that already have `atmosphereMix` would give one job two owners.
+
 ### The drone morphs, the pad has a spectrum, the lights say their age (2026-08-07)
 
 #### Changed

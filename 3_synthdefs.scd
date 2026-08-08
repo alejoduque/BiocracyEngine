@@ -380,6 +380,13 @@ s.doWhenBooted({
     SynthDef(\opalKick, {
         arg out=0, freq=50, amp=0.5, atk=0.001, dec=0.4,
         masterVolBus=(-1), timeBus=(-1), harmonicBus=(-1), textureBus=(-1), spectralBus=(-1), atmosphereBus=(-1), spatialBus=(-1),
+        // Reach added so this voice can be sculpted rather than only triggered.
+        // Every one of these had a fader on the surface that stopped at the
+        // drone and the pad; a struck voice with three shaping controls is a
+        // sample, not an instrument.
+        pitchBus=(-1), memoryBus=(-1), resonantBus=(-1),
+        filterCutoffBus=(-1), noiseLevelBus=(-1), noiseFiltBus=(-1),
+        droneDepthBus=(-1), droneFadeBus=(-1),
         // Matrix mixer: this layer's live level (0 = mute, 1 = unity).
         mixKickBus=(-1);
 
@@ -390,21 +397,59 @@ s.doWhenBooted({
         var filt  = Select.kr(spectralBus >= 0, [1000, In.kr(spectralBus, 1)]);
         var revM  = Select.kr(atmosphereBus >= 0, [0.4, In.kr(atmosphereBus, 1)]);
         var spatialX= Select.kr(spatialBus >= 0, [0.0, In.kr(spatialBus, 1)]);
+        var pShift= Select.kr(pitchBus >= 0, [0.0, In.kr(pitchBus, 1)]);
+        var dMix  = Select.kr(memoryBus >= 0, [0.3, In.kr(memoryBus, 1)]);
+        var res   = Select.kr(resonantBus >= 0, [0.4, In.kr(resonantBus, 1)]);
+        var cutoff= Select.kr(filterCutoffBus >= 0, [0.6, In.kr(filterCutoffBus, 1)]);
+        var nLevel= Select.kr(noiseLevelBus >= 0, [0.1, In.kr(noiseLevelBus, 1)]);
+        var nFilt = Select.kr(noiseFiltBus  >= 0, [0.5, In.kr(noiseFiltBus, 1)]);
+        var dDepth= Select.kr(droneDepthBus >= 0, [0.3, In.kr(droneDepthBus, 1)]);
+        var dFade = Select.kr(droneFadeBus  >= 0, [2.0, In.kr(droneFadeBus, 1)]);
 
-        var env, pitchEnv, sig, mod, quadSig;
+        var env, pitchEnv, sig, mod, quadSig, click, sub;
         
         env = EnvGen.ar(Env.perc(atk, dec * tStretch, 1, -4), doneAction: 2);
-        pitchEnv = EnvGen.ar(Env([freq * 8, freq, freq * 0.5], [0.02, dec * tStretch], \exp));
-        
+        // pitchShift transposes the whole drop, so the kick tunes with the rest
+        // of the engine instead of sitting at whatever the spawn chose.
+        pitchEnv = EnvGen.ar(Env(
+            [freq * 8, freq, freq * 0.5] * (pShift.clip(-24, 24) / 12).midiratio,
+            [0.02, dec * tStretch], \exp));
+
         mod = SinOsc.ar(pitchEnv * fmR.linexp(0.1, 8, 0.5, 4.0)) * (fmD * 0.4) * pitchEnv;
         sig = SinOsc.ar(pitchEnv + mod);
-        
+
+        // Noise Level / Noise Filt become the beater — the transient in front
+        // of the pitch drop, which is what makes a kick read as struck rather
+        // than as a sine falling over. Its own short envelope so it is an
+        // attack and not a layer.
+        click = HPF.ar(
+            WhiteNoise.ar * EnvGen.ar(Env.perc(0.0005, 0.012 + (nFilt * 0.05), 1, -8)),
+            (200 + (nFilt * 5000)).clip(200, 6000));
+        // Measured at +2.5 dB on the layer at 1.6; the kick is the sub anchor
+        // and the beater is meant to define its front, not raise the whole
+        // voice. 1.05 puts it at about +1.4 dB.
+        sig = sig + (click * nLevel.linlin(0, 0.5, 0.0, 1.05));
+
         // Distortion & Filter (Opal drive)
         sig = (sig * (1 + (fmD * 5))).tanh;
-        // Kick LPF: cap at 3000Hz
-        sig = LPF.ar(sig, filt.clip(100, 3000));
-        
-        // Reverb tail
+        // Kick LPF: cap at 3000Hz. filterCutoff tilts it a further octave either
+        // way UNDER spectralShift's absolute setting, the same relationship the
+        // drone already had; resonantBody puts a corner on it, so the low end
+        // can be given an edge instead of only a ceiling. Lagged by droneFade,
+        // which is this SynthDef's smoothing time now as well as the drone's.
+        sig = RLPF.ar(sig,
+            (filt.clip(100, 3000) * Lag.kr(cutoff, dFade.clip(0.1, 5)).linexp(0, 1, 0.5, 2.0))
+                .clip(60, 5000),
+            res.linexp(0, 1, 0.9, 0.25));
+
+        // droneDepth reaches the kick's own body: a sine an octave under the
+        // drop, which is the difference between a click and something you feel.
+        sub = SinOsc.ar(pitchEnv * 0.5) * dDepth.linlin(0, 1, 0.0, 0.9);
+        sig = sig + sub;
+
+        // Reverb tail, with memoryFeed opening a short slap in front of it —
+        // the same control that feeds the delay on every other voice.
+        sig = sig + DelayC.ar(sig, 0.25, 0.055 + (dMix * 0.12), dMix * 0.5);
         sig = sig + FreeVerb.ar(sig, revM * 0.5, 0.7, 0.2);
 
         sig = sig * env * amp * vol * ~trimKick
@@ -437,6 +482,12 @@ s.doWhenBooted({
         arg out=0, freq=400, amp=0.3, 
         masterVolBus=(-1), harmonicBus=(-1), textureBus=(-1), resonantBus=(-1), spectralBus=(-1), timeBus=(-1),
         memoryBus=(-1), atmosphereBus=(-1), spatialBus=(-1),
+        // Reach added: pitch so the struck body tunes with the engine, the two
+        // noise controls so the exciter can be shaped, filterCutoff as a tilt
+        // under spectralShift, delayFeedback for the comb tail, droneFade as
+        // the smoothing time. Six faders that stopped at the drone.
+        pitchBus=(-1), filterCutoffBus=(-1), noiseLevelBus=(-1), noiseFiltBus=(-1),
+        delayFeedbackBus=(-1), droneFadeBus=(-1),
         // Matrix mixer: this layer's live level (0 = mute, 1 = unity).
         mixPercBus=(-1);
 
@@ -448,6 +499,12 @@ s.doWhenBooted({
         var dMix  = Select.kr(memoryBus >= 0, [0.3, In.kr(memoryBus, 1)]);
         var revM  = Select.kr(atmosphereBus >= 0, [0.4, In.kr(atmosphereBus, 1)]);
         var spatialX= Select.kr(spatialBus >= 0, [0.0, In.kr(spatialBus, 1)]);
+        var pShift= Select.kr(pitchBus >= 0, [0.0, In.kr(pitchBus, 1)]);
+        var cutoff= Select.kr(filterCutoffBus >= 0, [0.6, In.kr(filterCutoffBus, 1)]);
+        var nLevel= Select.kr(noiseLevelBus >= 0, [0.1, In.kr(noiseLevelBus, 1)]);
+        var nFilt = Select.kr(noiseFiltBus  >= 0, [0.5, In.kr(noiseFiltBus, 1)]);
+        var dFeed = Select.kr(delayFeedbackBus >= 0, [0.3, In.kr(delayFeedbackBus, 1)]);
+        var dFade = Select.kr(droneFadeBus  >= 0, [2.0, In.kr(droneFadeBus, 1)]);
 
         var exciter, sig, wet, quadSig;
 
@@ -458,13 +515,20 @@ s.doWhenBooted({
         // harmonicRich 8, which is where the high metallic pings came from.
         // Clamped here so every voicing path and every knob position is caught,
         // not just the ones that were thought of at the call site.
-        freq = freq.clip(40, 900);
+        // pitchShift transposes the struck body, applied BEFORE the clamp so
+        // the ceiling still catches every path.
+        freq = (freq * (pShift.clip(-24, 24) / 12).midiratio).clip(40, 900);
 
         // Softened exciter: the old 1 ms attack read as a hard metallic "ping".
         // 10 ms attacks + longer noise burst bow the resonator instead of
         // striking it — same Ringz body, drone-compatible onset.
+        // Noise Level sets how much of the strike is breath rather than tone,
+        // and Noise Filt where that breath sits — the difference between a
+        // bowed resonator and a struck one, on a fader.
         exciter = Mix([
-            WhiteNoise.ar * EnvGen.ar(Env.perc(0.01, 0.08)),
+            BPF.ar(WhiteNoise.ar, (300 + (nFilt * 6000)).clip(200, 8000), 0.6 + (nFilt * 1.4))
+                * EnvGen.ar(Env.perc(0.01, 0.08 + (nFilt * 0.10)))
+                * nLevel.linlin(0, 0.5, 0.35, 2.2),
             SinOsc.ar(freq * (1 + fmD)) * EnvGen.ar(Env.perc(0.01, 0.04))
         ]);
 
@@ -479,11 +543,22 @@ s.doWhenBooted({
 
         // Changed from BPF to LPF: BPF at high freq passes almost nothing (silence);
         // LPF at high freq is transparent — sound always passes through.
-        sig = LPF.ar(sig, filt.clip(300, 3000));
+        // filterCutoff tilts a further octave either way UNDER spectralShift's
+        // absolute setting — the same relationship it has on the drone, and the
+        // reason it can now be used to voice the perc against the bed rather
+        // than only the bed itself. Lagged by droneFade like every other
+        // continuous control.
+        sig = LPF.ar(sig,
+            (filt.clip(300, 3000)
+                * Lag.kr(cutoff, dFade.clip(0.1, 5)).linexp(0, 1, 0.5, 2.0)).clip(150, 5000));
         // Fixed backstop, independent of spectralShift: the Ringz body plus the
         // WhiteNoise exciter put energy well above the fundamental, and this
         // layer has no business up there.
         sig = LPF.ar(sig, 2600);
+        // delayFeedback owns a comb tail here as it does on the drone, so the
+        // one fader lengthens every voice's tail together.
+        sig = sig + (CombC.ar(sig, 0.4, 0.09, Lag.kr(dFeed, 0.2).linexp(0, 1, 0.15, 3.5))
+            * dFeed.linlin(0, 1, 0.10, 0.55));
         // 50 ms swell + longer tail (was 1 ms / 1.5x) — resonance blooms out
         // of the drone bed rather than popping over it
         sig = sig * EnvGen.ar(Env.perc(0.05, 2.5 * tStretch), doneAction: 2);
@@ -714,6 +789,11 @@ s.doWhenBooted({
         arg out=0, amp=0.2,
         masterVolBus=(-1), textureBus=(-1), spectralBus=(-1), timeBus=(-1), pitchBus=(-1),
         memoryBus=(-1), atmosphereBus=(-1), spatialBus=(-1),
+        // Reach added: harmonicRich to give the crackle a resonant pitch,
+        // resonantBody to sharpen it, the two noise controls for the bed under
+        // it, filterCutoff as the tilt and delayFeedback for the comb.
+        harmonicBus=(-1), resonantBus=(-1), filterCutoffBus=(-1),
+        noiseLevelBus=(-1), noiseFiltBus=(-1), delayFeedbackBus=(-1), droneFadeBus=(-1),
         // Matrix mixer: this layer's live level (0 = mute, 1 = unity).
         mixDustBus=(-1);
 
@@ -725,8 +805,15 @@ s.doWhenBooted({
         var revM  = Select.kr(atmosphereBus >= 0, [0.4, In.kr(atmosphereBus, 1)]);
         var dMix  = Select.kr(memoryBus >= 0, [0.3, In.kr(memoryBus, 1)]);
         var spatialX= Select.kr(spatialBus >= 0, [0.0, In.kr(spatialBus, 1)]);
+        var fmR   = Select.kr(harmonicBus >= 0, [1.0, In.kr(harmonicBus, 1)]);
+        var res   = Select.kr(resonantBus >= 0, [0.4, In.kr(resonantBus, 1)]);
+        var cutoff= Select.kr(filterCutoffBus >= 0, [0.6, In.kr(filterCutoffBus, 1)]);
+        var nLevel= Select.kr(noiseLevelBus >= 0, [0.1, In.kr(noiseLevelBus, 1)]);
+        var nFilt = Select.kr(noiseFiltBus  >= 0, [0.5, In.kr(noiseFiltBus, 1)]);
+        var dFeed = Select.kr(delayFeedbackBus >= 0, [0.3, In.kr(delayFeedbackBus, 1)]);
+        var dFade = Select.kr(droneFadeBus  >= 0, [2.0, In.kr(droneFadeBus, 1)]);
 
-        var env, sig, grains, wet, quadSig;
+        var env, sig, grains, wet, quadSig, ring, bed;
         
         env = EnvGen.ar(Env.perc(0.01, tStretch * 0.8), doneAction: 2);
         
@@ -734,13 +821,38 @@ s.doWhenBooted({
         grains = Dust2.ar(dens.linexp(0, 1, 10, 500));
         // Changed from BPF to LPF: BPF at high freq silences the signal entirely;
         // LPF at high freq is open — dust crackle always comes through.
-        sig = LPF.ar(grains, filt.clip(200, 3000));
+        sig = LPF.ar(grains,
+            (filt.clip(200, 3000)
+                * Lag.kr(cutoff, dFade.clip(0.1, 5)).linexp(0, 1, 0.5, 2.0)).clip(120, 4000));
+
+        // harmonicRich gives the crackle a PITCH: the same grains through a
+        // resonant band, so the layer can go from broadband hiss to something
+        // ringing at a frequency that follows pitchShift. resonantBody sets how
+        // sharp that ring is. Without this, dust was the one voice with no
+        // pitch at all and nothing to tune against the rest.
+        ring = Ringz.ar(grains,
+            (220 * fmR.linexp(0.1, 5, 0.4, 3.0)
+                * (pitch.clip(-24, 24) / 12).midiratio).clip(60, 3000),
+            res.linlin(0, 1, 0.04, 0.5) * tStretch);
+        sig = sig + (ring * fmR.linexp(0.1, 5, 0.05, 0.7));
+
         // Dust2 is broadband by construction — this is the sparkle/hiss at the
         // top of the mix. Fixed backstop so no knob position can open it up.
         sig = LPF.ar(sig, 2200);
-        
-        // Delay + Reverb wash
-        wet = CombC.ar(sig, 0.5, 0.15, 2.0) * dMix;
+
+        // The two noise faders put a bed under the crackle rather than leaving
+        // it as isolated points — band-passed so it sits where Noise Filt says.
+        bed = BPF.ar(PinkNoise.ar,
+            (200 + (nFilt * 3000)).clip(150, 3500),
+            0.35 + (nFilt * 0.9)) * nLevel.linlin(0, 0.5, 0.0, 0.55);
+        // 1.4 measured at +7.3 dB on this layer, which contradicts the gain
+        // budget note above — dust is deliberately occasional texture, not a
+        // constant rain, and a continuous pink bed at that level makes it one.
+        sig = sig + bed;
+
+        // Delay + Reverb wash. delayFeedback owns the comb's tail, as on the
+        // drone and the perc; memoryFeed keeps the send level.
+        wet = CombC.ar(sig, 0.5, 0.15, Lag.kr(dFeed, 0.2).linexp(0, 1, 0.3, 6.0)) * dMix;
         sig = sig + wet;
         sig = sig + FreeVerb.ar(sig, revM, 0.8, 0.5);
 
@@ -790,6 +902,41 @@ s.doWhenBooted({
                 "Bus created: % = % (index: %)".format(name, def[\default], ~buses[name].index).postln;
             };
         };
+    };
+
+    // ─── One argument list for every voice ──────────────────────────────
+    // The voices declare their buses under two spellings: the ten core
+    // controls use short names (masterVolBus, harmonicBus, textureBus …) while
+    // everything else uses the registry name plus "Bus". Three separate spawn
+    // sites were each maintaining their own partial list, which is how eight
+    // controls ended up reaching the drone and the pad and nothing else — the
+    // SynthDefs would have read them, but nobody was passing them.
+    //
+    // scsynth ignores control names a SynthDef does not declare, so passing the
+    // union to every voice is safe and is what ~phenoBusArgs already relies on.
+    // One list, one place, no drift.
+    ~voiceBusArgs = {
+        var args = [
+            \masterVolBus,  ~bidx.(\masterVolume),
+            \pitchBus,      ~bidx.(\pitchShift),
+            \timeBus,       ~bidx.(\timeDilation),
+            \spectralBus,   ~bidx.(\spectralShift),
+            \spatialBus,    ~bidx.(\spatialSpread),
+            \textureBus,    ~bidx.(\textureDepth),
+            \atmosphereBus, ~bidx.(\atmosphereMix),
+            \memoryBus,     ~bidx.(\memoryFeed),
+            \harmonicBus,   ~bidx.(\harmonicRich),
+            \resonantBus,   ~bidx.(\resonantBody)
+        ];
+        if(~buses.notNil) {
+            ~buses.keysValuesDo { |name, bus|
+                args = args ++ [(name.asString ++ "Bus").asSymbol, bus.index];
+            };
+        };
+        args;
+    };
+    ~bidx = { |name|
+        if(~buses.notNil and: { ~buses[name].notNil }, { ~buses[name].index }, { -1 });
     };
 
     // Spatial control buses (driven by 12_spatial_gui.scd, not by the

@@ -94,6 +94,11 @@
 };
 
 ~slotBusArgs = {
+    // The union list now lives in 3_synthdefs.scd as ~voiceBusArgs, so the
+    // spawn sites cannot drift apart from each other. Kept as a wrapper rather
+    // than replaced at every call site, and falling back to the local list if
+    // 3_ has not defined it.
+    if(~voiceBusArgs.notNil) { ~voiceBusArgs.value } {
     [
         \masterVolBus,  ~sbi.(\masterVolume),
         \pitchBus,      ~sbi.(\pitchShift),
@@ -105,7 +110,7 @@
         \memoryBus,     ~sbi.(\memoryFeed),
         \harmonicBus,   ~sbi.(\harmonicRich),
         \resonantBus,   ~sbi.(\resonantBody)
-    ];
+    ]; };
 };
 
 // ─── The scheduler ──────────────────────────────────────────────────────────
