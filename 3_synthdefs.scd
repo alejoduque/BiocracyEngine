@@ -91,7 +91,19 @@ s.doWhenBooted({
     // regime this budget exists to avoid. This drops everything ~20% together,
     // which preserves the balance that was just fixed and gives the limiter
     // its headroom back.
-    ~trimMaster = 0.055;
+    // 0.055 -> 0.115. That 0.055 was calibrated when the master chain was a
+    // limiter and nothing else, where the only way to keep the limiter out of
+    // the compressor regime was to run the whole mix far beneath it. Measured
+    // consequence: the full mix sat at an RMS median of 0.024, which is -32 dB
+    // from the ceiling. That is the "thin, small, no weight" directly — and it
+    // also meant any master processing set for a normal level did nothing at
+    // all, because the signal never reached its threshold.
+    //
+    // There is a proper glue compressor in front of the limiter now, which is
+    // the stage that is supposed to handle peaks, so the mix can sit where a
+    // mix belongs and the limiter goes back to being a safety net rather than
+    // the thing setting the level.
+    ~trimMaster = 0.115;
 
     // 1.00 -> 2.40. Measured over a full tidal arc at vol/amp 0.70, the mix was
     // below 0.05 — effectively inaudible — in 48% of windows, with a 340:1
@@ -108,7 +120,7 @@ s.doWhenBooted({
     // reached 3.10 * 0.07 * 0.10 = 0.022 — 40x below the 0.92 ceiling, i.e. a
     // "bed" nobody can hear. At 8.0 it sits near 0.056, about -24 dB from the
     // ceiling, which is a bed you notice is there without it being in front.
-    ~trimDrone = 8.00 * ~trimMaster;   // the BED — continuous, holds the floor
+    ~trimDrone = 3.20 * ~trimMaster;   // the BED — continuous, holds the floor
     // 0.30 -> 0.20 -> 0.45. The 0.20 pass was a mistake: it optimised the crest
     // factor, and the pads ARE the bells — so lowering them worked directly
     // against "I cannot hear the bells". The crest is the limiter's problem,
@@ -116,7 +128,18 @@ s.doWhenBooted({
     // whereas an inaudible bell layer is a broken instrument.
     ~trimPad   = 0.45 * ~trimMaster;
     ~trimKick  = 1.00 * ~trimMaster;
-    ~trimPerc  = 0.45 * ~trimMaster;
+    // 0.45 -> 0.24. Reported as too loud against everything else, and the
+    // measurements agree: perc was the only voice reaching -5 dB in isolation
+    // while the bed sat near -22.
+    ~trimPerc  = 0.24 * ~trimMaster;
+    // The bed is the ensemble now, so the ONE continuous voice steps back from
+    // 8.0 to 3.2 and the partials carry the rest. Its job is the sub anchor
+    // under them rather than the whole bed on its own.
+    // Raised 3.4 -> 13.0 because the bed now carries the bottom on its own.
+    // \opalDrone contributed an effective 0.2944 and the five-partial bed
+    // 0.0526; removing the former without this would drop the drone layer by
+    // about 15 dB and leave the mix with no floor at all.
+    ~trimDronePartial = 13.0 * ~trimMaster;
     ~trimDust  = 0.60 * ~trimMaster;
     // Field recordings (10_sample_system.scd). Kept in this table rather than
     // beside the sample SynthDef so the whole budget stays readable in one
@@ -147,11 +170,56 @@ s.doWhenBooted({
     ~trimSample = 1.55 * ~trimMaster;
 
     ~limiterChans = s.options.numOutputBusChannels;
-    SynthDef(\masterLimiter, { |ceiling = 0.92|
+    // ─── Master chain: glue, then weight, then safety ────────────────────
+    // This was sum -> LeakDC -> Limiter and nothing else. A limiter is a safety
+    // net: it can stop a mix being too loud and can do nothing whatever about a
+    // mix being thin. With the measured 340:1 crest factor the peaks set the
+    // ceiling and everything sustained sat far beneath them — the bed measures
+    // about -24 dB from the ceiling — which is the definition of small.
+    //
+    // Two stages in front of it, in the order a mastering chain uses them:
+    //
+    //  · GLUE. A slow bus compressor keyed off the mono sum, so the layers duck
+    //    each other rather than each being ridden alone. This raises the
+    //    AVERAGE without touching the crest, and average is what is heard as
+    //    weight. Slow on purpose (0.6 s release) so it breathes with the tidal
+    //    arc rather than pumping against it.
+    //
+    //  · SATURATION. tanh, mixed rather than replacing. Low-order harmonics
+    //    read as body, and a soft curve rounds the leading edge of the supersaw
+    //    and the Dust crackle — which is most of where "buzzy and digital"
+    //    lives. A limiter squares those edges; this does not.
+    //
+    // Both default modest rather than off, so an untouched boot is warmer and
+    // fuller rather than differently balanced. drive 0 is the clean path
+    // exactly, so the stage can be removed entirely.
+    SynthDef(\masterLimiter, { |ceiling = 0.92, glue = 0.55, drive = 0.40|
         var sig = In.ar(0, ~limiterChans);
         var clean = LeakDC.ar(sig);
-        var lim = Limiter.ar(clean, ceiling, 0.01);
-        var mono = Mix(clean) / ~limiterChans.max(1);
+        var key = Mix(clean) / ~limiterChans.max(1);
+        var comped, sat, lim, mono;
+
+        // slopeAbove 1.0 is no compression, 0.35 is about 3:1; glue rides
+        // between them so the amount is one number. Makeup is derived from that
+        // same number rather than given its own control, because the two only
+        // ever move together and a second knob is a way for them to disagree.
+        comped = Compander.ar(clean, key,
+            // Where the signal ACTUALLY sits, measured, not where a mix is
+            // conventionally assumed to sit: at p90 the mix reaches about 0.5
+            // and its median is an order of magnitude below that, so a 0.22
+            // threshold was never crossed by anything but the crest.
+            thresh: 0.10,
+            slopeBelow: 1.0,
+            slopeAbove: glue.linlin(0, 1, 1.0, 0.35),
+            clampTime: 0.02,
+            relaxTime: 0.6
+        ) * glue.linlin(0, 1, 1.0, 1.9);
+
+        sat = (comped * (1 + (drive * 2.2))).tanh / (1 + (drive * 0.9));
+        sig = XFade2.ar(comped, sat, drive.linlin(0, 1, -1, 1));
+
+        lim = Limiter.ar(sig, ceiling, 0.01);
+        mono = Mix(clean) / ~limiterChans.max(1);
         // Report pre-limiter level and how much the limiter is pulling back.
         // A sustained drone that sits near the ceiling makes the limiter squash
         // every transient on top of it — kicks and pads lose their attack and
@@ -168,16 +236,51 @@ s.doWhenBooted({
     // could never disagree with the engine; and a microphone only works if the
     // room can hear the speakers, which is false on headphones or an interface.
     // Analysing the bus itself is the only source that is actually the sound.
+    // ─── Spectrum analysis, at a resolution you can draw with ──────────────
+    // 16 bands was enough to tint a spectrogram and is not enough to draw a
+    // LINE with: a ridgeline needs enough points across its width to wiggle,
+    // and sixteen gives a shape with fifteen corners. 48 log-spaced bands over
+    // the same 40 Hz - 10 kHz span.
+    //
+    // Safe to widen: every consumer reads the array's own length rather than
+    // assuming 16 — publishScAudio and bandRange in scAudio.ts both use
+    // bands.length, and the spectrogram's scBins interpolates from src.length,
+    // so it simply gets a better source to resample.
+    ~scopeBands = 48;
     SynthDef(\masterScope, {
         var sig = Mix(In.ar(0, ~limiterChans)) / ~limiterChans.max(1);
-        var bands = Array.geom(16, 40, (10000 / 40) ** (1 / 15));
+        var bands = Array.geom(~scopeBands, 40, (10000 / 40) ** (1 / (~scopeBands - 1)));
         SendReply.kr(Impulse.kr(20), '/spectrum',
+            bands.collect { |f| Amplitude.kr(BPF.ar(sig, f, 0.4), 0.01, 0.12) });
+    }).add;
+
+    // The same analysis over the CORPUS bus alone, so the laser can draw the
+    // forest's own voice rather than the whole engine's. Takes its input bus as
+    // an argument because ~corpusProcBus does not exist until
+    // 17_chain_processing.scd has loaded, which is long after this file.
+    // chans is captured at BUILD time, not taken as an argument: In.ar needs its
+    // channel count as a literal when the graph is compiled, and passing a
+    // Control gives "numChannels must be a nonzero positive integer, but
+    // received (an OutputProxy)". That error aborted the rest of this block, so
+    // \dronePartial and \opalPerc were never defined either — one bad def took
+    // the engine's voices with it.
+    SynthDef(\corpusScope, { |in = 0|
+        var chans = (~limiterChans ? 2);
+        var sig = Mix(In.ar(in, chans)) / chans.max(1);
+        var bands = Array.geom(~scopeBands, 40, (10000 / 40) ** (1 / (~scopeBands - 1)));
+        SendReply.kr(Impulse.kr(20), '/spectrum/corpus',
             bands.collect { |f| Amplitude.kr(BPF.ar(sig, f, 0.4), 0.01, 0.12) });
     }).add;
 
     // Main transaction bell with MIDI control
     SynthDef(\elektronBell, {
-        arg freq=440, amp=0.3,
+        // out: the only voice on the surface that hard-wired Out.ar(0, ...).
+        // Every other SynthDef takes an out bus, and without one this layer
+        // could not be routed, metered or rendered anywhere except the main
+        // output — which is how it went unmeasured while it was the layer that
+        // sounded wrong. Defaults to 0, so nothing about the running instrument
+        // changes.
+        arg out=0, freq=440, amp=0.3,
         // ADSR: sus is the HOLD TIME at susLvl, not a level — the level is
         // susLvl. Defaults keep any caller that does not pass them sounding
         // close to the previous three-stage shape.
@@ -196,7 +299,7 @@ s.doWhenBooted({
         // connects it without the spawn site listing it.
         mixPadBus=(-1);
 
-        var env, sig, mod, carrier, grains, wet, noise, distance, distanceAmp, quadSig;
+        var env, sig, mod, carrier, grains, wet, noise, distance, distanceAmp, quadSig, innerMod;
         // MIDI bus inputs - Lawrence English ambient style with bus parameter fallbacks
         var masterVol = Select.kr(masterVolBus >= 0, [0.3, In.kr(masterVolBus, 1)]);
         var pitchOffset = Select.kr(pitchBus >= 0, [0.0, In.kr(pitchBus, 1)]);
@@ -240,20 +343,37 @@ s.doWhenBooted({
         // whenever wanted. Same pattern exists in \opalDrone.
         freq = (freq * (pitchOffset.clip(-24, 24) / 12).midiratio).clip(28, 180);
 
-        // --- Sustained pad tone (replaces the old percussive cowbell) ---
-        // Gentle FM with near-unison ratios (1.0-1.5x) — warm, not metallic.
-        // Modulation index halved (0.3 → 0.15): the index scales WITH freq, so
-        // at harmonicRich=8 the deviation was ±0.3·freq and the sidebands ran
-        // several multiples above the fundamental. Halving keeps the timbre
-        // without letting harmonicRich brighten the layer into a bell again.
-        mod = SinOsc.ar(freq * harmonicComplexity.linexp(0.1, 8, 1.0, 1.5)) *
-              (harmonicComplexity.linlin(0.1, 8, 0.0, 0.15)) * freq;
+        // --- Sustained pad tone ---
+        // NESTED FM, three deep, after the single near-unison modulator this
+        // had was judged dull. One modulator at 1.0-1.5x the carrier can only
+        // produce a narrow, static sideband pair — warm, and the same warmth
+        // every time. Nesting a second modulator inside the first makes the
+        // sideband structure itself move, and putting a slow LFNoise on the
+        // innermost frequency means it never settles: the spectrum drifts over
+        // tens of seconds while the pitch stays exactly where it was put.
+        //
+        // The register is unchanged. freq is still folded to 28-180 Hz above,
+        // so this is a low sustained tone with a moving spectrum, not a bell —
+        // harmonicRich still opens it and the modulation index is still scaled
+        // so the top of that fader cannot brighten the layer into one.
+        innerMod = SinOsc.ar(
+            LFNoise2.kr(0.05).exprange(freq * 0.5, freq * 3.2),
+            0,
+            harmonicComplexity.linlin(0.1, 8, 0.5, 6.0)
+        );
+        mod = SinOsc.ar(
+            freq * harmonicComplexity.linexp(0.1, 8, 1.0, 1.5) * (1 + (innerMod * 0.03)),
+            innerMod * 0.4
+        ) * (harmonicComplexity.linlin(0.1, 8, 0.0, 0.15)) * freq;
         carrier = SinOsc.ar(freq + mod);
 
-        // Blend in a soft sub octave and a quiet 5th for body
+        // Blend in a soft sub octave and a quiet 5th for body. The 5th gets a
+        // slow detune so two pads a few seconds apart beat against each other
+        // instead of stacking into one motionless chord.
         sig = carrier * 0.5
             + (SinOsc.ar(freq * 0.5) * 0.3)
-            + (SinOsc.ar(freq * 1.5) * 0.1 * harmonicComplexity.linlin(0.1, 8, 0.0, 1.0));
+            + (SinOsc.ar(freq * 1.5 * LFNoise2.kr(0.04).range(0.997, 1.003))
+                * 0.1 * harmonicComplexity.linlin(0.1, 8, 0.0, 1.0));
 
         // ── ADSR ─────────────────────────────────────────────────────────
         // A true four-stage envelope with a HELD sustain, not the previous
@@ -348,7 +468,7 @@ s.doWhenBooted({
             Pan2.ar(sig.sum, spatialX.clip(-1, 1))
         };
         
-        Out.ar(0, quadSig);
+        Out.ar(out, quadSig);
     }).add;
 
     // --- Fors Opal Emulation Synths ---
@@ -357,6 +477,13 @@ s.doWhenBooted({
     SynthDef(\opalKick, {
         arg out=0, freq=50, amp=0.5, atk=0.001, dec=0.4,
         masterVolBus=(-1), timeBus=(-1), harmonicBus=(-1), textureBus=(-1), spectralBus=(-1), atmosphereBus=(-1), spatialBus=(-1),
+        // Reach added so this voice can be sculpted rather than only triggered.
+        // Every one of these had a fader on the surface that stopped at the
+        // drone and the pad; a struck voice with three shaping controls is a
+        // sample, not an instrument.
+        pitchBus=(-1), memoryBus=(-1), resonantBus=(-1),
+        filterCutoffBus=(-1), noiseLevelBus=(-1), noiseFiltBus=(-1),
+        droneDepthBus=(-1), droneFadeBus=(-1),
         // Matrix mixer: this layer's live level (0 = mute, 1 = unity).
         mixKickBus=(-1);
 
@@ -367,21 +494,59 @@ s.doWhenBooted({
         var filt  = Select.kr(spectralBus >= 0, [1000, In.kr(spectralBus, 1)]);
         var revM  = Select.kr(atmosphereBus >= 0, [0.4, In.kr(atmosphereBus, 1)]);
         var spatialX= Select.kr(spatialBus >= 0, [0.0, In.kr(spatialBus, 1)]);
+        var pShift= Select.kr(pitchBus >= 0, [0.0, In.kr(pitchBus, 1)]);
+        var dMix  = Select.kr(memoryBus >= 0, [0.3, In.kr(memoryBus, 1)]);
+        var res   = Select.kr(resonantBus >= 0, [0.4, In.kr(resonantBus, 1)]);
+        var cutoff= Select.kr(filterCutoffBus >= 0, [0.6, In.kr(filterCutoffBus, 1)]);
+        var nLevel= Select.kr(noiseLevelBus >= 0, [0.1, In.kr(noiseLevelBus, 1)]);
+        var nFilt = Select.kr(noiseFiltBus  >= 0, [0.5, In.kr(noiseFiltBus, 1)]);
+        var dDepth= Select.kr(droneDepthBus >= 0, [0.3, In.kr(droneDepthBus, 1)]);
+        var dFade = Select.kr(droneFadeBus  >= 0, [2.0, In.kr(droneFadeBus, 1)]);
 
-        var env, pitchEnv, sig, mod, quadSig;
+        var env, pitchEnv, sig, mod, quadSig, click, sub;
         
         env = EnvGen.ar(Env.perc(atk, dec * tStretch, 1, -4), doneAction: 2);
-        pitchEnv = EnvGen.ar(Env([freq * 8, freq, freq * 0.5], [0.02, dec * tStretch], \exp));
-        
+        // pitchShift transposes the whole drop, so the kick tunes with the rest
+        // of the engine instead of sitting at whatever the spawn chose.
+        pitchEnv = EnvGen.ar(Env(
+            [freq * 8, freq, freq * 0.5] * (pShift.clip(-24, 24) / 12).midiratio,
+            [0.02, dec * tStretch], \exp));
+
         mod = SinOsc.ar(pitchEnv * fmR.linexp(0.1, 8, 0.5, 4.0)) * (fmD * 0.4) * pitchEnv;
         sig = SinOsc.ar(pitchEnv + mod);
-        
+
+        // Noise Level / Noise Filt become the beater — the transient in front
+        // of the pitch drop, which is what makes a kick read as struck rather
+        // than as a sine falling over. Its own short envelope so it is an
+        // attack and not a layer.
+        click = HPF.ar(
+            WhiteNoise.ar * EnvGen.ar(Env.perc(0.0005, 0.012 + (nFilt * 0.05), 1, -8)),
+            (200 + (nFilt * 5000)).clip(200, 6000));
+        // Measured at +2.5 dB on the layer at 1.6; the kick is the sub anchor
+        // and the beater is meant to define its front, not raise the whole
+        // voice. 1.05 puts it at about +1.4 dB.
+        sig = sig + (click * nLevel.linlin(0, 0.5, 0.0, 1.05));
+
         // Distortion & Filter (Opal drive)
         sig = (sig * (1 + (fmD * 5))).tanh;
-        // Kick LPF: cap at 3000Hz
-        sig = LPF.ar(sig, filt.clip(100, 3000));
-        
-        // Reverb tail
+        // Kick LPF: cap at 3000Hz. filterCutoff tilts it a further octave either
+        // way UNDER spectralShift's absolute setting, the same relationship the
+        // drone already had; resonantBody puts a corner on it, so the low end
+        // can be given an edge instead of only a ceiling. Lagged by droneFade,
+        // which is this SynthDef's smoothing time now as well as the drone's.
+        sig = RLPF.ar(sig,
+            (filt.clip(100, 3000) * Lag.kr(cutoff, dFade.clip(0.1, 5)).linexp(0, 1, 0.5, 2.0))
+                .clip(60, 5000),
+            res.linexp(0, 1, 0.9, 0.25));
+
+        // droneDepth reaches the kick's own body: a sine an octave under the
+        // drop, which is the difference between a click and something you feel.
+        sub = SinOsc.ar(pitchEnv * 0.5) * dDepth.linlin(0, 1, 0.0, 0.9);
+        sig = sig + sub;
+
+        // Reverb tail, with memoryFeed opening a short slap in front of it —
+        // the same control that feeds the delay on every other voice.
+        sig = sig + DelayC.ar(sig, 0.25, 0.055 + (dMix * 0.12), dMix * 0.5);
         sig = sig + FreeVerb.ar(sig, revM * 0.5, 0.7, 0.2);
 
         sig = sig * env * amp * vol * ~trimKick
@@ -411,22 +576,50 @@ s.doWhenBooted({
 
     // opalPerc: Physical modeling metallic/woody perc (Mass style)
     SynthDef(\opalPerc, {
-        arg out=0, freq=400, amp=0.3, 
+        // bodySeed 0-1: which body is being struck. Supplied by the caller,
+        // not by a knob — see the note at the partials below.
+        arg out=0, freq=400, amp=0.3, bodySeed=0.0, 
         masterVolBus=(-1), harmonicBus=(-1), textureBus=(-1), resonantBus=(-1), spectralBus=(-1), timeBus=(-1),
         memoryBus=(-1), atmosphereBus=(-1), spatialBus=(-1),
+        // Reach added: pitch so the struck body tunes with the engine, the two
+        // noise controls so the exciter can be shaped, filterCutoff as a tilt
+        // under spectralShift, delayFeedback for the comb tail, droneFade as
+        // the smoothing time. Six faders that stopped at the drone.
+        pitchBus=(-1), filterCutoffBus=(-1), noiseLevelBus=(-1), noiseFiltBus=(-1),
+        delayFeedbackBus=(-1), droneFadeBus=(-1),
         // Matrix mixer: this layer's live level (0 = mute, 1 = unity).
-        mixPercBus=(-1);
+        mixPercBus=(-1),
+        // ─── Parameter locks ────────────────────────────────────────────────
+        // These were CONSTANTS inside the Select.kr fallbacks below, which meant
+        // a trig had no way to carry its own values: every hit read the same
+        // knobs and therefore sounded like every other hit, whatever the chain
+        // had chosen for its pitch. As arguments they become p-locks in the
+        // Octatrack sense — the beat engine hands each strike a full parameter
+        // set and passes -1 for the matching bus, so that one hit ignores the
+        // knob and takes the chain's value instead.
+        texture = 0.2, resonance = 0.4, noiseF = 0.5, noiseL = 0.1,
+        delayFb = 0.3, timeStr = 2.0, memory = 0.3;
 
         var vol   = Select.kr(masterVolBus >= 0, [0.3, In.kr(masterVolBus, 1)]);
-        var tStretch= Select.kr(timeBus >= 0, [2.0, In.kr(timeBus, 1)]);
+        var tStretch= Select.kr(timeBus >= 0, [timeStr, In.kr(timeBus, 1)]);
         var filt  = Select.kr(spectralBus >= 0, [1000, In.kr(spectralBus, 1)]);
-        var res   = Select.kr(resonantBus >= 0, [0.4, In.kr(resonantBus, 1)]);
-        var fmD   = Select.kr(textureBus >= 0, [0.2, In.kr(textureBus, 1)]);
-        var dMix  = Select.kr(memoryBus >= 0, [0.3, In.kr(memoryBus, 1)]);
+        var res   = Select.kr(resonantBus >= 0, [resonance, In.kr(resonantBus, 1)]);
+        var fmD   = Select.kr(textureBus >= 0, [texture, In.kr(textureBus, 1)]);
+        var dMix  = Select.kr(memoryBus >= 0, [memory, In.kr(memoryBus, 1)]);
         var revM  = Select.kr(atmosphereBus >= 0, [0.4, In.kr(atmosphereBus, 1)]);
         var spatialX= Select.kr(spatialBus >= 0, [0.0, In.kr(spatialBus, 1)]);
+        var pShift= Select.kr(pitchBus >= 0, [0.0, In.kr(pitchBus, 1)]);
+        var cutoff= Select.kr(filterCutoffBus >= 0, [0.6, In.kr(filterCutoffBus, 1)]);
+        var nLevel= Select.kr(noiseLevelBus >= 0, [noiseL, In.kr(noiseLevelBus, 1)]);
+        var nFilt = Select.kr(noiseFiltBus  >= 0, [noiseF, In.kr(noiseFiltBus, 1)]);
+        var dFeed = Select.kr(delayFeedbackBus >= 0, [delayFb, In.kr(delayFeedbackBus, 1)]);
+        var dFade = Select.kr(droneFadeBus  >= 0, [2.0, In.kr(droneFadeBus, 1)]);
+        // harmonicBus was DECLARED on this SynthDef and never read into
+        // anything — a dead argument. It drives the decay tilt below now.
+        var fmR   = Select.kr(harmonicBus >= 0, [1.0, In.kr(harmonicBus, 1)]);
 
-        var exciter, sig, wet, quadSig;
+        var exciter, sig, wet, quadSig, partials, decays, inharm, damp, spread;
+        var scream, bend, shaped, micro, steps;
 
         // HARD-CLAMP the struck frequency, like \elektronBell's fundamental.
         // The caller can ask for almost anything: ~computePitchPool tops out at
@@ -435,32 +628,163 @@ s.doWhenBooted({
         // harmonicRich 8, which is where the high metallic pings came from.
         // Clamped here so every voicing path and every knob position is caught,
         // not just the ones that were thought of at the call site.
-        freq = freq.clip(40, 900);
+        // pitchShift transposes the struck body, applied BEFORE the clamp so
+        // the ceiling still catches every path.
+        freq = (freq * (pShift.clip(-24, 24) / 12).midiratio).clip(22, 900);
 
         // Softened exciter: the old 1 ms attack read as a hard metallic "ping".
         // 10 ms attacks + longer noise burst bow the resonator instead of
         // striking it — same Ringz body, drone-compatible onset.
+        // Noise Level sets how much of the strike is breath rather than tone,
+        // and Noise Filt where that breath sits — the difference between a
+        // bowed resonator and a struck one, on a fader.
+        // ─── A hit is a CLOUD, not an impulse ───────────────────────────────
+        // The old exciter was a noise burst and a sine ping — the same two
+        // things every time, so however the body was tuned the ATTACK was
+        // identical on every strike, and the attack is most of what an ear
+        // uses to tell one hit from another. That is why the layer stayed
+        // uninteresting after the body was made variable.
+        //
+        // "fey emissions" is the model: Dust into resonance. The dust fires at
+        // random moments inside the attack window, so no two strikes have the
+        // same microstructure even when they are the same note on the same
+        // body — some arrive as a clean rap, some as a torn rattle, and which
+        // one it is cannot be predicted.
         exciter = Mix([
-            WhiteNoise.ar * EnvGen.ar(Env.perc(0.01, 0.08)),
+            Dust2.ar(900 + (nLevel * 9000))
+                * EnvGen.ar(Env.perc(0.001, 0.05 + (nFilt * 0.18))) * 1.5,
+            BPF.ar(WhiteNoise.ar, (300 + (nFilt * 6000)).clip(200, 8000), 0.6 + (nFilt * 1.4))
+                * EnvGen.ar(Env.perc(0.01, 0.08 + (nFilt * 0.10)))
+                * nLevel.linlin(0, 0.5, 0.35, 2.2),
             SinOsc.ar(freq * (1 + fmD)) * EnvGen.ar(Env.perc(0.01, 0.04))
         ]);
 
         // Resonator (Klank for metallic resonance) — upper partials darkened
         // (were [1, 0.8, 0.5, 0.3, 0.1]) so the 4–9x partials shimmer instead
         // of dominating
-        sig = Ringz.ar(
-            exciter,
-            freq * [1, 2.32, 4.25, 6.63, 9.38] * (1 + (res * 0.5)),
-            [1, 0.55, 0.3, 0.15, 0.06] * (tStretch * 0.5)
-        ).sum;
+        // ── The struck body, computed rather than hardcoded ────────────────
+        // These five modes were the literal set [1, 2.32, 4.25, 6.63, 9.38]
+        // with the literal decay profile [1, 0.55, 0.3, 0.15, 0.06], and
+        // resonantBody scaled them all by (1 + res*0.5) — which is a flat
+        // multiply, i.e. a transposition of the whole body rather than a change
+        // to it. So every hit this layer ever produced was the SAME instrument
+        // at a different pitch. All the variety upstream — the mode, the
+        // chain-derived degree, the species register — decided which note to
+        // strike and nothing decided what was being struck.
+        //
+        // n * sqrt(1 + B*n^2) is the standard inharmonicity curve for a stiff
+        // bar or a string with stiffness. At B = 0.10 it produces
+        // [1.05, 2.37, 4.14, 6.45, 9.35], which is the hardcoded set to within
+        // a couple of percent — so this reproduces the old body exactly at the
+        // middle of resonantBody's travel and opens both directions from there:
+        //   B -> 0     harmonic series, tonal, mallet or marimba
+        //   B = 0.10   the body this layer has always had
+        //   B -> 0.35  wide and clangorous, gong-like
+        inharm = res.linexp(0.1, 0.8, 0.004, 0.35);
+
+        // Decay tilt. Was a fixed profile; harmonicRich now decides whether the
+        // upper modes ring on or die first, which is the difference between a
+        // bright metal body and a dull wooden one.
+        // Steeper than the first attempt. At damp 0.99 the fifth mode rang at
+        // 0.20 of the fundamental where the original profile gave it 0.06 —
+        // more than three times the energy — and the layer measured 7.6 dB
+        // hotter at wide inharmonicity as a result. 1.6 puts mode five at
+        // 0.076, which is the profile this body always had.
+        damp = fmR.linexp(0.1, 5.0, 3.2, 1.0);
+
+        // And the part that is not a knob. bodySeed comes from the spawning
+        // code — the species seat that is speaking, nudged by the chain — and
+        // deviates each partial slightly, so the five seats are five different
+        // instruments rather than one instrument at five registers. Sin of a
+        // per-partial constant, so it is deterministic: the same seat is always
+        // the same body, and it drifts only when the seat or the chain does.
+        spread = fmD.linlin(0, 0.6, 0.0, 0.16);
+        partials = Array.fill(5, { |i|
+            var n = i + 1;
+            var dev = 1 + ((bodySeed * (n + 3) * 7.13).sin * spread);
+            n * (1 + (inharm * n * n)).sqrt * dev;
+        });
+        decays = Array.fill(5, { |i|
+            var n = i + 1;
+            (damp.neg * n.log).exp * (tStretch * 0.5);
+        });
+
+        // Level-compensated against the spread. Modes further apart cancel each
+        // other less, so a wide body sums louder purely as arithmetic — without
+        // this, resonantBody reads as a volume control with a timbre attached
+        // rather than as a choice of instrument.
+        sig = Ringz.ar(exciter, (freq * partials).clip(20, 12000), decays).sum
+            * (1 + (inharm * 2.4)).reciprocal * 1.25;
+
+        // ─── Three things that happen TO the strike ─────────────────────────
+        // The body above is a good body, but a resonator excited once and left
+        // alone always says the same sentence: attack, ring, decay. What was
+        // missing is anything happening after the moment of contact.
+
+        // 1 · The scream. "fey emissions" runs Dust through a bandpass at
+        // rq 0.001 — absurdly narrow, right at the edge of self-oscillation —
+        // whose centre is resampled by LFNoise0 several times a second. It
+        // shrieks at a pitch that jumps mid-strike. Sits above the body, tuned
+        // off it, so it reads as part of the same object.
+        // These two stages did NOT follow the body down two octaves, which is
+        // most of "still too high". The scream sat at freq x 2-8 and then
+        // jittered up to x1.7 on top of that — at the upper seats it was
+        // shrieking above 2 kHz over a body ringing at 190 Hz, so the layer
+        // read as high however low the fundamental went. Now x1-3, jittering
+        // narrowly, so it is an overtone OF the strike rather than a separate
+        // high voice sitting on it.
+        scream = BPF.ar(exciter,
+            (freq * (1 + (bodySeed * 2)) * LFNoise0.kr(9 + (bodySeed * 20)).range(0.9, 1.35))
+                .clip(30, 9000),
+            0.0018) * 70 * res.linlin(0.1, 0.8, 0.5, 1.2);
+        sig = sig + (scream * fmD.linlin(0, 1, 0.22, 0.75));
+
+        // 2 · The tail bends. "saw scratching" and "shifty feedback": a comb
+        // with a wandering delay time doppler-shifts whatever is inside it, so
+        // the ring does not just fade, it slides and detunes as it goes.
+        // delayFeedback decides how long it keeps folding back on itself.
+        bend = CombC.ar(sig * 0.45, 0.35,
+            LFNoise1.kr(0.6 + (bodySeed * 5)).range(0.004, 0.26).clip(0.001, 0.34),
+            dFeed.linlin(0, 0.8, 0.25, 3.5));
+        sig = sig + (LeakDC.ar(bend.tanh) * dMix.linlin(0, 1, 0.45, 1.15));
+
+        // 3 · The waveshape. "noise slurps": phase-modulating a sine BY the
+        // signal rather than filtering it. At low index it is a gentle
+        // thickening; pushed up it tears the strike into sidebands and the
+        // layer crosses into noise. textureDepth is the fader that decides how
+        // far, and at its top this is frankly electronic — which is the brief.
+        shaped = SinOsc.ar(0, sig * fmD.linlin(0, 1, 1.4, 7.5));
+        sig = XFade2.ar(sig, shaped, fmD.linlin(0, 1, -0.45, 0.9));
+
+        // 4 · And a sequence inside the hit. "short-loops": a Stepper walking
+        // a small integer ring, clocked far too fast to hear as rhythm, reads
+        // as a single gesture with pitch structure inside it — a chirp, a
+        // stutter, a tiny arpeggio, depending where the ring lands. Different
+        // for every seat, because the ring length and clock come off bodySeed.
+        steps = Stepper.ar(Impulse.ar(14 + (bodySeed * 46)), 0,
+            1, (4 + (bodySeed * 9)).round, 1);
+        micro = SinOsc.ar((freq * steps.linlin(1, 13, 1.0, 2.0)).clip(22, 6000))
+            * EnvGen.ar(Env.perc(0.002, 0.07 + (fmD * 0.25)));
+        sig = sig + (micro * fmD.linlin(0, 1, 0.20, 0.62));
 
         // Changed from BPF to LPF: BPF at high freq passes almost nothing (silence);
         // LPF at high freq is transparent — sound always passes through.
-        sig = LPF.ar(sig, filt.clip(300, 3000));
+        // filterCutoff tilts a further octave either way UNDER spectralShift's
+        // absolute setting — the same relationship it has on the drone, and the
+        // reason it can now be used to voice the perc against the bed rather
+        // than only the bed itself. Lagged by droneFade like every other
+        // continuous control.
+        sig = LPF.ar(sig,
+            (filt.clip(300, 3000)
+                * Lag.kr(cutoff, dFade.clip(0.1, 5)).linexp(0, 1, 0.5, 2.0)).clip(150, 5000));
         // Fixed backstop, independent of spectralShift: the Ringz body plus the
         // WhiteNoise exciter put energy well above the fundamental, and this
         // layer has no business up there.
         sig = LPF.ar(sig, 2600);
+        // delayFeedback owns a comb tail here as it does on the drone, so the
+        // one fader lengthens every voice's tail together.
+        sig = sig + (CombC.ar(sig, 0.4, 0.09, Lag.kr(dFeed, 0.2).linexp(0, 1, 0.15, 3.5))
+            * dFeed.linlin(0, 1, 0.10, 0.55));
         // 50 ms swell + longer tail (was 1 ms / 1.5x) — resonance blooms out
         // of the drone bed rather than popping over it
         sig = sig * EnvGen.ar(Env.perc(0.05, 2.5 * tStretch), doneAction: 2);
@@ -495,6 +819,165 @@ s.doWhenBooted({
     }).add;
 
     // opalDrone: Continuous evolving ambient pad
+    // ─── One partial of the drone bed ───────────────────────────────────
+    // The bed was ONE synth, spawned once when the engine started and held for
+    // the whole session, and its only motion was a 4 s Lag between eight fixed
+    // pitches. That is why it read as a small plane changing gear: a constant
+    // buzzing tone whose sole event was a ramp up or a ramp down. No partial
+    // ever arrived, none ever left, and five detuned Saws through a lowpass is
+    // an engine note by construction.
+    //
+    // A drone bed is not one voice. It is many sustained partials with
+    // independent lives, entering and leaving on their own schedules and
+    // beating against each other — and harmony changes by REPLACEMENT, old
+    // partials dying at the old fundamental while new ones arrive at the new
+    // one. That removes the ramp entirely: nothing glides, things appear.
+    //
+    // Sines, not saws. The buzz was the sawtooth; body comes from the partial
+    // ratios in the ensemble above it and from a quiet odd harmonic here, not
+    // from a bright waveform being filtered back down.
+    SynthDef(\dronePartial, {
+        arg out = 0, freq = 110, amp = 0.10, ratio = 1.0,
+            atk = 20, hold = 30, rel = 25, pan = 0, detune = 0.004, seed = 0,
+            // Where this partial sits across the three synthesis regimes. The
+            // ensemble spreads it across the bed so no two voices are made of
+            // the same thing at the same moment.
+            character = 0.5,
+            masterVolBus=(-1), pitchBus=(-1), spectralBus=(-1), spatialBus=(-1),
+            textureBus=(-1), atmosphereBus=(-1), harmonicBus=(-1), resonantBus=(-1),
+            masterAmpBus=(-1), filterCutoffBus=(-1), droneFadeBus=(-1),
+            droneSpaceBus=(-1), mixDroneBus=(-1), strikeBus=(-1);
+
+        var vol   = Select.kr(masterVolBus >= 0, [0.3, In.kr(masterVolBus, 1)]);
+        var pShift= Select.kr(pitchBus >= 0, [0.0, In.kr(pitchBus, 1)]);
+        var filt  = Select.kr(spectralBus >= 0, [1000, In.kr(spectralBus, 1)]);
+        var spatialX= Select.kr(spatialBus >= 0, [0.0, In.kr(spatialBus, 1)]);
+        var texD  = Select.kr(textureBus >= 0, [0.2, In.kr(textureBus, 1)]);
+        var revM  = Select.kr(atmosphereBus >= 0, [0.4, In.kr(atmosphereBus, 1)]);
+        var fmR   = Select.kr(harmonicBus >= 0, [1.0, In.kr(harmonicBus, 1)]);
+        var res   = Select.kr(resonantBus >= 0, [0.4, In.kr(resonantBus, 1)]);
+        var mAmp  = Select.kr(masterAmpBus >= 0, [0.7, In.kr(masterAmpBus, 1)]);
+        var cutoff= Select.kr(filterCutoffBus >= 0, [0.6, In.kr(filterCutoffBus, 1)]);
+        var dSpace= Select.kr(droneSpaceBus >= 0, [0.5, In.kr(droneSpaceBus, 1)]);
+        // How excited the PERCUSSION layer is, right now. The beat engine
+        // already computes this to shape its own rhythm; writing it to a bus
+        // lets the bed feel it too. Lagged slowly, because the bed should seem
+        // to be resonating with the strikes rather than following them.
+        var strike = Lag.kr(
+            Select.kr(strikeBus >= 0, [0.0, In.kr(strikeBus, 1)]), 0.7).clip(0, 1.6);
+        var f, sig, env, quadSig, trem, respond;
+        var bands, fbk, fm, mode, r1, r2, r3, grit;
+
+        f = (freq * ratio * (pShift.clip(-24, 24) / 12).midiratio).clip(20, 6000);
+
+        // ─── Why the previous version could only ever be a propeller ────────
+        //
+        // It was three sines a few cents apart, plus a 3rd and a 5th harmonic,
+        // under a slow sine tremolo. Detuned sines beat at a FIXED rate — at
+        // f=110 and detune 0.005 they throb at about half a hertz — and a
+        // harmonic series throbbing at a steady low rate is precisely how one
+        // synthesises an engine. Seven of them at once is a propeller. The
+        // report was not a matter of taste; the patch was built out of the
+        // ingredients of the sound it was accused of making.
+        //
+        // Nothing periodic survives here. Every modulator below is noise-driven
+        // at a rate that shares no factor with any other, so the voice never
+        // returns to a state it has already been in.
+        r1 = LFNoise1.kr(0.031 + (seed * 0.043));
+        r2 = LFNoise2.kr(0.017 + (seed * 0.071));
+        r3 = LFNoise1.kr(0.0083 + (seed * 0.029));
+
+        // ── REGIME 1 · resonant noise bands ────────────────────────────────
+        // "blizzard" and "hedge trimmer": the pitch is a RESONANCE, not an
+        // oscillator. Noise forced through very narrow bandpasses sings at f,
+        // but it hisses and wanders while it does, because what is resonating
+        // is random. It can never lock into a beat with itself.
+        bands = Mix.fill(4, { |i|
+            var bf = f * (i + 1)
+                * (1 + (LFNoise1.kr(0.019 + (i * 0.013) + (seed * 0.031)) * 0.02));
+            BPF.ar(PinkNoise.ar(1.0), bf.clip(20, 14000),
+                (0.003 + (i * 0.0025) + r1.range(0.0, 0.008)).clip(0.001, 0.05))
+                * (i + 1).reciprocal
+        }) * 14;   // narrow bandpasses throw away most of the level
+
+        // ── REGIME 2 · modulated feedback ──────────────────────────────────
+        // "shifty feedback" and "saw scratching": a comb whose delay time
+        // moves is a doppler shift, so the feedback path glissandos against
+        // itself continuously and never settles. Fed from the bands, this is
+        // the layer that produces drifting, half-pitched smears — the thing
+        // the old drone tried to get from a 4-second Lag and could not.
+        // Tanh'd and LeakDC'd: a comb with a decay this long accumulates, and
+        // sustained input into it would otherwise run away.
+        fbk = LeakDC.ar(CombC.ar(bands * 0.22, 2.0,
+            LFTri.kr(0.037 + (seed * 0.13), seed * 4).range(0.03, 1.7),
+            (6 + r3.range(0, 22)).clip(1, 30)).tanh);
+
+        // ── REGIME 3 · nested FM ───────────────────────────────────────────
+        // "FM curio": a sine modulated by a sine modulated by a sine, with
+        // both indices on independent noise. The spectrum is inharmonic and
+        // reshuffles constantly, which is the opposite of a harmonic series.
+        fm = SinOsc.ar(f,
+            SinOsc.ar(f * (0.5 + (seed * 2.5)),
+                SinOsc.ar(f * 0.25, 0, r2.range(0.5, 9)),
+                r1.range(0.3, 7) * fmR.linlin(0.1, 5, 0.4, 2.2)),
+            0.30);
+
+        // ── and the change happens in between ──────────────────────────────
+        // The partial does not pick a regime, it MOVES through them: character
+        // places it and a slow drift carries it across the boundaries, so most
+        // of the time it is sounding something that is neither one thing nor
+        // the other. SelectX crossfades, so there are no seams to hear.
+        mode = (character + (LFNoise1.kr(0.0091 + (seed * 0.021)) * 0.45)).clip(0, 1);
+        sig = SelectX.ar(mode * 2, [bands, fbk, fm]);
+
+        // Internal incident. A drone with no events inside it is a held note
+        // however rich its spectrum — this is what stops it being constant.
+        // Dust fires rarely and unpredictably; each hit surges the voice and
+        // opens it, so the bed keeps producing things that were not announced.
+        grit = Decay2.kr(Dust.kr(0.04 + (seed * 0.22)), 0.4, 5.0).clip(0, 1);
+        sig = sig * (1 + (grit * 1.6));
+
+        // Aperiodic, replacing a fixed-rate sine. Same reason as everything
+        // else here: a steady tremolo is the propeller's amplitude signature.
+        trem = LFNoise2.kr(0.021 + (seed * 0.05)).range(0.55, 1.0);
+
+        // Each partial answers the percussion by a DIFFERENT amount — some
+        // barely at all, some strongly — so a busy passage lights parts of the
+        // bed rather than pumping the whole thing as one block, which would
+        // just be ducking with the sign flipped.
+        respond = 0.15 + (seed * 0.85);
+
+        sig = LPF.ar(sig, (filt.clip(80, 4000) * cutoff.linexp(0, 1, 0.6, 2.2)
+            // Percussive energy opens the partial: the bed brightens under a
+            // cluster of strikes and darkens again in the silences.
+            * (1 + (strike * respond * 0.75))
+            // …and so does the voice's own internal incident.
+            * (1 + (grit * 1.8))).clip(90, 13000));
+        sig = sig + (FreeVerb.ar(sig, revM * 0.7, dSpace.linlin(0, 1, 0.4, 0.95), 0.15) * 0.5);
+
+        // Sine curves on both ends: a partial should arrive and leave without
+        // ever being heard to start or stop.
+        env = EnvGen.kr(
+            Env.new([0, 1, 1, 0],
+                [atk.clip(2, 90), hold.clip(1, 300), rel.clip(2, 90)],
+                [\sine, 0, \sine]),
+            doneAction: 2);
+
+        sig = sig * env * trem * amp * vol
+            // …and swells it. Small: this is the bed being rung by the strikes,
+            // not a second percussion layer.
+            * (1 + (strike * respond * 0.30))
+            * Lag.kr(mAmp, 2.0).linlin(0, 1, 0.05, 1.4) * (~trimDronePartial ? 0.10)
+            * Lag.kr(Select.kr(mixDroneBus >= 0, [1.0, In.kr(mixDroneBus, 1)]), 0.08);
+
+        quadSig = if(~limiterChans >= 4) {
+            PanAz.ar(4, sig, (pan + (spatialX.clip(-1, 1) * 0.5)).clip(-1, 1), 1, 2, 0.5)
+        } {
+            Pan2.ar(sig, (pan + (spatialX.clip(-1, 1) * 0.5)).clip(-1, 1))
+        };
+        Out.ar(out, quadSig);
+    }).add;
+
     SynthDef(\opalDrone, {
         arg out=0, freq=55, amp=0.5, gate=1,
         masterVolBus=(-1), pitchBus=(-1), timeBus=(-1), spectralBus=(-1), spatialBus=(-1),
@@ -507,6 +990,11 @@ s.doWhenBooted({
         masterAmpBus=(-1), filterCutoffBus=(-1),
         droneDepthBus=(-1), droneFadeBus=(-1), droneSpaceBus=(-1), droneMixBus=(-1),
         delayFeedbackBus=(-1),
+        // Noise Level / Noise Filt reach the drone now as well as the pad. On
+        // the pad they are a plain LPF'd pink hiss; here they are a bank of
+        // drifting band-passes, which is the difference between a noise floor
+        // and a texture.
+        noiseLevelBus=(-1), noiseFiltBus=(-1),
         // Matrix mixer: this layer's live level (0 = mute, 1 = unity).
         mixDroneBus=(-1);
 
@@ -527,8 +1015,10 @@ s.doWhenBooted({
         var dSpace= Select.kr(droneSpaceBus >= 0, [0.5, In.kr(droneSpaceBus, 1)]);
         var dLayer= Select.kr(droneMixBus >= 0, [0.5, In.kr(droneMixBus, 1)]);
         var dFeed = Select.kr(delayFeedbackBus >= 0, [0.3, In.kr(delayFeedbackBus, 1)]);
+        var nLevel= Select.kr(noiseLevelBus >= 0, [0.1, In.kr(noiseLevelBus, 1)]);
+        var nFilt = Select.kr(noiseFiltBus  >= 0, [0.5, In.kr(noiseFiltBus, 1)]);
 
-        var env, sig, mod, sub, grains, delay, quadSig, baseFreq, dry;
+        var env, sig, mod, sub, grains, delay, quadSig, baseFreq, dry, reson, noiseBed;
         
         env = EnvGen.kr(Env.asr(4.0, 1.0, 6.0), gate, doneAction: 2);
         
@@ -576,6 +1066,46 @@ s.doWhenBooted({
         // Granular texturizer
         grains = PitchShift.ar(sig, 0.2, 1.0, texD * 0.5, texD * 0.5);
         sig = XFade2.ar(sig, grains, texD.linlin(0, 1, -1, 1));
+
+        // ── Resonator bank: the bed grows its own partials ─────────────────
+        // Three combs whose delay times drift independently over roughly a
+        // minute. The delay times sit in the PITCHED range — 1/240 to 1/55 s —
+        // so each comb is a resonance rather than an echo, and because they
+        // drift at different rates the spectrum is never twice the same. This
+        // is what the bed was missing: five detuned saws through a fixed filter
+        // are static by construction, and no amount of reverb on top of a
+        // static thing makes it move.
+        //
+        // Input scaled to 0.18 and the output LeakDC'd: a comb with a 9 s decay
+        // and a moving delay time is a resonator with enormous gain at its
+        // peaks, and it will accumulate DC and run away if fed at unity.
+        reson = LeakDC.ar(Mix.fill(3, { |i|
+            CombC.ar(
+                sig * 0.18,
+                0.03,
+                LFNoise1.kr(0.014 + (i * 0.009)).exprange(1/240, 1/55),
+                Lag.kr(dFeed, 0.5).linexp(0, 1, 1.2, 7.0)
+            )
+        }));
+        // Kept under the dry bed rather than replacing it — textureDepth opens
+        // the resonators the way it opens the granular stage above.
+        sig = sig + (reson * texD.linlin(0, 1, 0.10, 0.55));
+
+        // ── Band-filtered noise bed ────────────────────────────────────────
+        // Six band-passes over pink noise with independently drifting centres
+        // and widths. Noise Level sets how much of it there is and Noise Filt
+        // how far up the spectrum the bands are allowed to wander, so the two
+        // faders together are a weather system rather than a hiss.
+        noiseBed = Mix.fill(6, { |i|
+            BPF.ar(
+                PinkNoise.ar(1.0),
+                LFNoise1.kr(0.02 + (i * 0.007))
+                    .exprange(90, (120 + (nFilt * 3800)).clip(150, 4000)),
+                LFNoise1.kr(0.03 + (i * 0.004)).range(0.05, 0.32)
+            )
+        }) * 0.42;
+        sig = sig + (noiseBed * nLevel.linlin(0, 0.5, 0.0, 1.1));
+
         dry = sig;
 
         // Wash effects. droneSpace sizes the room (was hardcoded 0.9).
@@ -644,6 +1174,11 @@ s.doWhenBooted({
         arg out=0, amp=0.2,
         masterVolBus=(-1), textureBus=(-1), spectralBus=(-1), timeBus=(-1), pitchBus=(-1),
         memoryBus=(-1), atmosphereBus=(-1), spatialBus=(-1),
+        // Reach added: harmonicRich to give the crackle a resonant pitch,
+        // resonantBody to sharpen it, the two noise controls for the bed under
+        // it, filterCutoff as the tilt and delayFeedback for the comb.
+        harmonicBus=(-1), resonantBus=(-1), filterCutoffBus=(-1),
+        noiseLevelBus=(-1), noiseFiltBus=(-1), delayFeedbackBus=(-1), droneFadeBus=(-1),
         // Matrix mixer: this layer's live level (0 = mute, 1 = unity).
         mixDustBus=(-1);
 
@@ -655,8 +1190,15 @@ s.doWhenBooted({
         var revM  = Select.kr(atmosphereBus >= 0, [0.4, In.kr(atmosphereBus, 1)]);
         var dMix  = Select.kr(memoryBus >= 0, [0.3, In.kr(memoryBus, 1)]);
         var spatialX= Select.kr(spatialBus >= 0, [0.0, In.kr(spatialBus, 1)]);
+        var fmR   = Select.kr(harmonicBus >= 0, [1.0, In.kr(harmonicBus, 1)]);
+        var res   = Select.kr(resonantBus >= 0, [0.4, In.kr(resonantBus, 1)]);
+        var cutoff= Select.kr(filterCutoffBus >= 0, [0.6, In.kr(filterCutoffBus, 1)]);
+        var nLevel= Select.kr(noiseLevelBus >= 0, [0.1, In.kr(noiseLevelBus, 1)]);
+        var nFilt = Select.kr(noiseFiltBus  >= 0, [0.5, In.kr(noiseFiltBus, 1)]);
+        var dFeed = Select.kr(delayFeedbackBus >= 0, [0.3, In.kr(delayFeedbackBus, 1)]);
+        var dFade = Select.kr(droneFadeBus  >= 0, [2.0, In.kr(droneFadeBus, 1)]);
 
-        var env, sig, grains, wet, quadSig;
+        var env, sig, grains, wet, quadSig, ring, bed;
         
         env = EnvGen.ar(Env.perc(0.01, tStretch * 0.8), doneAction: 2);
         
@@ -664,13 +1206,38 @@ s.doWhenBooted({
         grains = Dust2.ar(dens.linexp(0, 1, 10, 500));
         // Changed from BPF to LPF: BPF at high freq silences the signal entirely;
         // LPF at high freq is open — dust crackle always comes through.
-        sig = LPF.ar(grains, filt.clip(200, 3000));
+        sig = LPF.ar(grains,
+            (filt.clip(200, 3000)
+                * Lag.kr(cutoff, dFade.clip(0.1, 5)).linexp(0, 1, 0.5, 2.0)).clip(120, 4000));
+
+        // harmonicRich gives the crackle a PITCH: the same grains through a
+        // resonant band, so the layer can go from broadband hiss to something
+        // ringing at a frequency that follows pitchShift. resonantBody sets how
+        // sharp that ring is. Without this, dust was the one voice with no
+        // pitch at all and nothing to tune against the rest.
+        ring = Ringz.ar(grains,
+            (220 * fmR.linexp(0.1, 5, 0.4, 3.0)
+                * (pitch.clip(-24, 24) / 12).midiratio).clip(60, 3000),
+            res.linlin(0, 1, 0.04, 0.5) * tStretch);
+        sig = sig + (ring * fmR.linexp(0.1, 5, 0.05, 0.7));
+
         // Dust2 is broadband by construction — this is the sparkle/hiss at the
         // top of the mix. Fixed backstop so no knob position can open it up.
         sig = LPF.ar(sig, 2200);
-        
-        // Delay + Reverb wash
-        wet = CombC.ar(sig, 0.5, 0.15, 2.0) * dMix;
+
+        // The two noise faders put a bed under the crackle rather than leaving
+        // it as isolated points — band-passed so it sits where Noise Filt says.
+        bed = BPF.ar(PinkNoise.ar,
+            (200 + (nFilt * 3000)).clip(150, 3500),
+            0.35 + (nFilt * 0.9)) * nLevel.linlin(0, 0.5, 0.0, 0.55);
+        // 1.4 measured at +7.3 dB on this layer, which contradicts the gain
+        // budget note above — dust is deliberately occasional texture, not a
+        // constant rain, and a continuous pink bed at that level makes it one.
+        sig = sig + bed;
+
+        // Delay + Reverb wash. delayFeedback owns the comb's tail, as on the
+        // drone and the perc; memoryFeed keeps the send level.
+        wet = CombC.ar(sig, 0.5, 0.15, Lag.kr(dFeed, 0.2).linexp(0, 1, 0.3, 6.0)) * dMix;
         sig = sig + wet;
         sig = sig + FreeVerb.ar(sig, revM, 0.8, 0.5);
 
@@ -720,6 +1287,41 @@ s.doWhenBooted({
                 "Bus created: % = % (index: %)".format(name, def[\default], ~buses[name].index).postln;
             };
         };
+    };
+
+    // ─── One argument list for every voice ──────────────────────────────
+    // The voices declare their buses under two spellings: the ten core
+    // controls use short names (masterVolBus, harmonicBus, textureBus …) while
+    // everything else uses the registry name plus "Bus". Three separate spawn
+    // sites were each maintaining their own partial list, which is how eight
+    // controls ended up reaching the drone and the pad and nothing else — the
+    // SynthDefs would have read them, but nobody was passing them.
+    //
+    // scsynth ignores control names a SynthDef does not declare, so passing the
+    // union to every voice is safe and is what ~phenoBusArgs already relies on.
+    // One list, one place, no drift.
+    ~voiceBusArgs = {
+        var args = [
+            \masterVolBus,  ~bidx.(\masterVolume),
+            \pitchBus,      ~bidx.(\pitchShift),
+            \timeBus,       ~bidx.(\timeDilation),
+            \spectralBus,   ~bidx.(\spectralShift),
+            \spatialBus,    ~bidx.(\spatialSpread),
+            \textureBus,    ~bidx.(\textureDepth),
+            \atmosphereBus, ~bidx.(\atmosphereMix),
+            \memoryBus,     ~bidx.(\memoryFeed),
+            \harmonicBus,   ~bidx.(\harmonicRich),
+            \resonantBus,   ~bidx.(\resonantBody)
+        ];
+        if(~buses.notNil) {
+            ~buses.keysValuesDo { |name, bus|
+                args = args ++ [(name.asString ++ "Bus").asSymbol, bus.index];
+            };
+        };
+        args;
+    };
+    ~bidx = { |name|
+        if(~buses.notNil and: { ~buses[name].notNil }, { ~buses[name].index }, { -1 });
     };
 
     // Spatial control buses (driven by 12_spatial_gui.scd, not by the

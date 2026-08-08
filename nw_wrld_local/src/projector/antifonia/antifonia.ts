@@ -24,7 +24,11 @@
 //              Master Amp / Noise Level / Drone Depth block the performer has
 //              called finished, and a slot writing into it is a regression
 //              wearing the costume of a coupling.
-//   events   · calls → /sample/trigger [idx, amp, rate, hpf, lpf, pan, dur]
+//   events   · calls → /antifonia/call [src, smp, amp, rate, hpf, lpf, pan,
+//              dur, hour]. SC picks the recording: the corpus carries
+//              ecological roles and no taxonomy, so the species→role map lives
+//              there with the manifest (16_corpus_calls.scd). smp is the MP3
+//              fallback for the two sources the corpus cannot answer.
 
 import * as THREE from "three";
 import { BaseThreeJsModule } from "../helpers/threeBase";
@@ -35,6 +39,12 @@ type AFArg = Record<string, unknown> | undefined;
 type PendingCall = {
   smp: number; amp: number; rate: number;
   hpf: number; lpf: number; pan: number; dur: number;
+  // Which of Antifonía's twelve sources spoke, and at what hour of its own
+  // circadian clock. SuperCollider needs both to answer with a recording: the
+  // corpus carries ecological roles rather than species, so the species→role
+  // map lives there with the manifest, and the hour decides which of a role's
+  // clips is the near one.
+  src?: number; hr?: number;
 };
 
 type ActiveSpecies = {
@@ -238,11 +248,24 @@ function startCallDrain() {
       // genuinely fire two.
       for (let i = 0; i < queued.length && fired < MAX_CALLS_PER_TICK; i++) {
         const c = queued[i];
-        if (!c || c.smp < 0) continue;         // geophony has no recording yet
+        if (!c) continue;
+        // The `c.smp < 0` skip that stood here is gone. It existed because
+        // lluvia and viento have no MP3, and it meant geofonía was drawn on
+        // screen and never sounded at all. The corpus has geophony stems, so
+        // the call is now sent and SC decides: it answers with a bed if it has
+        // one loaded, and with nothing if it does not — which is the same
+        // silence as before, arrived at by asking rather than by assuming.
         if (now + fired * gap - _lastSampleAt < gap) break;
         _lastSampleAt = now + fired * gap;
         try {
-          send("/sample/trigger", [c.smp, c.amp, c.rate, c.hpf, c.lpf, c.pan, c.dur]);
+          // /antifonia/call, not /sample/trigger: that address is shared with
+          // the SC GUI's seven buttons and with slot 9, and one verb should
+          // not mean two things depending on who sent it. smp rides along as
+          // the fallback for when the corpus has nothing for this source —
+          // aircraft and tape, which the corpus cannot answer at all.
+          send("/antifonia/call", [
+            c.src ?? -1, c.smp, c.amp, c.rate, c.hpf, c.lpf, c.pan, c.dur, c.hr ?? 12,
+          ]);
         } catch { /* ignore */ }
         fired++;
       }

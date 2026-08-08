@@ -140,6 +140,10 @@ s.doWhenBooted({
             };
             ~visualsDest.sendMsg('/voice/pad', (ba * pc).clip(0, 1), (bf / 900).clip(0, 1));
         };
+                    // Arbitration clock for 15_slot_voices.scd — see the note
+                    // at the kick in 5_beat_engine.scd. Outside the visuals
+                    // guard because it is a rule, not a readout.
+                    if(~lastVoiceAt.notNil) { ~lastVoiceAt[\pad] = SystemClock.seconds };
                     ~bellStats[\spawned] = ~bellStats[\spawned] + 1;
                     ~bellStats[\lastPoly] = pc;
                 } {
@@ -157,6 +161,12 @@ s.doWhenBooted({
     // ~triggerSample and ~sampleBuses, which that file defines four files
     // AFTER this one. Registering them here would capture nils. Pointer left
     // so the canonical OSC list still leads to them.
+
+    // Seconds since a stamp, or "-" if it has never been written. Same clock
+    // the stamps and ~ledAlive use.
+    ~monAge = { |stamp|
+        if(stamp.isNil) { "-" } { (Main.elapsedTime - stamp).round(0.1).asString };
+    };
 
     ~monitorLine = {
         var rs = ~rhythmState, b = ~bellStats;
@@ -185,6 +195,21 @@ s.doWhenBooted({
             // an error killed the Routine outright and the only visible symptom
             // was kick:/perc: frozen at whatever they had reached.
             ++ " err:" ++ (~beatParams !? { ~beatParams.beatErrors } ? 0)
+            // ── Status-light ages, in seconds since each feed was last heard ──
+            // The GUI lights are a yes/no over these numbers (~ledAlive), so
+            // when a light disagrees with what you believe is arriving, this is
+            // the line that settles it: a large age means the feed really has
+            // stopped, and a small age with a dark light means the light is
+            // wrong. A dash means never seen at all this session.
+            //
+            // Added after a dark ETH light could not be explained from a log
+            // that plainly showed transactions being handled — the age was the
+            // one number nobody could read.
+            ++ "  osc-addrs:" ++ (~oscSeen ? ()).size
+            ++ "  age(eth/osc/midi/bridge/beat):"
+            ++ ~monAge.(~lastEthTime) ++ "/" ++ ~monAge.(~lastOscTime)
+            ++ "/" ++ ~monAge.(~lastMidiTime) ++ "/" ++ ~monAge.(~lastBrowserOscTime)
+            ++ "/" ++ ~monAge.(~lastBeatTime)
             // int: the EFFECTIVE step interval in seconds. The bar now follows
             // the measured block period, so this is how you check the tempo is
             // actually tracking the chain rather than assuming it. It should
@@ -390,7 +415,7 @@ s.doWhenBooted({
         // counter. Stamped here rather than in each of the three entry points
         // (/eth/note, /tx, and the block handler) because this is the one
         // funnel they all pass through.
-        ~lastEthTime = SystemClock.seconds;
+        ~lastEthTime = Main.elapsedTime;
         ~ethNoteCount = (~ethNoteCount ? 0) + 1;
         ~globalState.transactionCount = ~globalState.transactionCount + 1;
         ~globalState.lastValue = value;
@@ -667,7 +692,7 @@ s.doWhenBooted({
                 // native units via the registry spec, sets the bus, mirrors
                 // ~beatParams (beatTempo/txInfluence), syncs the GUI knob and
                 // echoes 0–1 back on the canonical path.
-                ~lastOscTime = SystemClock.seconds;
+                ~lastOscTime = Main.elapsedTime;
                 ~setParamNorm.(paramName, msg[1].asFloat, \osc);
             }, oscPath);
         };
@@ -681,7 +706,7 @@ s.doWhenBooted({
     // in sync, and triggers a beat-engine drop+fill pulse.
     OSCdef(\phenoJumpSeason, { |msg|
         var season = msg[1].asString;
-        ~lastBrowserOscTime = SystemClock.seconds;
+        ~lastBrowserOscTime = Main.elapsedTime;
         ("Phenology jump: " ++ season).postln;
         if(~visualsDest.notNil) {
             ~visualsDest.sendMsg("/pheno/jumpSeason", season)
@@ -691,6 +716,55 @@ s.doWhenBooted({
             ~beatParams.transactionInfluence = (~beatParams.transactionInfluence ? 0.0) + 0.6;
         };
     }, "/pheno/jumpSeason");
+
+    // ─── The OSC tap ────────────────────────────────────────────────────
+    // ~lastOscTime used to be stamped in exactly ONE place — the registry
+    // slider handler below — so the light labelled OSC only lit while somebody
+    // was moving a browser fader. Everything else arriving on this port
+    // (species, slot voices, Antifonía calls, parliament buttons, presets, the
+    // whole chain feed) stamped a different variable, so the broadest-sounding
+    // light on the row was in fact the narrowest, and nearly redundant with
+    // BRIDGE RX.
+    //
+    // A catch-all OSCdef — path nil matches every incoming message — stamps it
+    // now, so OSC means what the label says: something is talking to this port.
+    //
+    // Messages from scsynth itself are excluded. /done, /status.reply, /n_end
+    // and the rest arrive constantly and would pin the light lit whether or not
+    // anything external existed, which is the same as no light at all.
+    // thisProcess.addOSCRecvFunc, NOT OSCdef with a nil path. OSCdef dispatches
+    // by matching the address against a registered path, so a nil path
+    // registers under nil and matches nothing at all — verified: the light lit
+    // from the old single stamp site while the tap recorded zero addresses.
+    // addOSCRecvFunc is the hook that genuinely sees every message.
+    ~oscSeen = ~oscSeen ?? { () };
+    if(~oscTapFunc.notNil) { thisProcess.removeOSCRecvFunc(~oscTapFunc) };
+    ~oscTapFunc = { |msg, time, addr, recvPort|
+        if(addr.isNil or: { s.addr.isNil } or: { addr.port != s.addr.port }) {
+            ~lastOscTime = Main.elapsedTime;
+            ~oscSeen[msg[0]] = Main.elapsedTime;
+        };
+    };
+    thisProcess.addOSCRecvFunc(~oscTapFunc);
+
+    // What has this port actually heard, and how long ago. This is the readout
+    // that settles an argument about a dark light: if an address is not in this
+    // list, SuperCollider never received it and the fault is upstream; if it is
+    // in the list with a small age and its light is dark, the fault is the
+    // light. Call ~oscReport.value in the post window.
+    ~oscReport = {
+        var now = Main.elapsedTime;
+        "─── OSC seen this session ───".postln;
+        if((~oscSeen ? ()).size == 0) {
+            "  NOTHING has arrived on this port.".postln;
+        } {
+            ~oscSeen.keys.asArray.sort.do { |k|
+                ("  " ++ k.asString.padRight(28)
+                    ++ (now - ~oscSeen[k]).round(0.1).asString.padLeft(8) ++ " s ago").postln;
+            };
+        };
+        "─────────────────────────────".postln;
+    };
 
     // ── Cámara de las Especies: the five seats the browser actually shows ──
     // These three addresses were reaching this port and being dropped on the
@@ -717,14 +791,14 @@ s.doWhenBooted({
         // in a Routine stops it permanently (see 5_beat_engine.scd:260).
         var id = msg[1].asInteger.clip(0, 4);
         ~speciesPresence[id] = msg[2].asFloat.clip(0, 1);
-        ~lastBrowserOscTime = SystemClock.seconds;
+        ~lastBrowserOscTime = Main.elapsedTime;
     }, "/agents/species/presence");
 
     OSCdef(\speciesActivity).free;
     OSCdef(\speciesActivity, { |msg|
         var id = msg[1].asInteger.clip(0, 4);
         ~speciesActivity[id] = msg[2].asFloat.clip(0, 1);
-        ~lastBrowserOscTime = SystemClock.seconds;
+        ~lastBrowserOscTime = Main.elapsedTime;
     }, "/agents/species/activity");
 
     OSCdef(\ednaBiodiv).free;
@@ -735,7 +809,7 @@ s.doWhenBooted({
         // "validation": a reading nobody has touched in a while is not a
         // validated one.
         ~ednaTouchedAt[id] = SystemClock.seconds;
-        ~lastBrowserOscTime = SystemClock.seconds;
+        ~lastBrowserOscTime = Main.elapsedTime;
     }, "/agents/edna/biodiversity");
 
     // NOTE: /soneth/beatTempo and /soneth/txInfluence are handled by the
@@ -750,7 +824,7 @@ s.doWhenBooted({
     OSCdef(\voteHandler, { |msg|
         var consensus, passed;
         // Vote triggers a sonic event: tempo burst + harmonic bell chord
-        ~lastBrowserOscTime = SystemClock.seconds;
+        ~lastBrowserOscTime = Main.elapsedTime;
         "VOTE triggered — consensus surge".postln;
 
         // Temporarily accelerate beat tempo for 4 seconds
@@ -794,13 +868,11 @@ s.doWhenBooted({
 
     OSCdef(\emergencyHandler, { |msg|
         var intensity = msg[1].asFloat;
-        ~lastBrowserOscTime = SystemClock.seconds;
+        ~lastBrowserOscTime = Main.elapsedTime;
         "EMERGENCY consensus override — intensity %".format(intensity.round(0.01)).postln;
 
         // Drop drone pitch to sub-bass, increase noise
-        if(~opalDroneSynth.notNil) {
-            ~opalDroneSynth.set(\freq, 35);
-        };
+        if(~droneBedSet.notNil) { ~droneBedSet.value(1.0, 35) };
         if(~buses.notNil and: { ~buses[\noiseLevel].notNil }) {
             var origNoise = ~buses[\noiseLevel].getSynchronous;
             ~buses[\noiseLevel].set((origNoise + 0.15).clip(0, 0.3));
@@ -809,9 +881,7 @@ s.doWhenBooted({
                 if(~buses.notNil and: { ~buses[\noiseLevel].notNil }) {
                     ~buses[\noiseLevel].set(origNoise);
                 };
-                if(~opalDroneSynth.notNil) {
-                    ~opalDroneSynth.set(\freq, 55);
-                };
+                if(~droneBedSet.notNil) { ~droneBedSet.value(1.0, 55) };
                 nil;
             });
         };
@@ -822,8 +892,47 @@ s.doWhenBooted({
         };
     }, "/parliament/emergency");
 
+    // ─── Galvo-safety scope from the laser bridge ───────────────────────────
+    // laser-bridge.js sends this at 12 Hz whenever it is running. It carries
+    // the frame AFTER sanitisation — the signal the Helios DAC actually
+    // receives — plus the two compliance measures computed over every sample
+    // rather than over the decimated copy drawn on screen.
+    //
+    // ~laserScope stays nil until the bridge speaks, and the GUI reads that as
+    // "no bridge" rather than as a safe reading, which matters: a scope that
+    // shows compliant when nothing is connected is worse than no scope.
+    OSCdef(\laserScope, { |msg|
+        var n = (msg[17] ? 0).asInteger;
+        // x, y, blank, and the WORST step inside this bucket.
+        var pts = Array.fill(n, { |i|
+            [msg[18 + (i * 4)].asFloat, msg[19 + (i * 4)].asFloat,
+             msg[20 + (i * 4)].asFloat, msg[21 + (i * 4)].asFloat]
+        });
+        ~laserScope = (
+            dac:       msg[1].asInteger,      // 1 = Helios detected, 0 = dry run
+            pps:       msg[2].asInteger,
+            points:    msg[3].asInteger,
+            maxStep:   msg[4].asFloat,        // the limit, derived from the rating
+            peakStep:  msg[5].asFloat,        // the worst step in this frame
+            overspeed: msg[6].asInteger,      // samples exceeding the limit
+            dwellUs:   msg[7].asFloat,        // longest unblanked stationary run
+            omegaMax:  msg[8].asFloat,        // deg/s the scanner is rated for
+            omegaNow:  msg[9].asFloat,        // deg/s this frame commands
+            usedDeg:   msg[10].asFloat,       // optical angle the frame spans
+            ratedDeg:  msg[11].asFloat,       // the angle the rating is quoted at
+            budget:    msg[12].asFloat,       // points x frameHz / pps
+            // What auto-blanking did about it, as opposed to what was measured.
+            osBlanked:    msg[13].asInteger,
+            dwellBlanked: msg[14].asInteger,
+            frameBlanked: msg[15].asInteger,
+            blanking:     msg[16].asInteger,   // hold-aware: is the beam down now
+            xy:        pts,
+            at:        Main.elapsedTime
+        );
+    }, "/laser/scope");
+
     OSCdef(\startHandler, { |msg|
-        ~lastBrowserOscTime = SystemClock.seconds;
+        ~lastBrowserOscTime = Main.elapsedTime;
         "Parliament START — restoring beat engine".postln;
         // Re-engage beat engine at normal tempo
         if(~beatParams.notNil) {
@@ -831,13 +940,14 @@ s.doWhenBooted({
             // Restores the transport, leaving the performer's masterAmp alone.
             ~beatParams.transportGain = 1.0;
         };
-        if(~opalDroneSynth.notNil) {
-            ~opalDroneSynth.set(\freq, 55, \amp, 0.4);
-        };
+        // Restores the bed's level as well as its root: the stop handler
+        // scaled every live partial to 2%, and without this they stayed there
+        // until each one happened to expire.
+        if(~droneBedSet.notNil) { ~droneBedSet.value(1.0, 55) };
     }, "/parliament/start");
 
     OSCdef(\stopHandler, { |msg|
-        ~lastBrowserOscTime = SystemClock.seconds;
+        ~lastBrowserOscTime = Main.elapsedTime;
         "Parliament STOP — fading out".postln;
         // Transport gain, NOT masterAmp. This used to write
         // ~beatParams.masterAmp = 0.05 directly, bypassing ~setParam — so the
@@ -851,26 +961,27 @@ s.doWhenBooted({
         if(~beatParams.notNil) {
             ~beatParams.transportGain = 0.05;
         };
-        if(~opalDroneSynth.notNil) {
-            ~opalDroneSynth.set(\amp, 0.02);
-        };
+        // Ducks the live bed against each partial's own birth amplitude, so
+        // /parliament/start restores the balance exactly rather than flattening
+        // every partial to one level.
+        if(~droneBedSet.notNil) { ~droneBedSet.value(0.02) };
     }, "/parliament/stop");
 
     // ── Config save/load from the browser (CONFIGS block in parliament.html)
     // String argument — parliament-bridge passes string args as OSC type 's'.
     OSCdef(\presetSave, { |msg|
-        ~lastBrowserOscTime = SystemClock.seconds;
+        ~lastBrowserOscTime = Main.elapsedTime;
         ~saveConfig.(msg[1].asString);
         { if(~refreshPresetMenu.notNil) { ~refreshPresetMenu.value } }.defer;
     }, "/preset/save");
 
     OSCdef(\presetLoad, { |msg|
-        ~lastBrowserOscTime = SystemClock.seconds;
+        ~lastBrowserOscTime = Main.elapsedTime;
         ~loadConfig.(msg[1].asString);
     }, "/preset/load");
 
     OSCdef(\presetList, {
-        ~lastBrowserOscTime = SystemClock.seconds;
+        ~lastBrowserOscTime = Main.elapsedTime;
         ~broadcastPresetList.value;
     }, "/preset/list");
 

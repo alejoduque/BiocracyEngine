@@ -84,10 +84,40 @@
 // Ratios instead of multiples: the pool spans about an octave and a half of a
 // usable mode rather than six rungs of a ladder, so any order through it is
 // musical rather than a run.
-~pitchDegrees = #[1.0, 1.2, 1.3333, 1.5, 1.8, 2.0, 2.4];
+// Widened from #[1.0, 1.2, 1.3333, 1.5, 1.8, 2.0, 2.4], which spanned only 1.26
+// octaves. Two octaves down that put the whole pool inside 26-61 Hz — a 36 Hz
+// band at the bottom of the range, where pitch discrimination is poor and
+// adjacent degrees are 3.2 semitones apart on a resonator whose fundamental is
+// barely periodic. It measured as seven notes and heard as one, which is the
+// "almost always the same note".
+//
+// This spans 3.6x — 1.85 octaves — with wider gaps low down where the ear needs
+// them and closer steps up top. Same intervals in character, enough room
+// between them to be heard as different notes in the register they now sit in.
+~pitchDegrees = #[1.0, 1.25, 1.5, 1.8, 2.25, 2.7, 3.6];
 
-~computePitchPool = { |harmRich=1.0, txInfluence=0.0, density=0.5|
-    var basePitch = 70;
+// `root` is the DRONE's fundamental. The default of 35 doubles to the 70 this
+// used to hardcode, so a caller that passes nothing behaves exactly as before.
+//
+// This was the deepest reason the percussion and the bed sounded like two
+// unrelated pieces: the pool was built on a hardcoded 70 Hz while ~droneRoot
+// walked 41–82 Hz every four bars. They were in two different keys, one of them
+// fixed and one of them moving, and no amount of timbral or rhythmic work can
+// make that sound like one instrument. At root 55 the bed sounded 55/110/165/220
+// while the perc played 65/78/87/98/117/130/156 — almost none of which is a
+// harmonic of anything sounding underneath it.
+//
+// Placed HALF the fundamental, which is two octaves below where this sat after
+// the coupling work. The report was that the layer sings too high, and it did:
+// at root 55 the pool ran 102-246 Hz and ~speciesBand then multiplied by up to
+// 3.16, so the top seat struck at 778 Hz -- well out of the register a body
+// this size should ring in, and above most of the bed.
+//
+// Two octaves down puts the pool at 25-61 Hz and the top seat at ~195 Hz, which
+// is a chest register: struck bodies with weight, under the drone rather than
+// over it. The degrees and the coupling to ~droneRoot are untouched.
+~computePitchPool = { |harmRich=1.0, txInfluence=0.0, density=0.5, root=35|
+    var basePitch = root * 0.5;
     var pitchShift = txInfluence * 50;   // TX activity nudges pitch gently
     // Range matched to the registry spec, which is now ControlSpec(0.1, 5):
     // the old 0.1–8.0 mapping could never reach its own top after that change.
@@ -96,8 +126,98 @@
 
     // Clamped to 40–400 Hz: the struck-resonance register the drone sits in.
     Array.fill(numSteps, { |i|
-        ((basePitch * spread * ~pitchDegrees[i]) + pitchShift).clip(40, 400);
+        // Floor follows the register down: at 40 the bottom third of the new
+        // pool would clip onto a single frequency and those degrees would stop
+        // being distinct notes.
+        ((basePitch * spread * ~pitchDegrees[i]) + pitchShift).clip(22, 400);
     });
+};
+
+// ─── Parameter locks, in the Octatrack sense ────────────────────────────────
+// On an Octatrack any trig can carry its own value for any parameter, so a
+// pattern is not one sound repeated at different pitches — it is a different
+// sound on every step. That is precisely what this layer did not have. The
+// chain chose WHICH note, and the knobs chose what it sounded like, identically
+// for every hit forever. All the chain's detail arrived as pitch selection and
+// nothing else.
+//
+// Every strike now carries a full parameter set derived from the transaction
+// that fired it, and passes -1 for the matching bus so that hit ignores the
+// knob. Six readings drive six parameters, deliberately taken from six
+// DIFFERENT fields, so nothing moves in lockstep — a block that is busy but
+// cheap sounds unlike one that is quiet and expensive.
+//
+// The knob remains the centre and the chain deviates around it, so the
+// performer still voices the layer and the chain articulates it.
+// transactionInfluence is the lock depth: at 0 every hit takes the knobs
+// exactly as before, at 1 the chain swings each parameter most of its range.
+~percLocks = { |rs, depth = 0.5|
+    var d    = depth.clip(0, 1) * 0.85;
+    var ent  = ((rs !? { rs[\entropy] }) ? 0).clip(0, 1);
+    var cd   = ((((rs !? { rs[\calldataLen] }) ? 0) + 1).log2 / 12).clip(0, 1);
+    var full = ((((rs !? { rs[\blockTxCount] }) ? 0) / 250.0)).clip(0, 1);
+    var fee  = (((((rs !? { rs[\blockBaseFee] }) ? 0) + 1).log2 / 7.0)).clip(0, 1);
+    var addr = ((((rs !? { rs[\addrSig] }) ? 0).abs % 251) / 251.0);
+    var idx  = ((((rs !? { rs[\txIndex] }) ? 0).abs % 64) / 64.0);
+    var lerp = { |knob, target, lo, hi| (knob + ((target - knob) * d)).clip(lo, hi) };
+    [
+        // How much each transaction SAYS -> how far the strike is torn into
+        // sidebands. A bare transfer barely shapes it; a contract call with
+        // kilobytes of input pushes the hit toward noise.
+        \textureBus, -1, \texture,
+            lerp.(~busVal.value(\textureDepth, 0.2), cd, 0, 1),
+        // How irregular the chain's arrivals are -> how inharmonic the body is.
+        \resonantBus, -1, \resonance,
+            lerp.(~busVal.value(\resonantBody, 0.4), 0.1 + (ent * 0.7), 0.1, 0.8),
+        // What the block costs -> the colour of the exciter.
+        \noiseFiltBus, -1, \noiseF,
+            lerp.(~busVal.value(\noiseFilt, 0.5), fee, 0, 1),
+        // How full the block is -> how long the tail keeps folding back.
+        \delayFeedbackBus, -1, \delayFb,
+            lerp.(~busVal.value(\delayFeedback, 0.3), full * 0.8, 0, 0.8),
+        // Who the counterparty is -> how much breath is in the strike, so the
+        // same actor returning is recognisably the same touch.
+        \noiseLevelBus, -1, \noiseL,
+            lerp.(~busVal.value(\noiseLevel, 0.1), addr * 0.6, 0, 0.6),
+        // Where it sat in the block -> how long it rings.
+        \timeBus, -1, \timeStr,
+            lerp.(~busVal.value(\timeDilation, 2.0), 0.6 + (idx * 4.5), 0.5, 6.0)
+    ];
+};
+
+// ─── Retrig ─────────────────────────────────────────────────────────────────
+// The other half of the Octatrack idiom: one trig becomes a burst, at a rate
+// and length set per event rather than by the sequencer.
+//
+// What earns a retrig is the one chain field that actually means "something
+// complicated happened": calldata. A bare value transfer carries none and
+// strikes once. A contract call carries 68 bytes or more, a swap several
+// hundred — those burst. So the layer's most emphatic gesture is reserved for
+// the transactions that DO something, which is the distinction the piece is
+// about, and it costs no extra data to make.
+~percRetrig = { |rs, freq, bodySeed, lockArgs, amp, depth|
+    var cd   = ((((rs !? { rs[\calldataLen] }) ? 0) + 1).log2 / 12).clip(0, 1);
+    var idx  = (((rs !? { rs[\txIndex] }) ? 0).abs % 16);
+    var count, interval, glide;
+    if(rs.notNil and: { cd > 0.40 } and: { (depth * 1.4).coin }) {
+        // 3–7 repeats: enough to read as a burst, short of a machine gun.
+        count    = (2 + (cd * 6)).round.clip(3, 7);
+        // Rate off the position in the block, so consecutive transactions in
+        // the same block do not all stutter identically.
+        interval = ((0.17 - (cd * 0.10)) / (1 + (idx % 3))).clip(0.028, 0.17);
+        // Retrigs that rise, fall or hold, chosen by block position.
+        glide    = #[1.0, 1.0, 2.0, 0.5, 1.5, 0.75].wrapAt(idx);
+        count.do { |i|
+            var f = (freq * (glide ** ((i + 1) / count))).clip(22, 900);
+            s.makeBundle(s.latency + ((i + 1) * interval), {
+                Synth(\opalPerc, [
+                    \out, 0, \freq, f, \bodySeed, bodySeed,
+                    // Falls away rather than repeating flat.
+                    \amp, amp * ((1 - ((i + 1) / (count + 1))) ** 1.3) * 0.85
+                ] ++ (~voiceBusArgs.value ? []) ++ lockArgs);
+            });
+        };
+    };
 };
 
 // ─── Cámara de las Especies: the five seats, as voices ──────────────────────
@@ -228,13 +348,159 @@
     (interval * 0.5) + rrand(interval.neg * 0.45, interval * 0.45)
 };
 
+// ─── The drone bed as an ensemble ───────────────────────────────────────────
+// Partials arrive, hold, and leave. Nothing glides. The harmony changes because
+// old partials die at the old fundamental while new ones are born at the new
+// one — which is how drone music has always changed harmony, and it is the
+// answer to a bed whose only event was a ramp between two pitches.
+//
+// Ratios are a harmonic series with two just intervals folded in, weighted so
+// the low partials are common and the high ones are occasional. That weighting
+// is what makes it a bed rather than a chord: the fundamental and its octave
+// are almost always present, the fifth often, the seventh partial rarely and
+// briefly, so the top of the bed keeps changing while the bottom holds.
+~droneRatios  = #[0.5, 1.0, 1.0, 1.5, 2.0, 2.0, 2.5, 3.0, 4.0, 5.0, 6.0];
+// Bottom octave weighted up now that nothing else supplies it: 0.10 -> 0.22 on
+// the 0.5 ratio, so the bed reliably keeps a sub partial alive.
+~droneWeights = #[0.22, 0.16, 0.14, 0.11, 0.09, 0.09, 0.06, 0.05, 0.04, 0.02, 0.02];
+~droneVoices  = ~droneVoices ?? { [] };
+~droneMaxVoices = 7;
+~droneRoot = ~droneRoot ?? { 55 };
+
+// What each live partial is actually sounding, so the percussion can strike a
+// tone the bed is already holding rather than a tone that merely belongs to the
+// same scale. Keyed by the Synth itself and cleared in its onFree, so it cannot
+// outlive the voice it describes.
+~droneVoiceHz = ~droneVoiceHz ?? { IdentityDictionary.new };
+// The amplitude each partial was born with, so the transport and the emergency
+// can scale the bed and put it back without losing the per-partial balance.
+~droneVoiceAmp = ~droneVoiceAmp ?? { IdentityDictionary.new };
+
+// ─── Acting on the bed ──────────────────────────────────────────────────────
+// Everything that used to be done to \opalDrone is done here instead. Those
+// call sites went on compiling and running after the supersaw was removed —
+// ~opalDroneSynth was nil and every one of them was .notNil-guarded, so they
+// silently became no-ops. Reading them, the emergency handler still looks like
+// it drops the drone to sub-bass and the stop handler still looks like it fades
+// the bed out. Neither did anything at all. That is exactly the kind of code
+// that misleads, so it is routed to the live ensemble here and deleted there.
+//
+// scale is applied against each partial's ORIGINAL amplitude rather than its
+// current one, so repeated calls do not compound and a restore is exact.
+~droneBedSet = { |scale = 1.0, root|
+    (~droneVoices ? []).do { |v|
+        if(v.notNil) {
+            var a0 = (~droneVoiceAmp ? ())[v];
+            if(a0.notNil) { v.set(\amp, a0 * scale) };
+            // SinOsc holds phase across a frequency change, so this is a pitch
+            // move rather than a click, even applied to seven sustained voices.
+            if(root.notNil) {
+                var hz = (~droneVoiceHz ? ())[v];
+                if(hz.notNil and: { (~droneRoot ? 55) > 0 }) {
+                    v.set(\freq, root);
+                };
+            };
+        };
+    };
+    if(root.notNil) { ~droneRoot = root };
+};
+
+// The percussion layer's excitement, published for the bed to read. It is
+// already computed every tick to shape the rhythm; this just makes it audible
+// to something other than itself.
+~droneStrikeBus = ~droneStrikeBus ?? { Bus.control(s, 1).set(0) };
+
+~droneEnsemble = {
+    if(~droneRoutine.notNil) { ~droneRoutine.stop; ~droneRoutine = nil };
+    ~droneRoutine = Routine({
+        4.0.wait;   // let the server settle before the bed starts filling
+        loop {
+            var wait = 4.0;
+            try {
+                var live = (~droneVoices ? []).select { |v| v.notNil };
+                var harm = ~busVal.value(\harmonicRich, 1.0);
+                var tDil = ~busVal.value(\timeDilation, 2.0);
+                // The chain's own conditions, read at the moment a partial is
+                // born. The bed is slow, so these arrive as the weather the
+                // voice grows up in rather than as a modulation of it.
+                var crs  = ~rhythmState;
+                var chainEnt = ((crs !? { crs[\entropy] }) ? 0).clip(0, 1);
+                var chainCd  = ((((crs !? { crs[\calldataLen] }) ? 0) + 1).log2 / 12).clip(0, 1);
+                var chainFull= ((((crs !? { crs[\blockTxCount] }) ? 0) / 250.0)).clip(0, 1);
+                ~droneVoices = live;
+                if(live.size < ~droneMaxVoices) {
+                    var i = ~droneWeights.normalizeSum.windex;
+                    var ratio = ~droneRatios[i];
+                    // Lives are long and unequal. timeDilation scales them, so
+                    // the same fader that stretches every envelope in the
+                    // engine also decides how slowly the bed turns over.
+                    // A contested block makes the bed turn over faster: lives
+                    // shorten by up to 40%, so partials arrive and leave more
+                    // often and the drone becomes visibly restless under load.
+                    var churn = 1.0 - (chainFull * 0.4);
+                    var atk  = rrand(9.0, 26.0) * tDil.linlin(0.5, 6, 0.6, 1.8) * churn;
+                    var hold = rrand(14.0, 48.0) * tDil.linlin(0.5, 6, 0.6, 1.8) * churn;
+                    var rel  = rrand(12.0, 34.0) * tDil.linlin(0.5, 6, 0.6, 1.8) * churn;
+                    var syn = Synth(\dronePartial, [
+                        \out,    0,
+                        \freq,   ~droneRoot,
+                        \ratio,  ratio,
+                        // Higher partials quieter, or the bed turns into a
+                        // chord standing on its own overtones.
+                        \amp,    (0.16 / (1 + (ratio * 0.55)))
+                            * harm.linexp(0.1, 5.0, 0.7, 1.35)
+                            // The bed was the one layer a transport stop never
+                            // reached, because the stop acted on \opalDrone.
+                            * (~beatParams.transportGain ? 1),
+                        \atk, atk, \hold, hold, \rel, rel,
+                        \pan,    1.0.rand2 * 0.7,
+                        // How much the chain is SAYING widens the partial.
+                        \detune, rrand(0.002, 0.009) * (1 + (chainCd * 2.2)),
+                        \seed,   1.0.rand,
+                        // Which REGIME this partial inhabits is the chain's
+                        // call, not the dice's. Entropy — how irregular the
+                        // chain's arrivals have been lately — pushes the bed
+                        // from resonant noise toward feedback and FM, so a
+                        // bursty chain audibly destabilises the drone while an
+                        // even one lets it settle into bands. Still squared and
+                        // still jittered, so the distribution stays uneven and
+                        // two partials born together are not twins.
+                        \character, ((chainEnt * 0.75) + (1.0.rand * 0.45))
+                            .clip(0, 1).squared,
+                        // The percussion's excitement reaches the bed here.
+                        \strikeBus, ~droneStrikeBus.index
+                    ] ++ (~voiceBusArgs.value ? []),
+                        target: if(~defaultGroup.notNil, { ~defaultGroup }, { s.defaultGroup }));
+                    ~droneVoices = ~droneVoices.add(syn);
+                    ~droneVoiceHz[syn] = ~droneRoot * ratio;
+                    ~droneVoiceAmp[syn] = (0.16 / (1 + (ratio * 0.55)))
+                        * harm.linexp(0.1, 5.0, 0.7, 1.35)
+                        * (~beatParams.transportGain ? 1);
+                    syn.onFree({
+                        ~droneVoices.remove(syn);
+                        ~droneVoiceHz.removeAt(syn);
+                        ~droneVoiceAmp.removeAt(syn);
+                    });
+                };
+                // Uneven spacing. A fixed interval would make the bed pulse at
+                // that period, which is the ramp problem in another costume.
+                wait = rrand(5.0, 17.0);
+            } { |e|
+                ("[drone] ensemble frame: " ++ e.errorString).postln;
+                wait = 6.0;
+            };
+            wait.wait;
+        };
+    }).play(AppClock);
+    "[drone] ensemble running".postln;
+};
+
 ~beatEngine = {
     // .stop AND nil. The GUI's Beat Engine light used to test ~beatRoutine.notNil,
     // which stayed true forever because this line only stopped it — so the light
     // reported a dead engine as running. The light now watches ~lastBeatTime
     // (stamped once per step below), and this keeps the two in agreement.
     if(~beatRoutine.notNil) { ~beatRoutine.stop; ~beatRoutine = nil };
-    if(~opalDroneSynth.notNil) { ~opalDroneSynth.set(\gate, 0) };
     
     // Start the continuous ambient drone immediately
     // Safe bus index helper: returns bus index or -1 if bus missing
@@ -247,39 +513,27 @@
             { ~buses[name].getSynchronous }, { default });
     };
 
-    ~opalDroneSynth = Synth(\opalDrone, [
-        \freq, 55, // Low ambient anchor
-        // masterAmp NO va aquí: \opalDrone lo lee en vivo por masterAmpBus más
-        // abajo. Estaba en los dos sitios, así que el drone respondía al mando
-        // aproximadamente al cuadrado y —peor— con la mitad del producto
-        // congelada en el valor que tuviera al arrancar el motor: mover el
-        // fader a mitad de sesión sólo bajaba el factor del bus, y reiniciar
-        // con el mismo fader daba otro nivel. Todas las demás capas lo aplican
-        // una sola vez.
-        \amp, (~beatParams.transportGain ? 1) * 0.8,
-        \masterVolBus, ~bi.(\masterVolume),
-        \pitchBus,     ~bi.(\pitchShift),
-        \timeBus,      ~bi.(\timeDilation),
-        \spectralBus,  ~bi.(\spectralShift),
-        \spatialBus,   ~bi.(\spatialSpread),
-        \textureBus,   ~bi.(\textureDepth),
-        \atmosphereBus,~bi.(\atmosphereMix),
-        \memoryBus,    ~bi.(\memoryFeed),
-        \harmonicBus,  ~bi.(\harmonicRich),
-        \resonantBus,  ~bi.(\resonantBody),
-        // Drone/level buses — \opalDrone now reads these (see 3_synthdefs.scd).
-        // Without them the six matching sliders moved a bus no UGen listened to.
-        \masterAmpBus,    ~bi.(\masterAmp),
-        \filterCutoffBus, ~bi.(\filterCutoff),
-        \droneDepthBus,   ~bi.(\droneDepth),
-        \droneFadeBus,    ~bi.(\droneFade),
-        \droneSpaceBus,   ~bi.(\droneSpace),
-        \droneMixBus,     ~bi.(\droneMix),
-        // delayFeedback had no reader at all until now.
-        \delayFeedbackBus, ~bi.(\delayFeedback),
-        // Matrix mixer: this layer's live level.
-        \mixDroneBus, ~bi.(\mixDrone)
-    ], target: if(~defaultGroup.notNil, { ~defaultGroup }, { s.defaultGroup }));
+    // ─── The propeller is gone ──────────────────────────────────────────────
+    // \opalDrone — five detuned Saws through a lowpass — was still being
+    // spawned here as a "sub anchor" AFTER the bed was rebuilt around it, and
+    // its level made that a fiction. Measured from the live node tree against
+    // the trims: amp 0.8 x trimDrone gave it an effective 0.2944, while one
+    // \dronePartial ran at 0.0235 and five of them summed to about 0.0526. The
+    // old voice was 15 dB louder than the ENTIRE new bed.
+    //
+    // So every measurement of the rebuild was of a layer buried 15 dB under the
+    // exact sound the rebuild was meant to remove, and the drone went on
+    // sounding like a propeller because a propeller was still the loudest thing
+    // in it. That is why three rounds of work changed nothing audible.
+    //
+    // The bed does not need a separate anchor: ~droneRatios already contains
+    // 0.5, so the ensemble grows its own bottom octave out of the same voice as
+    // everything else. Nothing here spawns \opalDrone any more. The SynthDef
+    // stays defined because the slot voices still spawn their own, and
+    // everything that used to be done TO the bed here now goes through
+    // ~droneBedSet, which acts on the live ensemble.
+    // Nothing spawns \opalDrone in the bed any more.
+
     
     ~beatRoutine = Routine({
         var step = 0;
@@ -432,7 +686,8 @@
 
 
             // ─── Compute melodic parameters from control matrix ───
-            pitchPool = ~computePitchPool.(harmRich, txInf, density * phenoMult);
+            pitchPool = ~computePitchPool.(harmRich, txInf, density * phenoMult,
+                (~droneRoot ? 55));
             voicingMode = ~selectVoicing.(resBdy, texDep);
             harmCount = ~getHarmonicCount.(harmRich);
 
@@ -462,10 +717,20 @@
                     dustProb = (0.06 + (density * 0.2) + (transactionInfluence * 0.1)).clip(0.03, 0.35);
                     // Drift drone pitch: cycle through harmonically-related notes
                     droneBaseFreq = #[55, 62, 73, 82, 49, 65, 55, 41].wrapAt(phrase);
-                    // Update drone pitch live
-                    if(~opalDroneSynth.notNil) {
-                        ~opalDroneSynth.set(\freq, droneBaseFreq);
-                    };
+                    // The root moves and NOTHING GLIDES. Partials born after
+                    // this line arrive at the new fundamental while the ones
+                    // already sounding live out their lives at the old one, so
+                    // the harmony changes by crossfade between two populations
+                    // rather than by sliding a single voice. That slide — a 4 s
+                    // Lag applied to one perpetual synth every four bars — was
+                    // the whole of the bed's motion, and it is what read as a
+                    // small plane changing gear.
+                    // The phrase walk moves the ROOT and nothing else. There
+                    // is no separate anchor to keep in step any more, and no
+                    // synth here to set: partials born after this line arrive
+                    // at the new fundamental while the ones already sounding
+                    // live out their lives at the old one.
+                    ~droneRoot = droneBaseFreq;
                 };
             };
 
@@ -505,6 +770,11 @@
                 // cuánta energía hay en su banda. El espectro dice qué se está
                 // oyendo; esto dice qué acaba de empezar. Sin el ataque, un
                 // visual reacciona siempre tarde y difuso.
+                // Stamped outside the ~visualsDest guard on purpose: this is
+                // not telemetry, it is the arbitration clock 15_slot_voices.scd
+                // reads to decide whether a slot may speak here. It has to be
+                // true whether or not anything is watching.
+                if(~lastVoiceAt.notNil) { ~lastVoiceAt[\kick] = now };
                 if(~visualsDest.notNil) {
                     ~visualsDest.sendMsg('/voice/kick',
                         (~beatParams.masterAmp * (0.5 + (density * 0.2)) * accent).clip(0, 1));
@@ -523,7 +793,7 @@
                     \spatialBus,   bSpat,
                     // Matrix mixer: this layer's live level.
                     \mixKickBus, ~bi.(\mixKick)
-                ], targetGrp) });
+                ] ++ (~voiceBusArgs.value ? []), targetGrp) });
             };
 
             // ── 2. PERC — tidal probability, not a polyrhythmic divisor ──────────
@@ -534,7 +804,42 @@
             // ~0.03 in the trough, which is the swell-and-thin the arcs exist
             // to produce. The transaction clause is kept — a burst of chain
             // activity should still be able to push through a trough.
-            percProb = ((1.6 / percDivisor) * tideDensity).clip(0.0, 0.9);
+            // ── Self-exciting, not uniform ─────────────────────────────────
+            // This was a fixed-probability coin per tick, and a Bernoulli
+            // process at constant p is the most PREDICTABLE thing a rhythm can
+            // be: statistically uniform, evenly sprinkled, no clusters and no
+            // gaps. It never surprises because there is nothing in it that
+            // could — every tick is independent of every other.
+            //
+            // ~percExcite is raised by a hit and decays back, so one strike
+            // makes the next few more likely and a silence deepens itself. The
+            // layer plays in gestures with real gaps between them instead of at
+            // an even density, and the phrase lengths are never the same twice
+            // because nothing sets them — they fall out of the process.
+            ~percExcite = (~percExcite ? 0) * 0.86;
+            // Publish it to the bed. Every live partial reads this bus and
+            // answers by its own amount — see \dronePartial — so a cluster of
+            // strikes brightens and swells the drone instead of sounding on top
+            // of an indifferent one.
+            if(~droneStrikeBus.notNil) { ~droneStrikeBus.set(~percExcite) };
+            // 1.6 -> 0.9. Self-excitation doubles the density on its own, and
+            // the ask was for a different SHAPE, not more notes. Measured over
+            // 2000 ticks: 198 hits against the uniform version's 212, with
+            // twice the clusters (40 runs of two or more against 21) and longer
+            // silences (147 ticks against 114). Same amount of material,
+            // arranged in gestures instead of sprinkled evenly.
+            percProb = (((0.9 / percDivisor) * tideDensity)
+                * (1 + (~percExcite * 1.9))
+                // Deepens the troughs: the floor is what makes a gap a gap.
+                * tideDensity.linlin(0, 1, 0.35, 1.0)
+                // …and the bed pushes back. A full ensemble thins the
+                // percussion; a sparse one invites it. The two layers TRADE
+                // rather than accumulate, which is most of what makes a pair of
+                // parts sound like they are listening to each other — and it
+                // costs nothing, because the density is already being tracked.
+                * ((~droneVoices ? []).size / (~droneMaxVoices ? 7))
+                    .clip(0, 1).linlin(0, 1, 1.30, 0.70)
+            ).clip(0.0, 0.92);
             if(percProb.coin or: {
                 (transactionInfluence > 0.6) and: { (0.12 * tideDensity).coin }
             }) {
@@ -567,8 +872,48 @@
                 // the layer sounds exactly as it did before any of this.
                 var speciesGain = 0.55
                     + ((~speciesPresence[speciesIdx] ? 0.5).clip(0, 1) * 0.9);
-                var baseFreq = (pitchPool.wrapAt(poolIdx)
-                    * ~speciesBand[speciesIdx]).clip(40, 900);
+                // About one hit in three lands on a tone the bed is actually
+                // HOLDING — not merely a note from the same scale, but the
+                // exact frequency of a partial currently sounding, folded up
+                // into the struck register. This is the strongest form of the
+                // coupling and the one that should be audible immediately: the
+                // strike excites something already there, so the resonance and
+                // the bed ring as one body instead of two.
+                //
+                // The other two hits in three come from the pool, which is now
+                // built on the same fundamental anyway — so the layer keeps its
+                // own melodic motion rather than becoming a bed follower.
+                var bedHz = if(0.34.coin) { (~droneVoiceHz ? ()).values.choose } { nil };
+                var baseFreq = (if(bedHz.notNil) {
+                        // Folded into the pool's OWN register. This used to
+                        // fold to 70 Hz and stop, which was written when the
+                        // perc lived an octave above the root; after the drop
+                        // it put every bed-struck hit above the entire pool, so
+                        // a third of the layer sat in a different band from the
+                        // rest — two registers alternating rather than one
+                        // instrument, and neither of them the one asked for.
+                        var f = bedHz;
+                        while({ f < 26 }, { f = f * 2 });
+                        while({ f > 105 }, { f = f * 0.5 });
+                        f
+                    } {
+                        pitchPool.wrapAt(poolIdx)
+                    } * ~speciesBand[speciesIdx]).clip(22, 900);
+                // Which BODY is struck, as opposed to which note. The seat
+                // decides it — so the five species are five instruments and not
+                // one instrument at five registers — and the counterparty's
+                // address signature nudges it, so the same seat answering a
+                // different actor is not quite the same object.
+                var bodySeed = ((speciesIdx / 4.0)
+                    + (((rs !? { rs[\addrSig] } ? 0) % 97) / 97.0 * 0.35)).wrap(0, 1);
+                // The p-locks for THIS strike. Appended after the bus arguments
+                // at every spawn site below, so the -1s override the buses —
+                // /s_new applies arguments in order, last one wins.
+                var lockArgs = ~percLocks.value(rs, transactionInfluence);
+                // A hit makes the next few more likely; the decay above lets
+                // the excitement fall away again. This is what turns an evenly
+                // sprinkled layer into one that plays in gestures.
+                ~percExcite = ((~percExcite ? 0) + 0.55).clip(0, 1.6);
                 poolIdx = if(rs.notNil and: { rs[\addrSig] > 0 }) {
                     ((rs[\addrSig] >> 2) + rs[\txIndex]) % pitchPool.size
                 } {
@@ -579,6 +924,7 @@
                 // it sounded in is what the browser's FREQ column reports.
                 ~speciesVotes[speciesIdx] = ~speciesVotes[speciesIdx] + 1;
                 ~speciesFreq[speciesIdx]  = baseFreq;
+                if(~lastVoiceAt.notNil) { ~lastVoiceAt[\perc] = now };
                 if(~visualsDest.notNil) {
                     // freq normalizada además del ataque: la percusión cambia
                     // de registro con la melodía y el visual debe seguirla.
@@ -587,6 +933,14 @@
                         (baseFreq / 900).clip(0, 1));
                 };
 
+                // One trig can become a burst — see ~percRetrig. Fired before
+                // the voicing bundle so the first repeat lands one interval
+                // after the main strike, not after the whole chord is placed.
+                ~percRetrig.value(rs, baseFreq, bodySeed, lockArgs,
+                    ~beatParams.masterAmp * (~beatParams.transportGain ? 1)
+                        * (0.2 + (transactionInfluence * 0.15)) * accent * speciesGain,
+                    transactionInfluence);
+
                 // ─ Voicing: single note, dyad, or triad based on texture control ─
                 // ONE bundle for the whole case: every voice of a dyad or triad
                 // must share the same jitter, or the chord arpeggiates itself.
@@ -594,10 +948,11 @@
                 case
                 { voicingMode == \single } {
                     // Single pitched note
-                    var percFreq = (baseFreq * rrand(0.95, 1.05)).clip(40, 900);
+                    var percFreq = (baseFreq * rrand(0.95, 1.05)).clip(22, 900);
                     Synth(\opalPerc, [
                         \out,          0,
                         \freq,         percFreq,
+                        \bodySeed,     bodySeed,
                         \amp,          ~beatParams.masterAmp * (~beatParams.transportGain ? 1) *(0.2 + (transactionInfluence * 0.15)) * accent * speciesGain,
                         \masterVolBus, bMVol,
                         \harmonicBus,  bHarm,
@@ -610,15 +965,16 @@
                         \spatialBus,   bSpat,
                         // Matrix mixer: this layer's live level.
                         \mixPercBus, ~bi.(\mixPerc)
-                    ], targetGrp);
+                    ] ++ (~voiceBusArgs.value ? []) ++ lockArgs, targetGrp);
                 }
                 { voicingMode == \dyad } {
                     // Two-note interval
                     2.do { |voice|
-                        var harmFreq = (baseFreq * ([1.0, 1.5][voice]) * rrand(0.98, 1.02)).clip(40, 900);
+                        var harmFreq = (baseFreq * ([1.0, 1.5][voice]) * rrand(0.98, 1.02)).clip(22, 900);
                         Synth(\opalPerc, [
                             \out,          0,
                             \freq,         harmFreq,
+                            \bodySeed,     bodySeed,
                             \amp,          ~beatParams.masterAmp * (~beatParams.transportGain ? 1) *(0.2 + (transactionInfluence * 0.15)) * accent * speciesGain * [1.0, 0.6][voice],
                             \masterVolBus, bMVol,
                             \harmonicBus,  bHarm,
@@ -631,7 +987,7 @@
                             \spatialBus,   bSpat,
                             // Matrix mixer: this layer's live level.
                             \mixPercBus, ~bi.(\mixPerc)
-                        ], targetGrp);
+                        ] ++ (~voiceBusArgs.value ? []) ++ lockArgs, targetGrp);
                     };
                 }
                 { voicingMode == \triad } {
@@ -641,10 +997,11 @@
                         // to the same ceiling \opalPerc enforces internally, so the
                         // harmonics thin toward the top instead of climbing away.
                         var harmFreq = (baseFreq * (h + 1)
-                            * resBdy.linexp(0.1, 0.8, 0.95, 1.15)).clip(40, 900);
+                            * resBdy.linexp(0.1, 0.8, 0.95, 1.15)).clip(22, 900);
                         Synth(\opalPerc, [
                             \out,          0,
                             \freq,         harmFreq,
+                            \bodySeed,     bodySeed,
                             \amp,          ~beatParams.masterAmp * (~beatParams.transportGain ? 1) *(0.2 + (transactionInfluence * 0.15)) * accent * speciesGain * (1.0 / (h + 1.5)),
                             \masterVolBus, bMVol,
                             \harmonicBus,  bHarm,
@@ -657,7 +1014,7 @@
                             \spatialBus,   bSpat,
                             // Matrix mixer: this layer's live level.
                             \mixPercBus, ~bi.(\mixPerc)
-                        ], targetGrp);
+                        ] ++ (~voiceBusArgs.value ? []) ++ lockArgs, targetGrp);
                     };
                 };
                 });
@@ -665,6 +1022,7 @@
 
             // ── 3. DUST — probability-based, not grid-locked ─────────────────────
             if((dustProb * tideDensity).coin) {
+                if(~lastVoiceAt.notNil) { ~lastVoiceAt[\dust] = now };
                 if(~visualsDest.notNil) {
                     ~visualsDest.sendMsg('/voice/dust',
                         (0.3 + (density * 0.35)).clip(0, 1));
@@ -682,7 +1040,7 @@
                     \spatialBus,   bSpat,
                     // Matrix mixer: this layer's live level.
                     \mixDustBus, ~bi.(\mixDust)
-                ], targetGrp) });
+                ] ++ (~voiceBusArgs.value ? []), targetGrp) });
             };
 
             // Broadcast current state to visuals bridge
@@ -768,6 +1126,7 @@
     });
     
     ~beatRoutine.play;
+    if(~droneEnsemble.notNil) { ~droneEnsemble.value };
 };
 
 // The 'Enhanced Beat Controls' window that used to live here is gone.

@@ -138,7 +138,7 @@ nw_wrld Electron browser  (parliament.html)
        └─ Slot A  Antifonía            (Three.js · fetched module) ───────┘
                   ├─ forward: /tide/state → chorus density, votes → the room
                   │           speaks, __ednaBio → per-stratum weight
-                  ├─ events:  calls → /sample/trigger → the field recordings
+                  ├─ events:  calls → /antifonia/call → SC picks the recording
                   └─ reverse: chorus → /soneth/texturedepth, spread →
                               spatialspread, machine share → noiselevel
 
@@ -173,6 +173,78 @@ instead of the room, and it sat in the same upper third the performance
 projects into. The binding it announced is the real one and it survives
 untouched: each slot still reads its own band of the spectrum and its own
 voice's onsets, per the table above.
+
+**And now they play it.** Each of the six was a listener: bound to one voice,
+reading that voice's band and onset, drawing what it heard. They also *speak*
+now, from their own structural events — the screen plays the instrument:
+
+| Slot | Voice | The structure's own event |
+|---|---|---|
+| 4 | DRONE | the reticule completes a full sweep → a sustained **partial** joins over the bed |
+| 5 | CAMPANAS | an edge forms — two nodes that were not connected now are |
+| 6 | PERCUSIÓN | a node arrives at its target — a rebalance has actually completed |
+| 7 | BOMBO | a target is acquired — a ray crosses a sweep |
+| 8 | POLVO | a layer overflows its own level — blocks spilling past the edge |
+| 9 | MUESTRAS | a hash collision — and *which* bucket collided picks the recording |
+
+**A slot plays the engine's voice, not a new instrument.** The first version made
+them separate: pitches from independent linear maps, envelopes from literals, spawns
+unbundled. They did not blend, and one of them did not move at all — `\elektronBell`
+clamps its fundamental to 28–180 Hz (`3_synthdefs.scd:241`), so a linear map to MIDI
+48–84 crossed the ceiling at tone 0.15 and **85 % of the range played one identical
+pitch**. Now:
+
+- the **pad** snaps to the semitone grid and octave-folds below 160 Hz the way the ETH
+  pads do, and is queued on `~padQueue` so the drain gives it `\polyComp` — spawning
+  direct made it up to 4.9× louder than a concurrent engine pad *and* corrupted the
+  engine's own `1/√n` compensation by staying invisible to `~padLive`;
+- the **perc** draws from `~computePitchPool` × `~speciesBand`, the engine's own mode,
+  rather than a continuous sweep that touched those notes by coincidence;
+- the **kick** walks the engine's seven discrete steps (45.5–54.5 Hz) and rings for its
+  0.9–1.3 s rather than clicking for 0.28;
+- everything spawns inside `s.makeBundle(s.latency, …)`, as every engine voice does.
+
+**Slot 4 adds a partial; it does not re-pitch the bed.** It used to call
+`~opalDroneSynth.set(\freq, …)` — a second owner of a node the beat engine walks every
+four bars, with no arbitration (`\drone` is the one voice the engine never stamps into
+`~lastVoiceAt`). On a 4-second glide (`droneFade × 2`) the bed spent most of its life in
+transit and never arrived. It now spawns its own low-amplitude `\opalDrone`, capped at
+two concurrent and released after nine seconds. One owner each.
+
+**A slot speaks on an EXCURSION, not on a change.** These counts jitter every
+frame — slot 6 adds `Math.random()` to node positions on the line after it counts
+which nodes have arrived, so "arrived" is frame noise by construction. A naive
+"has it risen since last time?" is therefore true whenever the rate gate reopens,
+and the gate stops being a limit and becomes the clock: measured, slot 6 fired
+8×/s (a vibration) and slot 7 at a dead-steady ~83 BPM (a drum machine). Neither
+was the structure speaking; both were the rate limiter. Each slot now runs a
+Schmitt trigger on a slow baseline — the measure has to rise ~35% above what it
+has lately been doing, and come back down before it can speak again. Measured
+after: 0.05–1.35 onsets/s, irregular.
+
+**The slot does not decide whether the note happens.** The beat engine already
+owns when kick, perc and dust speak, and the ETH handler owns the bell; a slot
+deciding the same thing would be a second owner of one rule, which is the
+failure this codebase keeps having to undo — the seven `/rhythm/` toggles that
+were removed for it, the tide exclusivity enforced in exactly one place.
+
+So a slot *requests*, on `/slot/voice [voiceIdx, amp, tone]`, and
+`15_slot_voices.scd` decides. Both the engine and the scheduler stamp one shared
+onset clock, `~lastVoiceAt`, and a request landing inside a voice's minimum gap
+is dropped rather than layered. A slot can therefore only speak where the engine
+has left room — the pulse stays the engine's, the punctuation is the slot's.
+Measured: a runaway emitter at 100 requests/second is capped to 13.7 onsets/s on
+`dust`, and a slot asking for a kick immediately after the engine fired one is
+refused.
+
+Gaps are set by what the voice is *for*, not by taste: `drone` 6 s (a re-pitch
+is structural), `dust` 0.07 s (granular, it should be able to swarm), `sample`
+1.6 s (these are 30-second field recordings, and two a second is a collage).
+`/slot/voices/enable 0` puts all six back to listening without unmounting them.
+
+> **The trigger never comes from audio.** A slot firing its own voice from its
+> own band energy is a feedback loop — it would play because it is playing.
+> Every emitter is driven by the simulation, which is also the whole point.
 
 **They react to the sound, not to the intention.** `\masterScope` analyses the
 master bus *after* the limiter and sends 16 log-spaced bands at 20 Hz — that had
@@ -609,21 +681,62 @@ them. When the tide rises the forest speaks; when it falls, the machine holds
 the air. That inversion is literal: anthropophony's spawn weight is driven by
 `(1 - tide)`.
 
-**It really sounds.** Calls fire the seven field recordings in
-`10_sample_system.scd` through `/sample/trigger`, each opened in that call's
-frequency band and panned by its position.
+**It really sounds — and now with the forest's own voice.** A call goes out on
+`/antifonia/call`, and **SuperCollider chooses the recording** (`16_corpus_calls.scd`).
+
+Twelve sources shared seven MP3s: four species split the *aves* bed alone, and
+LLUVIA and VIENTO carried `smp: -1`, drawn on screen and never sounding at all.
+The corpus built from the AudioMoth survey holds 261 clips of the actual site,
+and slot A could not reach any of it — the ring in `14_phenological_corpus.scd`
+plays that material on the 365-day calendar, which is a calendar and not a call.
+
+The bank now carries **116 two-second grains** (already cut by `build_corpus.py`
+from each ring day's highest-confidence events) and **six geophony stems**, so
+rain and wind finally have a recording. ≈114 MB resident.
+
+**The species→role map lives in SuperCollider**, because the corpus carries
+ecological roles and *no taxonomy* — that is the same fact that makes Article
+43's bancadas role-labelled. A call therefore says *who* is speaking and *at what
+hour*; SC decides which recording answers:
+
+| Source | answers from |
+|---|---|
+| aullador · rana · murciélago | `nocturnal_voice` (the bat weighted toward clips that carry ultrasound) |
+| chicharra · arriera | `insect_chorus` |
+| aves · oropéndola · paujil | `dusk_` / `dawn_chorus_participant` |
+| **lluvia · viento** | **geophony stems** |
+| avión · cinta | their MP3s — the corpus has no anthropophony to offer |
+
+Selection weights confidence against **hour proximity on a 24-hour ring**, through
+a Gaussian of σ ≈ 3 h, about the width of a dawn chorus. A linear falloff was
+tried first and does not work: it spans only 5× across the whole clock, and the
+corpus is so nocturnal that the mass of far clips outvoted the near ones — a call
+at 20 h still drew a median grain from 03 h. The Gaussian gives ~8×, which is the
+difference between a preference and a rounding error.
+
+**Article 47 is enforced before the clip is chosen and again in the voice.**
+`opacityFloor` (CC 15) filters the eligible pool exactly as it does for the ring,
+and `samplePlayer*` now carries the same veil `\corpusVoice` has always had —
+that SynthDef had *none*, so routing recorded material through it would have
+sounded what the Chamber had withheld. Measured: floor 0 admits 114 of 122 corpus
+entries, 0.5 admits 73, 0.8 admits 23.
 
 A call **opens a window into** the recording rather than truncating it. Five of
-the seven files are 51–360 s soundscape beds, not isolated calls, so a call's
+the seven MP3s are 51–360 s soundscape beds, not isolated calls, so a call's
 duration shapes an envelope — attack, hold, release — over an excerpt taken from
-a varying offset. The two short files (ranas 4.9 s, oropéndola 6.2 s) still read
-whole. Previously the duration was a hard `.free`, which cut a 51-second howler
-after 3% of itself with no release at all: a broadband click on every call, and
-because the reverb and delay live *inside* the voice, the acoustic space vanished
-with it. Geophony sources are drawn but
-silent — there is no rain or wind recording yet — and the HUD says so out loud
-rather than letting the gap disappear. Adding one is a file in `samples/` and a
-line in `~samplePaths`.
+a varying offset. Previously the duration was a hard `.free`, which cut a
+51-second howler after 3% of itself with no release at all: a broadband click on
+every call, and because the reverb and delay live *inside* the voice, the acoustic
+space vanished with it.
+
+> **The envelope now has to fit the recording.** Its span is atk+hold+rel ≈ 2.15 ×
+> the hold, and that span was never computed anywhere — survivable while every
+> file ran 51–360 s, wrong the moment a 2-second grain arrived: it became two
+> seconds of forest followed by eight of silence holding one of twelve voices.
+> The span is built explicitly now and scaled to the material when it overruns.
+> Which also makes true, at last, what this section always claimed: the two short
+> MP3s (ranas 4.9 s, oropéndola 6.2 s) are heard **whole**. They were not — a
+> 10.75 s envelope over a 6.2 s file ran off its own end.
 
 Only biophony is published to `__activeSpecies`: rain is not a species and
 neither is an aircraft, and that field feeds the parliament's living census and
@@ -740,6 +853,21 @@ becomes true at boot and stays true through a dead feed:
 | **MIDI** | a device is enumerated — stays lit through a dead cable | `~lastMidiTime` within 5 s, any CC |
 | **BRIDGE RX** | `~lastBrowserOscTime` within 5 s | unchanged — the only one that was ever live |
 
+**The knob grid is seven across.** Four performance rows of 5/5/5/6 became three of
+seven — the Cámara row already proved seven fits (7 × 132 px cells + gaps + margins =
+992 px inside 1100) — and `phenoRate` joined the Cámara row to make it seven too. Seven
+rows became six.
+
+**`bancada` is a button row, not a knob.** It is the last stepped spec that was still a
+Knob, and a Knob cannot serve one here: `~makeKnob` rebuilds the `ControlSpec` from
+`(min, max, warp)` and **drops the step**, `~setParam` re-quantises against the real spec
+and writes the rounded value back into the widget, and a `\vert`-mode Knob drags
+*relative to its current value*. So the write-back reset the accumulator on every mouse
+event, and crossing into position 1 needed 0.125 normalised in a single event — about
+16 px between two consecutive Qt moves. The knob was not sending nothing; it was sending
+0, repeatedly. MIDI CC 16 and the browser's five buttons were always fine. Five radio
+buttons now, reconciled from the bus at 2 Hz so every source relights them.
+
 **Row 5, the Cámara Fenológica, is tinted amber.** It is the one bench whose
 controls change *who speaks* rather than how the engine sounds. The tint marks
 the row; it does not restart the hue-as-state habit the rewrite removed.
@@ -766,6 +894,111 @@ browser laserTap ──WS:3337──► laser-bridge.js ──USB──► Helio
 **Frame source** (`src/projector/laserTap.ts`, started by `parliamentEntry.init`):
 1. `window.__laserFrame` — any module may publish its own vector scene.
 2. **slot-P default** — the phenological **year-ring** + a marker at today's active species (`window.__activeSpecies`). A **sensitive** species is *not* drawn: the opacity clause (Glissant) extended into physical space — the vulnerable being is never cast onto the real forest.
+
+### What gets projected: the pulsar plot
+
+Stacked ridgelines — the *Unknown Pleasures* / B1919+21 image. Successive observations of the same object drawn one above another, so a pattern invisible in a single pass emerges from the stack. `pulsarPlot.ts` publishes `window.__laserFrame`, which `laserTap.ts` already prefers over its year-ring default.
+
+**Four sources**, ticked independently from the SC GUI (`/laser/src/*`, registry-backed so presets carry them). Each draws in its own hue so a mixed stack stays legible. **With none ticked the year ring returns** — that is how the ring stays reachable without a control of its own.
+
+| Tick | One row is | Hue |
+|---|---|---|
+| `MIX` | a spectrum snapshot of everything sounding | green |
+| `CORPUS` | the same, over the corpus bus alone — the forest's own voice | amber |
+| `DÍA` | the corpus spectrum measured while a `/pheno/clip` day is sounding | blue |
+| `CHAIN` | a block's worth of transactions; x is arrival order, height is the bid | red |
+
+Article 47 is carried, not re-litigated: an opaque clip is never announced, and a **sensitive** species contributes no row at all — the same refusal `laserTap.ts` already makes for the ring.
+
+#### Why six rows, and why serpentine
+
+The galvo limits make this a **path-length** problem. Every point is scanned `FRAME_HZ` times a second, so a frame gets a fixed quantity of ink:
+
+```
+ink per frame = OMEGA_MAX / FRAME_HZ / deg_per_unit
+              = 10000 / 30 / 22.5  =  14.8 normalised units
+```
+
+A full-width row costs ~1.5 units before it wiggles. **The album's 80 rows would need ~420 units.** Six is the ceiling, so the depth of the stack lives in *time* — the plot scrolls, and the pattern emerges for someone who watches rather than glances.
+
+Two things are load-bearing rather than stylistic:
+
+- **Serpentine scanning.** Drawing every row left-to-right means retracing the full width between them, and the mirror travels that whether the beam is on or not. Measured: 19.36 units, **131 % of budget → whole frame blanked**. Alternating direction makes the only inter-row move the row step. Serpentine: 12.03 units, 81 %.
+- **Arc-length sampling.** Spacing points evenly in *x* and sizing that spacing to the step limit leaves nothing for the vertical component, so every sloped segment exceeds the limit and gets interpolated. Measured: a 516-point frame became **1041**, and a path using only 77 % of the ink budget hit **128 %** of the point budget and was blanked.
+
+The generator is **self-budgeting** — it sheds the oldest row until the frame fits, *before* sending. Auto-blanking is a safety net, and content that lands in the net is content that is not being projected. Measured end to end: 646 points, **81 % scan budget, 0 over-speed, nothing blanked**.
+
+### Scanner limits (Unity RAW 1.7 W, DMX + ILDA)
+
+A laser projector is driven **by a waveform**: at the DAC's point rate each point is one sample, X on the left channel and Y on the right. The limits below come from the fixture datasheet, and every one is an env var.
+
+`Scan Speed 30 kpps @ 8°` is a **rate–angle pair, not a rate**. A scanner that tracks 30 000 points/s across 8° cannot track 30 000 points/s across 45° — the mirror has five times as far to travel per point. So the step limit is derived from an angular-velocity ceiling rather than picked:
+
+```
+OMEGA_MAX  = RATED_ANGLE × RATED_PPS / TRAVERSE_PTS    =  8° × 30000 / 24  =  10 000 °/s
+MAX_STEP   = OMEGA_MAX / pps / (SCAN_ANGLE / 2)        ≈  0.0185 at 24 kpps
+```
+
+`TRAVERSE_PTS` is the one figure the datasheet does not publish (the ILDA test pattern's point count) and is set deliberately low, putting the ceiling at the **bottom** of the range a 30 K scanner is credited with.
+
+| Env | Default | Source |
+|---|---|---|
+| `LASER_PPS` | `24000` | derated to 80 % of the rating; clamped to `LASER_RATED_PPS` |
+| `LASER_RATED_PPS` | `30000` | *Scan Speed 30 kpps @ 8°* |
+| `LASER_RATED_ANGLE` | `8` | the angle that rating is quoted at |
+| `LASER_SCAN_ANGLE` | `45` | *Scan Angle 45°*, full field |
+| `LASER_TRAVERSE_PTS` | `24` | modelling constant — lower = more headroom |
+| `LASER_POWER_W` | `1.7` | *Power > 1.7 W* |
+| `LASER_BEAM_MM` / `LASER_DIVERGE` | `5` / `1.1` | *Beam 5 × 3 mm*, *< 1.1 mrad* |
+| `LASER_THROW_M` / `LASER_DWELL_MS` | `10` / `1.0` | projection distance; dwell window |
+| `LASER_MAX_STEP` | *(unset)* | override only — unset, it is computed above |
+
+**Dwell** is physical, not a guessed epsilon: the beam must clear **its own width** at the throw distance within `LASER_DWELL_MS`, or successive points are landing in the same spot.
+
+### Auto-blanking
+
+Interpolation makes most jumps survivable but cannot make *every* frame compliant — `LASER_MAX_POINTS` and the scan budget are hard ceilings. Past them the beam is **switched off** rather than projected, targeted wherever targeting is meaningful:
+
+| Fault | Response |
+|---|---|
+| **over-speed** | blank the point being jumped to — the mirrors still travel the gap, but dark. Does *not* repair the mechanical over-command, so the raw count is still reported separately. |
+| **dwell** | once a stationary unblanked run reaches `LASER_DWELL_MS`, the rest of it is blanked. The one case where blanking removes the hazard outright. |
+| **budget > 100 %** | cannot be targeted — no subset is being drawn at the rate it was authored for. **The whole frame goes dark.** |
+
+Held for `LASER_BLANK_HOLD_MS` (250 ms) after the last fault, so a frame sitting on the threshold cannot strobe the beam at the frame rate. Disable with `LASER_SAFE_BLANK=0`.
+
+The scope reports what was **done** separately from what was **measured** — a dwell of 0 because the beam was switched off is a different fact from a dwell of 0 because nothing ever stopped moving. Verified:
+
+```
+gentle   300 pts   679/10000 deg/s   field 2.7 deg   budget  56%   within scanner spec
+parked   400 pts     0/10000 deg/s   dwell 958 us                  BLANKED 376 parked pts
+dense   1200 pts   budget 225%                                     BLANKED — needs 54000 pps
+```
+
+### Galvo-safety scope (SC GUI, right-hand column)
+
+`laser-bridge.js` sends `/laser/scope` to sclang at 12 Hz carrying the frame **after** sanitisation — the signal the DAC actually receives. The SC GUI draws it in a fixed **452 px column beside the scroll area** (window 1570 px), so it stays readable while the hands are on the knobs; the scope itself is 440 × 847. Three labelled lanes: **X**, **Y**, and **STEP / LIMIT** — a step limit is a limit on *slope*, so velocity is what the scope has to show, and it is not the same kind of quantity as the two above it. Decimated buckets carry the **worst** step inside them, never the step between surviving points.
+
+Two lamps, in the same visual language as the feed lights but without their age column (neither is a feed whose silence means anything):
+
+| Lamp | Lit when |
+|---|---|
+| **DAC** | the bridge has bound a real Helios. Dry run *and* no-bridge both read dark — in neither case is anything reaching a laser. |
+| **BLANK** | the beam is down right now. Follows the bridge's own `LASER_BLANK_HOLD_MS` window, not the frame that tripped it: a 250 ms blanking reported for one 12 Hz frame would flash for 80 ms and be missed. |
+
+Both go dark when the bridge stops speaking — an unlit BLANK must never be readable as *not blanking* when in truth nothing is being projected at all.
+
+Four states, all reachable:
+
+| Condition | Reads |
+|---|---|
+| Within spec | `9274 / 10000 deg/s`, scan budget `48 %` |
+| Frame wider than the rating | `field 31.5 deg (rated 8.0)` → *wide field* |
+| Beam stopped moving | `BEAM PARKED 13.3 ms` |
+| Too dense to scan | `budget 180 %`, residual `OVER-SPEED ×460` |
+| Bridge absent | `no bridge` — never "compliant" |
+
+> **Not a safety system.** This is a **Class 4** fixture (> 1.7 W RGB). People are protected by the interlock, E-stop, key, aperture mask, the fixture's own Scan Guard, beam-path design and trained operation. The scope keeps the engine inside the scanner's published *mechanical* envelope and makes loss of beam motion visible. It does not make anything eye-safe.
 
 ---
 

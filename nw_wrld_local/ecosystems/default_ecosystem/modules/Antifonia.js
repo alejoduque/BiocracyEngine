@@ -2075,18 +2075,24 @@ class Antifonia extends BaseThreeJsModule {
     if (this.niche.length > Antifonia.NICHE_KEEP) this.niche.shift();
 
     this._fired += 1;
-    if (src.smp < 0) {
-      // Geofonía sin grabación: se dibuja, no suena, y se cuenta aparte para
-      // que el HUD pueda decirlo.
-      this._silentFired += 1;
-      return;
-    }
+    // smp < 0 —lluvia y viento— ya NO retorna aquí. Sigue sin haber MP3 para
+    // la geofonía, pero el corpus sí tiene stems de geofonía, y quien elige es
+    // SuperCollider (16_corpus_calls.scd): la llamada se encola con smp -1 como
+    // respaldo y el motor decide si puede contestar. El contador de silencio se
+    // mantiene: si SC tampoco tiene bed cargado, la llamada se dibuja y no
+    // suena, que es exactamente lo que este contador siempre midió.
+    if (src.smp < 0) this._silentFired += 1;
 
     // A la cola para el puente. El módulo no habla OSC — expone y el puente
     // drena, igual que el resto de los slots.
     if (this._pending.length < 24) {
       this._pending.push({
         smp: src.smp,
+        // Quién habla y a qué hora. El corpus no lleva taxonomía —lleva roles
+        // ecológicos— así que la correspondencia especie→rol vive en SC, donde
+        // ya está el manifiesto. Aquí sólo se dice de qué escaño sale la voz.
+        src: Antifonia.SOURCES.indexOf(src),
+        hr: this.hour,
         amp: 0.30 + this.ctl.vol * 0.45,
         rate: src.rate,
         // La banda de la llamada abre la grabación en esa ventana en vez de

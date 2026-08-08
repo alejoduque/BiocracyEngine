@@ -100,6 +100,11 @@
     // Level of the field-recording layer against the synthesis. Its own fader
     // because the corpus is a fourth actor, not an effect on the other three.
     (name: \corpusLevel,       spec: ControlSpec(0, 1, \lin),       default: 0.5,  path: "/pheno/corpusLevel",       cc: 22),
+    // How much of the chain's own behaviour is allowed to act on the forest
+    // recordings. 0 is the corpus untouched; 1 is fully processed by what the
+    // chain is doing — see 17_chain_processing.scd for why this is the shape
+    // the coupling takes rather than the chain playing notes.
+    (name: \chainProcess,      spec: ControlSpec(0, 1, \lin),       default: 0.45, path: "/chain/process",           cc: 23),
 
     // ── Row 8: Matrix mixer — one live fader per audible layer ──────────
     // Until now the balance between layers lived only in the hardcoded gain
@@ -142,10 +147,35 @@
     // Independent axis: the sub-bass heartbeat, one per block, surviving the
     // troughs the tide would otherwise empty.
     (name: \tidePulse, spec: ControlSpec(0, 1, \lin, 1), default: 1, path: "/tide/pulse",
-        hasBus: false, beatParam: \tidePulse, cc: 20)
+        hasBus: false, beatParam: \tidePulse, cc: 20),
+
+    // ── Laser · which source feeds the pulsar plot ──────────────────────
+    // Four independent ticks rather than one selector, because the stack can
+    // carry several at once — each source has its own hue, so a mixed stack
+    // stays legible. With none ticked the laser falls back to the year ring,
+    // which is how that pattern stays reachable without a control of its own.
+    //
+    // hasBus: false — nothing in SuperCollider reads these. They exist to be
+    // echoed to the browser, where the plot is drawn; routing them through the
+    // registry is what gives them a GUI toggle, an OSC path, preset save/load
+    // and the browser echo for free, on the one write path.
+    (name: \laserSrcMix,    spec: ControlSpec(0, 1, \lin, 1), default: 1,
+        path: "/laser/src/mix",    hasBus: false),
+    (name: \laserSrcCorpus, spec: ControlSpec(0, 1, \lin, 1), default: 0,
+        path: "/laser/src/corpus", hasBus: false),
+    (name: \laserSrcRing,   spec: ControlSpec(0, 1, \lin, 1), default: 0,
+        path: "/laser/src/ring",   hasBus: false),
+    (name: \laserSrcChain,  spec: ControlSpec(0, 1, \lin, 1), default: 0,
+        path: "/laser/src/chain",  hasBus: false)
 ];
 
 // ─── Derived lookup tables ──────────────────────────────────────────────────
+// Shared voice-onset clock. Declared here, in the first file loaded, because
+// three files write it (5_beat_engine, 6_osc_handlers, 10_sample_system) and a
+// fourth arbitrates on it (15_slot_voices) — whoever runs first must not have
+// to care whether it exists yet.
+~lastVoiceAt = ~lastVoiceAt ?? { () };
+
 ~paramDefsByName = ();
 ~paramDefs.do { |def| ~paramDefsByName[def[\name]] = def };
 
@@ -246,7 +276,7 @@
         };
 
         // 6 · bridge liveness (BRIDGE status light in the main GUI)
-        if(source == \osc) { ~lastBrowserOscTime = SystemClock.seconds };
+        if(source == \osc) { ~lastBrowserOscTime = Main.elapsedTime };
 
         // 7 · mark state dirty for the 30 s autosaver
         ~stateDirty = true;

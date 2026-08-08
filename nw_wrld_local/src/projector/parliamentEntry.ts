@@ -11,6 +11,7 @@ import {
 } from "./phenology/breath";
 import { initSwitcher, getActiveThreeStage, updateSpeciesRoster } from "./visualizationSwitcher";
 import { initLaserTap } from "./laserTap";
+import { initPulsarPlot, pushRow, setPulsarSource, type PulsarSource } from "./pulsarPlot";
 import { startVizMotion } from "./vizMotion";
 import { publishScAudio, noteVoiceOnset, tickScAudio, type ScAudio } from "./scAudio";
 import { fetchSpeciesRoster, computeIUCNMults } from "./speciesFetcher";
@@ -52,6 +53,16 @@ const phenoParams: Record<string, number> = {
 (window as unknown as { __phenoParams?: Record<string, number> }).__phenoParams = phenoParams;
 
 // ─── OSC bridge WebSocket ───
+// ─── Pulsar plot feeds ──────────────────────────────────────────────────────
+// The most recent corpus spectrum, held so that a /pheno/clip announcement can
+// be drawn as an OBSERVATION of that day rather than as a shape invented from
+// the clip's metadata.
+let lastCorpusBands: number[] | null = null;
+// Transactions arriving between blocks. Emitted as one row when the burst goes
+// quiet, so a row is a block's worth of chain activity rather than a single tx.
+const chainBurst: number[] = [];
+let chainTimer: ReturnType<typeof setTimeout> | null = null;
+
 let controlWS: WebSocket | null = null;
 let controlWsReady = false;
 
@@ -198,7 +209,53 @@ function connectControlWS() {
           };
           if (typeof w.__onScSpectrum === "function") w.__onScSpectrum(bands);
           publishScAudio(bands);
+          // …and one row of the pulsar plot. Throttled inside pushRow: SC sends
+          // 20 spectra a second and the stack is six deep, so unthrottled the
+          // whole plot would turn over three times a second and read as noise
+          // rather than as successive observations.
+          pushRow("mix", bands);
         }
+        return;
+      }
+
+      // The same analysis over the corpus bus alone — the forest's own voice,
+      // with the synth layers kept out of the image. New address, so it needed
+      // a handler here; the bridge forwards unknown paths untouched.
+      if (address === "/spectrum/corpus") {
+        const bands = args.filter((a: unknown) => typeof a === "number") as number[];
+        if (bands.length >= 8) {
+          lastCorpusBands = bands;
+          pushRow("corpus", bands);
+        }
+        return;
+      }
+
+      // Which sources feed the plot. Ticked from the SC GUI, routed through the
+      // parameter registry, so preset save/load carries them like every other
+      // control.
+      if (address.startsWith("/laser/src/")) {
+        const src = address.slice("/laser/src/".length) as PulsarSource;
+        setPulsarSource(src, (Number(args[0]) || 0) > 0.5);
+        return;
+      }
+
+      // One row per recorded day. The clip key is a STRING, and the generic
+      // /pheno/ branch below requires a numeric first argument — which is why
+      // this message has been arriving and being dropped on the floor since it
+      // was added. Handled before that guard now.
+      //
+      // The row is the corpus spectrum measured while the clip is sounding,
+      // rather than a shape invented from the clip's metadata: what gets drawn
+      // should be an observation of that day, which is the whole conceit.
+      //
+      // Article 47: an opaque clip is never announced at all (the sender omits
+      // it), and a sensitive species is not drawn either — the same refusal
+      // laserTap already makes for the year ring, carried here rather than
+      // re-litigated.
+      if (address === "/pheno/clip") {
+        const sens = (window as unknown as { __activeSpecies?: { sensitive?: boolean } })
+          .__activeSpecies;
+        if (!sens?.sensitive && lastCorpusBands) pushRow("ring", lastCorpusBands);
         return;
       }
       // Per-voice ONSETS. The spectrum says what is being heard; these say
@@ -208,6 +265,21 @@ function connectControlWS() {
       if (address.startsWith("/voice/")) {
         const name = address.slice("/voice/".length);
         noteVoiceOnset(name, Number(args[0]) || 0, Number(args[1]) || 0);
+        // The pad is the transaction voice — one pad per transaction, straight
+        // out of ~handleTransaction. Collecting them and emitting a row when
+        // the burst ends makes each row a block's worth of activity: position
+        // along the row is order of arrival, height is what that transaction
+        // bid. The chain observed one rotation at a time.
+        if (name === "pad") {
+          chainBurst.push(Number(args[0]) || 0);
+          if (chainBurst.length > 64) chainBurst.shift();
+          if (chainTimer !== null) clearTimeout(chainTimer);
+          chainTimer = setTimeout(() => {
+            chainTimer = null;
+            if (chainBurst.length >= 2) pushRow("chain", chainBurst.slice());
+            chainBurst.length = 0;
+          }, 900);
+        }
         return;
       }
 
@@ -817,6 +889,7 @@ async function init() {
   // active-species marker) to the forest laser. No-op + quiet retry if the
   // laser-bridge isn't running, so it's safe to always start.
   initLaserTap();
+  initPulsarPlot();
 
   // ─── Build eDNA control rows ───
   // Only the site the Reserva actually occupies gets a slider. The other seven

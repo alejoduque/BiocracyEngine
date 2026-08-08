@@ -78,20 +78,28 @@ s.doWhenBooted({
             var fullPath = thisProcess.nowExecutingPath.dirname +/+ path;
             "Loading sample %: %".format(i + 1, ~sampleNames[i]).postln;
             
+            // Counted on ATTEMPTS, not on successes. This used to advance only
+            // in the success branch and fire ~createSampleSynths on
+            // ~loadedSamples == ~samplePaths.size, so a single unreadable file
+            // meant the counter never reached the total and ~triggerSample and
+            // the whole /sample/* OSC surface were never created at all — the
+            // layer did not degrade, it vanished, and the only trace was one
+            // error line among the boot log.
             ~sampleBuffers[i] = Buffer.read(s, fullPath, action: { |buf|
                 if(buf.notNil) {
-                    ~loadedSamples = ~loadedSamples + 1;
                     "✓ Loaded %: % frames, % channels".format(
                         ~sampleNames[i], buf.numFrames, buf.numChannels
                     ).postln;
-                    
-                    if(~loadedSamples == ~samplePaths.size) {
-                        "All samples loaded successfully!".postln;
-                        ~createSampleSynths.value;
-                        "Sample trigger functions are now available.".postln;
-                    };
                 } {
-                    "✗ Failed to load %".format(path).error;
+                    "✗ Failed to load % — that index will be silent".format(path).error;
+                };
+                ~loadedSamples = ~loadedSamples + 1;
+                if(~loadedSamples == ~samplePaths.size) {
+                    "Sample loading finished (% of % available).".format(
+                        ~sampleBuffers.count(_.notNil), ~samplePaths.size
+                    ).postln;
+                    ~createSampleSynths.value;
+                    "Sample trigger functions are now available.".postln;
                 };
             });
         };
@@ -139,7 +147,19 @@ s.doWhenBooted({
             // Matrix mixer: this layer's live level (0 = mute, 1 = unity).
             // Passed explicitly at the spawn site — ~triggerSample auto-wires
             // ~sampleBuses, which is a different collection from ~buses.
-            mixSampleBus=(-1);
+            mixSampleBus=(-1),
+            // ── Article 47 ──────────────────────────────────────────────
+            // Opacity of THIS recording, compared against the floor. The seven
+            // MP3s in samples/ are the artist's own material and carry 0, so
+            // nothing changes for them; the corpus grains carry the habitat
+            // score from corpus/manifest.json and can be withdrawn.
+            //
+            // This voice had no such gate at all, which was survivable only
+            // for as long as nothing from the corpus could reach it. The
+            // clause was enforced in three places in 14_phenological_corpus.scd
+            // and in none here, so routing a recorded clip through this
+            // SynthDef would have sounded material the Chamber had withheld.
+            opacity=0.0, opacityFloorBus=(-1);
 
             var sig, grains, wet, stretchAmount, distance, distanceAmp, quadSig, env;
 
@@ -156,6 +176,11 @@ s.doWhenBooted({
             var controlHPF = Select.kr(highPassBus >= 0, [hpf, In.kr(highPassBus, 1)]);
             var controlFilterRes = Select.kr(filterResBus >= 0, [filterRes, In.kr(filterResBus, 1)]);
             var controlPan = Select.kr(samplePanBus >= 0, [pan, In.kr(samplePanBus, 1)]);
+            var floorVal = Select.kr(opacityFloorBus >= 0, [0.0, In.kr(opacityFloorBus, 1)]);
+            // Same construction as \corpusVoice: a clip whose opacity exceeds
+            // (1 - floor) is withdrawn. It does not fade out expressively, it
+            // simply stops being available. The 0.02 lag is anti-click only.
+            var veil = Lag.kr((opacity < (1.0 - floorVal)).max(0), 0.02);
             var sampleSpatialX = Select.kr(sampleSpatialXBus >= 0, [spatialX, In.kr(sampleSpatialXBus, 1)]);
             var sampleSpatialY = Select.kr(sampleSpatialYBus >= 0, [spatialY, In.kr(sampleSpatialYBus, 1)]);
             var roomSizeParam = Select.kr(roomSizeBus >= 0, [0.8, In.kr(roomSizeBus, 1)]);
@@ -173,7 +198,12 @@ s.doWhenBooted({
             // muestras disparadas desde los botones de la GUI —que no pasan
             // duración— quedaban como nodos vivos y mudos consumiendo CPU
             // hasta un STOP ALL.
-            sig = PlayBuf.ar(numCh, buf, finalRate,
+            // BufRateScale, which \corpusVoice has always applied and this did
+            // not: it is 1.0 only while the buffer's rate equals the server's.
+            // The seven MP3s and the corpus FLACs are all 48 kHz, so this is a
+            // no-op today and a ~9% detune the first time the server boots at
+            // 44.1 kHz.
+            sig = PlayBuf.ar(numCh, buf, finalRate * BufRateScale.kr(buf),
                 startPos: startPos.clip(0, 0.999) * BufFrames.kr(buf),
                 loop: loop, doneAction: 0);
             // Ensure stereo
@@ -229,7 +259,7 @@ s.doWhenBooted({
                 doneAction: 2
             );
 
-            sig = sig * env * controlAmp.clip(0, 1) * distanceAmp.clip(0.1, 1)
+            sig = sig * env * controlAmp.clip(0, 1) * distanceAmp.clip(0.1, 1) * veil
                 * (~trimSample ? 0.0853)
                 * Lag.kr(Select.kr(mixSampleBus >= 0, [1.0, In.kr(mixSampleBus, 1)]), 0.08);
 
@@ -284,8 +314,8 @@ s.doWhenBooted({
         // Create sample trigger functions
         // `overrides` is an Event of BUS KEYS (e.g. (lowPass: 4000, samplePan: -0.3)).
         ~triggerSample = { |index, duration=nil, overrides=nil|
-            var sampleName, synthArgs, newSynth, defName, buf, ov;
-            var bufSecs, holdSecs, startFrac;
+            var sampleName, synthArgs, newSynth, defName, buf, ov, meta;
+            var bufSecs, holdSecs, startFrac, envSpan, envAtk, envHold, envRel;
             ov = overrides ? ();
             if(index < ~sampleBuffers.size and: { ~sampleBuffers[index].notNil }) {
                 buf = ~sampleBuffers[index];
@@ -308,12 +338,48 @@ s.doWhenBooted({
                 // blip against material this long and gives the layer nothing
                 // to sustain — the samples announced themselves and vanished
                 // instead of becoming part of the air.
-                holdSecs = if(duration.notNil, { duration.max(5.0) }, { bufSecs });
+                holdSecs = if(duration.notNil,
+                    { duration.max(5.0).min(bufSecs) },
+                    { bufSecs });
+
+                // ── The envelope has to fit inside the recording ────────────
+                // Built here rather than inline in synthArgs, because its SPAN
+                // is what has to fit the buffer and the span was never computed
+                // anywhere: atk+hold+rel comes to 2.15 x holdSecs, so the hold
+                // is under half of what the node actually costs. That was
+                // survivable while every recording ran 51-360 s. The bank now
+                // holds 2-second corpus grains, and PlayBuf holds its last
+                // frame when it runs out (doneAction 0 — the envelope owns the
+                // node), so a grain was two seconds of forest followed by eight
+                // of silence occupying one of twelve voices.
+                //
+                // The floors are scaled for short material too. A 1.2 s minimum
+                // release is longer than half a grain.
+                envAtk  = (holdSecs * 0.35).clip(0.15.min(bufSecs * 0.10), 3.0);
+                envHold = (holdSecs * 0.70).clip(0.05, 600);
+                envRel  = (holdSecs * 1.10).clip(1.2.min(bufSecs * 0.30), 12.0);
+                envSpan = envAtk + envHold + envRel;
+                // And if the shape still overruns — which the clip ceilings can
+                // cause either way — scale it to the material rather than let it
+                // run past the end. Proportional, so the gesture keeps its
+                // shape: still a long attack and a release longer than the hold.
+                if(envSpan > bufSecs) {
+                    envAtk  = envAtk  * (bufSecs / envSpan);
+                    envHold = envHold * (bufSecs / envSpan);
+                    envRel  = envRel  * (bufSecs / envSpan);
+                    envSpan = bufSecs;
+                };
+
                 // El arranque varía por disparo, salvo que quepa entera: las
                 // dos grabaciones cortas (ranas, oropéndola) se oyen completas,
                 // las largas se abren por un sitio distinto cada vez.
-                startFrac = if(holdSecs >= (bufSecs * 0.9), { 0 },
-                    { rrand(0.0, (1 - ((holdSecs + 0.6) / bufSecs)).max(0.0)) });
+                //
+                // Tested against the envelope span rather than the hold. Under
+                // the old test a 6 s recording could be given a random start
+                // and then run off its own end, which is why oropéndola and
+                // ranas — the two this comment says are heard whole — were not.
+                startFrac = if(envSpan >= (bufSecs * 0.9), { 0 },
+                    { rrand(0.0, (1 - ((envSpan + 0.6) / bufSecs)).max(0.0)) });
                 synthArgs = [
                     \buf, buf,
                     \loop, ((ov[\sampleLoop] ? 0).asInteger),
@@ -323,9 +389,9 @@ s.doWhenBooted({
                     // rising, so the layer cross-fades with itself and with the
                     // engine instead of punctuating it. Short envelopes made
                     // each sample a separate event sitting on top of the mix.
-                    \atk,  (holdSecs * 0.35).clip(0.15, 3.0),
-                    \hold, (holdSecs * 0.70).clip(0.05, 600),
-                    \rel,  (holdSecs * 1.10).clip(1.2, 12.0)
+                    \atk,  envAtk,
+                    \hold, envHold,
+                    \rel,  envRel
                 ];
 
                 // Connect all sample control buses if they exist
@@ -350,14 +416,35 @@ s.doWhenBooted({
                     synthArgs = synthArgs ++ [\mixSampleBus, ~buses[\mixSample].index];
                 };
 
+                // Article 47. opacityFloor lives in ~buses for the same reason
+                // mixSample does, so the auto-wire loop above does not reach
+                // it either. The clip's own opacity comes from ~sampleMeta,
+                // which 16_corpus_calls.scd fills for the corpus entries and
+                // leaves nil for the seven MP3s — the artist's own material is
+                // not withheld from itself.
+                if(~buses.notNil and: { ~buses[\opacityFloor].notNil }) {
+                    synthArgs = synthArgs ++ [\opacityFloorBus, ~buses[\opacityFloor].index];
+                };
+                meta = if(~sampleMeta.notNil) { ~sampleMeta[index] };
+                if(meta.notNil) {
+                    synthArgs = synthArgs ++ [\opacity, (meta[\opacity] ? 0.0).asFloat];
+                };
+
                 "Triggering sample: % (%, % ch)".format(sampleName, defName, buf.numChannels).postln;
                 // Onset de muestra hacia los visuales — slot 9 es el
                 // instrumento de esta voz. Se manda el índice para que el
                 // visual pueda distinguir aullador de avión.
-                if(~visualsDest.notNil) {
+                if(~lastVoiceAt.notNil) { ~lastVoiceAt[\sample] = SystemClock.seconds };
+                // Article 47 outward: an opaque clip is heard and never
+                // announced — no onset to the visuals, nothing for the laser
+                // to draw. Same rule 14_phenological_corpus.scd applies to
+                // /pheno/clip. The divisor was a hardcoded 7, which silently
+                // rescaled everything the projector receives the moment the
+                // bank grew past the original seven files.
+                if(~visualsDest.notNil and: { (meta.isNil) or: { meta[\opaque] != true } }) {
                     ~visualsDest.sendMsg('/voice/sample',
                         (ov[\sampleAmp] ? 0.7).asFloat.clip(0, 1),
-                        index.asFloat / 7);
+                        index.asFloat / ~sampleBuffers.size.max(1));
                 };
                 newSynth = Synth(defName, synthArgs, ~defaultGroup);
                 

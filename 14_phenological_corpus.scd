@@ -125,8 +125,44 @@ s.waitForBoot {
     // Every parameter follows the house idiom — Select.kr(bus >= 0, [literal,
     // In.kr(bus)]) — and every bus arg is named <busname>Bus so the auto-wiring
     // at 6_osc_handlers.scd:474 connects it without being told.
+    // ─── The corpus trim, and why it was inaudible ──────────────────────────
+    // This assignment used to sit ~150 lines BELOW, after both SynthDefs that
+    // read it. ~trimCorpus is read inside the SynthDef bodies, which are
+    // evaluated when the def is BUILT, so on a cold boot the variable was still
+    // nil and both voices baked in the `? 0.143` fallback instead. A re-load
+    // picked up the previous session's value, so the layer was quieter on the
+    // first boot than on every subsequent one — which is exactly the kind of
+    // fault that survives testing.
+    //
+    // The value itself was also far too low. Measured on the corpus bus against
+    // the master bus with the engine running: RMS 0.00105 against 0.0655, or
+    // -35.9 dB. The recordings are the evidence this piece is built on and they
+    // were 36 dB under everything else, which is why they could not be heard at
+    // all rather than merely being quiet.
+    //
+    // 27 puts the layer about 9 dB below the master mix — present and legible
+    // as a foreground element, without burying the engine. AudioMoth material
+    // is quiet at source (peaks well below full scale), which is why this trim
+    // is so much larger than the synthesised voices'.
+    // 27 measured at -12.3 dB against the master bus and was reported still too
+    // quiet, so this is a second raise on the same evidence: 60 puts it near
+    // -5 dB, which is a foreground layer rather than a supporting one. That is
+    // the right end of the range for this piece — the recordings ARE the
+    // subject, and the corpusLevel fader is still there to pull them back.
+    ~trimCorpus = 60.0 * (~trimMaster ? 0.055);
+
+    // How long one clip takes to hand over to the next, and therefore how long
+    // the two overlap. Both corpus envelopes use it for their attack AND their
+    // release, so a fade-out and the fade-in underneath it are the same length
+    // and the same shape — which is what makes \welch sum to constant power.
+    ~phenoXfade = 6.0;
+
     SynthDef(\corpusVoice, {
-        arg buf = 0, amp = 0.7, gate = 1,
+        // out: routed to the chain-processing bus when 17_ is running, and
+        // straight to the main output when it is not. Hard-wired to 0 before,
+        // like \elektronBell was, which is why nothing could be placed across
+        // this layer as a group.
+        arg out = 0, buf = 0, amp = 0.7, gate = 1,
             atk = 2.0, hold = 55.0, rel = 6.0,
             rate = 1, startPos = 0, pan = 0,
             // literals used when a bus is absent
@@ -170,7 +206,14 @@ s.waitForBoot {
         env = EnvGen.kr(
             Env.new([0, 1, 1, 0],
                 [atk.clip(0.005, 30.0), hold.clip(0.05, 600), rel.clip(0.02, 30.0)],
-                [\sine, 0, -3]),
+                // \welch, not [\sine, 0, -3]. Two clips crossfading is two
+                // UNCORRELATED signals overlapping, and their powers add, not
+                // their amplitudes. A -3 release against a sine attack sums to
+                // a dip in the middle of every transition — audible as the
+                // layer thinning exactly where it was supposed to be seamless.
+                // \welch rises as sin and falls as cos, so a fade-out and a
+                // fade-in of the same length sum to constant power.
+                [\welch, 0, \welch]),
             gate, doneAction: 2);
 
         sig = sig * env * amp.clip(0, 1) * level.clip(0, 1) * veil
@@ -186,7 +229,7 @@ s.waitForBoot {
         } {
             Pan2.ar(sig, (pan + (spread * 0.5)).clip(-1, 1))
         };
-        Out.ar(0, quadSig);
+        Out.ar(out, quadSig);
     }).add;
 
     // The absence voice: what sounds on days the forest was not recorded, in
@@ -201,7 +244,7 @@ s.waitForBoot {
     // BEFORE expanding, so only what was genuinely inaudible arrives, at
     // 4.75-24 kHz. 160 s per file, which is also the right length for a gap.
     SynthDef(\corpusUltrasonic, {
-        arg buf = 0, amp = 0.5, gate = 1,
+        arg out = 0, buf = 0, amp = 0.5, gate = 1,
             atk = 8.0, hold = 240.0, rel = 12.0, pan = 0,
             absenceWeight = 0.3, corpusLevel = 0.5, opacityFloor = 0.0,
             spectralShift = 8000, atmosphereMix = 0.4, opacity = 0.0,
@@ -225,7 +268,14 @@ s.waitForBoot {
 
         // Natural rate: the expansion is baked into the file, so this is a
         // plain 48 kHz stream.
-        sig = DiskIn.ar(1, buf, loop: 1);
+        //
+        // loop: 0, not 1. DiskIn's loop wraps from the last frame straight back
+        // to the first with no crossfade at all, so every pass produced an
+        // audible seam and the same material returned on a fixed period — which
+        // is the corpus "repeating". Nothing in this layer loops now; continuity
+        // comes from overlapping voices instead, which is both seamless and
+        // non-repeating because the replacement is usually a different clip.
+        sig = DiskIn.ar(1, buf, loop: 0);
 
         sig = HPF.ar(sig, 80);
         sig = LPF.ar(sig, lpf.clip(200, 18000));
@@ -233,7 +283,14 @@ s.waitForBoot {
         env = EnvGen.kr(
             Env.new([0, 1, 1, 0],
                 [atk.clip(0.005, 60.0), hold.clip(0.05, 600), rel.clip(0.02, 60.0)],
-                [\sine, 0, -3]),
+                // \welch, not [\sine, 0, -3]. Two clips crossfading is two
+                // UNCORRELATED signals overlapping, and their powers add, not
+                // their amplitudes. A -3 release against a sine attack sums to
+                // a dip in the middle of every transition — audible as the
+                // layer thinning exactly where it was supposed to be seamless.
+                // \welch rises as sin and falls as cos, so a fade-out and a
+                // fade-in of the same length sum to constant power.
+                [\welch, 0, \welch]),
             gate, doneAction: 2);
 
         // Lag on the weight so moving the fader is a tide, not a switch.
@@ -249,7 +306,7 @@ s.waitForBoot {
         } {
             Pan2.ar(sig, pan.clip(-1, 1))
         };
-        Out.ar(0, quadSig);
+        Out.ar(out, quadSig);
     }).add;
 
     s.sync;
@@ -270,7 +327,8 @@ s.waitForBoot {
     // fader is at its 0.5 default, ~6 dB below the drone bed (the reference
     // continuous voice, effective 0.10), and leaves the top half of the fader
     // as genuine headroom rather than make-up gain.
-    ~trimCorpus = 2.60 * (~trimMaster ? 0.055);
+    // Moved ABOVE the SynthDefs — see the note there. Left here it was dead on
+    // a cold boot, and this is where it used to live.
 
     // ─── Voice pools, allocated once ────────────────────────────────────────
     // Allocating buffers at trigger time fragments server memory and drops
@@ -446,15 +504,40 @@ s.waitForBoot {
         if(buf.notNil) {
             var slot = ~corpusRam.detect { |sl| sl[\buf] === buf };
             var dur = buf.numFrames / buf.sampleRate.max(1);
+            // ── The envelope has to fit the recording ──────────────────────
+            // dur was measured on the line above and then never used. The
+            // envelope was built from holdSecs alone, so at the default rate it
+            // came to atk 6.5 + hold 54 + rel 10.8 = 71.3 s laid over a 60 s
+            // clip: the forest ran out eleven seconds before the envelope did,
+            // and PlayBuf holds its last frame, which the HPF turns into
+            // silence. Every recorded day ended with eleven seconds of nothing
+            // while the ring had already turned — which is most of why the
+            // corpus reads as chopped when the clips are in fact full length.
+            //
+            // Fitted to whichever is shorter, the day or the recording, and the
+            // attack shortened: 12% of 54 s is a 6.5 s fade-in, so an eighth of
+            // every clip was arriving under the audible threshold as well.
+            var span = holdSecs.min(dur * 0.98);
+            // Attack and release are both the crossfade time now, rather than
+            // percentages of the clip that happened to differ from each other
+            // (6% in, 14% out). A handover only sums to constant power if the
+            // outgoing release and the incoming attack are the same length, and
+            // the scheduler starts the successor exactly this far before the
+            // end. Capped at a third of the clip so a short recording still has
+            // a body between its fades.
+            var xf   = (~phenoXfade ? 6.0).min(span * 0.33);
+            var atkS = xf.clip(0.3, 20);
+            var relS = xf.clip(0.3, 20);
             var synth = Synth(\corpusVoice, [
                 \buf, buf,
                 \amp, 0.55 + (clip[\confidence] * 0.35),
-                \atk, (holdSecs * 0.12).clip(0.5, 12),
-                \hold, holdSecs.clip(1, 560),
-                \rel, (holdSecs * 0.2).clip(1, 20),
+                \atk, atkS,
+                \hold, (span - atkS - relS).clip(0.5, 560),
+                \rel, relS,
                 \startPos, 0,
                 \pan, 1.0.rand2 * 0.6,
-                \opacity, clip[\opacity]
+                \opacity, clip[\opacity],
+                \out, (~corpusOutBus ? 0)
             ] ++ ~phenoBusArgs.value,
                 target: if(~defaultGroup.notNil, { ~defaultGroup }, { s.defaultGroup }));
 
@@ -464,10 +547,27 @@ s.waitForBoot {
             // the day it is re-deciding, so that a clip still decaying from
             // the previous day is left alone rather than retired as though the
             // knob had just excluded it.
+            // endsAt: when this voice's envelope will finish, in wall clock.
+            // Without it the scheduler had no way to know a clip was about to
+            // run out, so it could only ever react AFTER the silence started.
             ~corpusVoices = ~corpusVoices.add((
                 synth: synth, slot: slot, key: clip[\key],
-                ringDay: ~phenoCursor.floor.asInteger
+                ringDay: ~phenoCursor.floor.asInteger,
+                endsAt: Main.elapsedTime + span
             ));
+
+            // ── The entry has to die with the synth ─────────────────────────
+            // It never did. The envelope ends, doneAction frees the node, and
+            // this entry stayed in ~corpusVoices forever holding that clip's
+            // key. ~phenoSyncVoices asks "is this key already sounding?" and
+            // got yes from a voice that had stopped minutes ago, so it never
+            // re-admitted anything — the day fell silent and stayed silent
+            // while the bookkeeping insisted two clips were playing. Entries
+            // for past ring days were never retired either, so the list grew
+            // without bound and permanently blocked those clips from returning.
+            synth.onFree({
+                ~corpusVoices = ~corpusVoices.reject { |v| v[\synth] === synth };
+            });
 
             // Article 47 again, this time outward: an opaque clip is not
             // announced to the visuals or the laser at all. It is heard and
@@ -485,6 +585,18 @@ s.waitForBoot {
 ~phenoPlayUltrasonic = { |clip, holdSecs|
     var slot = ~corpusDisk.detect { |sl| sl[\synth].isNil };
     if(slot.notNil and: { clip[\expanded].notNil } and: { File.exists(clip[\expanded]) }) {
+        // ── The envelope has to fit this file too ───────────────────────────
+        // It was built from holdSecs alone and the file's own length was never
+        // consulted, which was survivable only because the stream looped. Now
+        // that it does not, an envelope longer than the recording would run on
+        // over a stream that had already ended — the exact eleven-seconds-of-
+        // nothing fault that was fixed on the RAM path, arriving here instead.
+        var sf = SoundFile.new;
+        var dur = if(sf.openRead(clip[\expanded])) {
+            var d = sf.numFrames / sf.sampleRate.max(1); sf.close; d
+        } { holdSecs };
+        var span = holdSecs.min(dur * 0.98);
+        var xf   = (~phenoXfade ? 6.0).min(span * 0.33);
         slot[\key] = clip[\key];
         slot[\buf].cueSoundFile(clip[\expanded], 0, 1);
         slot[\synth] = Synth(\corpusUltrasonic, [
@@ -493,11 +605,12 @@ s.waitForBoot {
             // inaudible band mixable, so the voice starts lower than the
             // audible one rather than at parity.
             \amp, 0.32,
-            \atk, (holdSecs * 0.25).clip(2, 30),
-            \hold, holdSecs.clip(1, 560),
-            \rel, (holdSecs * 0.3).clip(2, 30),
+            \atk, xf.clip(0.3, 30),
+            \hold, (span - (xf * 2)).clip(0.5, 560),
+            \rel, xf.clip(0.3, 30),
             \pan, 1.0.rand2 * 0.8,
-            \opacity, clip[\opacity]
+            \opacity, clip[\opacity],
+            \out, (~corpusOutBus ? 0)
         ] ++ ~phenoBusArgs.value,
             target: if(~defaultGroup.notNil, { ~defaultGroup }, { s.defaultGroup }));
         slot[\synth].onFree({ slot[\synth] = nil; slot[\key] = nil });
@@ -559,9 +672,24 @@ s.waitForBoot {
 // machine-gunning the same clip — nothing restarts unless it genuinely just
 // crossed the threshold.
 ~phenoSyncVoices = { |doy, holdSecs|
-    var desired = ~phenoSelect.(doy);
-    var wantKeys, changed = false;
-
+    var all = ~phenoSelect.(doy);
+    var xfade = (~phenoXfade ? 6.0);
+    var now = Main.elapsedTime;
+    var desired, wantKeys, changed = false;
+    // A voice inside its final crossfade is treated as ALREADY GONE, so its
+    // replacement is admitted while it is still sounding and the two overlap.
+    // This is the whole of "no silence in between": nothing waits for a voice
+    // to finish before starting the next one.
+    var sounding = ~corpusVoices.select { |v| ((v[\endsAt] ? inf) - now) > xfade };
+    // And the replacement should be a DIFFERENT clip where the day has one to
+    // offer, or a crossfade just re-states the same recording. Rotating the
+    // candidate list means consecutive admissions walk the day's pool instead
+    // of returning to its first two entries every time.
+    if(all.size > 2) {
+        ~phenoRotate = ((~phenoRotate ? 0) + 1) % all.size;
+        all = all.rotate(~phenoRotate.neg);
+    };
+    desired = all;
     if(desired.size > 2) { desired = desired[..1] };
     wantKeys = desired.collect { |c| c[\key] };
 
@@ -581,7 +709,9 @@ s.waitForBoot {
     ~corpusVoices = ~corpusVoices.reject { |v| v[\retired] == true };
 
     desired.do { |clip|
-        if(~corpusVoices.any { |v| v[\key] == clip[\key] }.not) {
+        // `sounding`, not ~corpusVoices: a voice already inside its release is
+        // not an obstacle to admitting its successor.
+        if(sounding.any { |v| v[\key] == clip[\key] }.not) {
             ~phenoPlayClip.(clip, holdSecs);
             changed = true;
         };
