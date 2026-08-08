@@ -450,12 +450,28 @@ s.waitForBoot {
         if(buf.notNil) {
             var slot = ~corpusRam.detect { |sl| sl[\buf] === buf };
             var dur = buf.numFrames / buf.sampleRate.max(1);
+            // ── The envelope has to fit the recording ──────────────────────
+            // dur was measured on the line above and then never used. The
+            // envelope was built from holdSecs alone, so at the default rate it
+            // came to atk 6.5 + hold 54 + rel 10.8 = 71.3 s laid over a 60 s
+            // clip: the forest ran out eleven seconds before the envelope did,
+            // and PlayBuf holds its last frame, which the HPF turns into
+            // silence. Every recorded day ended with eleven seconds of nothing
+            // while the ring had already turned — which is most of why the
+            // corpus reads as chopped when the clips are in fact full length.
+            //
+            // Fitted to whichever is shorter, the day or the recording, and the
+            // attack shortened: 12% of 54 s is a 6.5 s fade-in, so an eighth of
+            // every clip was arriving under the audible threshold as well.
+            var span = holdSecs.min(dur * 0.98);
+            var atkS = (span * 0.06).clip(0.3, 6);
+            var relS = (span * 0.14).clip(0.8, 12);
             var synth = Synth(\corpusVoice, [
                 \buf, buf,
                 \amp, 0.55 + (clip[\confidence] * 0.35),
-                \atk, (holdSecs * 0.12).clip(0.5, 12),
-                \hold, holdSecs.clip(1, 560),
-                \rel, (holdSecs * 0.2).clip(1, 20),
+                \atk, atkS,
+                \hold, (span - atkS - relS).clip(0.5, 560),
+                \rel, relS,
                 \startPos, 0,
                 \pan, 1.0.rand2 * 0.6,
                 \opacity, clip[\opacity],

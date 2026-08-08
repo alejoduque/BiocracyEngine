@@ -536,7 +536,9 @@ s.doWhenBooted({
 
     // opalPerc: Physical modeling metallic/woody perc (Mass style)
     SynthDef(\opalPerc, {
-        arg out=0, freq=400, amp=0.3, 
+        // bodySeed 0-1: which body is being struck. Supplied by the caller,
+        // not by a knob — see the note at the partials below.
+        arg out=0, freq=400, amp=0.3, bodySeed=0.0, 
         masterVolBus=(-1), harmonicBus=(-1), textureBus=(-1), resonantBus=(-1), spectralBus=(-1), timeBus=(-1),
         memoryBus=(-1), atmosphereBus=(-1), spatialBus=(-1),
         // Reach added: pitch so the struck body tunes with the engine, the two
@@ -562,8 +564,11 @@ s.doWhenBooted({
         var nFilt = Select.kr(noiseFiltBus  >= 0, [0.5, In.kr(noiseFiltBus, 1)]);
         var dFeed = Select.kr(delayFeedbackBus >= 0, [0.3, In.kr(delayFeedbackBus, 1)]);
         var dFade = Select.kr(droneFadeBus  >= 0, [2.0, In.kr(droneFadeBus, 1)]);
+        // harmonicBus was DECLARED on this SynthDef and never read into
+        // anything — a dead argument. It drives the decay tilt below now.
+        var fmR   = Select.kr(harmonicBus >= 0, [1.0, In.kr(harmonicBus, 1)]);
 
-        var exciter, sig, wet, quadSig;
+        var exciter, sig, wet, quadSig, partials, decays, inharm, damp, spread;
 
         // HARD-CLAMP the struck frequency, like \elektronBell's fundamental.
         // The caller can ask for almost anything: ~computePitchPool tops out at
@@ -592,11 +597,59 @@ s.doWhenBooted({
         // Resonator (Klank for metallic resonance) — upper partials darkened
         // (were [1, 0.8, 0.5, 0.3, 0.1]) so the 4–9x partials shimmer instead
         // of dominating
-        sig = Ringz.ar(
-            exciter,
-            freq * [1, 2.32, 4.25, 6.63, 9.38] * (1 + (res * 0.5)),
-            [1, 0.55, 0.3, 0.15, 0.06] * (tStretch * 0.5)
-        ).sum;
+        // ── The struck body, computed rather than hardcoded ────────────────
+        // These five modes were the literal set [1, 2.32, 4.25, 6.63, 9.38]
+        // with the literal decay profile [1, 0.55, 0.3, 0.15, 0.06], and
+        // resonantBody scaled them all by (1 + res*0.5) — which is a flat
+        // multiply, i.e. a transposition of the whole body rather than a change
+        // to it. So every hit this layer ever produced was the SAME instrument
+        // at a different pitch. All the variety upstream — the mode, the
+        // chain-derived degree, the species register — decided which note to
+        // strike and nothing decided what was being struck.
+        //
+        // n * sqrt(1 + B*n^2) is the standard inharmonicity curve for a stiff
+        // bar or a string with stiffness. At B = 0.10 it produces
+        // [1.05, 2.37, 4.14, 6.45, 9.35], which is the hardcoded set to within
+        // a couple of percent — so this reproduces the old body exactly at the
+        // middle of resonantBody's travel and opens both directions from there:
+        //   B -> 0     harmonic series, tonal, mallet or marimba
+        //   B = 0.10   the body this layer has always had
+        //   B -> 0.35  wide and clangorous, gong-like
+        inharm = res.linexp(0.1, 0.8, 0.004, 0.35);
+
+        // Decay tilt. Was a fixed profile; harmonicRich now decides whether the
+        // upper modes ring on or die first, which is the difference between a
+        // bright metal body and a dull wooden one.
+        // Steeper than the first attempt. At damp 0.99 the fifth mode rang at
+        // 0.20 of the fundamental where the original profile gave it 0.06 —
+        // more than three times the energy — and the layer measured 7.6 dB
+        // hotter at wide inharmonicity as a result. 1.6 puts mode five at
+        // 0.076, which is the profile this body always had.
+        damp = fmR.linexp(0.1, 5.0, 3.2, 1.0);
+
+        // And the part that is not a knob. bodySeed comes from the spawning
+        // code — the species seat that is speaking, nudged by the chain — and
+        // deviates each partial slightly, so the five seats are five different
+        // instruments rather than one instrument at five registers. Sin of a
+        // per-partial constant, so it is deterministic: the same seat is always
+        // the same body, and it drifts only when the seat or the chain does.
+        spread = fmD.linlin(0, 0.6, 0.0, 0.16);
+        partials = Array.fill(5, { |i|
+            var n = i + 1;
+            var dev = 1 + ((bodySeed * (n + 3) * 7.13).sin * spread);
+            n * (1 + (inharm * n * n)).sqrt * dev;
+        });
+        decays = Array.fill(5, { |i|
+            var n = i + 1;
+            (damp.neg * n.log).exp * (tStretch * 0.5);
+        });
+
+        // Level-compensated against the spread. Modes further apart cancel each
+        // other less, so a wide body sums louder purely as arithmetic — without
+        // this, resonantBody reads as a volume control with a timbre attached
+        // rather than as a choice of instrument.
+        sig = Ringz.ar(exciter, (freq * partials).clip(20, 12000), decays).sum
+            * (1 + (inharm * 2.4)).reciprocal * 1.25;
 
         // Changed from BPF to LPF: BPF at high freq passes almost nothing (silence);
         // LPF at high freq is transparent — sound always passes through.

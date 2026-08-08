@@ -295,6 +295,10 @@
                 Synth(\opalPerc, [
                     \out,  0,
                     \freq, f,
+                    // Slot 6's own body: derived from the same tone the
+                    // structure reported, so a rebalance high in the tree
+                    // strikes a different object than one near the leaves.
+                    \bodySeed, t,
                     \amp,  trims * (0.16 + (a * 0.18)),
                     \mixPercBus, ~sbi.(\mixPerc)
                 ] ++ busArgs, grp);

@@ -574,6 +574,13 @@
                     + ((~speciesPresence[speciesIdx] ? 0.5).clip(0, 1) * 0.9);
                 var baseFreq = (pitchPool.wrapAt(poolIdx)
                     * ~speciesBand[speciesIdx]).clip(40, 900);
+                // Which BODY is struck, as opposed to which note. The seat
+                // decides it — so the five species are five instruments and not
+                // one instrument at five registers — and the counterparty's
+                // address signature nudges it, so the same seat answering a
+                // different actor is not quite the same object.
+                var bodySeed = ((speciesIdx / 4.0)
+                    + (((rs !? { rs[\addrSig] } ? 0) % 97) / 97.0 * 0.35)).wrap(0, 1);
                 poolIdx = if(rs.notNil and: { rs[\addrSig] > 0 }) {
                     ((rs[\addrSig] >> 2) + rs[\txIndex]) % pitchPool.size
                 } {
@@ -604,6 +611,7 @@
                     Synth(\opalPerc, [
                         \out,          0,
                         \freq,         percFreq,
+                        \bodySeed,     bodySeed,
                         \amp,          ~beatParams.masterAmp * (~beatParams.transportGain ? 1) *(0.2 + (transactionInfluence * 0.15)) * accent * speciesGain,
                         \masterVolBus, bMVol,
                         \harmonicBus,  bHarm,
@@ -625,6 +633,7 @@
                         Synth(\opalPerc, [
                             \out,          0,
                             \freq,         harmFreq,
+                            \bodySeed,     bodySeed,
                             \amp,          ~beatParams.masterAmp * (~beatParams.transportGain ? 1) *(0.2 + (transactionInfluence * 0.15)) * accent * speciesGain * [1.0, 0.6][voice],
                             \masterVolBus, bMVol,
                             \harmonicBus,  bHarm,
@@ -651,6 +660,7 @@
                         Synth(\opalPerc, [
                             \out,          0,
                             \freq,         harmFreq,
+                            \bodySeed,     bodySeed,
                             \amp,          ~beatParams.masterAmp * (~beatParams.transportGain ? 1) *(0.2 + (transactionInfluence * 0.15)) * accent * speciesGain * (1.0 / (h + 1.5)),
                             \masterVolBus, bMVol,
                             \harmonicBus,  bHarm,
