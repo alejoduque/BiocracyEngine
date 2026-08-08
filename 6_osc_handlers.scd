@@ -162,6 +162,12 @@ s.doWhenBooted({
     // AFTER this one. Registering them here would capture nils. Pointer left
     // so the canonical OSC list still leads to them.
 
+    // Seconds since a stamp, or "-" if it has never been written. Same clock
+    // the stamps and ~ledAlive use.
+    ~monAge = { |stamp|
+        if(stamp.isNil) { "-" } { (Main.elapsedTime - stamp).round(0.1).asString };
+    };
+
     ~monitorLine = {
         var rs = ~rhythmState, b = ~bellStats;
         ("[MON] bells:" ++ b[\spawned] ++ "/gate:" ++ b[\skipGate]
@@ -189,6 +195,20 @@ s.doWhenBooted({
             // an error killed the Routine outright and the only visible symptom
             // was kick:/perc: frozen at whatever they had reached.
             ++ " err:" ++ (~beatParams !? { ~beatParams.beatErrors } ? 0)
+            // ── Status-light ages, in seconds since each feed was last heard ──
+            // The GUI lights are a yes/no over these numbers (~ledAlive), so
+            // when a light disagrees with what you believe is arriving, this is
+            // the line that settles it: a large age means the feed really has
+            // stopped, and a small age with a dark light means the light is
+            // wrong. A dash means never seen at all this session.
+            //
+            // Added after a dark ETH light could not be explained from a log
+            // that plainly showed transactions being handled — the age was the
+            // one number nobody could read.
+            ++ "  age(eth/osc/midi/bridge/beat):"
+            ++ ~monAge.(~lastEthTime) ++ "/" ++ ~monAge.(~lastOscTime)
+            ++ "/" ++ ~monAge.(~lastMidiTime) ++ "/" ++ ~monAge.(~lastBrowserOscTime)
+            ++ "/" ++ ~monAge.(~lastBeatTime)
             // int: the EFFECTIVE step interval in seconds. The bar now follows
             // the measured block period, so this is how you check the tempo is
             // actually tracking the chain rather than assuming it. It should
@@ -394,7 +414,7 @@ s.doWhenBooted({
         // counter. Stamped here rather than in each of the three entry points
         // (/eth/note, /tx, and the block handler) because this is the one
         // funnel they all pass through.
-        ~lastEthTime = SystemClock.seconds;
+        ~lastEthTime = Main.elapsedTime;
         ~ethNoteCount = (~ethNoteCount ? 0) + 1;
         ~globalState.transactionCount = ~globalState.transactionCount + 1;
         ~globalState.lastValue = value;
@@ -671,7 +691,7 @@ s.doWhenBooted({
                 // native units via the registry spec, sets the bus, mirrors
                 // ~beatParams (beatTempo/txInfluence), syncs the GUI knob and
                 // echoes 0–1 back on the canonical path.
-                ~lastOscTime = SystemClock.seconds;
+                ~lastOscTime = Main.elapsedTime;
                 ~setParamNorm.(paramName, msg[1].asFloat, \osc);
             }, oscPath);
         };
@@ -685,7 +705,7 @@ s.doWhenBooted({
     // in sync, and triggers a beat-engine drop+fill pulse.
     OSCdef(\phenoJumpSeason, { |msg|
         var season = msg[1].asString;
-        ~lastBrowserOscTime = SystemClock.seconds;
+        ~lastBrowserOscTime = Main.elapsedTime;
         ("Phenology jump: " ++ season).postln;
         if(~visualsDest.notNil) {
             ~visualsDest.sendMsg("/pheno/jumpSeason", season)
@@ -721,14 +741,14 @@ s.doWhenBooted({
         // in a Routine stops it permanently (see 5_beat_engine.scd:260).
         var id = msg[1].asInteger.clip(0, 4);
         ~speciesPresence[id] = msg[2].asFloat.clip(0, 1);
-        ~lastBrowserOscTime = SystemClock.seconds;
+        ~lastBrowserOscTime = Main.elapsedTime;
     }, "/agents/species/presence");
 
     OSCdef(\speciesActivity).free;
     OSCdef(\speciesActivity, { |msg|
         var id = msg[1].asInteger.clip(0, 4);
         ~speciesActivity[id] = msg[2].asFloat.clip(0, 1);
-        ~lastBrowserOscTime = SystemClock.seconds;
+        ~lastBrowserOscTime = Main.elapsedTime;
     }, "/agents/species/activity");
 
     OSCdef(\ednaBiodiv).free;
@@ -739,7 +759,7 @@ s.doWhenBooted({
         // "validation": a reading nobody has touched in a while is not a
         // validated one.
         ~ednaTouchedAt[id] = SystemClock.seconds;
-        ~lastBrowserOscTime = SystemClock.seconds;
+        ~lastBrowserOscTime = Main.elapsedTime;
     }, "/agents/edna/biodiversity");
 
     // NOTE: /soneth/beatTempo and /soneth/txInfluence are handled by the
@@ -754,7 +774,7 @@ s.doWhenBooted({
     OSCdef(\voteHandler, { |msg|
         var consensus, passed;
         // Vote triggers a sonic event: tempo burst + harmonic bell chord
-        ~lastBrowserOscTime = SystemClock.seconds;
+        ~lastBrowserOscTime = Main.elapsedTime;
         "VOTE triggered — consensus surge".postln;
 
         // Temporarily accelerate beat tempo for 4 seconds
@@ -798,7 +818,7 @@ s.doWhenBooted({
 
     OSCdef(\emergencyHandler, { |msg|
         var intensity = msg[1].asFloat;
-        ~lastBrowserOscTime = SystemClock.seconds;
+        ~lastBrowserOscTime = Main.elapsedTime;
         "EMERGENCY consensus override — intensity %".format(intensity.round(0.01)).postln;
 
         // Drop drone pitch to sub-bass, increase noise
@@ -827,7 +847,7 @@ s.doWhenBooted({
     }, "/parliament/emergency");
 
     OSCdef(\startHandler, { |msg|
-        ~lastBrowserOscTime = SystemClock.seconds;
+        ~lastBrowserOscTime = Main.elapsedTime;
         "Parliament START — restoring beat engine".postln;
         // Re-engage beat engine at normal tempo
         if(~beatParams.notNil) {
@@ -841,7 +861,7 @@ s.doWhenBooted({
     }, "/parliament/start");
 
     OSCdef(\stopHandler, { |msg|
-        ~lastBrowserOscTime = SystemClock.seconds;
+        ~lastBrowserOscTime = Main.elapsedTime;
         "Parliament STOP — fading out".postln;
         // Transport gain, NOT masterAmp. This used to write
         // ~beatParams.masterAmp = 0.05 directly, bypassing ~setParam — so the
@@ -863,18 +883,18 @@ s.doWhenBooted({
     // ── Config save/load from the browser (CONFIGS block in parliament.html)
     // String argument — parliament-bridge passes string args as OSC type 's'.
     OSCdef(\presetSave, { |msg|
-        ~lastBrowserOscTime = SystemClock.seconds;
+        ~lastBrowserOscTime = Main.elapsedTime;
         ~saveConfig.(msg[1].asString);
         { if(~refreshPresetMenu.notNil) { ~refreshPresetMenu.value } }.defer;
     }, "/preset/save");
 
     OSCdef(\presetLoad, { |msg|
-        ~lastBrowserOscTime = SystemClock.seconds;
+        ~lastBrowserOscTime = Main.elapsedTime;
         ~loadConfig.(msg[1].asString);
     }, "/preset/load");
 
     OSCdef(\presetList, {
-        ~lastBrowserOscTime = SystemClock.seconds;
+        ~lastBrowserOscTime = Main.elapsedTime;
         ~broadcastPresetList.value;
     }, "/preset/list");
 

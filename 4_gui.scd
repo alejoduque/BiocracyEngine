@@ -15,7 +15,7 @@
 (
 // Defer all GUI creation to AppClock to avoid Qt threading issues
 {
-    var statusView, counterView, controlView, controlViewRow2, controlViewRow3, controlViewRow4, controlViewRow5, controlViewRow6, controlViewRow7;
+    var statusView, counterView, controlView, controlViewRow2, controlViewRow3, controlViewRow5, controlViewRow6, controlViewRow7;
     var mixerView;
     var sampleView, sampleControlView, sampleHeader, sampleButtonView, stopButton;
     var container, recordingView, presetView;
@@ -109,8 +109,6 @@
             .layout_(HLayout().margins_(4).spacing_(10));
         controlViewRow3 = View().background_(backgroundColor.blend(mainTheme.accent, 0.04))
             .layout_(HLayout().margins_(4).spacing_(10));
-        controlViewRow4 = View().background_(backgroundColor.blend(mainTheme.accent, 0.04))
-            .layout_(HLayout().margins_(4).spacing_(10));
         // Row 5: Cámara Fenológica — 1-bit aesthetic. Pure black background,
         // white knobs (cite of slot P visual style). Marks these controls as
         // belonging to the "escaño del tiempo" (phenological chamber), not to
@@ -142,11 +140,11 @@
         // Set fixed heights for sections. A knob row is now 60 px of knob +
         // ~14 px of label + 8 px of margin = 82.
         [statusView, counterView].do { |view| view.fixedHeight = 46; };
-        [controlView, controlViewRow2, controlViewRow3, controlViewRow4].do { |view|
+        [controlView, controlViewRow2, controlViewRow3].do { |view|
             view.fixedHeight = 88;
         };
         controlViewRow5.fixedHeight = 88;
-        controlViewRow6.fixedHeight = 48;
+        controlViewRow6.fixedHeight = 58;
         controlViewRow7.fixedHeight = 88;
         mixerView.fixedHeight = 150;
         // sampleControlView is 52 px of knob + two label lines + margins.
@@ -295,34 +293,49 @@
             ~controlValues = ~controlValues ?? ();
         };
 
-        // Knob parameters layout - MERGED ambient + drone/noise controls
+        // ─── Knob rows, seven across ────────────────────────────────────
+        // Four performance rows of 5/5/5/6 became three of seven. The Cámara
+        // row already proved seven fits — 7 x 132 px cells + 6 x 10 spacing +
+        // 8 margins = 992 px inside a 1100 px window — and the surface was one
+        // row taller than it needed to be.
+        //
+        // The old row captions named four groups (Core Performance, Ambient
+        // Processing, Drone/Noise, Additional Drone) that are no longer one row
+        // each. They are not preserved here as decoration: the grouping below
+        // is by what the control DOES, and where a boundary falls mid-row it is
+        // said so rather than implied by a comment that has stopped being true.
         ~knobParameters = [
-            // Row 1: Core Performance Controls (Lawrence English Ambient)
-            [\masterVolume, \pitchShift, \timeDilation, \spectralShift, \spatialSpread],
-            // Row 2: Ambient Processing
-            [\textureDepth, \atmosphereMix, \memoryFeed, \harmonicRich, \resonantBody],
-            // Row 3: Drone/Noise Controls (Existing System)
-            [\masterAmp, \filterCutoff, \noiseLevel, \noiseFilt, \droneDepth],
-            // Row 4: Additional Drone Controls
-            // \beatTempo added — it was the ONLY parameter present in
-            // parliament.html but missing from this surface, so the two control
-            // surfaces were not at parity. Everything else appears on both.
-            [\droneFade, \droneSpace, \droneMix, \delayFeedback, \transactionInfluence, \beatTempo],
-            // Row 5: Cámara Fenológica de lo Vivo (1-bit white palette)
-            [\activityThreshold, \windowWidth, \seasonalBias, \absenceWeight, \pulseGain, \opacityFloor, \bancada],
-            // Row 6: Marea — the density arc. Stepped specs, so the knobs snap
-            // 0/1; the browser checkboxes are the comfortable surface and these
-            // mirror them so both control surfaces stay at parity.
+            // Core performance, then the first two of ambient processing.
+            [\masterVolume, \pitchShift, \timeDilation, \spectralShift, \spatialSpread,
+             \textureDepth, \atmosphereMix],
+            // The rest of ambient processing, then the noise bed.
+            [\memoryFeed, \harmonicRich, \resonantBody,
+             \masterAmp, \filterCutoff, \noiseLevel, \noiseFilt],
+            // The drone and what bends it. beatTempo sits here because it is the
+            // only other control that changes the engine's motion rather than
+            // its timbre.
+            [\droneDepth, \droneFade, \droneSpace, \droneMix, \delayFeedback,
+             \transactionInfluence, \beatTempo],
+            // Cámara Fenológica de lo Vivo — the amber bench. phenoRate joins it
+            // to make seven, and belongs here anyway: the ring's speed is a
+            // reading of the calendar, not a fader on the corpus.
+            //
+            // \bancada has LEFT this row. It is the last stepped spec that was
+            // still a Knob, and a Knob cannot serve one: ~makeKnob rebuilds the
+            // spec without its step, ~setParam re-quantises against the real
+            // spec and writes the rounded value back into the widget, and a
+            // \vert-mode Knob drags RELATIVE to its current value — so the
+            // write-back reset the accumulator on every mouse event and the
+            // control could never leave position 0. It is a button row now, the
+            // same answer the four Marea toggles already got.
+            [\activityThreshold, \windowWidth, \seasonalBias, \absenceWeight,
+             \pulseGain, \opacityFloor, \phenoRate],
+            // Marea — the density arc. Stepped specs, so these are toggle
+            // buttons rather than knobs, for the reason spelled out above.
             [\tideShort, \tideMedia, \tideLarga, \tidePulse],
-            // Row 7: Cámara Fenológica · Corpus. Its own row, not appended to
-            // row 5: nine knobs overflowed the 1100px window, and ~scrollView
-            // had no horizontal scroller, so the last two were simply clipped
-            // out of existence (the scroller is on now, and the knobs are
-            // smaller, but the split earned its keep). These two also deserve
-            // separating — they are
-            // the transport and the fader of the field-recording layer, not
-            // two more readings of the calendar.
-            [\phenoRate, \corpusLevel]
+            // Cámara Fenológica · Corpus: the field-recording layer's own fader,
+            // with the bancada selector and the transport button beside it.
+            [\corpusLevel]
         ];
 
         // Enhanced knob function with oscilloscope aesthetics
@@ -445,17 +458,6 @@
         controlViewRow3.layout.add(View().background_(backgroundColor.blend(mainTheme.accent, 0.04)));
 
         // Fourth row knobs (additional controls)
-        ~knobParameters[3].do { |key|
-            ~knobs[key] = ~makeKnob.value(
-                key.asString,
-                ~controlSpecs[key].minval,
-                ~controlSpecs[key].maxval,
-                ~controlValues[key],
-                ~controlSpecs[key].warp
-            );
-            controlViewRow4.layout.add(~knobs[key]);
-        };
-        controlViewRow4.layout.add(View().background_(backgroundColor.blend(mainTheme.accent, 0.04)));
 
         // ─── Row 5: Cámara Fenológica — amber ─────────────────────────────
         // Seven knobs, and until now the row behaved as though none of them
@@ -477,7 +479,7 @@
         ~phenoAmberDim = Color(1.0, 0.76, 0.45);
         ~phenoAmberBg  = Color.black.blend(~phenoAmber, 0.06);
         controlViewRow5.background_(~phenoAmberBg);
-        ~knobParameters[4].do { |key|
+        ~knobParameters[3].do { |key|
             var knobContainer;
             ~knobs[key] = ~makeKnob.value(
                 key.asString,
@@ -514,7 +516,7 @@
                 .align_(\left)
                 .maxWidth_(110)
         );
-        ~knobParameters[6].do { |key|
+        ~knobParameters[5].do { |key|
             var knobContainer;
             ~knobs[key] = ~makeKnob.value(
                 key.asString,
@@ -534,6 +536,7 @@
             };
             controlViewRow7.layout.add(knobContainer);
         };
+
         controlViewRow7.layout.add(View().background_(Color.black));
         // The ring's own reading of where it is, refreshed by 14_'s routine.
         ~phenoCursorLabel = StaticText()
@@ -731,10 +734,69 @@
             tideLarga: "ARCO LARGO",
             tidePulse: "PULSO"
         );
-        ~knobParameters[5].do { |key|
+        ~knobParameters[4].do { |key|
             ~knobs[key] = ~makeToggle.value(key, ~tideCaptions[key] ? key.asString);
             controlViewRow6.layout.add(~knobs[key]);
         };
+
+        // ─── BANCADA · Article 43, as five seats you can press ────────────
+        // This was a Knob until it was found to be unusable. A Knob cannot
+        // serve a stepped spec here: ~makeKnob rebuilds the ControlSpec from
+        // (min, max, warp) and DROPS the step, ~setParam then re-quantises
+        // against the real spec and writes the rounded value back into the
+        // widget, and a \vert-mode Knob drags relative to its current value.
+        // So every mouse event reset the accumulator, and crossing into
+        // position 1 needed 0.125 normalised in one single event — about 16 px
+        // between two consecutive Qt moves. The knob was not sending nothing;
+        // it was sending 0, over and over.
+        //
+        // The four Marea toggles were made buttons for exactly this reason.
+        // This is the last stepped spec that was still a knob.
+        //
+        // Radio, not toggle: the positions are exclusive by definition — 0 is
+        // "todas" and 1-4 are the four ecological roles the detector yields.
+        // Article 43 defines the bancadas taxonomically, but the corpus carries
+        // no taxonomy, so roles are what this filter can honestly act on.
+        //
+        // It sits in the Marea row rather than the Corpus row because this
+        // is the row of stepped, discrete selectors — which is what row 6
+        // already is — and because the Corpus row has to keep width for the
+        // ring cursor readout, which is a full sentence.
+        ~bancadaCaptions = ["TODAS", "NOCTURNA", "INSECTOS", "CORO", "TRANSICIÓN"];
+        ~bancadaButtons = Array.newClear(5);
+        ~bancadaSet = { |idx|
+            var i = idx.asInteger.clip(0, 4);
+            ~setParam.(\bancada, i, \gui);
+            // Not relit here — the 2 Hz reconcile below reads the bus and does
+            // it for every source at once. Two relighters would be two owners
+            // of one appearance, and they would disagree the moment ~setParam
+            // clamped a value this function had not.
+            ~bancadaShown = nil;
+        };
+        controlViewRow6.layout.add(
+            StaticText().string_("BANCADA")
+                .font_(Font(~monoFont, 9, true))
+                .stringColor_(Color.gray(0.75))
+                .align_(\right).maxWidth_(58)
+        );
+        5.do { |i|
+            var btn = Button()
+                .states_([
+                    [~bancadaCaptions[i], mainTheme.dim,   backgroundColor],
+                    [~bancadaCaptions[i], backgroundColor, mainTheme.accent]
+                ])
+                .font_(Font(~monoFont, 9, true))
+                .maxHeight_(22)
+                .maxWidth_(84)
+                .value_(((~controlValues[\bancada] ? 0).asInteger == i).binaryValue);
+            // The button's own value is not the state — ~bancadaSet relights the
+            // whole row from the value that ~setParam actually accepted, so a
+            // MIDI CC or a browser click lands here identically.
+            btn.action = { ~bancadaSet.(i) };
+            ~bancadaButtons[i] = btn;
+            controlViewRow6.layout.add(btn);
+        };
+
 
         // MIDI/OSC → GUI sync is event-driven: every surface goes through
         // ~setParam (0_parameters.scd), which defers the knob+label update.
@@ -1102,7 +1164,6 @@
         ~scrollCanvas.layout.add(controlView);
         ~scrollCanvas.layout.add(controlViewRow2);
         ~scrollCanvas.layout.add(controlViewRow3);
-        ~scrollCanvas.layout.add(controlViewRow4);
         ~scrollCanvas.layout.add(controlViewRow5);
         ~scrollCanvas.layout.add(controlViewRow7);
         ~scrollCanvas.layout.add(mixerView);
@@ -1125,8 +1186,22 @@
         // test whether something had been REGISTERED — an OSCdef that exists, a
         // Routine variable that is non-nil, a MIDI device that is enumerated —
         // all of which become true at boot and stay true through a dead feed.
+        // Main.elapsedTime on BOTH sides. The stamps are written from OSC and
+        // MIDI callbacks on the interpreter thread; this reads them from an
+        // AppClock routine. SystemClock.seconds is not wall clock — Clock's
+        // *seconds returns thisThread.seconds (Clock.sc:6) and SystemClock does
+        // not override it — so the two sides were nominally comparing clocks
+        // that are only equal by convention.
+        //
+        // Measured, they did NOT drift: over 16 s with a SystemClock routine
+        // churning, reader-minus-writer held at 0.20-0.21 s and matched
+        // Main.elapsedTime exactly. So this is not the cause of the dark ETH
+        // light and is not claimed to be. It is here because a liveness test
+        // should not rest on two threads happening to agree, and because
+        // Main.elapsedTime costs nothing — the repo already uses it in
+        // 8_transaction_buffer.scd.
         ~ledAlive = { |stamp, window = 5.0|
-            (stamp.notNil and: { (SystemClock.seconds - stamp) < window }).binaryValue;
+            (stamp.notNil and: { (Main.elapsedTime - stamp) < window }).binaryValue;
         };
 
         // Create update routine
@@ -1145,6 +1220,22 @@
                     ~statusLights.eth.setProperty(\status, ~ledAlive.(~lastEthTime, 30.0));
                     ~statusLights.midi.setProperty(\status, ~ledAlive.(~lastMidiTime));
                     ~statusLights.bridge.setProperty(\status, ~ledAlive.(~lastBrowserOscTime));
+
+                    // Bancada is a button row, so ~setParam's knob write-back
+                    // (which only knows how to set a widget's .value) cannot
+                    // relight it. Reconciled from the bus instead, which covers
+                    // every source at once — the GUI's own buttons, MIDI CC 16,
+                    // the browser's five buttons and a preset load.
+                    if(~bancadaButtons.notNil and: { ~buses.notNil }
+                        and: { ~buses[\bancada].notNil }) {
+                        var bsel = ~buses[\bancada].getSynchronous.round.asInteger.clip(0, 4);
+                        if(bsel != ~bancadaShown) {
+                            ~bancadaShown = bsel;
+                            ~bancadaButtons.do { |b, j|
+                                if(b.notNil) { b.value = (j == bsel).binaryValue };
+                            };
+                        };
+                    };
 
                     if(~globalState.notNil) {
                         ~counters.trans.string = (~globalState.transactionCount ? 0).asString;
@@ -1189,6 +1280,9 @@
             // per ring-day, forever, from a routine with its own try/catch that
             // simply logged it and carried on. The rest are the same class of
             // leak with quieter consequences.
+            ~bancadaButtons = nil;
+            ~bancadaSet = nil;
+            ~bancadaShown = nil;
             ~phenoCursorLabel = nil;
             ~phenoSkipButton = nil;
             ~mixerStrips = nil;

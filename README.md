@@ -180,12 +180,36 @@ now, from their own structural events — the screen plays the instrument:
 
 | Slot | Voice | The structure's own event |
 |---|---|---|
-| 4 | DRONE | the reticule completes a full sweep → the bed transposes (consensus picks the pitch) |
+| 4 | DRONE | the reticule completes a full sweep → a sustained **partial** joins over the bed |
 | 5 | CAMPANAS | an edge forms — two nodes that were not connected now are |
 | 6 | PERCUSIÓN | a node arrives at its target — a rebalance has actually completed |
 | 7 | BOMBO | a target is acquired — a ray crosses a sweep |
 | 8 | POLVO | a layer overflows its own level — blocks spilling past the edge |
 | 9 | MUESTRAS | a hash collision — and *which* bucket collided picks the recording |
+
+**A slot plays the engine's voice, not a new instrument.** The first version made
+them separate: pitches from independent linear maps, envelopes from literals, spawns
+unbundled. They did not blend, and one of them did not move at all — `\elektronBell`
+clamps its fundamental to 28–180 Hz (`3_synthdefs.scd:241`), so a linear map to MIDI
+48–84 crossed the ceiling at tone 0.15 and **85 % of the range played one identical
+pitch**. Now:
+
+- the **pad** snaps to the semitone grid and octave-folds below 160 Hz the way the ETH
+  pads do, and is queued on `~padQueue` so the drain gives it `\polyComp` — spawning
+  direct made it up to 4.9× louder than a concurrent engine pad *and* corrupted the
+  engine's own `1/√n` compensation by staying invisible to `~padLive`;
+- the **perc** draws from `~computePitchPool` × `~speciesBand`, the engine's own mode,
+  rather than a continuous sweep that touched those notes by coincidence;
+- the **kick** walks the engine's seven discrete steps (45.5–54.5 Hz) and rings for its
+  0.9–1.3 s rather than clicking for 0.28;
+- everything spawns inside `s.makeBundle(s.latency, …)`, as every engine voice does.
+
+**Slot 4 adds a partial; it does not re-pitch the bed.** It used to call
+`~opalDroneSynth.set(\freq, …)` — a second owner of a node the beat engine walks every
+four bars, with no arbitration (`\drone` is the one voice the engine never stamps into
+`~lastVoiceAt`). On a 4-second glide (`droneFade × 2`) the bed spent most of its life in
+transit and never arrived. It now spawns its own low-amplitude `\opalDrone`, capped at
+two concurrent and released after nine seconds. One owner each.
 
 **A slot speaks on an EXCURSION, not on a change.** These counts jitter every
 frame — slot 6 adds `Math.random()` to node positions on the line after it counts
@@ -828,6 +852,21 @@ becomes true at boot and stays true through a dead feed:
 | **ETH** | *(did not exist)* | `~lastEthTime` within 30 s — the feed the OSC light used to claim, and never watched |
 | **MIDI** | a device is enumerated — stays lit through a dead cable | `~lastMidiTime` within 5 s, any CC |
 | **BRIDGE RX** | `~lastBrowserOscTime` within 5 s | unchanged — the only one that was ever live |
+
+**The knob grid is seven across.** Four performance rows of 5/5/5/6 became three of
+seven — the Cámara row already proved seven fits (7 × 132 px cells + gaps + margins =
+992 px inside 1100) — and `phenoRate` joined the Cámara row to make it seven too. Seven
+rows became six.
+
+**`bancada` is a button row, not a knob.** It is the last stepped spec that was still a
+Knob, and a Knob cannot serve one here: `~makeKnob` rebuilds the `ControlSpec` from
+`(min, max, warp)` and **drops the step**, `~setParam` re-quantises against the real spec
+and writes the rounded value back into the widget, and a `\vert`-mode Knob drags
+*relative to its current value*. So the write-back reset the accumulator on every mouse
+event, and crossing into position 1 needed 0.125 normalised in a single event — about
+16 px between two consecutive Qt moves. The knob was not sending nothing; it was sending
+0, repeatedly. MIDI CC 16 and the browser's five buttons were always fine. Five radio
+buttons now, reconciled from the bus at 2 Hz so every source relights them.
 
 **Row 5, the Cámara Fenológica, is tinted amber.** It is the one bench whose
 controls change *who speaks* rather than how the engine sounds. The tint marks

@@ -252,7 +252,7 @@
         };
 
         // 6 · bridge liveness (BRIDGE status light in the main GUI)
-        if(source == \osc) { ~lastBrowserOscTime = SystemClock.seconds };
+        if(source == \osc) { ~lastBrowserOscTime = Main.elapsedTime };
 
         // 7 · mark state dirty for the 30 s autosaver
         ~stateDirty = true;

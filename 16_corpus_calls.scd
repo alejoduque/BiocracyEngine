@@ -252,7 +252,7 @@ s.doWhenBooted({
                 if(~sampleTrimVoices.notNil) { ~sampleTrimVoices.value };
             };
         };
-        ~lastBrowserOscTime = SystemClock.seconds;
+        ~lastBrowserOscTime = Main.elapsedTime;
     }, '/antifonia/call');
 
     // Built late: it needs 10_'s buffers and ~triggerSample, and 14_'s parsed

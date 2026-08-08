@@ -86,6 +86,13 @@
 // 14_phenological_corpus.scd, where ~42 names are passed to a def that
 // declares nine. Passing the union once beats maintaining five lists that
 // drift apart, which is exactly how six drone buses ended up with no readers.
+// Synchronous language-side bus READ. ~sbi gives an index for a SynthDef arg;
+// this gives the number, which the pitch pool needs at spawn time.
+~sbv = { |name, default = 0|
+    if(~buses.notNil and: { ~buses[name].notNil },
+        { ~buses[name].getSynchronous }, { default });
+};
+
 ~slotBusArgs = {
     [
         \masterVolBus,  ~sbi.(\masterVolume),
@@ -118,6 +125,71 @@
     };
 };
 
+// ─── Slot 4's own partial ───────────────────────────────────────────────────
+// This slot used to call ~opalDroneSynth.set(\freq, ...), and that was a second
+// owner of the bed. The beat engine walks the drone's pitch every four bars
+// through a composed phrase (55 62 73 82 49 65 55 41); slot 4 indexed the same
+// pitches SORTED ASCENDING by its own tone, so a slot write could yank the bed
+// an octave mid-phrase and the engine's next write would yank it back. There
+// was no arbitration at all: \drone is the one voice the engine never stamps
+// into ~lastVoiceAt, so the 6 s gap here arbitrated against nothing.
+//
+// And \opalDrone lags freq by droneFade * 2 — four seconds at the default. Two
+// writers on a four-second glide means the bed spends most of its life in
+// transit and never arrives, which is exactly what was reported: a note that
+// remains stuck, sometimes increasing or decreasing.
+//
+// So the bed belongs to the engine, and slot 4 adds a PARTIAL over it: its own
+// low \opalDrone voice, released after a few seconds. Additive, one owner each.
+~slotDronePartials = ~slotDronePartials ?? { [] };
+~slotDroneMax = 2;
+
+~slotDroneAdd = { |a = 0.5, t = 0.5|
+    var grp = if(~defaultGroup.notNil, { ~defaultGroup }, { s.defaultGroup });
+    // A fifth and an octave above the bed's own register, so the partial reads
+    // as an overtone of the drone rather than as a second drone disagreeing
+    // with it.
+    var f = #[82.5, 110.0, 123.5, 165.0].wrapAt((t * 3).round.asInteger);
+
+    // Retire the oldest rather than accumulate. \opalDrone is Env.asr, so a
+    // zero gate releases it properly over the asr's own 6 s tail.
+    ~slotDronePartials = ~slotDronePartials.select { |sy| sy.notNil };
+    while({ ~slotDronePartials.size >= ~slotDroneMax }, {
+        var oldest = ~slotDronePartials.removeAt(0);
+        try { oldest.set(\gate, 0) };
+    });
+
+    s.makeBundle(s.latency, {
+        var syn = Synth(\opalDrone, [
+            \freq, f,
+            // Quiet: this is a partial over the bed, not a rival to it. The
+            // engine's own drone runs amp 0.8.
+            \amp,  0.14 + (a * 0.12),
+            \masterVolBus,    ~sbi.(\masterVolume),
+            \pitchBus,        ~sbi.(\pitchShift),
+            \timeBus,         ~sbi.(\timeDilation),
+            \spectralBus,     ~sbi.(\spectralShift),
+            \spatialBus,      ~sbi.(\spatialSpread),
+            \textureBus,      ~sbi.(\textureDepth),
+            \atmosphereBus,   ~sbi.(\atmosphereMix),
+            \memoryBus,       ~sbi.(\memoryFeed),
+            \harmonicBus,     ~sbi.(\harmonicRich),
+            \resonantBus,     ~sbi.(\resonantBody),
+            \masterAmpBus,    ~sbi.(\masterAmp),
+            \filterCutoffBus, ~sbi.(\filterCutoff),
+            \droneDepthBus,   ~sbi.(\droneDepth),
+            \droneFadeBus,    ~sbi.(\droneFade),
+            \droneSpaceBus,   ~sbi.(\droneSpace),
+            \droneMixBus,     ~sbi.(\droneMix),
+            \delayFeedbackBus, ~sbi.(\delayFeedback),
+            \mixDroneBus,     ~sbi.(\mixDrone)
+        ], grp);
+        ~slotDronePartials = ~slotDronePartials.add(syn);
+        // Let go on its own schedule. 9 s of hold, then the asr's 6 s release.
+        AppClock.sched(9.0, { try { syn.set(\gate, 0) }; nil });
+    });
+};
+
 ~slotVoicePlay = { |voice, amp = 0.5, tone = 0.5|
     var grp = if(~defaultGroup.notNil, { ~defaultGroup }, { s.defaultGroup });
     var a = amp.clip(0, 1);
@@ -126,53 +198,137 @@
     var trims = (~beatParams !? { ~beatParams.masterAmp } ? 0.7)
         * ((~beatParams !? { ~beatParams.transportGain }) ? 1);
 
+    // ── Everything spawns in a bundle ──────────────────────────────────────
+    // Every voice the engine fires goes through s.makeBundle(s.latency + …).
+    // These did not: they spawned on raw OSC arrival with no latency
+    // compensation, so a slot hit landed at whatever moment the packet was
+    // dispatched while every engine hit landed on the server's own clock.
+    // That is the "jumpy and sketchy" directly, and it is one wrapper.
+    var fire = { |func| s.makeBundle(s.latency, func) };
+
     switch(voice,
 
-        // Sustained, so there is nothing to trigger — the structural event
-        // moves it instead. It glides now (Lag on freq in \opalDrone), so a
-        // slot re-pitching the bed is a slow transposition rather than a step.
-        \drone, {
-            if(~opalDroneSynth.notNil) {
-                ~opalDroneSynth.set(\freq, #[41, 49, 55, 62, 65, 73, 82].at(
-                    (t * 6).round.asInteger.clip(0, 6)));
+        // The persistent-structure slot adds a PARTIAL over the bed; it does
+        // not re-pitch the bed. See ~slotDroneAdd below for why.
+        \drone, { ~slotDroneAdd.(a, t) },
+
+        \pad, {
+            var midi, f, args;
+            // The engine's pitch treatment, which this did not have: snap to
+            // the semitone grid and then OCTAVE-FOLD below 160 Hz, so the pad
+            // lands in the drone's register as a pitch class rather than as a
+            // ping on top of it (6_osc_handlers.scd:355-370).
+            //
+            // Without the fold this was not merely out of tune, it was ONE
+            // NOTE: \elektronBell clamps its fundamental to 28-180 Hz
+            // (3_synthdefs.scd:241), and the old linear map to MIDI 48-84
+            // crossed 180 Hz at tone 0.153 — so 85% of the range played an
+            // identical 180 Hz. That is the "primitive bell that does not
+            // blend": it was a fixed tone sitting a whole tone above the
+            // engine's own fold ceiling.
+            midi = t.linlin(0, 1, 36, 84).round(1);
+            f = midi.midicps;
+            while({ f > 160 }, { f = f * 0.5 });
+
+            // Five envelope stages, derived, as the engine derives them from
+            // the transaction. This passed three literals and omitted sus and
+            // susLvl entirely, so every slot pad had a byte-identical shape.
+            args = [
+                \freq,   f,
+                \amp,    0.10 + (a * 0.16),
+                \atk,    a.linlin(0, 1, 0.35, 2.2),
+                \dec,    a.linlin(0, 1, 1.3, 0.35),
+                \sus,    a.linlin(0, 1, 0.4, 1.6),
+                \susLvl, 0.55 + (t * 0.2),
+                \rel,    a.linlin(0, 1, 0.7, 2.8),
+                // Deterministic from the structure's own reading rather than
+                // re-randomised per event: the same state returns to the same
+                // place in the image instead of flickering across it.
+                \pan,    t.linlin(0, 1, -0.8, 0.8)
+            ];
+            // The bus sweep the engine uses for its own bells, verbatim. The
+            // ten short-named buses this file wires for the struck voices are
+            // NOT what \elektronBell declares; it takes the long names, and
+            // going through the queue below means slot pads and engine pads
+            // are wired identically rather than nearly.
+            if(~buses.notNil) {
+                ~buses.keysValuesDo { |paramName, bus|
+                    args = args ++ [(paramName.asString ++ "Bus").asSymbol, bus.index];
+                };
+            };
+
+            // Into the engine's OWN queue, not Synth directly. The drain
+            // (6_osc_handlers.scd:107-155) supplies \polyComp — the 1/sqrt(n)
+            // law — and registers the voice in ~padLive. Spawning directly
+            // meant a slot pad was up to 4.9x louder than a concurrent engine
+            // pad, and worse: invisible to ~padLive, so the engine
+            // under-counted and under-compensated its own pads too. It also
+            // gets the block-subdivision scheduling for free.
+            if(~padQueue.notNil and: { ~padQueue.size < (~padQueueMax ? 24) }) {
+                ~padQueue.add(args);
+            } {
+                fire.({ Synth(\elektronBell, args, grp) });
             };
         },
 
-        \pad, {
-            Synth(\elektronBell, [
-                \freq, (t.linlin(0, 1, 48, 84)).midicps,
-                \amp,  0.10 + (a * 0.16),
-                \atk,  0.8, \dec, 0.6, \rel, 2.5,
-                \pan,  1.0.rand2 * 0.6,
-                \mixPadBus, ~sbi.(\mixPad)
-            ] ++ busArgs, grp);
-        },
-
         \perc, {
-            Synth(\opalPerc, [
-                \out,  0,
-                \freq, t.linexp(0, 1, 60, 780),
-                \amp,  trims * (0.16 + (a * 0.18)),
-                \mixPercBus, ~sbi.(\mixPerc)
-            ] ++ busArgs, grp);
+            // The engine's material, not a parallel invention. ~computePitchPool
+            // builds a seven-degree mode from live harmonicRich / txInfluence /
+            // density (5_beat_engine.scd:89-101) and ~speciesBand transposes it
+            // into one of the five seats' registers. The old
+            // t.linexp(0, 1, 60, 780) was a continuous sweep that touched those
+            // notes only by coincidence — the engine's perc is a mode, this was
+            // a slider, and that is most of why they did not sit together.
+            var pool = ~computePitchPool.value(
+                ~sbv.(\harmonicRich, 1.0),
+                ~sbv.(\transactionInfluence, 0.3),
+                ((~beatParams !? { ~beatParams.transactionDensity }) ? 0.5));
+            var band = (~speciesBand ? #[1.0]).wrapAt((t * 4).round.asInteger);
+            var f = (pool.wrapAt((t * (pool.size - 1)).round.asInteger) * band
+                * rrand(0.95, 1.05)).clip(40, 900);
+            fire.({
+                Synth(\opalPerc, [
+                    \out,  0,
+                    \freq, f,
+                    \amp,  trims * (0.16 + (a * 0.18)),
+                    \mixPercBus, ~sbi.(\mixPerc)
+                ] ++ busArgs, grp);
+            });
         },
 
         \kick, {
-            Synth(\opalKick, [
-                \out,  0,
-                \freq, t.linlin(0, 1, 38, 68),
-                \amp,  trims * (0.28 + (a * 0.30)),
-                \atk,  0.001, \dec, 0.28 + (a * 0.25),
-                \mixKickBus, ~sbi.(\mixKick)
-            ] ++ busArgs, grp);
+            // The engine walks seven discrete steps, 45.5-54.5 Hz in 1.5 Hz
+            // increments (5_beat_engine.scd:500, ((bar % 7) - 3) * 1.5 + 50).
+            // The old linlin(0, 1, 38, 68) reached 13.5 Hz above the engine's
+            // top — a different drum — and at the bottom drove \opalKick's
+            // pitch envelope down to an inaudible thump.
+            var f = #[45.5, 47.0, 48.5, 50.0, 51.5, 53.0, 54.5]
+                .wrapAt((t * 6).round.asInteger);
+            fire.({
+                Synth(\opalKick, [
+                    \out,  0,
+                    \freq, f,
+                    \amp,  trims * (0.5 + (a * 0.2)),
+                    // dec is multiplied by timeDilation inside the envelope, so
+                    // the engine's 0.9-1.3 rings 1.8-2.6 s. The old 0.28-0.53
+                    // was a click where the engine has a swell.
+                    \dec,  0.9 + (a * 0.4),
+                    \mixKickBus, ~sbi.(\mixKick)
+                ] ++ busArgs, grp);
+            });
         },
 
         \dust, {
-            Synth(\opalDust, [
-                \out, 0,
-                \amp, trims * (0.16 + (a * 0.26)),
-                \mixDustBus, ~sbi.(\mixDust)
-            ] ++ busArgs, grp);
+            // \opalDust has no freq at all — its density comes from textureBus.
+            // Only the level and the bundle differed; matched to the engine's
+            // 0.3 + density*0.35, which this was running ~39% under.
+            fire.({
+                Synth(\opalDust, [
+                    \out, 0,
+                    \amp, trims * (0.3 + (a * 0.35)),
+                    \mixDustBus, ~sbi.(\mixDust)
+                ] ++ busArgs, grp);
+            });
         },
 
         // Straight through the system that already owns the pool, rather than
@@ -191,7 +347,11 @@
     // broadcasts for engine-fired notes. Without this the slot that just
     // played would be the one slot that cannot see its own onset — it reads
     // /voice/* like every other, and the source should make no difference.
-    if(~visualsDest.notNil) {
+    //
+    // Not for \pad: the pad drain emits its own /voice/pad when the queued
+    // voice actually spawns, and announcing it here as well would report one
+    // onset twice.
+    if(~visualsDest.notNil and: { voice != \pad }) {
         ~visualsDest.sendMsg(("/voice/" ++ voice.asString).asSymbol, a, t);
     };
 };
@@ -220,14 +380,14 @@ s.doWhenBooted({
                 ~slotVoiceStats[\dropped] = (~slotVoiceStats[\dropped] ? 0) + 1;
             };
         };
-        ~lastBrowserOscTime = SystemClock.seconds;
+        ~lastBrowserOscTime = Main.elapsedTime;
     }, '/slot/voice');
 
     OSCdef(\slotVoicesEnable).free;
     OSCdef(\slotVoicesEnable, { |msg|
         ~slotVoicesEnabled = (msg[1] ? 1).asFloat > 0.5;
         ("[slot] voices " ++ if(~slotVoicesEnabled, "ENABLED", "MUTED")).postln;
-        ~lastBrowserOscTime = SystemClock.seconds;
+        ~lastBrowserOscTime = Main.elapsedTime;
     }, '/slot/voices/enable');
 });
 

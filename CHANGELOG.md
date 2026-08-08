@@ -7,6 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### The slot voices join the instrument, and bancada becomes pressable (2026-08-07)
+
+#### Fixed
+- **The slot pad was a single fixed pitch.** `\elektronBell` clamps its fundamental to 28–180 Hz (`3_synthdefs.scd:241`); the slot's linear map to MIDI 48–84 crossed that at tone 0.153, so **85 % of the range played an identical 180 Hz** — a whole tone above the ceiling the engine's own pads fold below. It now snaps to the semitone grid and octave-folds under 160 Hz exactly as the ETH pads do. (The same clamp collapses the vote chime's 60/67/72 into a unison — pre-existing, noted, untouched.)
+- **Slot pads bypassed the polyphony law.** Spawned direct, they carried no `\polyComp` and never entered `~padLive`, making them up to 4.9× louder than a concurrent engine pad *and* causing the engine to under-compensate its own. They go through `~padQueue` now, which supplies the `1/√n` compensation, the `~padLive` registration and the block-subdivision scheduling.
+- **No slot voice shared the engine's pitch material.** Perc used a continuous `linexp(60, 780)` against the engine's `~computePitchPool` × `~speciesBand` mode; kick used `linlin(38, 68)` against the engine's seven discrete 45.5–54.5 Hz steps, and decayed 0.28–0.53 s where the engine rings 0.9–1.3. Both now use the engine's own material. Dust was ~39 % quiet; levels across kick, perc and dust now match the engine at defaults.
+- **Nothing was bundled.** Every engine voice spawns inside `s.makeBundle(s.latency + …)`; slot voices fired on raw OSC arrival with no latency compensation — the "jumpy and sketchy" directly.
+- **The drone bed had two owners.** Slot 4 set `~opalDroneSynth`'s frequency, which the beat engine walks every four bars, with no arbitration — `\drone` is the one voice the engine never stamps into `~lastVoiceAt`, so the 6 s gap arbitrated against nothing. With a 4 s glide (`droneFade × 2`) the bed never arrived at a pitch: the reported "note that remains stuck, sometimes increasing or decreasing". Slot 4 now spawns its own low-amplitude partial, capped at two, released after nine seconds. The bed belongs to the engine alone.
+- **The `bancada` knob could not leave position 0.** `~makeKnob` rebuilds the `ControlSpec` without its step; `~setParam` re-quantises against the real spec and writes the rounded value back into the widget; and a `\vert`-mode Knob drags *relative* to its current value — so the write-back reset the accumulator every mouse event, and reaching position 1 needed ~16 px between two consecutive Qt moves. It is a five-button radio row now, the same answer the four Marea toggles already got. MIDI CC 16 and the browser buttons were never affected.
+
+#### Changed
+- **The knob grid is seven across.** Four performance rows of 5/5/5/6 became three of seven, `phenoRate` joined the Cámara row to make it seven, and `controlViewRow4` is gone. Seven rows → six.
+- **One clock for the status lights.** All liveness stamps and `~ledAlive` use `Main.elapsedTime` rather than `SystemClock.seconds`, which returns `thisThread.seconds` and is only equal across threads by convention. **This is not claimed as the cause of the dark ETH light** — measured, the two did not drift (0.20–0.21 s apart over 16 s with a SystemClock routine churning) — but a liveness test should not rest on two threads happening to agree.
+- **`[MON]` reports the age of every status stamp** (`age(eth/osc/midi/bridge/beat)`), so a light that disagrees with what is visibly arriving is a number to read rather than a theory to build. Added after a dark ETH light could not be explained from a log that plainly showed 4,889 transactions handled.
+
 ### The six screens were playing the rate limiter, not the structure (2026-08-07)
 
 #### Fixed

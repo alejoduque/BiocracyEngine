@@ -33,7 +33,7 @@ MIDIdef.cc(\paramControl, { |val, num, chan, src|
     // "is the controller talking to me", and an unmapped knob is still the
     // controller talking. The old light only tested whether a device was
     // enumerated, which stayed lit through a dead cable.
-    ~lastMidiTime = SystemClock.seconds;
+    ~lastMidiTime = Main.elapsedTime;
     ~midiCCCount = (~midiCCCount ? 0) + 1;
     if(paramName.notNil) {
         var newVal = ~setParamNorm.(paramName, val / 127, \midi);
