@@ -902,11 +902,11 @@ s.doWhenBooted({
     // "no bridge" rather than as a safe reading, which matters: a scope that
     // shows compliant when nothing is connected is worse than no scope.
     OSCdef(\laserScope, { |msg|
-        var n = (msg[13] ? 0).asInteger;
+        var n = (msg[16] ? 0).asInteger;
         // x, y, blank, and the WORST step inside this bucket.
         var pts = Array.fill(n, { |i|
-            [msg[14 + (i * 4)].asFloat, msg[15 + (i * 4)].asFloat,
-             msg[16 + (i * 4)].asFloat, msg[17 + (i * 4)].asFloat]
+            [msg[17 + (i * 4)].asFloat, msg[18 + (i * 4)].asFloat,
+             msg[19 + (i * 4)].asFloat, msg[20 + (i * 4)].asFloat]
         });
         ~laserScope = (
             dac:       msg[1].asInteger,      // 1 = Helios detected, 0 = dry run
@@ -921,6 +921,10 @@ s.doWhenBooted({
             usedDeg:   msg[10].asFloat,       // optical angle the frame spans
             ratedDeg:  msg[11].asFloat,       // the angle the rating is quoted at
             budget:    msg[12].asFloat,       // points x frameHz / pps
+            // What auto-blanking did about it, as opposed to what was measured.
+            osBlanked:    msg[13].asInteger,
+            dwellBlanked: msg[14].asInteger,
+            frameBlanked: msg[15].asInteger,
             xy:        pts,
             at:        Main.elapsedTime
         );

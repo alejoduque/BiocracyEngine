@@ -922,6 +922,26 @@ MAX_STEP   = OMEGA_MAX / pps / (SCAN_ANGLE / 2)        ≈  0.0185 at 24 kpps
 
 **Dwell** is physical, not a guessed epsilon: the beam must clear **its own width** at the throw distance within `LASER_DWELL_MS`, or successive points are landing in the same spot.
 
+### Auto-blanking
+
+Interpolation makes most jumps survivable but cannot make *every* frame compliant — `LASER_MAX_POINTS` and the scan budget are hard ceilings. Past them the beam is **switched off** rather than projected, targeted wherever targeting is meaningful:
+
+| Fault | Response |
+|---|---|
+| **over-speed** | blank the point being jumped to — the mirrors still travel the gap, but dark. Does *not* repair the mechanical over-command, so the raw count is still reported separately. |
+| **dwell** | once a stationary unblanked run reaches `LASER_DWELL_MS`, the rest of it is blanked. The one case where blanking removes the hazard outright. |
+| **budget > 100 %** | cannot be targeted — no subset is being drawn at the rate it was authored for. **The whole frame goes dark.** |
+
+Held for `LASER_BLANK_HOLD_MS` (250 ms) after the last fault, so a frame sitting on the threshold cannot strobe the beam at the frame rate. Disable with `LASER_SAFE_BLANK=0`.
+
+The scope reports what was **done** separately from what was **measured** — a dwell of 0 because the beam was switched off is a different fact from a dwell of 0 because nothing ever stopped moving. Verified:
+
+```
+gentle   300 pts   679/10000 deg/s   field 2.7 deg   budget  56%   within scanner spec
+parked   400 pts     0/10000 deg/s   dwell 958 us                  BLANKED 376 parked pts
+dense   1200 pts   budget 225%                                     BLANKED — needs 54000 pps
+```
+
 ### Galvo-safety scope (SC GUI, right-hand column)
 
 `laser-bridge.js` sends `/laser/scope` to sclang at 12 Hz carrying the frame **after** sanitisation — the signal the DAC actually receives. The SC GUI draws it in a fixed column beside the scroll area, so it stays readable while the hands are on the knobs. Three lanes: **X**, **Y**, and the **step envelope** against the limit — a step limit is a limit on *slope*, so velocity is what the scope has to show. Decimated buckets carry the **worst** step inside them, never the step between surviving points.

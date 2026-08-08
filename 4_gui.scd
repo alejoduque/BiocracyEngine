@@ -1423,7 +1423,8 @@
                         Pen.moveTo(x0 @ laneS); Pen.lineTo(x0 @ y0); Pen.stroke;
                     };
                     if((sc[\overspeed] > 0) or: { sc[\dwellUs] > 1000 }
-                        or: { sc[\budget] > 1.0 }) {
+                        or: { sc[\budget] > 1.0 } or: { sc[\frameBlanked] > 0 }
+                        or: { sc[\osBlanked] > 0 } or: { sc[\dwellBlanked] > 0 }) {
                         Pen.strokeColor = Color.white;
                         Pen.width = 2;
                         Pen.moveTo(0 @ 1); Pen.lineTo(w @ 1); Pen.stroke;
@@ -1528,7 +1529,9 @@
                             ~laserStatusText.stringColor = mainTheme.dim;
                         } {
                             var bad = (sc[\overspeed] > 0)
-                                or: { sc[\dwellUs] > 1000 } or: { sc[\budget] > 1.0 };
+                                or: { sc[\dwellUs] > 1000 } or: { sc[\budget] > 1.0 }
+                                or: { sc[\frameBlanked] > 0 }
+                                or: { sc[\osBlanked] > 0 } or: { sc[\dwellBlanked] > 0 };
                             // Angular, because the datasheet is angular. "30 kpps
                             // @ 8 deg" is a rate-ANGLE pair, so deg/s against the
                             // rated ceiling is the number that says whether this
@@ -1544,12 +1547,23 @@
                                     ++ " (rated " ++ sc[\ratedDeg].round(0.1) ++ ")"
                                 ++ "\nscan budget " ++ (sc[\budget] * 100).round(1) ++ "%"
                                 ++ "\ndwell " ++ sc[\dwellUs].round(1) ++ " us"
+                                // Says what was DONE, not only what was seen.
+                                // A dwell of 0 because the beam was switched
+                                // off is a different fact from a dwell of 0
+                                // because nothing ever stopped moving.
                                 ++ "\n" ++ case
+                                    { sc[\frameBlanked] > 0 } {
+                                        "BLANKED — frame needs "
+                                            ++ (sc[\budget] * sc[\pps]).round(1) ++ " pps"
+                                    }
+                                    { sc[\dwellBlanked] > 0 } {
+                                        "BLANKED " ++ sc[\dwellBlanked] ++ " parked pts"
+                                    }
+                                    { sc[\osBlanked] > 0 } {
+                                        "BLANKED " ++ sc[\osBlanked] ++ " over-speed pts"
+                                    }
                                     { sc[\overspeed] > 0 } {
                                         "OVER-SPEED x" ++ sc[\overspeed]
-                                    }
-                                    { sc[\budget] > 1.0 } {
-                                        "TOO MANY POINTS for " ++ sc[\pps] ++ " pps"
                                     }
                                     { sc[\dwellUs] > 1000 } {
                                         "BEAM PARKED "

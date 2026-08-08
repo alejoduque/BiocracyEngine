@@ -266,7 +266,7 @@ try {
   _oscOut = null;
 }
 
-function scopeSend(frame) {
+function scopeSend(frame, safety) {
   const now = Date.now();
   if (!_oscOut || now - _scopeAt < 1000 / SCOPE_HZ) return;
   _scopeAt = now;
@@ -295,7 +295,14 @@ function scopeSend(frame) {
   // holding the scanner to: a frame drawn across 40° is a far harder job.
   const usedDeg = Math.max(usedX, usedY) * 2 * DEG_PER_UNIT;
   // Scan budget: every point must be scanned FRAME_HZ times a second.
-  const budget = (frame.length * FRAME_HZ) / Math.max(_pps, 1);
+  // Taken from the safety pass when there was one, because by the time a frame
+  // has been blanked for exceeding the budget it is a single dark point and
+  // recomputing here would report the budget of the blanking, not of the frame
+  // that caused it — which read as "needs 45 pps" for a frame needing 54,000.
+  const budget = (safety && safety.budget !== undefined)
+    ? safety.budget
+    : (frame.length * FRAME_HZ) / Math.max(_pps, 1);
+  const shownPoints = (safety && safety.origPoints) || frame.length;
 
   // Decimated for drawing only; the measures above used every sample.
   // Each bucket also carries the WORST step inside it, not the step between the
@@ -322,7 +329,7 @@ function scopeSend(frame) {
       args: [
         { type: "i", value: heliosReady ? 1 : 0 },
         { type: "i", value: _pps },
-        { type: "i", value: frame.length },
+        { type: "i", value: shownPoints },
         { type: "f", value: MAX_STEP },
         { type: "f", value: maxStep },
         { type: "i", value: overspeed },
@@ -332,6 +339,13 @@ function scopeSend(frame) {
         { type: "f", value: usedDeg },
         { type: "f", value: RATED_ANGLE },
         { type: "f", value: budget },
+        // What auto-blanking DID, kept separate from what was measured. A
+        // dwell reading of 0 after the beam was switched off is not the same
+        // fact as a dwell reading of 0 because nothing ever stopped moving,
+        // and an operator has to be able to tell those apart.
+        { type: "i", value: (safety && safety.osBlanked) || 0 },
+        { type: "i", value: (safety && safety.dwellBlanked) || 0 },
+        { type: "i", value: (safety && safety.frameBlanked) ? 1 : 0 },
         { type: "i", value: pts.length / 4 },
         ...pts,
       ],
@@ -424,6 +438,100 @@ function testFrame() {
   return pts;
 }
 
+
+// ─── Auto-blanking: the beam goes off wherever it cannot be projected safely ─
+// Interpolation makes most jumps survivable, but it cannot make every frame
+// compliant — MAX_POINTS and the scan budget are hard ceilings, and past them a
+// frame arrives at the scanner with moves the mirrors cannot track. Reporting
+// that and projecting it anyway is the wrong default for a Class 4 fixture, so
+// the beam is switched off wherever the signal is outside the envelope.
+//
+// Blanking is TARGETED, not global, wherever targeting is meaningful:
+//
+//   over-speed  the point being jumped to is blanked. The mirrors still travel
+//               the gap — nothing can stop that once the geometry is asked for
+//               — but they travel it dark. This does not repair the mechanical
+//               over-command, and the scope goes on reporting the raw count
+//               separately from what was blanked, because a blanked over-speed
+//               is still a scanner being asked for an acceleration it lacks.
+//
+//   dwell       once a stationary unblanked run reaches the dwell window, the
+//               rest of it is blanked. This is exactly what a scan-fail circuit
+//               does, and it is the one case where blanking removes the hazard
+//               outright rather than merely hiding it.
+//
+//   budget      cannot be targeted: if the frame needs more points per second
+//               than the DAC can scan, no subset of it is being drawn at the
+//               rate it was authored for. The whole frame goes dark. Blanking
+//               a frame is visible and recoverable; scanning a frame the galvos
+//               cannot finish is neither.
+//
+// Held for BLANK_HOLD_MS after the last violation. Without hysteresis a frame
+// sitting on the threshold toggles the beam at the frame rate, which is both
+// ugly and its own kind of hazard.
+const SAFE_BLANK    = process.env.LASER_SAFE_BLANK !== "0";   // on unless disabled
+const BLANK_HOLD_MS = parseFloat(process.env.LASER_BLANK_HOLD_MS || "250");
+let _blankUntil = 0;
+let _blankWarnAt = 0;
+
+function enforceGalvoSafety(frame, now) {
+  const minStep   = minStepFor(_pps);
+  const dwellPts  = Math.max(2, Math.round((DWELL_MS / 1000) * _pps));
+  const budget    = (frame.length * FRAME_HZ) / Math.max(_pps, 1);
+  const stats     = { osRaw: 0, osBlanked: 0, dwellBlanked: 0,
+                      frameBlanked: false, budget, origPoints: frame.length,
+                      reason: "" };
+  let out = frame;
+
+  if (!SAFE_BLANK) return { frame: out, stats };
+
+  // Whole-frame: more points than the scanner can complete at this rate.
+  if (budget > 1.0) {
+    stats.frameBlanked = true;
+    stats.reason = "budget";
+    _blankUntil = now + BLANK_HOLD_MS;
+    if (now - _blankWarnAt > 5000) {
+      _blankWarnAt = now;
+      console.warn(`[laser] BLANKED — ${frame.length} pts x ${FRAME_HZ}Hz = ` +
+        `${Math.round(frame.length * FRAME_HZ)} pps needed > ${_pps} pps available`);
+    }
+    return { frame: blankFrame(), stats };
+  }
+
+  // Per-point. Slots are REPLACED with clones rather than mutated: the array
+  // handed in is often _frame itself, retained between ticks, and blanking it
+  // in place would darken that content permanently.
+  let dwellRun = 0;
+  for (let i = 1; i < frame.length; i++) {
+    const a = frame[i - 1], b = frame[i];
+    const d = Math.hypot(b.x - a.x, b.y - a.y);
+    let kill = false;
+
+    if (d > MAX_STEP) { stats.osRaw++; if (!b.blank) { kill = true; stats.osBlanked++; } }
+
+    if (d < minStep && !b.blank) {
+      dwellRun++;
+      if (dwellRun >= dwellPts) { kill = true; stats.dwellBlanked++; }
+    } else if (d >= minStep) dwellRun = 0;
+
+    if (kill) {
+      if (out === frame) out = frame.slice();
+      out[i] = { ...b, r: 0, g: 0, b: 0, blank: true };
+    }
+  }
+
+  if (stats.osBlanked > 0 || stats.dwellBlanked > 0) {
+    _blankUntil = now + BLANK_HOLD_MS;
+    stats.reason = stats.dwellBlanked > 0 ? "dwell" : "over-speed";
+  }
+  // Hysteresis: keep the beam down for the hold window after the last fault,
+  // so a frame hovering on the threshold cannot strobe.
+  if (now < _blankUntil && !stats.frameBlanked && stats.reason === "") {
+    stats.reason = "hold";
+  }
+  return { frame: out, stats };
+}
+
 // ─── output loop ─────────────────────────────────────────────────────────────
 let _ildLastSeq = -1;
 function outputLoop() {
@@ -447,7 +555,12 @@ function outputLoop() {
     console.warn(`[laser] ${frame.length} pts x ${FRAME_HZ}Hz needs ${frame.length * FRAME_HZ} pps > ${_pps} pps — reduce points or raise pps`);
   }
 
-  scopeSend(frame);
+  // Everything below sees only the SAFE frame — the scope, the DAC and the
+  // .ild capture alike, so what is recorded is what was projected.
+  const safe = enforceGalvoSafety(frame, now);
+  frame = safe.frame;
+
+  scopeSend(frame, safe.stats);
   heliosWrite(frame, _pps);
   // The Helios needs the frame re-sent continuously, but the .ild capture
   // only wants NEW content — the old unconditional write duplicated every
