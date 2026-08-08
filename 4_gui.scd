@@ -172,10 +172,10 @@
         ~ledRim = Color.gray(0.35);
 
         ~makeStatusLight = { |label|
-            var container, indicator, labelText;
+            var container, indicator, labelText, ageText;
 
             container = View().background_(backgroundColor);
-            container.layout_(HLayout().margins_(3).spacing_(6));
+            container.layout_(HLayout().margins_(3).spacing_(5));
 
             indicator = UserView(container)
                 .maxHeight_(16)
@@ -205,11 +205,27 @@
                 .string_(label)
                 .stringColor_(textColor)
                 .font_(Font(~monoFont, 10))
-                .minWidth_(66);
+                .minWidth_(56);
+
+            // Seconds since this feed was last heard from. A light is a yes/no
+            // over exactly this number, and when a light disagrees with what
+            // you believe is arriving there is no way to tell from the disc
+            // alone which side is wrong. "-" means never seen this session,
+            // which is a different fault from "seen, but a long time ago" and
+            // should not look the same.
+            ~ledAges = ~ledAges ?? ();
+            ageText = StaticText()
+                .string_("-")
+                .stringColor_(Color.gray(0.45))
+                .font_(Font(~monoFont, 9))
+                .align_(\right)
+                .minWidth_(34);
 
             container.layout.add(labelText);
             container.layout.add(indicator);
+            container.layout.add(ageText);
             indicator.setProperty(\status, 0);
+            ~ledAges[label.asSymbol] = ageText;
             indicator;
         };
 
@@ -1221,6 +1237,28 @@
                     ~statusLights.midi.setProperty(\status, ~ledAlive.(~lastMidiTime));
                     ~statusLights.bridge.setProperty(\status, ~ledAlive.(~lastBrowserOscTime));
 
+                    // The number under each light. Same stamps, same clock —
+                    // so a dark light with a small age means the light is
+                    // wrong, and a dark light with a large age or a dash means
+                    // the feed is. That distinction could not be made from the
+                    // window at all before, which is why a dark ETH light cost
+                    // three rounds of guessing.
+                    if(~ledAges.notNil) {
+                        [["SERVER", nil], ["BEAT", ~lastBeatTime], ["OSC", ~lastOscTime],
+                         ["ETH", ~lastEthTime], ["MIDI", ~lastMidiTime],
+                         ["BRIDGE RX", ~lastBrowserOscTime]].do { |pair|
+                            var el = ~ledAges[pair[0].asSymbol];
+                            var stamp = pair[1];
+                            if(el.notNil) {
+                                el.string = if(pair[0] == "SERVER") { "" } {
+                                    if(stamp.isNil) { "-" } {
+                                        (Main.elapsedTime - stamp).round(0.1).asString
+                                    };
+                                };
+                            };
+                        };
+                    };
+
                     // Bancada is a button row, so ~setParam's knob write-back
                     // (which only knows how to set a widget's .value) cannot
                     // relight it. Reconciled from the bus instead, which covers
@@ -1280,6 +1318,7 @@
             // per ring-day, forever, from a routine with its own try/catch that
             // simply logged it and carried on. The rest are the same class of
             // leak with quieter consequences.
+            ~ledAges = nil;
             ~bancadaButtons = nil;
             ~bancadaSet = nil;
             ~bancadaShown = nil;

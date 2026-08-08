@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### The drone morphs, the pad has a spectrum, the lights say their age (2026-08-07)
+
+#### Changed
+- **`\opalDrone` grows its own partials.** Five detuned saws through a fixed filter are static by construction, and no amount of reverb on top of a static thing makes it move. Added a **resonator bank** — three `CombC`s whose delay times drift independently over roughly a minute, sitting in the *pitched* range (1/240–1/55 s) so each is a resonance rather than an echo — and a **band-filtered noise bed** of six `BPF`s over pink noise with independently drifting centres and widths. Measured over 18 s: mid-band coefficient of variation 0.160 → 0.185, high band 0.158 → 0.192, low band unchanged, levels flat (peak −28.2 → −28.1 dB, no clipping, RMS growth 1.08× → 1.10× so the combs charge without running away).
+- **Noise Level and Noise Filt reach the drone.** On the pad they are a plain LPF'd pink hiss; on the drone they now set how much of the band bank is present and how far up its bands may wander — the difference between a noise floor and a weather system.
+- **`\elektronBell` is nested FM.** One modulator at 1.0–1.5× the carrier can only make a narrow, static sideband pair — warm, and the same warmth every time. A second modulator now sits inside the first with a slow `LFNoise2` on its frequency, so the sideband structure itself drifts over tens of seconds while the pitch stays put. The 28–180 Hz register and the level are unchanged (−61.6 → −61.9 dB). The quiet 5th gets a slow detune so two pads a few seconds apart beat rather than stack.
+- **`\elektronBell` takes an `out` bus.** It was the only voice on the surface hard-wiring `Out.ar(0, …)`, which is why it could not be routed, metered or rendered anywhere except the main output — and is how it went unmeasured while being the layer that sounded wrong. Defaults to 0.
+- **Every status light shows its age in seconds.** A light is a yes/no over exactly that number, and from the disc alone there is no way to tell whether a dark light means the feed stopped or the light is broken. `-` means never seen this session, which is a different fault and no longer looks the same.
+
+#### Notes
+- **The dark ETH light is still unreproduced.** The full 18-file chain was booted twice with the server muted and fake transactions injected: `~lastEthTime` stamps, `~ledAlive` returns 1, `eth.status` reads 1 and stays lit. Nothing was found to fix, so nothing was changed for it — the age readout is there so the next occurrence is a number rather than a fourth theory.
+
 ### The slot voices join the instrument, and bancada becomes pressable (2026-08-07)
 
 #### Fixed

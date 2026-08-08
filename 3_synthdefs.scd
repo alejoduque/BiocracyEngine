@@ -177,7 +177,13 @@ s.doWhenBooted({
 
     // Main transaction bell with MIDI control
     SynthDef(\elektronBell, {
-        arg freq=440, amp=0.3,
+        // out: the only voice on the surface that hard-wired Out.ar(0, ...).
+        // Every other SynthDef takes an out bus, and without one this layer
+        // could not be routed, metered or rendered anywhere except the main
+        // output — which is how it went unmeasured while it was the layer that
+        // sounded wrong. Defaults to 0, so nothing about the running instrument
+        // changes.
+        arg out=0, freq=440, amp=0.3,
         // ADSR: sus is the HOLD TIME at susLvl, not a level — the level is
         // susLvl. Defaults keep any caller that does not pass them sounding
         // close to the previous three-stage shape.
@@ -196,7 +202,7 @@ s.doWhenBooted({
         // connects it without the spawn site listing it.
         mixPadBus=(-1);
 
-        var env, sig, mod, carrier, grains, wet, noise, distance, distanceAmp, quadSig;
+        var env, sig, mod, carrier, grains, wet, noise, distance, distanceAmp, quadSig, innerMod;
         // MIDI bus inputs - Lawrence English ambient style with bus parameter fallbacks
         var masterVol = Select.kr(masterVolBus >= 0, [0.3, In.kr(masterVolBus, 1)]);
         var pitchOffset = Select.kr(pitchBus >= 0, [0.0, In.kr(pitchBus, 1)]);
@@ -240,20 +246,37 @@ s.doWhenBooted({
         // whenever wanted. Same pattern exists in \opalDrone.
         freq = (freq * (pitchOffset.clip(-24, 24) / 12).midiratio).clip(28, 180);
 
-        // --- Sustained pad tone (replaces the old percussive cowbell) ---
-        // Gentle FM with near-unison ratios (1.0-1.5x) — warm, not metallic.
-        // Modulation index halved (0.3 → 0.15): the index scales WITH freq, so
-        // at harmonicRich=8 the deviation was ±0.3·freq and the sidebands ran
-        // several multiples above the fundamental. Halving keeps the timbre
-        // without letting harmonicRich brighten the layer into a bell again.
-        mod = SinOsc.ar(freq * harmonicComplexity.linexp(0.1, 8, 1.0, 1.5)) *
-              (harmonicComplexity.linlin(0.1, 8, 0.0, 0.15)) * freq;
+        // --- Sustained pad tone ---
+        // NESTED FM, three deep, after the single near-unison modulator this
+        // had was judged dull. One modulator at 1.0-1.5x the carrier can only
+        // produce a narrow, static sideband pair — warm, and the same warmth
+        // every time. Nesting a second modulator inside the first makes the
+        // sideband structure itself move, and putting a slow LFNoise on the
+        // innermost frequency means it never settles: the spectrum drifts over
+        // tens of seconds while the pitch stays exactly where it was put.
+        //
+        // The register is unchanged. freq is still folded to 28-180 Hz above,
+        // so this is a low sustained tone with a moving spectrum, not a bell —
+        // harmonicRich still opens it and the modulation index is still scaled
+        // so the top of that fader cannot brighten the layer into one.
+        innerMod = SinOsc.ar(
+            LFNoise2.kr(0.05).exprange(freq * 0.5, freq * 3.2),
+            0,
+            harmonicComplexity.linlin(0.1, 8, 0.5, 6.0)
+        );
+        mod = SinOsc.ar(
+            freq * harmonicComplexity.linexp(0.1, 8, 1.0, 1.5) * (1 + (innerMod * 0.03)),
+            innerMod * 0.4
+        ) * (harmonicComplexity.linlin(0.1, 8, 0.0, 0.15)) * freq;
         carrier = SinOsc.ar(freq + mod);
 
-        // Blend in a soft sub octave and a quiet 5th for body
+        // Blend in a soft sub octave and a quiet 5th for body. The 5th gets a
+        // slow detune so two pads a few seconds apart beat against each other
+        // instead of stacking into one motionless chord.
         sig = carrier * 0.5
             + (SinOsc.ar(freq * 0.5) * 0.3)
-            + (SinOsc.ar(freq * 1.5) * 0.1 * harmonicComplexity.linlin(0.1, 8, 0.0, 1.0));
+            + (SinOsc.ar(freq * 1.5 * LFNoise2.kr(0.04).range(0.997, 1.003))
+                * 0.1 * harmonicComplexity.linlin(0.1, 8, 0.0, 1.0));
 
         // ── ADSR ─────────────────────────────────────────────────────────
         // A true four-stage envelope with a HELD sustain, not the previous
@@ -348,7 +371,7 @@ s.doWhenBooted({
             Pan2.ar(sig.sum, spatialX.clip(-1, 1))
         };
         
-        Out.ar(0, quadSig);
+        Out.ar(out, quadSig);
     }).add;
 
     // --- Fors Opal Emulation Synths ---
@@ -507,6 +530,11 @@ s.doWhenBooted({
         masterAmpBus=(-1), filterCutoffBus=(-1),
         droneDepthBus=(-1), droneFadeBus=(-1), droneSpaceBus=(-1), droneMixBus=(-1),
         delayFeedbackBus=(-1),
+        // Noise Level / Noise Filt reach the drone now as well as the pad. On
+        // the pad they are a plain LPF'd pink hiss; here they are a bank of
+        // drifting band-passes, which is the difference between a noise floor
+        // and a texture.
+        noiseLevelBus=(-1), noiseFiltBus=(-1),
         // Matrix mixer: this layer's live level (0 = mute, 1 = unity).
         mixDroneBus=(-1);
 
@@ -527,8 +555,10 @@ s.doWhenBooted({
         var dSpace= Select.kr(droneSpaceBus >= 0, [0.5, In.kr(droneSpaceBus, 1)]);
         var dLayer= Select.kr(droneMixBus >= 0, [0.5, In.kr(droneMixBus, 1)]);
         var dFeed = Select.kr(delayFeedbackBus >= 0, [0.3, In.kr(delayFeedbackBus, 1)]);
+        var nLevel= Select.kr(noiseLevelBus >= 0, [0.1, In.kr(noiseLevelBus, 1)]);
+        var nFilt = Select.kr(noiseFiltBus  >= 0, [0.5, In.kr(noiseFiltBus, 1)]);
 
-        var env, sig, mod, sub, grains, delay, quadSig, baseFreq, dry;
+        var env, sig, mod, sub, grains, delay, quadSig, baseFreq, dry, reson, noiseBed;
         
         env = EnvGen.kr(Env.asr(4.0, 1.0, 6.0), gate, doneAction: 2);
         
@@ -576,6 +606,46 @@ s.doWhenBooted({
         // Granular texturizer
         grains = PitchShift.ar(sig, 0.2, 1.0, texD * 0.5, texD * 0.5);
         sig = XFade2.ar(sig, grains, texD.linlin(0, 1, -1, 1));
+
+        // ── Resonator bank: the bed grows its own partials ─────────────────
+        // Three combs whose delay times drift independently over roughly a
+        // minute. The delay times sit in the PITCHED range — 1/240 to 1/55 s —
+        // so each comb is a resonance rather than an echo, and because they
+        // drift at different rates the spectrum is never twice the same. This
+        // is what the bed was missing: five detuned saws through a fixed filter
+        // are static by construction, and no amount of reverb on top of a
+        // static thing makes it move.
+        //
+        // Input scaled to 0.18 and the output LeakDC'd: a comb with a 9 s decay
+        // and a moving delay time is a resonator with enormous gain at its
+        // peaks, and it will accumulate DC and run away if fed at unity.
+        reson = LeakDC.ar(Mix.fill(3, { |i|
+            CombC.ar(
+                sig * 0.18,
+                0.03,
+                LFNoise1.kr(0.014 + (i * 0.009)).exprange(1/240, 1/55),
+                Lag.kr(dFeed, 0.5).linexp(0, 1, 1.2, 7.0)
+            )
+        }));
+        // Kept under the dry bed rather than replacing it — textureDepth opens
+        // the resonators the way it opens the granular stage above.
+        sig = sig + (reson * texD.linlin(0, 1, 0.10, 0.55));
+
+        // ── Band-filtered noise bed ────────────────────────────────────────
+        // Six band-passes over pink noise with independently drifting centres
+        // and widths. Noise Level sets how much of it there is and Noise Filt
+        // how far up the spectrum the bands are allowed to wander, so the two
+        // faders together are a weather system rather than a hiss.
+        noiseBed = Mix.fill(6, { |i|
+            BPF.ar(
+                PinkNoise.ar(1.0),
+                LFNoise1.kr(0.02 + (i * 0.007))
+                    .exprange(90, (120 + (nFilt * 3800)).clip(150, 4000)),
+                LFNoise1.kr(0.03 + (i * 0.004)).range(0.05, 0.32)
+            )
+        }) * 0.42;
+        sig = sig + (noiseBed * nLevel.linlin(0, 0.5, 0.0, 1.1));
+
         dry = sig;
 
         // Wash effects. droneSpace sizes the room (was hardcoded 0.9).
