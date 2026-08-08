@@ -125,6 +125,27 @@ s.waitForBoot {
     // Every parameter follows the house idiom — Select.kr(bus >= 0, [literal,
     // In.kr(bus)]) — and every bus arg is named <busname>Bus so the auto-wiring
     // at 6_osc_handlers.scd:474 connects it without being told.
+    // ─── The corpus trim, and why it was inaudible ──────────────────────────
+    // This assignment used to sit ~150 lines BELOW, after both SynthDefs that
+    // read it. ~trimCorpus is read inside the SynthDef bodies, which are
+    // evaluated when the def is BUILT, so on a cold boot the variable was still
+    // nil and both voices baked in the `? 0.143` fallback instead. A re-load
+    // picked up the previous session's value, so the layer was quieter on the
+    // first boot than on every subsequent one — which is exactly the kind of
+    // fault that survives testing.
+    //
+    // The value itself was also far too low. Measured on the corpus bus against
+    // the master bus with the engine running: RMS 0.00105 against 0.0655, or
+    // -35.9 dB. The recordings are the evidence this piece is built on and they
+    // were 36 dB under everything else, which is why they could not be heard at
+    // all rather than merely being quiet.
+    //
+    // 27 puts the layer about 9 dB below the master mix — present and legible
+    // as a foreground element, without burying the engine. AudioMoth material
+    // is quiet at source (peaks well below full scale), which is why this trim
+    // is so much larger than the synthesised voices'.
+    ~trimCorpus = 27.0 * (~trimMaster ? 0.055);
+
     SynthDef(\corpusVoice, {
         // out: routed to the chain-processing bus when 17_ is running, and
         // straight to the main output when it is not. Hard-wired to 0 before,
@@ -274,7 +295,8 @@ s.waitForBoot {
     // fader is at its 0.5 default, ~6 dB below the drone bed (the reference
     // continuous voice, effective 0.10), and leaves the top half of the fader
     // as genuine headroom rather than make-up gain.
-    ~trimCorpus = 2.60 * (~trimMaster ? 0.055);
+    // Moved ABOVE the SynthDefs — see the note there. Left here it was dead on
+    // a cold boot, and this is where it used to live.
 
     // ─── Voice pools, allocated once ────────────────────────────────────────
     // Allocating buffers at trigger time fragments server memory and drops
