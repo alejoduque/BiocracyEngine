@@ -346,6 +346,11 @@ function scopeSend(frame, safety) {
         { type: "i", value: (safety && safety.osBlanked) || 0 },
         { type: "i", value: (safety && safety.dwellBlanked) || 0 },
         { type: "i", value: (safety && safety.frameBlanked) ? 1 : 0 },
+        // Hold-aware, so the GUI lamp reflects the state the beam is actually
+        // in rather than only the instant a fault was seen. A blanking that
+        // lasts 250 ms but is reported for one 12 Hz frame would blink a lamp
+        // for 80 ms and be missed.
+        { type: "i", value: (Date.now() < _blankUntil) ? 1 : 0 },
         { type: "i", value: pts.length / 4 },
         ...pts,
       ],

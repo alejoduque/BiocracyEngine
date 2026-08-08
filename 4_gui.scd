@@ -67,10 +67,13 @@
         ~guiScreen = Window.availableBounds;
         ~mainWindow = Window("SøNETH — BiocracyEngine Control", Rect(
             60, 40,
-            // +270 for the laser column, which lives OUTSIDE the scroll area
+            // +470 for the laser column, which lives OUTSIDE the scroll area
             // and so has to be paid for in window width rather than taken from
-            // the control surface.
-            min(1370, ~guiScreen.width - 60),
+            // the control surface. Clamped to the screen: on a narrower display
+            // the fixed column wins and the surface takes the horizontal
+            // scroller it already has, rather than the scope being squeezed to
+            // nothing — a scope too small to read is the same as no scope.
+            min(1570, ~guiScreen.width - 40),
             min(1380, ~guiScreen.height - 60)
         )).background_(backgroundColor);
 
@@ -1344,7 +1347,7 @@
         // horizontal space to its right.
         laserView = View().background_(backgroundColor.blend(mainTheme.accent, 0.05))
             .layout_(VLayout().margins_(6).spacing_(6));
-        laserView.fixedWidth = 262;
+        laserView.fixedWidth = 452;
 
         laserView.layout.add(
             StaticText().string_("LASER · GALVO SAFETY")
@@ -1352,6 +1355,53 @@
                 .font_(Font(~monoFont, 10, true))
                 .fixedHeight_(14)
         );
+
+        // ─── Two lamps ──────────────────────────────────────────────────────
+        // Same visual language as the feed lights at the top of the surface,
+        // without their age column: neither of these is a feed whose silence
+        // means anything, so a "seconds since" reading beside them would be
+        // noise dressed as information.
+        //
+        // DAC is a fact about the hardware — lit only when the bridge has bound
+        // a real Helios. Dry run and no-bridge both read dark, which is correct:
+        // in neither case is anything reaching a laser.
+        //
+        // BLANK is a fact about right now. It follows the bridge's own hold
+        // window rather than the frame that tripped it, because a 250 ms
+        // blanking reported for one 12 Hz frame would flash the lamp for 80 ms
+        // and be missed by the person it is for.
+        ~laserLeds = ~laserLeds ?? ();
+        ~makeLaserLed = { |label|
+            var row = View().background_(backgroundColor);
+            var dot;
+            row.layout_(HLayout().margins_(2).spacing_(6));
+            dot = UserView(row).maxHeight_(16).maxWidth_(16)
+                .drawFunc_({ |uview|
+                    var lit = (uview.getProperty(\status) ? 0) == 1;
+                    Pen.fillColor = if(lit) { ~ledOn } { ~ledOff };
+                    Pen.addOval(Rect(1, 1, 14, 14)); Pen.fill;
+                    Pen.strokeColor = if(lit) { ~ledOn } { ~ledRim };
+                    Pen.width = 1;
+                    Pen.addOval(Rect(1, 1, 14, 14)); Pen.stroke;
+                    if(lit) {
+                        Pen.fillColor = Color.white.alpha_(0.45);
+                        Pen.addOval(Rect(4, 3, 5, 4)); Pen.fill;
+                    };
+                });
+            dot.setProperty(\status, 0);
+            row.layout.add(dot);
+            row.layout.add(StaticText().string_(label)
+                .stringColor_(mainTheme.dim).font_(Font(~monoFont, 9)));
+            ~laserLeds[label.asSymbol] = dot;
+            row;
+        };
+        ~laserLampRow = View().background_(backgroundColor)
+            .layout_(HLayout().margins_(0).spacing_(10));
+        ~laserLampRow.fixedHeight = 24;
+        ~laserLampRow.layout.add(~makeLaserLed.value("DAC"));
+        ~laserLampRow.layout.add(~makeLaserLed.value("BLANK"));
+        ~laserLampRow.layout.add(nil);
+        laserView.layout.add(~laserLampRow);
 
         ~laserStatusText = StaticText()
             .string_("LASER: no bridge")
@@ -1414,6 +1464,16 @@
                     Pen.strokeColor = Color.gray(0.40);
                     Pen.moveTo(0 @ (laneS - (h * 0.13)));
                     Pen.lineTo(w @ (laneS - (h * 0.13))); Pen.stroke;
+                    // Named, now the column is wide enough to carry them. Three
+                    // unlabelled traces are three mysteries, and the third one
+                    // is not the same KIND of quantity as the first two — it is
+                    // a rate, not a position, and nothing on screen said so.
+                    [["X", laneX], ["Y", laneY]].do { |l|
+                        Pen.stringAtPoint(l[0], 3 @ (l[1] - (h * 0.115)),
+                            Font(~monoFont, 8), Color.gray(0.5));
+                    };
+                    Pen.stringAtPoint("STEP / LIMIT", 3 @ (laneS - (h * 0.155)),
+                        Font(~monoFont, 8), Color.gray(0.5));
                     pts.do { |p, i|
                         var x0 = i / n * w;
                         var frac = (p[3] / lim).clip(0, 2.2);
@@ -1601,6 +1661,17 @@
                                     { true } { "galvo-safe" };
                             ~laserStatusText.stringColor =
                                 if(bad) { Color.white } { mainTheme.dim };
+                        };
+                        // The lamps. Both dark when there is no bridge — an
+                        // unlit BLANK must not be readable as "not blanking"
+                        // when in truth nothing is being projected at all.
+                        if(~laserLeds.notNil) {
+                            ~laserLeds[\DAC].setProperty(\status,
+                                if(live and: { sc[\dac] > 0 }) { 1 } { 0 });
+                            ~laserLeds[\BLANK].setProperty(\status,
+                                if(live and: { sc[\blanking] > 0 }) { 1 } { 0 });
+                            ~laserLeds[\DAC].refresh;
+                            ~laserLeds[\BLANK].refresh;
                         };
                         if(~laserScopeView.notNil) { ~laserScopeView.refresh };
                     };

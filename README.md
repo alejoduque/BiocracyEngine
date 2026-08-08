@@ -944,7 +944,16 @@ dense   1200 pts   budget 225%                                     BLANKED — n
 
 ### Galvo-safety scope (SC GUI, right-hand column)
 
-`laser-bridge.js` sends `/laser/scope` to sclang at 12 Hz carrying the frame **after** sanitisation — the signal the DAC actually receives. The SC GUI draws it in a fixed column beside the scroll area, so it stays readable while the hands are on the knobs. Three lanes: **X**, **Y**, and the **step envelope** against the limit — a step limit is a limit on *slope*, so velocity is what the scope has to show. Decimated buckets carry the **worst** step inside them, never the step between surviving points.
+`laser-bridge.js` sends `/laser/scope` to sclang at 12 Hz carrying the frame **after** sanitisation — the signal the DAC actually receives. The SC GUI draws it in a fixed **452 px column beside the scroll area** (window 1570 px), so it stays readable while the hands are on the knobs; the scope itself is 440 × 847. Three labelled lanes: **X**, **Y**, and **STEP / LIMIT** — a step limit is a limit on *slope*, so velocity is what the scope has to show, and it is not the same kind of quantity as the two above it. Decimated buckets carry the **worst** step inside them, never the step between surviving points.
+
+Two lamps, in the same visual language as the feed lights but without their age column (neither is a feed whose silence means anything):
+
+| Lamp | Lit when |
+|---|---|
+| **DAC** | the bridge has bound a real Helios. Dry run *and* no-bridge both read dark — in neither case is anything reaching a laser. |
+| **BLANK** | the beam is down right now. Follows the bridge's own `LASER_BLANK_HOLD_MS` window, not the frame that tripped it: a 250 ms blanking reported for one 12 Hz frame would flash for 80 ms and be missed. |
+
+Both go dark when the bridge stops speaking — an unlit BLANK must never be readable as *not blanking* when in truth nothing is being projected at all.
 
 Four states, all reachable:
 
