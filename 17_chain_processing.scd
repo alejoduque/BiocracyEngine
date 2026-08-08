@@ -169,6 +169,14 @@ s.waitForBoot {
                 { ~buses[\chainProcess].index }, { -1 })
         ]
     );
+    // The corpus analyser sits on the same bus, at the TAIL so it hears the
+    // chain processing rather than the dry recordings — what the laser draws
+    // should be what the room hears, not what the file contains.
+    if(~corpusScopeSynth.notNil) { try { ~corpusScopeSynth.free } };
+    ~corpusScopeSynth = Synth.tail(
+        if(~defaultGroup.notNil, { ~defaultGroup }, { s.defaultGroup }),
+        \corpusScope, [\in, ~corpusProcBus.index]);
+
     ("[chain] processor across the corpus bus (" ++ ~corpusProcBus.index ++ ")").postln;
 };
 

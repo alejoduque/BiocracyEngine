@@ -236,10 +236,39 @@ s.doWhenBooted({
     // could never disagree with the engine; and a microphone only works if the
     // room can hear the speakers, which is false on headphones or an interface.
     // Analysing the bus itself is the only source that is actually the sound.
+    // ─── Spectrum analysis, at a resolution you can draw with ──────────────
+    // 16 bands was enough to tint a spectrogram and is not enough to draw a
+    // LINE with: a ridgeline needs enough points across its width to wiggle,
+    // and sixteen gives a shape with fifteen corners. 48 log-spaced bands over
+    // the same 40 Hz - 10 kHz span.
+    //
+    // Safe to widen: every consumer reads the array's own length rather than
+    // assuming 16 — publishScAudio and bandRange in scAudio.ts both use
+    // bands.length, and the spectrogram's scBins interpolates from src.length,
+    // so it simply gets a better source to resample.
+    ~scopeBands = 48;
     SynthDef(\masterScope, {
         var sig = Mix(In.ar(0, ~limiterChans)) / ~limiterChans.max(1);
-        var bands = Array.geom(16, 40, (10000 / 40) ** (1 / 15));
+        var bands = Array.geom(~scopeBands, 40, (10000 / 40) ** (1 / (~scopeBands - 1)));
         SendReply.kr(Impulse.kr(20), '/spectrum',
+            bands.collect { |f| Amplitude.kr(BPF.ar(sig, f, 0.4), 0.01, 0.12) });
+    }).add;
+
+    // The same analysis over the CORPUS bus alone, so the laser can draw the
+    // forest's own voice rather than the whole engine's. Takes its input bus as
+    // an argument because ~corpusProcBus does not exist until
+    // 17_chain_processing.scd has loaded, which is long after this file.
+    // chans is captured at BUILD time, not taken as an argument: In.ar needs its
+    // channel count as a literal when the graph is compiled, and passing a
+    // Control gives "numChannels must be a nonzero positive integer, but
+    // received (an OutputProxy)". That error aborted the rest of this block, so
+    // \dronePartial and \opalPerc were never defined either — one bad def took
+    // the engine's voices with it.
+    SynthDef(\corpusScope, { |in = 0|
+        var chans = (~limiterChans ? 2);
+        var sig = Mix(In.ar(in, chans)) / chans.max(1);
+        var bands = Array.geom(~scopeBands, 40, (10000 / 40) ** (1 / (~scopeBands - 1)));
+        SendReply.kr(Impulse.kr(20), '/spectrum/corpus',
             bands.collect { |f| Amplitude.kr(BPF.ar(sig, f, 0.4), 0.01, 0.12) });
     }).add;
 

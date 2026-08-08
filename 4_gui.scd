@@ -1403,6 +1403,20 @@
         ~laserLampRow.layout.add(nil);
         laserView.layout.add(~laserLampRow);
 
+        // ─── Which source feeds the plot ────────────────────────────────────
+        // Ticks, not a selector: the stack can carry several at once and each
+        // source draws in its own hue, so a mixed stack stays legible. With
+        // none ticked the browser falls back to the year ring, which is how
+        // that pattern stays reachable without a control of its own.
+        ~laserSrcRow = View().background_(backgroundColor)
+            .layout_(HLayout().margins_(0).spacing_(4));
+        ~laserSrcRow.fixedHeight = 46;
+        [[\laserSrcMix, "MIX"], [\laserSrcCorpus, "CORPUS"],
+         [\laserSrcRing, "DÍA"], [\laserSrcChain, "CHAIN"]].do { |pair|
+            ~laserSrcRow.layout.add(~makeToggle.value(pair[0], pair[1]));
+        };
+        laserView.layout.add(~laserSrcRow);
+
         ~laserStatusText = StaticText()
             .string_("LASER: no bridge")
             .stringColor_(mainTheme.dim)

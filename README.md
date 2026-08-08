@@ -895,6 +895,39 @@ browser laserTap ──WS:3337──► laser-bridge.js ──USB──► Helio
 1. `window.__laserFrame` — any module may publish its own vector scene.
 2. **slot-P default** — the phenological **year-ring** + a marker at today's active species (`window.__activeSpecies`). A **sensitive** species is *not* drawn: the opacity clause (Glissant) extended into physical space — the vulnerable being is never cast onto the real forest.
 
+### What gets projected: the pulsar plot
+
+Stacked ridgelines — the *Unknown Pleasures* / B1919+21 image. Successive observations of the same object drawn one above another, so a pattern invisible in a single pass emerges from the stack. `pulsarPlot.ts` publishes `window.__laserFrame`, which `laserTap.ts` already prefers over its year-ring default.
+
+**Four sources**, ticked independently from the SC GUI (`/laser/src/*`, registry-backed so presets carry them). Each draws in its own hue so a mixed stack stays legible. **With none ticked the year ring returns** — that is how the ring stays reachable without a control of its own.
+
+| Tick | One row is | Hue |
+|---|---|---|
+| `MIX` | a spectrum snapshot of everything sounding | green |
+| `CORPUS` | the same, over the corpus bus alone — the forest's own voice | amber |
+| `DÍA` | the corpus spectrum measured while a `/pheno/clip` day is sounding | blue |
+| `CHAIN` | a block's worth of transactions; x is arrival order, height is the bid | red |
+
+Article 47 is carried, not re-litigated: an opaque clip is never announced, and a **sensitive** species contributes no row at all — the same refusal `laserTap.ts` already makes for the ring.
+
+#### Why six rows, and why serpentine
+
+The galvo limits make this a **path-length** problem. Every point is scanned `FRAME_HZ` times a second, so a frame gets a fixed quantity of ink:
+
+```
+ink per frame = OMEGA_MAX / FRAME_HZ / deg_per_unit
+              = 10000 / 30 / 22.5  =  14.8 normalised units
+```
+
+A full-width row costs ~1.5 units before it wiggles. **The album's 80 rows would need ~420 units.** Six is the ceiling, so the depth of the stack lives in *time* — the plot scrolls, and the pattern emerges for someone who watches rather than glances.
+
+Two things are load-bearing rather than stylistic:
+
+- **Serpentine scanning.** Drawing every row left-to-right means retracing the full width between them, and the mirror travels that whether the beam is on or not. Measured: 19.36 units, **131 % of budget → whole frame blanked**. Alternating direction makes the only inter-row move the row step. Serpentine: 12.03 units, 81 %.
+- **Arc-length sampling.** Spacing points evenly in *x* and sizing that spacing to the step limit leaves nothing for the vertical component, so every sloped segment exceeds the limit and gets interpolated. Measured: a 516-point frame became **1041**, and a path using only 77 % of the ink budget hit **128 %** of the point budget and was blanked.
+
+The generator is **self-budgeting** — it sheds the oldest row until the frame fits, *before* sending. Auto-blanking is a safety net, and content that lands in the net is content that is not being projected. Measured end to end: 646 points, **81 % scan budget, 0 over-speed, nothing blanked**.
+
 ### Scanner limits (Unity RAW 1.7 W, DMX + ILDA)
 
 A laser projector is driven **by a waveform**: at the DAC's point rate each point is one sample, X on the left channel and Y on the right. The limits below come from the fixture datasheet, and every one is an env var.

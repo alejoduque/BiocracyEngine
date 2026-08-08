@@ -99,7 +99,12 @@ function minStepFor(pps) {
   return OMEGA_MIN / Math.max(pps, 1) / DEG_PER_UNIT;
 }
 const DEADMAN_MS   = 500;
-const FRAME_HZ     = 45;                 // output cadence
+// Output cadence, and therefore the INK BUDGET. Every point must be scanned
+// FRAME_HZ times a second, so the total path the beam can travel per frame is
+// OMEGA_MAX / FRAME_HZ — 9.9 normalised units at 45 Hz, 14.8 at 30. The stacked
+// pulsar plot needs the latter to fit six rows, and 30 Hz is the practical
+// flicker floor for a laser: below it the image visibly strobes.
+const FRAME_HZ     = parseFloat(process.env.LASER_FRAME_HZ || "30");
 const ILD_OUT      = process.env.LASER_ILD_OUT || null;
 // Where the SC GUI's galvo scope listens. sclang binds 57120.
 const SC_OSC_HOST  = process.env.LASER_SC_HOST || "127.0.0.1";

@@ -147,7 +147,26 @@
     // Independent axis: the sub-bass heartbeat, one per block, surviving the
     // troughs the tide would otherwise empty.
     (name: \tidePulse, spec: ControlSpec(0, 1, \lin, 1), default: 1, path: "/tide/pulse",
-        hasBus: false, beatParam: \tidePulse, cc: 20)
+        hasBus: false, beatParam: \tidePulse, cc: 20),
+
+    // ── Laser · which source feeds the pulsar plot ──────────────────────
+    // Four independent ticks rather than one selector, because the stack can
+    // carry several at once — each source has its own hue, so a mixed stack
+    // stays legible. With none ticked the laser falls back to the year ring,
+    // which is how that pattern stays reachable without a control of its own.
+    //
+    // hasBus: false — nothing in SuperCollider reads these. They exist to be
+    // echoed to the browser, where the plot is drawn; routing them through the
+    // registry is what gives them a GUI toggle, an OSC path, preset save/load
+    // and the browser echo for free, on the one write path.
+    (name: \laserSrcMix,    spec: ControlSpec(0, 1, \lin, 1), default: 1,
+        path: "/laser/src/mix",    hasBus: false),
+    (name: \laserSrcCorpus, spec: ControlSpec(0, 1, \lin, 1), default: 0,
+        path: "/laser/src/corpus", hasBus: false),
+    (name: \laserSrcRing,   spec: ControlSpec(0, 1, \lin, 1), default: 0,
+        path: "/laser/src/ring",   hasBus: false),
+    (name: \laserSrcChain,  spec: ControlSpec(0, 1, \lin, 1), default: 0,
+        path: "/laser/src/chain",  hasBus: false)
 ];
 
 // ─── Derived lookup tables ──────────────────────────────────────────────────
