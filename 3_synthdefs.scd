@@ -619,19 +619,23 @@ s.doWhenBooted({
         var fmR   = Select.kr(harmonicBus >= 0, [1.0, In.kr(harmonicBus, 1)]);
 
         // ─── Cross-layer acoustic modulation ──────────────────────────────
-        // Percussion dynamically reacts to Dust, Pad, Kick and Sample levels
-        var dustMod   = Select.kr(mixDustBus   >= 0, [0.0, In.kr(mixDustBus, 1)]);
-        var padMod    = Select.kr(mixPadBus    >= 0, [0.0, In.kr(mixPadBus, 1)]);
-        var kickMod   = Select.kr(mixKickBus   >= 0, [0.0, In.kr(mixKickBus, 1)]);
-        var sampleMod = Select.kr(mixSampleBus >= 0, [0.0, In.kr(mixSampleBus, 1)]);
+        // Percussion dynamically reacts to Dust, Pad, Kick and Sample levels.
+        // IMPORTANT: mix buses hold fader levels (0=mute, 1=unity, 2=max).
+        // We use (bus - 1.0) as the deviation signal so that unity fader = zero
+        // modulation offset. Only non-unity fader pushes/pulls the parameter.
+        // This restores full GUI knob control when all faders are at unity.
+        var dustMod   = Select.kr(mixDustBus   >= 0, [0.0, In.kr(mixDustBus, 1)   - 1.0]);
+        var padMod    = Select.kr(mixPadBus    >= 0, [0.0, In.kr(mixPadBus, 1)    - 1.0]);
+        var kickMod   = Select.kr(mixKickBus   >= 0, [0.0, In.kr(mixKickBus, 1)   - 1.0]);
+        var sampleMod = Select.kr(mixSampleBus >= 0, [0.0, In.kr(mixSampleBus, 1) - 1.0]);
 
-        // 1. Dust opens the exciter noise breath (nLevel) so crackle expands perc's attack
+        // 1. Dust fader pushed above unity → opens exciter noise breath in perc
         nLevel = (nLevel + (dustMod * 0.20)).clip(0, 1);
-        // 2. Pad level tilts filter cutoff upwards, opening upper resonances when pads bloom
+        // 2. Pad fader pushed above unity → tilts perc filter cutoff upwards
         cutoff = (cutoff + (padMod * 0.25)).clip(0, 1);
-        // 3. Kick level tightens resonance / inharmonicity for a punchier body
+        // 3. Kick fader pushed above unity → tightens perc resonance/inharmonicity
         res    = (res + (kickMod * 0.15)).clip(0.1, 0.95);
-        // 4. Sample level adds extra delay feedback to weave perc into field recordings
+        // 4. Sample fader pushed above unity → adds extra delay feedback to perc
         dFeed  = (dFeed + (sampleMod * 0.20)).clip(0, 0.9);
 
         var exciter, sig, wet, quadSig, partials, decays, inharm, damp, spread;
@@ -1215,9 +1219,10 @@ s.doWhenBooted({
         var dFade = Select.kr(droneFadeBus  >= 0, [2.0, In.kr(droneFadeBus, 1)]);
 
         // ─── Cross-layer acoustic modulation ──────────────────────────────
-        // Granular crackle adapts to field recording and pad presence
-        var sampleMod = Select.kr(mixSampleBus >= 0, [0.0, In.kr(mixSampleBus, 1)]);
-        var padMod    = Select.kr(mixPadBus    >= 0, [0.0, In.kr(mixPadBus, 1)]);
+        // Granular crackle adapts to field recording and pad presence.
+        // Deviation-from-unity: unity fader = zero offset, preserving GUI control.
+        var sampleMod = Select.kr(mixSampleBus >= 0, [0.0, In.kr(mixSampleBus, 1) - 1.0]);
+        var padMod    = Select.kr(mixPadBus    >= 0, [0.0, In.kr(mixPadBus, 1)    - 1.0]);
 
         dens  = (dens + (sampleMod * 0.20)).clip(0, 1);
         nFilt = (nFilt + (padMod * 0.20)).clip(0, 1);
