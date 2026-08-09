@@ -588,7 +588,7 @@ s.doWhenBooted({
         pitchBus=(-1), filterCutoffBus=(-1), noiseLevelBus=(-1), noiseFiltBus=(-1),
         delayFeedbackBus=(-1), droneFadeBus=(-1),
         // Matrix mixer: this layer's live level (0 = mute, 1 = unity).
-        mixPercBus=(-1),
+        mixPercBus=(-1), mixDustBus=(-1), mixPadBus=(-1), mixKickBus=(-1), mixSampleBus=(-1),
         // ─── Parameter locks ────────────────────────────────────────────────
         // These were CONSTANTS inside the Select.kr fallbacks below, which meant
         // a trig had no way to carry its own values: every hit read the same
@@ -617,6 +617,22 @@ s.doWhenBooted({
         // harmonicBus was DECLARED on this SynthDef and never read into
         // anything — a dead argument. It drives the decay tilt below now.
         var fmR   = Select.kr(harmonicBus >= 0, [1.0, In.kr(harmonicBus, 1)]);
+
+        // ─── Cross-layer acoustic modulation ──────────────────────────────
+        // Percussion dynamically reacts to Dust, Pad, Kick and Sample levels
+        var dustMod   = Select.kr(mixDustBus   >= 0, [0.0, In.kr(mixDustBus, 1)]);
+        var padMod    = Select.kr(mixPadBus    >= 0, [0.0, In.kr(mixPadBus, 1)]);
+        var kickMod   = Select.kr(mixKickBus   >= 0, [0.0, In.kr(mixKickBus, 1)]);
+        var sampleMod = Select.kr(mixSampleBus >= 0, [0.0, In.kr(mixSampleBus, 1)]);
+
+        // 1. Dust opens the exciter noise breath (nLevel) so crackle expands perc's attack
+        nLevel = (nLevel + (dustMod * 0.20)).clip(0, 1);
+        // 2. Pad level tilts filter cutoff upwards, opening upper resonances when pads bloom
+        cutoff = (cutoff + (padMod * 0.25)).clip(0, 1);
+        // 3. Kick level tightens resonance / inharmonicity for a punchier body
+        res    = (res + (kickMod * 0.15)).clip(0.1, 0.95);
+        // 4. Sample level adds extra delay feedback to weave perc into field recordings
+        dFeed  = (dFeed + (sampleMod * 0.20)).clip(0, 0.9);
 
         var exciter, sig, wet, quadSig, partials, decays, inharm, damp, spread;
         var scream, bend, shaped, micro, steps;
@@ -1180,7 +1196,7 @@ s.doWhenBooted({
         harmonicBus=(-1), resonantBus=(-1), filterCutoffBus=(-1),
         noiseLevelBus=(-1), noiseFiltBus=(-1), delayFeedbackBus=(-1), droneFadeBus=(-1),
         // Matrix mixer: this layer's live level (0 = mute, 1 = unity).
-        mixDustBus=(-1);
+        mixDustBus=(-1), mixSampleBus=(-1), mixPadBus=(-1);
 
         var vol   = Select.kr(masterVolBus >= 0, [0.3, In.kr(masterVolBus, 1)]);
         var dens  = Select.kr(textureBus >= 0, [0.2, In.kr(textureBus, 1)]);
@@ -1197,6 +1213,14 @@ s.doWhenBooted({
         var nFilt = Select.kr(noiseFiltBus  >= 0, [0.5, In.kr(noiseFiltBus, 1)]);
         var dFeed = Select.kr(delayFeedbackBus >= 0, [0.3, In.kr(delayFeedbackBus, 1)]);
         var dFade = Select.kr(droneFadeBus  >= 0, [2.0, In.kr(droneFadeBus, 1)]);
+
+        // ─── Cross-layer acoustic modulation ──────────────────────────────
+        // Granular crackle adapts to field recording and pad presence
+        var sampleMod = Select.kr(mixSampleBus >= 0, [0.0, In.kr(mixSampleBus, 1)]);
+        var padMod    = Select.kr(mixPadBus    >= 0, [0.0, In.kr(mixPadBus, 1)]);
+
+        dens  = (dens + (sampleMod * 0.20)).clip(0, 1);
+        nFilt = (nFilt + (padMod * 0.20)).clip(0, 1);
 
         var env, sig, grains, wet, quadSig, ring, bed;
         
