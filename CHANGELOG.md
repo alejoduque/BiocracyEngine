@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### SC GUI SynthDef compilation fix & Visualization modules verification (2026-08-14)
+
+#### Fixed
+- **SuperCollider `3_synthdefs.scd` syntax compilation error (`unexpected VAR`).** Executable statements in cross-layer acoustic modulation were placed before remaining `var` declarations inside `\opalPerc` and `\opalDust`, causing `sclang` to abort compiling the file on boot. As a consequence, `\opalPerc`, `\opalDust`, `\opalKick`, `\elektronBell`, `\dronePartial`, and `\masterLimiter` were never added to the server, resulting in `SynthDef not found` errors and complete loss of PERC and synthesis mix control. Moved all variable declarations to the top of their functions; all 19 `.scd` scripts now compile cleanly (`COMPILE OK`).
+- **SC GUI knob control with cross-layer modulation.** Preserved non-negative push deviation `(In.kr(...) - 1.0).max(0.0)` across `mixDustBus`, `mixPadBus`, `mixKickBus`, and `mixSampleBus`, ensuring that default unity (`1.0`) and muted (`0.0`) faders apply zero parameter offset, restoring full sensitivity and travel across all GUI knobs.
+
+#### Verified
+- **All 16 visual switcher modules mapped and verified (`nw_wrld_local/src/projector/visualizationSwitcher.ts`).** Confirmed clean Webpack build with zero errors. All 10 numeric slots (`0–9`: Parliament, AsteroidWaves, LowEarthPoint, PerlinBlob, TimeTravel, DynamicGraphs, DynamicOptimality, Geometry, MemoryHierarchy, Hashing) and 6 letter slots (`p`: Phenology, `f`: DarkForest, `b`: Transito, `e`: Estratos, `r`: Registro, `a`: Antifonía) are bound to `/^[0-9pfbrea]$/` keyboard controls with live state synchronization.
+
 ### The propeller, the corpus, and a galvo scope that can go red (2026-08-08)
 
 #### Added

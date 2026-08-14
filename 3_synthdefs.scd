@@ -621,13 +621,16 @@ s.doWhenBooted({
         // ─── Cross-layer acoustic modulation ──────────────────────────────
         // Percussion dynamically reacts to Dust, Pad, Kick and Sample levels.
         // IMPORTANT: mix buses hold fader levels (0=mute, 1=unity, 2=max).
-        // We use (bus - 1.0) as the deviation signal so that unity fader = zero
-        // modulation offset. Only non-unity fader pushes/pulls the parameter.
-        // This restores full GUI knob control when all faders are at unity.
-        var dustMod   = Select.kr(mixDustBus   >= 0, [0.0, In.kr(mixDustBus, 1)   - 1.0]);
-        var padMod    = Select.kr(mixPadBus    >= 0, [0.0, In.kr(mixPadBus, 1)    - 1.0]);
-        var kickMod   = Select.kr(mixKickBus   >= 0, [0.0, In.kr(mixKickBus, 1)   - 1.0]);
-        var sampleMod = Select.kr(mixSampleBus >= 0, [0.0, In.kr(mixSampleBus, 1) - 1.0]);
+        // We use (bus - 1.0).max(0.0) as the non-negative push deviation so that
+        // unity (1.0) or muted (0.0) faders result in zero modulation offset.
+        // Only pushing faders above unity (> 1.0) adds cross-layer modulation.
+        var dustMod   = Select.kr(mixDustBus   >= 0, [0.0, (In.kr(mixDustBus, 1)   - 1.0).max(0.0)]);
+        var padMod    = Select.kr(mixPadBus    >= 0, [0.0, (In.kr(mixPadBus, 1)    - 1.0).max(0.0)]);
+        var kickMod   = Select.kr(mixKickBus   >= 0, [0.0, (In.kr(mixKickBus, 1)   - 1.0).max(0.0)]);
+        var sampleMod = Select.kr(mixSampleBus >= 0, [0.0, (In.kr(mixSampleBus, 1) - 1.0).max(0.0)]);
+
+        var exciter, sig, wet, quadSig, partials, decays, inharm, damp, spread;
+        var scream, bend, shaped, micro, steps;
 
         // 1. Dust fader pushed above unity → opens exciter noise breath in perc
         nLevel = (nLevel + (dustMod * 0.20)).clip(0, 1);
@@ -637,9 +640,6 @@ s.doWhenBooted({
         res    = (res + (kickMod * 0.15)).clip(0.1, 0.95);
         // 4. Sample fader pushed above unity → adds extra delay feedback to perc
         dFeed  = (dFeed + (sampleMod * 0.20)).clip(0, 0.9);
-
-        var exciter, sig, wet, quadSig, partials, decays, inharm, damp, spread;
-        var scream, bend, shaped, micro, steps;
 
         // HARD-CLAMP the struck frequency, like \elektronBell's fundamental.
         // The caller can ask for almost anything: ~computePitchPool tops out at
@@ -1220,14 +1220,13 @@ s.doWhenBooted({
 
         // ─── Cross-layer acoustic modulation ──────────────────────────────
         // Granular crackle adapts to field recording and pad presence.
-        // Deviation-from-unity: unity fader = zero offset, preserving GUI control.
-        var sampleMod = Select.kr(mixSampleBus >= 0, [0.0, In.kr(mixSampleBus, 1) - 1.0]);
-        var padMod    = Select.kr(mixPadBus    >= 0, [0.0, In.kr(mixPadBus, 1)    - 1.0]);
+        // Non-negative push deviation: unity/muted fader = zero offset.
+        var sampleMod = Select.kr(mixSampleBus >= 0, [0.0, (In.kr(mixSampleBus, 1) - 1.0).max(0.0)]);
+        var padMod    = Select.kr(mixPadBus    >= 0, [0.0, (In.kr(mixPadBus, 1)    - 1.0).max(0.0)]);
+        var env, sig, grains, wet, quadSig, ring, bed;
 
         dens  = (dens + (sampleMod * 0.20)).clip(0, 1);
         nFilt = (nFilt + (padMod * 0.20)).clip(0, 1);
-
-        var env, sig, grains, wet, quadSig, ring, bed;
         
         env = EnvGen.ar(Env.perc(0.01, tStretch * 0.8), doneAction: 2);
         
