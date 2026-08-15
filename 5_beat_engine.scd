@@ -377,6 +377,76 @@
 // to something other than itself.
 ~droneStrikeBus = ~droneStrikeBus ?? { Bus.control(s, 1).set(0) };
 
+// ─── Autonomous Warm Pad Bed ─────────────────────────────────────────────────
+// Keeps 1–2 \biocratiaPad voices alive at all times, completely independent of
+// Ethereum transaction rate. Modelled on ~droneEnsemble: voices have long,
+// unequal lifespans, respawn on uneven intervals, and follow ~droneRoot
+// harmonic series so the pad bed is always in tune with the drone.
+// The gate argument lets each voice release gracefully on its own tail rather
+// than being freed hard.
+~padBedEnsemble = {
+    // Harmonic ratios relative to droneRoot: unison, 5th, octave, 4th, major-3rd
+    // Must be declared first — SC requires all vars before executable statements
+    var padRatios = #[1.0, 1.5, 2.0, 0.5, 1.25];
+    if(~padBedRoutine.notNil) { ~padBedRoutine.stop; ~padBedRoutine = nil };
+    ~padVoices    = ~padVoices ?? { [] };
+    ~padVoiceAmp  = ~padVoiceAmp ?? { () };
+    ~padBedRoutine = Routine({
+        // Stagger 6s after drone so the server isn't hit by both at once
+        6.0.wait;
+        loop {
+            var wait = 8.0;
+            try {
+                var tDil  = ~busVal.value(\timeDilation, 2.0);
+                var padMax = 2;  // max concurrent pad voices
+                var live  = (~padVoices ? []).select { |v| v.notNil };
+                ~padVoices = live;
+                if(live.size < padMax) {
+                    var tScale = tDil.linlin(0.5, 6.0, 0.7, 1.9);
+                    var atk  = rrand(7.0,  14.0) * tScale;
+                    var hold = rrand(22.0, 50.0) * tScale;
+                    var rel  = rrand(14.0, 30.0) * tScale;
+                    var ratioIdx = padRatios.size.rand;
+                    var rt = padRatios[ratioIdx];
+                    var targetGrp = if(~defaultGroup.notNil, { ~defaultGroup }, { s.defaultGroup });
+                    var syn = Synth(\biocratiaPad, [
+                        \out,    0,
+                        \gate,   1,
+                        \freq,   ~droneRoot ? 55,
+                        \ratio,  rt,
+                        \amp,    (0.22 / (1 + (rt * 0.45)))
+                            * (~beatParams.transportGain ? 1),
+                        \tempo,  (~beatParams.beatTempo ? 1.0).max(0.1),
+                        \pan,    1.0.rand2 * 0.65
+                    ] ++ (~voiceBusArgs.value ? []), targetGrp);
+                    ~padVoices = (~padVoices ? []).add(syn);
+                    ~padVoiceAmp[syn] = (0.22 / (1 + (rt * 0.45)))
+                        * (~beatParams.transportGain ? 1);
+                    // Auto-release after hold time by gating off
+                    AppClock.sched(atk + hold, {
+                        if(syn.notNil) { syn.set(\gate, 0) };
+                        nil;
+                    });
+                    syn.onFree({
+                        ~padVoices.remove(syn);
+                        ~padVoiceAmp.removeAt(syn);
+                    });
+                    "[pad] new voice — root:% ratio:% atk:%s hold:%s rel:%s"
+                        .format(~droneRoot, rt.round(0.01), atk.round(1),
+                            hold.round(1), rel.round(1)).postln;
+                };
+                wait = rrand(18.0, 38.0);
+            } { |e|
+                ("[pad] ensemble frame: " ++ e.errorString).postln;
+                wait = 10.0;
+            };
+            wait.wait;
+        };
+    }).play(AppClock);
+    "[pad] autonomous bed running".postln;
+};
+
+
 ~droneEnsemble = {
     if(~droneRoutine.notNil) { ~droneRoutine.stop; ~droneRoutine = nil };
     ~droneRoutine = Routine({
@@ -512,7 +582,7 @@
         // a pulse. Four gives a low beat you can lean on while staying far
         // from beat-machine motion.
         var percDivisor   = 8;    // polyrhythmic divisor — shifts each phrase
-        var dustProb      = 0.12; // base probability for dust hits
+        var dustProb      = 0.18; // base probability for dust hits (floor raised from 0.03)
         var droneBaseFreq = 55;   // drone pitch — drifts over time
         // Pitch pool for percussion melodic variation
         var pitchPool     = #[200, 300, 400, 500, 600, 800];
@@ -679,9 +749,6 @@
                     //  gone with the grid — the kick now follows block seams)
                     // Shift the percussion base rate — sparse, drone-friendly
                     percDivisor = #[6, 8, 12, 7, 10].wrapAt(phrase);
-                    // Evolve dust probability with density (kept low: crackle
-                    // as occasional texture, not a constant rain)
-                    dustProb = (0.06 + (density * 0.2) + (transactionInfluence * 0.1)).clip(0.03, 0.35);
                     // Drift drone pitch: cycle through harmonically-related notes
                     droneBaseFreq = #[55, 62, 73, 82, 49, 65, 55, 41].wrapAt(phrase);
                     // The root moves and NOTHING GLIDES. Partials born after
@@ -699,6 +766,15 @@
                     // live out their lives at the old one.
                     ~droneRoot = droneBaseFreq;
                 };
+            };
+
+            // Dust probability updated every bar (not every 4 bars) so it
+            // responds to density changes within a phrase rather than only
+            // once every ~1 minute. Floor raised to 0.15 minimum so DUST
+            // is always audible even at idle chain activity.
+            if(step == 0) {
+                dustProb = (0.18 + (density * 0.25) + (transactionInfluence * 0.12))
+                    .clip(0.15, 0.55);
             };
 
             // Gas deviation → accent: how far this actor bid over base fee.
@@ -763,6 +839,39 @@
                 ] ++ (~voiceBusArgs.value ? []), targetGrp) });
             };
 
+            // ── Heartbeat kick: guaranteed one per 8 bars ────────────────────
+            // Fires at step 0 of every 8th bar regardless of block edge,
+            // so KICK is always audible even when eth_sonify.py is idle or
+            // a block has not arrived. Frequency is harmonically anchored
+            // to the drone root. Amplitude breathes with tideDensity so
+            // the kick still thins in the trough without going silent.
+            // A block-edge kick on the same bar takes precedence (blockEdge
+            // already fired above), so we skip only when blockEdge just fired.
+            if((step == 0) and: { (bar % 8) == 0 }
+                and: { blockEdge.not or: { (~beatParams.lastKickBlock ? 0) != (rs !? { rs[\blockAt] } ? 0) } }) {
+                var kickFreqH = (~droneRoot ? 55) * 0.5;  // sub-octave of root
+                if(~lastVoiceAt.notNil) { ~lastVoiceAt[\kick] = now };
+                if(~visualsDest.notNil) {
+                    ~visualsDest.sendMsg('/voice/kick',
+                        (~beatParams.masterAmp * tideDensity * 0.6).clip(0, 1));
+                };
+                s.makeBundle(s.latency + jitTick, { Synth(\opalKick, [
+                    \out,         0,
+                    \freq,        kickFreqH.clip(30, 80),
+                    \amp,         ~beatParams.masterAmp * (~beatParams.transportGain ? 1)
+                                  * tideDensity * 0.55,
+                    \dec,         1.2 + (transactionInfluence * 0.3),
+                    \masterVolBus, bMVol,
+                    \timeBus,      bTime,
+                    \harmonicBus,  bHarm,
+                    \textureBus,   bText,
+                    \spectralBus,  bSpec,
+                    \atmosphereBus, bAtmo,
+                    \spatialBus,   bSpat,
+                    \mixKickBus,  ~bi.(\mixKick)
+                ] ++ (~voiceBusArgs.value ? []), targetGrp) });
+            };
+
             // ── 2. PERC — tidal probability, not a polyrhythmic divisor ──────────
             // percDivisor survives as the BASE RATE (it is still rotated each
             // phrase, so the average spacing keeps moving) but it no longer
@@ -789,14 +898,14 @@
             // strikes brightens and swells the drone instead of sounding on top
             // of an indifferent one.
             if(~droneStrikeBus.notNil) { ~droneStrikeBus.set(~percExcite) };
-            // 1.6 -> 0.9. Self-excitation doubles the density on its own, and
-            // the ask was for a different SHAPE, not more notes. Measured over
-            // 2000 ticks: 198 hits against the uniform version's 212, with
-            // twice the clusters (40 runs of two or more against 21) and longer
-            // silences (147 ticks against 114). Same amount of material,
-            // arranged in gestures instead of sprinkled evenly.
-            percProb = (((0.9 / percDivisor) * tideDensity)
-                * (1 + (~percExcite * 1.9))
+            // Self-excite coefficient reduced 1.9 → 1.2 so PERC no longer
+            // monopolises when PAD, KICK and DUST are absent or sparse.
+            // Base rate 0.9 → 0.65 reduces the raw density at the crest.
+            // The gesture-vs-sprinkle shape is preserved — clusters still
+            // emerge and silences still deepen — but quieter relative to
+            // the other layers that are now always present.
+            percProb = (((0.65 / percDivisor) * tideDensity)
+                * (1 + (~percExcite * 1.2))
                 // Deepens the troughs: the floor is what makes a gap a gap.
                 * tideDensity.linlin(0, 1, 0.35, 1.0)
                 // …and the bed pushes back. A full ensemble thins the
@@ -805,8 +914,8 @@
                 // parts sound like they are listening to each other — and it
                 // costs nothing, because the density is already being tracked.
                 * ((~droneVoices ? []).size / (~droneMaxVoices ? 7))
-                    .clip(0, 1).linlin(0, 1, 1.30, 0.70)
-            ).clip(0.0, 0.92);
+                    .clip(0, 1).linlin(0, 1, 1.20, 0.72)
+            ).clip(0.0, 0.80);
             if(percProb.coin or: {
                 (transactionInfluence > 0.6) and: { (0.12 * tideDensity).coin }
             }) {
@@ -879,7 +988,8 @@
                 // A hit makes the next few more likely; the decay above lets
                 // the excitement fall away again. This is what turns an evenly
                 // sprinkled layer into one that plays in gestures.
-                ~percExcite = ((~percExcite ? 0) + 0.55).clip(0, 1.6);
+                // Injection reduced 0.55 → 0.35 to match the lower coefficient above.
+                ~percExcite = ((~percExcite ? 0) + 0.35).clip(0, 1.2);
                 poolIdx = if(rs.notNil and: { rs[\addrSig] > 0 }) {
                     ((rs[\addrSig] >> 2) + rs[\txIndex]) % pitchPool.size
                 } {
@@ -1093,6 +1203,8 @@
     
     ~beatRoutine.play;
     if(~droneEnsemble.notNil) { ~droneEnsemble.value };
+    // Start the autonomous pad bed alongside the drone ensemble
+    if(~padBedEnsemble.notNil) { ~padBedEnsemble.value };
 };
 
 // The 'Enhanced Beat Controls' window that used to live here is gone.

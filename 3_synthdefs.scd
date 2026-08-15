@@ -848,6 +848,130 @@ s.doWhenBooted({
     // Sines, not saws. The buzz was the sawtooth; body comes from the partial
     // ratios in the ensemble above it and from a quiet odd harmonic here, not
     // from a bright waveform being filtered back down.
+
+    // ─── Autonomous Warm Analog Pad ───────────────────────────────────────────
+    // Spawned by ~padBedEnsemble on its own clock, always present regardless
+    // of ETH transaction rate. Style: Lawrence English / Stars of the Lid —
+    // long slow envelopes, detuned analog oscillators, Formant vocal colour,
+    // RLPF with slow wobble LFOs, tanh tape saturation, Dust crackle texture,
+    // Balance2 slow stereo drift, Compander+LeakDC output chain.
+    SynthDef(\biocratiaPad, {
+        arg out=0, gate=1, freq=110, amp=0.18, tempo=1.0, ratio=1.0, pan=0,
+            masterVolBus=(-1), pitchBus=(-1), timeBus=(-1), spectralBus=(-1),
+            spatialBus=(-1), textureBus=(-1), atmosphereBus=(-1), memoryBus=(-1),
+            harmonicBus=(-1), resonantBus=(-1),
+            masterAmpBus=(-1), filterCutoffBus=(-1), noiseLevelBus=(-1),
+            noiseFiltBus=(-1), droneDepthBus=(-1), droneFadeBus=(-1),
+            // Matrix mixer: this layer's live level (0=mute, 1=unity, 2=max)
+            mixPadBus=(-1);
+
+        var masterVol  = Select.kr(masterVolBus  >= 0, [0.28, In.kr(masterVolBus, 1)]);
+        var pShift     = Select.kr(pitchBus      >= 0, [0.0,  In.kr(pitchBus, 1)]);
+        var tDil       = Select.kr(timeBus       >= 0, [2.0,  In.kr(timeBus, 1)]);
+        var filt       = Select.kr(spectralBus   >= 0, [1000, In.kr(spectralBus, 1)]);
+        var texDep     = Select.kr(textureBus    >= 0, [0.3,  In.kr(textureBus, 1)]);
+        var atmMix     = Select.kr(atmosphereBus >= 0, [0.4,  In.kr(atmosphereBus, 1)]);
+        var memFeed    = Select.kr(memoryBus     >= 0, [0.3,  In.kr(memoryBus, 1)]);
+        var harmRich   = Select.kr(harmonicBus   >= 0, [0.8,  In.kr(harmonicBus, 1)]);
+        var res        = Select.kr(resonantBus   >= 0, [0.4,  In.kr(resonantBus, 1)]);
+        var cutoff     = Select.kr(filterCutoffBus >= 0, [0.55, In.kr(filterCutoffBus, 1)]);
+        var nLevel     = Select.kr(noiseLevelBus >= 0, [0.05, In.kr(noiseLevelBus, 1)]);
+        var dFade      = Select.kr(droneFadeBus  >= 0, [3.0,  In.kr(droneFadeBus, 1)]);
+
+        // Apply pitch shift (same transposition path as other voices)
+        var baseFreq = (freq * ratio * (pShift.clip(-24, 24) / 12).midiratio).clip(22, 900);
+
+        // ── Long evolving envelope (8s atk / 28s sustain / 18s release)
+        // tDil stretches all stages so the timeDilation knob makes this
+        // voice breathe faster or slower in sync with the whole engine.
+        var tScale = tDil.linlin(0.5, 6.0, 0.6, 1.8);
+        var env = EnvGen.kr(
+            Env([0, 0.65, 1.0, 0.80, 0],
+                [8, 28, 35, 18] * tScale / tempo.max(0.1),
+                [2, -2, 3, -4]),
+            gate, doneAction: 2);
+
+        // Slow time reference for filter and formant drift
+        var time   = SinOsc.kr(0.018 * tempo);
+        var time2  = SinOsc.kr(0.007 * tempo + 0.31);
+
+        // ── Warm analog oscillator body ──────────────────────────────────────
+        // Four detuned Saws + two Pulses with slowly wandering pulse-width
+        // mix to the same bandwidth a dense unison string section would fill.
+        var warmOsc = Mix.ar([
+            Saw.ar(baseFreq * [0.992, 1.0, 1.008, 1.502]) * 0.35,
+            Pulse.ar(baseFreq * [0.499, 0.751],
+                LFNoise1.kr([0.22, 0.17]).range(0.3, 0.7)) * 0.25
+        ]);
+
+        // ── Formant vocal colour ──────────────────────────────────────────────
+        // Two formant layers with independent slow pitch drift and formant
+        // centre wander — the signature of a children's choir or of wind
+        // through a reed structure, not an electric instrument.
+        // harmRich pushes the upper formant centre upward so the knob opens
+        // from intimate vowel to bright open-mouth resonance.
+        var vocalSim = Formant.ar(
+            baseFreq * [0.70, 0.93]
+                + LFNoise1.kr([1.8, 2.3]).range(-7, 7),
+            [780, 1150 + (harmRich.linlin(0.1, 5, 0, 400))]
+                + (time * 180),
+            [90, 140],
+            LFNoise1.kr([0.09, 0.14]).range(0.04, 0.14));
+
+        // ── RLPF with dual slow-rate wobble LFOs ─────────────────────────────
+        // cutoff fader sets the global tilt; wobble oscillates it so the
+        // filter is always in gentle motion rather than clamped to a value.
+        var wobbleCut = SinOsc.kr([0.063, 0.041] * tempo).range(0.85, 1.18);
+        var wobbleRes = SinOsc.kr([0.037, 0.027] * tempo).range(0.30, 0.65);
+        var fCutHz = (filt.clip(200, 3500)
+            * Lag.kr(cutoff, dFade.clip(0.5, 6)).linexp(0, 1, 0.42, 2.0)
+            + (time * 480)
+            + LFNoise1.kr(0.28).range(0, 240));
+        var filtered = RLPF.ar(
+            (warmOsc + vocalSim),
+            (fCutHz * wobbleCut).clip(60, 6000),
+            wobbleRes);
+
+        // ── Tape saturation ───────────────────────────────────────────────────
+        // 2.2× into tanh: subtle drive that rounds peaks, not a harsh clip.
+        var tapeSat = (filtered * 2.2).tanh * 0.56;
+
+        // ── Dust crackle texture ──────────────────────────────────────────────
+        // nLevel controls crackle density — near-zero at default, audible
+        // as fine rice-paper surface texture when pushed.
+        var crackle = Dust.ar([0.4, 0.55] * tempo)
+            * Decay.ar(Dust.ar([0.8, 1.1] * tempo), 0.04)
+            * nLevel.linlin(0, 0.5, 0.015, 0.06);
+
+        // ── Slow stereo drift ─────────────────────────────────────────────────
+        // Balance2 with a 0.03 Hz SinOsc slowly rotates the image rather than
+        // placing the voice statically.  pan arg biases the centre position.
+        var panOsc = SinOsc.kr(0.031 * tempo) * 0.4 + pan.clip(-0.5, 0.5);
+        var sig = Balance2.ar(
+            tapeSat + crackle[0],
+            tapeSat + crackle[1],
+            panOsc);
+
+        // ── Reverb tail ───────────────────────────────────────────────────────
+        // atmMix feeds the same FreeVerb used on every other voice, so the
+        // space setting is consistent across the ensemble.
+        sig = sig + (FreeVerb2.ar(sig[0], sig[1], atmMix, 0.85, 0.5) * 0.38);
+
+        // ── Output chain ──────────────────────────────────────────────────────
+        // HPF removes subsonic energy from the detuned Saws; Compander applies
+        // gentle LA-2A-style gain riding; LeakDC removes any DC before Out.
+        sig = HPF.ar(sig, 28);
+        sig = Compander.ar(sig, sig, 0.28, 1.0, 0.30, 0.012, 0.32);
+        sig = LeakDC.ar(sig);
+
+        // Level: masterVol × ~trimPad × mixPadBus (same chain as elektronBell)
+        sig = sig * amp * masterVol * env * ~trimPad
+            * Lag.kr(Select.kr(mixPadBus >= 0, [1.0, In.kr(mixPadBus, 1)]), 0.12);
+
+        Out.ar(out, sig);
+    }).add;
+    // ─── End \biocratiaPad ────────────────────────────────────────────────────
+
     SynthDef(\dronePartial, {
         arg out = 0, freq = 110, amp = 0.10, ratio = 1.0,
             atk = 20, hold = 30, rel = 25, pan = 0, detune = 0.004, seed = 0,
