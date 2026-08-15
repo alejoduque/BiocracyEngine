@@ -205,8 +205,8 @@
         // Rate off the position in the block, so consecutive transactions in
         // the same block do not all stutter identically.
         interval = ((0.17 - (cd * 0.10)) / (1 + (idx % 3))).clip(0.028, 0.17);
-        // Retrigs that rise, fall or hold, chosen by block position.
-        glide    = #[1.0, 1.0, 2.0, 0.5, 1.5, 0.75].wrapAt(idx);
+        // Retrigs that rise, fall or hold, chosen by block position using pure harmonic intervals.
+        glide    = #[1.0, 1.0, 1.5, 0.75, 1.25, 2.0].wrapAt(idx);
         count.do { |i|
             var f = (freq * (glide ** ((i + 1) / count))).clip(22, 900);
             s.makeBundle(s.latency + ((i + 1) * interval), {
@@ -221,42 +221,9 @@
 };
 
 // ─── Cámara de las Especies: the five seats, as voices ──────────────────────
-// The browser shows five species with a Presence and an Activity fader each,
-// and until now both faders sent OSC that nothing in SuperCollider received.
-// This is where they land.
-//
-// The corpus cannot carry them: it is indexed by ecological ROLE, not by
-// taxon — 14_phenological_corpus.scd says so where it defines the bancadas.
-// So a species becomes audible here instead, in the percussion layer, which
-// already owns a pitch pool and a trigger.
-//
-// The division of labour is deliberate: the POOL still chooses the degree
-// (that whole hop-selection design above survives untouched) and the SPECIES
-// only chooses the register. One seat does not get to overwrite the melody;
-// it gets to say which octave the chamber hears it in.
-//
-// Registers are ~5-semitone steps ordered low to high, which is also roughly
-// descending body size across the default roster — a spectacled bear does not
-// call where a cotton-top tamarin calls. When the roster changes the ordering
-// stops meaning that, and the register is simply the seat's assigned range.
-//
-// They transpose UPWARD ONLY, and seat 0 is unity. Two reasons, both measured
-// against the actual pool (~computePitchPool spans about 35–250 Hz depending
-// on harmonicRich and transaction pressure):
-//
-//   · A symmetric set around 1.0 puts the lower seats under the 40 Hz floor
-//     that \opalPerc enforces, and a clipped seat is not a seat — at the
-//     bottom of the harmonicRich fader two or three of them collapsed onto
-//     40 Hz and became the same voice. Measured: 21 clipped notes and an
-//     adjacent-seat ratio of 1.00 (identical) for a symmetric set, against
-//     0 clipped and a full 1.33 throughout for this one.
-//   · Unity at seat 0 means the layer's original register is not lost, it is
-//     simply assigned to the first seat. With the default presences the first
-//     seat is also the most likely pick, so the percussion still sits where it
-//     always sat and the other four open the register upward from it.
-//
-// Top of the range works out at ~780 Hz, inside \opalPerc's own 900 Hz ceiling.
-~speciesBand     = #[1.0, 1.33, 1.78, 2.37, 3.16];
+// Registers are consonant harmonic ratios over the drone root:
+// Unison (1.0), Major 3rd (1.25), 5th (1.5), Octave (2.0), 10th (2.5)
+~speciesBand     = #[1.0, 1.25, 1.50, 2.00, 2.50];
 ~speciesPresence = ~speciesPresence ?? { Array.fill(5, 0.5) };
 ~speciesActivity = ~speciesActivity ?? { Array.fill(5, 0.5) };
 // A species votes by sounding. This is the count the browser's VOT column has
@@ -883,22 +850,21 @@
                 // The other two hits in three come from the pool, which is now
                 // built on the same fundamental anyway — so the layer keeps its
                 // own melodic motion rather than becoming a bed follower.
-                var bedHz = if(0.34.coin) { (~droneVoiceHz ? ()).values.choose } { nil };
+                var bedHz = if(0.60.coin) { (~droneVoiceHz ? ()).values.choose } { nil };
                 var baseFreq = (if(bedHz.notNil) {
-                        // Folded into the pool's OWN register. This used to
-                        // fold to 70 Hz and stop, which was written when the
-                        // perc lived an octave above the root; after the drop
-                        // it put every bed-struck hit above the entire pool, so
-                        // a third of the layer sat in a different band from the
-                        // rest — two registers alternating rather than one
-                        // instrument, and neither of them the one asked for.
                         var f = bedHz;
-                        while({ f < 26 }, { f = f * 2 });
-                        while({ f > 105 }, { f = f * 0.5 });
+                        while({ f < 35 }, { f = f * 2 });
+                        while({ f > 140 }, { f = f * 0.5 });
                         f
                     } {
-                        pitchPool.wrapAt(poolIdx)
-                    } * ~speciesBand[speciesIdx]).clip(22, 900);
+                        var poolNote = pitchPool.wrapAt(poolIdx);
+                        var root = ~droneRoot ? 55;
+                        // Fold pool note near the drone root harmonic zone
+                        var f = poolNote;
+                        while({ f < root }, { f = f * 1.5 });
+                        while({ f > (root * 3.0) }, { f = f * 0.5 });
+                        f
+                    } * ~speciesBand[speciesIdx]).clip(26, 750);
                 // Which BODY is struck, as opposed to which note. The seat
                 // decides it — so the five species are five instruments and not
                 // one instrument at five registers — and the counterparty's

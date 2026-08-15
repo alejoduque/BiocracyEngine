@@ -675,32 +675,12 @@ s.waitForBoot {
     var all = ~phenoSelect.(doy);
     var xfade = (~phenoXfade ? 6.0);
     var now = Main.elapsedTime;
-    var desired, wantKeys, changed = false;
-    // A voice inside its final crossfade is treated as ALREADY GONE, so its
-    // replacement is admitted while it is still sounding and the two overlap.
-    // This is the whole of "no silence in between": nothing waits for a voice
-    // to finish before starting the next one.
+    var candidates, needed, changed = false;
     var sounding = ~corpusVoices.select { |v| ((v[\endsAt] ? inf) - now) > xfade };
-    // And the replacement should be a DIFFERENT clip where the day has one to
-    // offer, or a crossfade just re-states the same recording. Rotating the
-    // candidate list means consecutive admissions walk the day's pool instead
-    // of returning to its first two entries every time.
-    if(all.size > 2) {
-        ~phenoRotate = ((~phenoRotate ? 0) + 1) % all.size;
-        all = all.rotate(~phenoRotate.neg);
-    };
-    desired = all;
-    if(desired.size > 2) { desired = desired[..1] };
-    wantKeys = desired.collect { |c| c[\key] };
 
-    // includesEqual, not includes: Collection.includes compares with === , so
-    // on Strings it is object identity. Two clip keys reading "SN26_0208_0530"
-    // are not the same object unless they came from the same ~corpusClips
-    // entry — which here they happen to, but relying on that would mean a
-    // clip that IS still admitted gets retired and immediately retriggered
-    // the moment anything reconstructs a key.
+    // 1. Retire only clips that are no longer admitted by the filter (threshold/bancada/opacity)
     ~corpusVoices.do { |v|
-        if((v[\ringDay] == doy) and: { wantKeys.includesEqual(v[\key]).not }) {
+        if((v[\ringDay] == doy) and: { all.any { |c| c[\key] == v[\key] }.not }) {
             ~phenoGateOff.(v[\synth], 1.2);
             v[\retired] = true;
             changed = true;
@@ -708,12 +688,19 @@ s.waitForBoot {
     };
     ~corpusVoices = ~corpusVoices.reject { |v| v[\retired] == true };
 
-    desired.do { |clip|
-        // `sounding`, not ~corpusVoices: a voice already inside its release is
-        // not an obstacle to admitting its successor.
-        if(sounding.any { |v| v[\key] == clip[\key] }.not) {
-            ~phenoPlayClip.(clip, holdSecs);
-            changed = true;
+    // 2. If open voice slots exist (< 2 sounding), pick replacement(s) from eligible candidates
+    if(sounding.size < 2 and: { all.size > 0 }) {
+        candidates = all.reject { |c| sounding.any { |v| v[\key] == c[\key] } };
+        if(candidates.size > 0) {
+            if(candidates.size > 1) {
+                ~phenoRotate = ((~phenoRotate ? 0) + 1) % candidates.size;
+                candidates = candidates.rotate(~phenoRotate.neg);
+            };
+            needed = (2 - sounding.size).min(candidates.size);
+            candidates[..needed - 1].do { |clip|
+                ~phenoPlayClip.(clip, holdSecs);
+                changed = true;
+            };
         };
     };
     changed;

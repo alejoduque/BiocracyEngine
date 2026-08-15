@@ -364,7 +364,7 @@ function connectControlWS() {
         );
         if (slider) slider.value = String(v);
         const dispEl = document.getElementById(`disp-mix-${layer}`);
-        if (dispEl) dispEl.textContent = v.toFixed(2);
+        if (dispEl) dispEl.textContent = `${(v * 2.0).toFixed(2)}x`;
       }
     } catch (_) { }
   };
@@ -1679,7 +1679,7 @@ async function init() {
 
     const v = parseFloat(slider.value);
     const id = agentId !== undefined ? parseInt(agentId) : null;
-    if (dispEl) dispEl.textContent = v.toFixed(2);
+    if (dispEl) dispEl.textContent = addr.startsWith("/mix/") ? `${(v * 2.0).toFixed(2)}x` : v.toFixed(2);
 
     // 1. Send to SC
     if (id !== null) sendOSCArgs(addr, [id, v]);
@@ -1735,7 +1735,7 @@ async function init() {
 
         const dispPrefix = SLIDER_DISP_PREFIX[addr] ?? `disp-${addr.split("/").pop()}-`;
         const dispEl = document.getElementById(id !== null ? `${dispPrefix}${id}` : dispPrefix);
-        if (dispEl) dispEl.textContent = v.toFixed(2);
+        if (dispEl) dispEl.textContent = addr.startsWith("/mix/") ? `${(v * 2.0).toFixed(2)}x` : v.toFixed(2);
 
         patchStoreFromSlider(addr, id, v);
 

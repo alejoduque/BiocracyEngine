@@ -176,7 +176,7 @@
                 \delayAmt, ~buses[\delayAmount].getSynchronous ? 0.2,
                 \delayTime, ~buses[\delayTime].getSynchronous ? 0.4,
                 \reverbMix, ~buses[\reverbMix].getSynchronous ? 0.3
-            ]);
+            ] ++ (~voiceBusArgs.value ? []));
             
             self.updateVisualization(txData);
         };

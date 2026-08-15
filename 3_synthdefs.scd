@@ -121,17 +121,9 @@ s.doWhenBooted({
     // "bed" nobody can hear. At 8.0 it sits near 0.056, about -24 dB from the
     // ceiling, which is a bed you notice is there without it being in front.
     ~trimDrone = 3.20 * ~trimMaster;   // the BED — continuous, holds the floor
-    // 0.30 -> 0.20 -> 0.45. The 0.20 pass was a mistake: it optimised the crest
-    // factor, and the pads ARE the bells — so lowering them worked directly
-    // against "I cannot hear the bells". The crest is the limiter's problem,
-    // not the mix's; gr dipping on a pad burst is a limiter doing its job,
-    // whereas an inaudible bell layer is a broken instrument.
-    ~trimPad   = 0.45 * ~trimMaster;
-    ~trimKick  = 1.00 * ~trimMaster;
-    // 0.45 -> 0.24. Reported as too loud against everything else, and the
-    // measurements agree: perc was the only voice reaching -5 dB in isolation
-    // while the bed sat near -22.
-    ~trimPerc  = 0.24 * ~trimMaster;
+    ~trimPad   = 0.65 * ~trimMaster;   // PADS / BELLS — harmonic resonance over the bed
+    ~trimKick  = 2.20 * ~trimMaster;   // KICK — sub-bass anchor & beater transient
+    ~trimPerc  = 0.45 * ~trimMaster;   // PERCUSSION — balanced blend, anchored to drone harmony
     // The bed is the ensemble now, so the ONE continuous voice steps back from
     // 8.0 to 3.2 and the partials carry the rest. Its job is the sub anchor
     // under them rather than the whole bed on its own.
@@ -140,7 +132,7 @@ s.doWhenBooted({
     // 0.0526; removing the former without this would drop the drone layer by
     // about 15 dB and leave the mix with no floor at all.
     ~trimDronePartial = 13.0 * ~trimMaster;
-    ~trimDust  = 0.60 * ~trimMaster;
+    ~trimDust  = 0.75 * ~trimMaster;
     // Field recordings (10_sample_system.scd). Kept in this table rather than
     // beside the sample SynthDef so the whole budget stays readable in one
     // place — a layer that sets its own level somewhere else is exactly how
