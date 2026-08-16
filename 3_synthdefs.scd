@@ -509,48 +509,37 @@ s.doWhenBooted({
         dec    = dec * percLvl.linlin(0, 2, 1.15, 0.8);
         
         env = EnvGen.ar(Env.perc(atk, dec * tStretch, 1, -4), doneAction: 2);
-        // pitchShift transposes the whole drop, so the kick tunes with the rest
-        // of the engine instead of sitting at whatever the spawn chose.
+        // Grounded sub-bass pitch envelope: drops smoothly from punchy low-mid (2.2x) to fundamental
+        // Never climbs into high frequencies or laser pitch drops
         pitchEnv = EnvGen.ar(Env(
-            [freq * 8, freq, freq * 0.5] * (pShift.clip(-24, 24) / 12).midiratio,
-            [0.02, dec * tStretch], \exp));
+            [freq * 2.2, freq * 1.05, freq * 0.8] * (pShift.clip(-12, 12) / 12).midiratio,
+            [0.025, dec * tStretch], \exp)).clip(25, 180);
 
-        mod = SinOsc.ar(pitchEnv * fmR.linexp(0.1, 8, 0.5, 4.0)) * (fmD * 0.4) * pitchEnv;
+        mod = SinOsc.ar(pitchEnv * fmR.linexp(0.1, 8, 0.5, 2.0)) * (fmD * 0.25) * pitchEnv;
         sig = SinOsc.ar(pitchEnv + mod);
 
-        // Noise Level / Noise Filt become the beater — the transient in front
-        // of the pitch drop, which is what makes a kick read as struck rather
-        // than as a sine falling over. Its own short envelope so it is an
-        // attack and not a layer.
-        click = HPF.ar(
-            WhiteNoise.ar * EnvGen.ar(Env.perc(0.0005, 0.012 + (nFilt * 0.05), 1, -8)),
-            (200 + (nFilt * 5000)).clip(200, 6000));
-        // Measured at +2.5 dB on the layer at 1.6; the kick is the sub anchor
-        // and the beater is meant to define its front, not raise the whole
-        // voice. 1.05 puts it at about +1.4 dB.
-        sig = sig + (click * nLevel.linlin(0, 0.5, 0.0, 1.05));
+        // Soft acoustic beater transient — bandpassed pink noise, no high hiss
+        click = BPF.ar(
+            PinkNoise.ar * EnvGen.ar(Env.perc(0.001, 0.015 + (nFilt * 0.02), 1, -6)),
+            (110 + (nFilt * 350)).clip(80, 500), 0.7);
+        sig = sig + (click * nLevel.linlin(0, 0.5, 0.0, 0.75));
 
-        // Distortion & Filter (Opal drive)
-        sig = (sig * (1 + (fmD * 5))).tanh;
-        // Kick LPF: cap at 3000Hz. filterCutoff tilts it a further octave either
-        // way UNDER spectralShift's absolute setting, the same relationship the
-        // drone already had; resonantBody puts a corner on it, so the low end
-        // can be given an edge instead of only a ceiling. Lagged by droneFade,
-        // which is this SynthDef's smoothing time now as well as the drone's.
+        // Distortion & Filter (Warm low-end drive)
+        sig = (sig * (1 + (fmD * 2.5))).tanh;
+        // Kick LPF: strictly capped at 280 Hz so kick remains a warm sub anchor
         sig = RLPF.ar(sig,
-            (filt.clip(100, 3000) * Lag.kr(cutoff, dFade.clip(0.1, 5)).linexp(0, 1, 0.5, 2.0))
-                .clip(60, 5000),
-            res.linexp(0, 1, 0.9, 0.25));
+            (filt.clip(80, 240) * Lag.kr(cutoff, dFade.clip(0.1, 5)).linexp(0, 1, 0.7, 1.3))
+                .clip(50, 280),
+            res.linexp(0, 1, 0.85, 0.4));
 
         // droneDepth reaches the kick's own body: a sine an octave under the
         // drop, which is the difference between a click and something you feel.
-        sub = SinOsc.ar(pitchEnv * 0.5) * dDepth.linlin(0, 1, 0.0, 0.9);
+        sub = SinOsc.ar(pitchEnv * 0.5) * dDepth.linlin(0, 1, 0.0, 0.85);
         sig = sig + sub;
 
-        // Reverb tail, with memoryFeed opening a short slap in front of it —
-        // the same control that feeds the delay on every other voice.
-        sig = sig + DelayC.ar(sig, 0.25, 0.055 + (dMix * 0.12), dMix * 0.5);
-        sig = sig + FreeVerb.ar(sig, revM * 0.5, 0.7, 0.2);
+        // Reverb tail and slap
+        sig = sig + DelayC.ar(sig, 0.25, 0.055 + (dMix * 0.08), dMix * 0.35);
+        sig = sig + FreeVerb.ar(sig, revM * 0.35, 0.6, 0.2);
 
         sig = sig * env * amp * vol * ~trimKick
             * Lag.kr(Select.kr(mixKickBus >= 0, [1.0, In.kr(mixKickBus, 1)]), 0.08);
@@ -629,207 +618,70 @@ s.doWhenBooted({
         var sampleLvl = Select.kr(mixSampleBus >= 0, [1.0, In.kr(mixSampleBus, 1)]);
 
         var exciter, sig, wet, quadSig, partials, decays, inharm, damp, spread;
-        var scream, bend, shaped, micro, steps;
+        var shimmer, bend, shaped;
 
-        // 1. Dust level: injects granular breath and grain noise into the perc exciter
-        nLevel = (nLevel * dustLvl.linlin(0, 2, 0.5, 1.5)).clip(0, 1);
-        nFilt  = (nFilt  * dustLvl.linlin(0, 2, 0.7, 1.3)).clip(0, 1);
-        // 2. Pad level: tilts perc filter cutoff upwards and opens atmosphere
-        cutoff = (cutoff * padLvl.linlin(0, 2, 0.8, 1.25)).clip(0, 1);
-        // 3. Kick level: tightens resonator damping and deepens inharmonicity
-        res    = (res * kickLvl.linlin(0, 2, 0.85, 1.2)).clip(0.1, 0.95);
-        // 4. Sample level: adds subtle delay feedback
-        dFeed  = (dFeed * sampleLvl.linlin(0, 2, 0.8, 1.25)).clip(0, 0.9);
+        // Clamped fundamental in the warm wooden/gong range (35..320 Hz)
+        freq = (freq * (pShift.clip(-12, 12) / 12).midiratio).clip(35, 320);
 
-        // HARD-CLAMP the struck frequency, like \elektronBell's fundamental.
-        // The caller can ask for almost anything: ~computePitchPool tops out at
-        // basePitch(70) x spread(<=1.4) x step(<=7) = 686 Hz, and the TRIAD
-        // voicing then multiplies that by (h+1) up to 5 — 3.8 kHz at
-        // harmonicRich 8, which is where the high metallic pings came from.
-        // Clamped here so every voicing path and every knob position is caught,
-        // not just the ones that were thought of at the call site.
-        // pitchShift transposes the struck body, applied BEFORE the clamp so
-        // the ceiling still catches every path.
-        freq = (freq * (pShift.clip(-24, 24) / 12).midiratio).clip(22, 900);
-
-        // Softened exciter: the old 1 ms attack read as a hard metallic "ping".
-        // 10 ms attacks + longer noise burst bow the resonator instead of
-        // striking it — same Ringz body, drone-compatible onset.
-        // Noise Level sets how much of the strike is breath rather than tone,
-        // and Noise Filt where that breath sits — the difference between a
-        // bowed resonator and a struck one, on a fader.
-        // ─── A hit is a CLOUD, not an impulse ───────────────────────────────
-        // The old exciter was a noise burst and a sine ping — the same two
-        // things every time, so however the body was tuned the ATTACK was
-        // identical on every strike, and the attack is most of what an ear
-        // uses to tell one hit from another. That is why the layer stayed
-        // uninteresting after the body was made variable.
-        //
-        // "fey emissions" is the model: Dust into resonance. The dust fires at
-        // random moments inside the attack window, so no two strikes have the
-        // same microstructure even when they are the same note on the same
-        // body — some arrive as a clean rap, some as a torn rattle, and which
-        // one it is cannot be predicted.
+        // Acoustic wood/mallet exciter with subtle granular micro-variation
         exciter = Mix([
-            Dust2.ar(900 + (nLevel * 9000))
-                * EnvGen.ar(Env.perc(0.001, 0.05 + (nFilt * 0.18))) * 1.5,
-            BPF.ar(WhiteNoise.ar, (300 + (nFilt * 6000)).clip(200, 8000), 0.6 + (nFilt * 1.4))
-                * EnvGen.ar(Env.perc(0.01, 0.08 + (nFilt * 0.10)))
-                * nLevel.linlin(0, 0.5, 0.35, 2.2),
-            SinOsc.ar(freq * (1 + fmD)) * EnvGen.ar(Env.perc(0.01, 0.04))
+            Dust2.ar(400 + (nLevel * 3000))
+                * EnvGen.ar(Env.perc(0.003, 0.04 + (nFilt * 0.08))) * 0.9,
+            BPF.ar(PinkNoise.ar, (200 + (nFilt * 1200)).clip(120, 1800), 0.5)
+                * EnvGen.ar(Env.perc(0.005, 0.06 + (nFilt * 0.06)))
+                * nLevel.linlin(0, 0.5, 0.3, 1.2),
+            SinOsc.ar(freq * (1 + (fmD * 0.2))) * EnvGen.ar(Env.perc(0.008, 0.05))
         ]);
 
-        // Resonator (Klank for metallic resonance) — upper partials darkened
-        // (were [1, 0.8, 0.5, 0.3, 0.1]) so the 4–9x partials shimmer instead
-        // of dominating
-        // ── The struck body, computed rather than hardcoded ────────────────
-        // These five modes were the literal set [1, 2.32, 4.25, 6.63, 9.38]
-        // with the literal decay profile [1, 0.55, 0.3, 0.15, 0.06], and
-        // resonantBody scaled them all by (1 + res*0.5) — which is a flat
-        // multiply, i.e. a transposition of the whole body rather than a change
-        // to it. So every hit this layer ever produced was the SAME instrument
-        // at a different pitch. All the variety upstream — the mode, the
-        // chain-derived degree, the species register — decided which note to
-        // strike and nothing decided what was being struck.
-        //
-        // n * sqrt(1 + B*n^2) is the standard inharmonicity curve for a stiff
-        // bar or a string with stiffness. At B = 0.10 it produces
-        // [1.05, 2.37, 4.14, 6.45, 9.35], which is the hardcoded set to within
-        // a couple of percent — so this reproduces the old body exactly at the
-        // middle of resonantBody's travel and opens both directions from there:
-        //   B -> 0     harmonic series, tonal, mallet or marimba
-        //   B = 0.10   the body this layer has always had
-        //   B -> 0.35  wide and clangorous, gong-like
-        inharm = res.linexp(0.1, 0.8, 0.004, 0.35);
+        // Resonator modes with warm inharmonic stiffness
+        inharm = res.linexp(0.1, 0.8, 0.004, 0.20);
+        damp = fmR.linexp(0.1, 5.0, 3.5, 1.2);
+        spread = fmD.linlin(0, 0.6, 0.0, 0.10);
 
-        // Decay tilt. Was a fixed profile; harmonicRich now decides whether the
-        // upper modes ring on or die first, which is the difference between a
-        // bright metal body and a dull wooden one.
-        // Steeper than the first attempt. At damp 0.99 the fifth mode rang at
-        // 0.20 of the fundamental where the original profile gave it 0.06 —
-        // more than three times the energy — and the layer measured 7.6 dB
-        // hotter at wide inharmonicity as a result. 1.6 puts mode five at
-        // 0.076, which is the profile this body always had.
-        damp = fmR.linexp(0.1, 5.0, 3.2, 1.0);
-
-        // And the part that is not a knob. bodySeed comes from the spawning
-        // code — the species seat that is speaking, nudged by the chain — and
-        // deviates each partial slightly, so the five seats are five different
-        // instruments rather than one instrument at five registers. Sin of a
-        // per-partial constant, so it is deterministic: the same seat is always
-        // the same body, and it drifts only when the seat or the chain does.
-        spread = fmD.linlin(0, 0.6, 0.0, 0.16);
         partials = Array.fill(5, { |i|
             var n = i + 1;
             var dev = 1 + ((bodySeed * (n + 3) * 7.13).sin * spread);
-            n * (1 + (inharm * n * n)).sqrt * dev;
+            (n * (1 + (inharm * n * n)).sqrt * dev).clip(1.0, 4.8);
         });
         decays = Array.fill(5, { |i|
             var n = i + 1;
-            (damp.neg * n.log).exp * (tStretch * 0.5);
+            (damp.neg * n.log).exp * (tStretch * 0.45);
         });
 
-        // Level-compensated against the spread. Modes further apart cancel each
-        // other less, so a wide body sums louder purely as arithmetic — without
-        // this, resonantBody reads as a volume control with a timbre attached
-        // rather than as a choice of instrument.
-        sig = Ringz.ar(exciter, (freq * partials).clip(20, 12000), decays).sum
-            * (1 + (inharm * 2.4)).reciprocal * 1.25;
+        sig = Ringz.ar(exciter, (freq * partials).clip(30, 1400), decays).sum
+            * (1 + (inharm * 2.0)).reciprocal * 1.1;
 
-        // ─── Three things that happen TO the strike ─────────────────────────
-        // The body above is a good body, but a resonator excited once and left
-        // alone always says the same sentence: attack, ring, decay. What was
-        // missing is anything happening after the moment of contact.
+        // Warm resonant body shimmer (replacing the piercing 9kHz scream)
+        shimmer = BPF.ar(exciter, (freq * 1.5 * LFNoise1.kr(4).range(0.95, 1.05)).clip(50, 650), 0.05)
+            * 8 * res.linlin(0.1, 0.8, 0.4, 1.0);
+        sig = sig + (shimmer * fmD.linlin(0, 1, 0.15, 0.45));
 
-        // 1 · The scream. "fey emissions" runs Dust through a bandpass at
-        // rq 0.001 — absurdly narrow, right at the edge of self-oscillation —
-        // whose centre is resampled by LFNoise0 several times a second. It
-        // shrieks at a pitch that jumps mid-strike. Sits above the body, tuned
-        // off it, so it reads as part of the same object.
-        // These two stages did NOT follow the body down two octaves, which is
-        // most of "still too high". The scream sat at freq x 2-8 and then
-        // jittered up to x1.7 on top of that — at the upper seats it was
-        // shrieking above 2 kHz over a body ringing at 190 Hz, so the layer
-        // read as high however low the fundamental went. Now x1-3, jittering
-        // narrowly, so it is an overtone OF the strike rather than a separate
-        // high voice sitting on it.
-        scream = BPF.ar(exciter,
-            (freq * (1 + (bodySeed * 2)) * LFNoise0.kr(9 + (bodySeed * 20)).range(0.9, 1.35))
-                .clip(30, 9000),
-            0.0018) * 70 * res.linlin(0.1, 0.8, 0.5, 1.2);
-        sig = sig + (scream * fmD.linlin(0, 1, 0.22, 0.75));
+        // Doppler comb tail
+        bend = CombC.ar(sig * 0.35, 0.35,
+            LFNoise1.kr(0.4 + (bodySeed * 2)).range(0.01, 0.15).clip(0.005, 0.25),
+            dFeed.linlin(0, 0.8, 0.2, 2.0));
+        sig = sig + (LeakDC.ar(bend.tanh) * dMix.linlin(0, 1, 0.3, 0.8));
 
-        // 2 · The tail bends. "saw scratching" and "shifty feedback": a comb
-        // with a wandering delay time doppler-shifts whatever is inside it, so
-        // the ring does not just fade, it slides and detunes as it goes.
-        // delayFeedback decides how long it keeps folding back on itself.
-        bend = CombC.ar(sig * 0.45, 0.35,
-            LFNoise1.kr(0.6 + (bodySeed * 5)).range(0.004, 0.26).clip(0.001, 0.34),
-            dFeed.linlin(0, 0.8, 0.25, 3.5));
-        sig = sig + (LeakDC.ar(bend.tanh) * dMix.linlin(0, 1, 0.45, 1.15));
+        // Soft waveshape saturation
+        shaped = SinOsc.ar(0, sig * fmD.linlin(0, 1, 1.2, 3.5));
+        sig = XFade2.ar(sig, shaped, fmD.linlin(0, 1, -0.7, 0.3));
 
-        // 3 · The waveshape. "noise slurps": phase-modulating a sine BY the
-        // signal rather than filtering it. At low index it is a gentle
-        // thickening; pushed up it tears the strike into sidebands and the
-        // layer crosses into noise. textureDepth is the fader that decides how
-        // far, and at its top this is frankly electronic — which is the brief.
-        shaped = SinOsc.ar(0, sig * fmD.linlin(0, 1, 1.4, 7.5));
-        sig = XFade2.ar(sig, shaped, fmD.linlin(0, 1, -0.45, 0.9));
-
-        // 4 · And a sequence inside the hit. "short-loops": a Stepper walking
-        // a small integer ring, clocked far too fast to hear as rhythm, reads
-        // as a single gesture with pitch structure inside it — a chirp, a
-        // stutter, a tiny arpeggio, depending where the ring lands. Different
-        // for every seat, because the ring length and clock come off bodySeed.
-        steps = Stepper.ar(Impulse.ar(14 + (bodySeed * 46)), 0,
-            1, (4 + (bodySeed * 9)).round, 1);
-        micro = SinOsc.ar((freq * steps.linlin(1, 13, 1.0, 2.0)).clip(22, 6000))
-            * EnvGen.ar(Env.perc(0.002, 0.07 + (fmD * 0.25)));
-        sig = sig + (micro * fmD.linlin(0, 1, 0.20, 0.62));
-
-        // Changed from BPF to LPF: BPF at high freq passes almost nothing (silence);
-        // LPF at high freq is transparent — sound always passes through.
-        // filterCutoff tilts a further octave either way UNDER spectralShift's
-        // absolute setting — the same relationship it has on the drone, and the
-        // reason it can now be used to voice the perc against the bed rather
-        // than only the bed itself. Lagged by droneFade like every other
-        // continuous control.
+        // Low-pass filter: strictly cuts high frequencies above 850 Hz
         sig = LPF.ar(sig,
-            (filt.clip(300, 3000)
-                * Lag.kr(cutoff, dFade.clip(0.1, 5)).linexp(0, 1, 0.5, 2.0)).clip(150, 5000));
-        // Fixed backstop, independent of spectralShift: the Ringz body plus the
-        // WhiteNoise exciter put energy well above the fundamental, and this
-        // layer has no business up there.
-        sig = LPF.ar(sig, 2600);
-        // delayFeedback owns a comb tail here as it does on the drone, so the
-        // one fader lengthens every voice's tail together.
-        sig = sig + (CombC.ar(sig, 0.4, 0.09, Lag.kr(dFeed, 0.2).linexp(0, 1, 0.15, 3.5))
-            * dFeed.linlin(0, 1, 0.10, 0.55));
-        // 50 ms swell + longer tail (was 1 ms / 1.5x) — resonance blooms out
-        // of the drone bed rather than popping over it
-        sig = sig * EnvGen.ar(Env.perc(0.05, 2.5 * tStretch), doneAction: 2);
+            (filt.clip(200, 1200)
+                * Lag.kr(cutoff, dFade.clip(0.1, 5)).linexp(0, 1, 0.7, 1.3)).clip(120, 850));
+        sig = LPF.ar(sig, 850); // Fixed backstop: warm wooden acoustic resonance only
 
-        // Ping-pong delay
-        wet = CombC.ar(sig, 0.5, 0.1, 1.5) * dMix;
+        sig = sig * EnvGen.ar(Env.perc(0.03, 1.8 * tStretch), doneAction: 2);
+
+        // Ping-pong delay + Reverb
+        wet = CombC.ar(sig, 0.4, 0.08, 1.0) * dMix * 0.7;
         sig = sig + wet;
-        sig = sig + FreeVerb.ar(sig, revM, 0.8, 0.5);
+        sig = sig + FreeVerb.ar(sig, revM * 0.6, 0.7, 0.4);
 
         sig = sig * amp * vol * ~trimPerc
             * Lag.kr(Select.kr(mixPercBus >= 0, [1.0, In.kr(mixPercBus, 1)]), 0.08);
-        
-        // PanAz's position is already a -1..1 traversal of the ring, which is
-        // exactly the range spatialSpread has. The old atan2(x, 0) collapsed
-        // to -pi/2, 0 or +pi/2 — three discrete values — so the balance
-        // control could only jump hard-left / centre / hard-right and could
-        // never fade. Use the value directly.
-        // Panner chosen from the REAL output channel count, at graph-build time.
-        // The server runs 2-channel; PanAz.ar(4, ...) sent half the ring to
-        // channels 2-3, which do not exist, so the sound vanished for half the
-        // knob's travel. And PanAz's position is cyclic over 2.0, so pos -1 and
-        // +1 both land where pos 0 started — the sweep restarted before either
-        // extreme. Pan2 gives a true left/right balance on stereo; on a genuine
-        // quad rig PanAz is kept but scaled to half the ring so its two ends
-        // are opposite points rather than the same one.
+
         quadSig = if(~limiterChans >= 4) {
             PanAz.ar(4, sig, spatialX.clip(-1, 1) * 0.5, 1, 2, 0.5)
         } {
@@ -837,6 +689,7 @@ s.doWhenBooted({
         };
         Out.ar(out, quadSig);
     }).add;
+
 
     // opalDrone: Continuous evolving ambient pad
     // ─── One partial of the drone bed ───────────────────────────────────
@@ -1327,8 +1180,8 @@ s.doWhenBooted({
         mixDustBus=(-1), mixSampleBus=(-1), mixPadBus=(-1), mixKickBus=(-1), mixPercBus=(-1);
 
         var vol   = Select.kr(masterVolBus >= 0, [0.3, In.kr(masterVolBus, 1)]);
-        var dens  = Select.kr(textureBus >= 0, [0.2, In.kr(textureBus, 1)]);
-        var filt  = Select.kr(spectralBus >= 0, [1000, In.kr(spectralBus, 1)]);
+        var dens  = Select.kr(textureBus >= 0, [0.25, In.kr(textureBus, 1)]);
+        var filt  = Select.kr(spectralBus >= 0, [600, In.kr(spectralBus, 1)]);
         var tStretch= Select.kr(timeBus >= 0, [2.0, In.kr(timeBus, 1)]);
         var pitch = Select.kr(pitchBus >= 0, [0.0, In.kr(pitchBus, 1)]);
         var revM  = Select.kr(atmosphereBus >= 0, [0.4, In.kr(atmosphereBus, 1)]);
@@ -1336,90 +1189,65 @@ s.doWhenBooted({
         var spatialX= Select.kr(spatialBus >= 0, [0.0, In.kr(spatialBus, 1)]);
         var fmR   = Select.kr(harmonicBus >= 0, [1.0, In.kr(harmonicBus, 1)]);
         var res   = Select.kr(resonantBus >= 0, [0.4, In.kr(resonantBus, 1)]);
-        var cutoff= Select.kr(filterCutoffBus >= 0, [0.6, In.kr(filterCutoffBus, 1)]);
+        var cutoff= Select.kr(filterCutoffBus >= 0, [0.55, In.kr(filterCutoffBus, 1)]);
         var nLevel= Select.kr(noiseLevelBus >= 0, [0.1, In.kr(noiseLevelBus, 1)]);
         var nFilt = Select.kr(noiseFiltBus  >= 0, [0.5, In.kr(noiseFiltBus, 1)]);
         var dFeed = Select.kr(delayFeedbackBus >= 0, [0.3, In.kr(delayFeedbackBus, 1)]);
         var dFade = Select.kr(droneFadeBus  >= 0, [2.0, In.kr(droneFadeBus, 1)]);
 
         // ─── Cross-layer acoustic modulation ──────────────────────────────
-        // Granular crackle adapts to Kick, Perc, Field recording and Pad levels
         var kickLvl   = Select.kr(mixKickBus   >= 0, [1.0, In.kr(mixKickBus, 1)]);
         var percLvl   = Select.kr(mixPercBus   >= 0, [1.0, In.kr(mixPercBus, 1)]);
         var sampleLvl = Select.kr(mixSampleBus >= 0, [1.0, In.kr(mixSampleBus, 1)]);
         var padLvl    = Select.kr(mixPadBus    >= 0, [1.0, In.kr(mixPadBus, 1)]);
-        var env, sig, grains, wet, quadSig, ring, bed;
+        var env, sig, grains, grain1, grain2, grainEnv, wet, quadSig, ring, bed, tunedPitch;
 
-        // 1. Kick level: ducks lowest rumble of dust and excites ring pitch
-        filt  = (filt * kickLvl.linlin(0, 2, 1.15, 0.85)).clip(100, 4000);
-        fmR   = (fmR  * kickLvl.linlin(0, 2, 0.85, 1.3)).clip(0.1, 5.0);
-        // 2. Perc level: increases grain scatter density and sparkle
+        // 1. Kick level: ducks low rumble and excites metallic particle ring
+        filt  = (filt * kickLvl.linlin(0, 2, 1.1, 0.85)).clip(100, 1200);
+        fmR   = (fmR  * kickLvl.linlin(0, 2, 0.85, 1.3)).clip(0.1, 4.0);
+        // 2. Perc level: increases grain scatter density
         dens  = (dens * percLvl.linlin(0, 2, 0.7, 1.4)).clip(0, 1);
         // 3. Sample & Pad modulation
         dens  = (dens * sampleLvl.linlin(0, 2, 0.8, 1.25)).clip(0, 1);
         nFilt = (nFilt * padLvl.linlin(0, 2, 0.8, 1.25)).clip(0, 1);
         
-        env = EnvGen.ar(Env.perc(0.01, tStretch * 0.8), doneAction: 2);
+        env = EnvGen.ar(Env.perc(0.015, tStretch * 0.9), doneAction: 2);
         
-        // Crackle / Dust generator
-        grains = Dust2.ar(dens.linexp(0, 1, 10, 500));
-        // Changed from BPF to LPF: BPF at high freq silences the signal entirely;
-        // LPF at high freq is open — dust crackle always comes through.
-        sig = LPF.ar(grains,
-            (filt.clip(200, 3000)
-                * Lag.kr(cutoff, dFade.clip(0.1, 5)).linexp(0, 1, 0.5, 2.0)).clip(120, 4000));
+        // ── Multi-rate granular dust cloud (richer granularity & organic texture)
+        grain1 = Dust2.ar(dens.linexp(0, 1, 25, 700));
+        grain2 = Dust.ar(dens.linexp(0, 1, 15, 350));
+        grainEnv = Decay2.ar(grain1 + grain2, 0.001, 0.018 + (tStretch * 0.015));
+        grains = (grain1 + (grain2 * 0.6)) * grainEnv;
 
-        // harmonicRich gives the crackle a PITCH: the same grains through a
-        // resonant band, so the layer can go from broadband hiss to something
-        // ringing at a frequency that follows pitchShift. resonantBody sets how
-        // sharp that ring is. Without this, dust was the one voice with no
-        // pitch at all and nothing to tune against the rest.
-        ring = Ringz.ar(grains,
-            (220 * fmR.linexp(0.1, 5, 0.4, 3.0)
-                * (pitch.clip(-24, 24) / 12).midiratio).clip(60, 3000),
-            res.linlin(0, 1, 0.04, 0.5) * tStretch);
-        sig = sig + (ring * fmR.linexp(0.1, 5, 0.05, 0.7));
+        // ── Tuned musical pitch (harmonic series anchored to drone fundamental)
+        tunedPitch = (110 * fmR.linexp(0.1, 5, 0.5, 2.5)
+            * (pitch.clip(-12, 12) / 12).midiratio).clip(45, 650);
 
-        // Dust2 is broadband by construction — this is the sparkle/hiss at the
-        // top of the mix. Fixed backstop so no knob position can open it up.
-        sig = LPF.ar(sig, 2200);
+        ring = Ringz.ar(grains, tunedPitch, res.linlin(0, 1, 0.04, 0.30) * tStretch);
+        ring = ring + (Resonz.ar(grains, tunedPitch * 1.5, 0.18) * 0.6);
+        sig = grains + (ring * fmR.linexp(0.1, 5, 0.1, 0.8));
 
-        // The two noise faders put a bed under the crackle rather than leaving
-        // it as isolated points — band-passed so it sits where Noise Filt says.
+        // Soft pink noise bed under the grains
         bed = BPF.ar(PinkNoise.ar,
-            (200 + (nFilt * 3000)).clip(150, 3500),
-            0.35 + (nFilt * 0.9)) * nLevel.linlin(0, 0.5, 0.0, 0.55);
-        // 1.4 measured at +7.3 dB on this layer, which contradicts the gain
-        // budget note above — dust is deliberately occasional texture, not a
-        // constant rain, and a continuous pink bed at that level makes it one.
+            (180 + (nFilt * 800)).clip(120, 1200),
+            0.4 + (nFilt * 0.5)) * nLevel.linlin(0, 0.5, 0.0, 0.4);
         sig = sig + bed;
 
-        // Delay + Reverb wash. delayFeedback owns the comb's tail, as on the
-        // drone and the perc; memoryFeed keeps the send level.
-        wet = CombC.ar(sig, 0.5, 0.15, Lag.kr(dFeed, 0.2).linexp(0, 1, 0.3, 6.0)) * dMix;
-        sig = sig + wet;
-        sig = sig + FreeVerb.ar(sig, revM, 0.8, 0.5);
+        // ── Warm Analog High-Cut Filter (cutting all harsh high freqs)
+        sig = LPF.ar(sig,
+            (filt.clip(180, 1100)
+                * Lag.kr(cutoff, dFade.clip(0.1, 5)).linexp(0, 1, 0.6, 1.4)).clip(120, 1200));
+        sig = LPF.ar(sig, 1200); // Fixed backstop: strictly eliminates high hiss
+        sig = (sig * 1.3).tanh;  // Tape saturation warmth
 
-        // The "* 2.0 volume compensation" is gone. Dust is the brightest layer
-        // in the mix and this doubled it on the way out, against a master bus
-        // that was already running 3-6x over full scale. Gain budget for this
-        // layer is 0.08 — crackle as occasional texture, not a constant rain.
+        // Delay + Reverb wash
+        wet = CombC.ar(sig, 0.5, 0.12, Lag.kr(dFeed, 0.2).linexp(0, 1, 0.2, 4.0)) * dMix * 0.8;
+        sig = sig + wet;
+        sig = sig + FreeVerb.ar(sig, revM * 0.7, 0.75, 0.4);
+
         sig = sig * env * amp * vol * ~trimDust
             * Lag.kr(Select.kr(mixDustBus >= 0, [1.0, In.kr(mixDustBus, 1)]), 0.08);
         
-        // PanAz's position is already a -1..1 traversal of the ring, which is
-        // exactly the range spatialSpread has. The old atan2(x, 0) collapsed
-        // to -pi/2, 0 or +pi/2 — three discrete values — so the balance
-        // control could only jump hard-left / centre / hard-right and could
-        // never fade. Use the value directly.
-        // Panner chosen from the REAL output channel count, at graph-build time.
-        // The server runs 2-channel; PanAz.ar(4, ...) sent half the ring to
-        // channels 2-3, which do not exist, so the sound vanished for half the
-        // knob's travel. And PanAz's position is cyclic over 2.0, so pos -1 and
-        // +1 both land where pos 0 started — the sweep restarted before either
-        // extreme. Pan2 gives a true left/right balance on stereo; on a genuine
-        // quad rig PanAz is kept but scaled to half the ring so its two ends
-        // are opposite points rather than the same one.
         quadSig = if(~limiterChans >= 4) {
             PanAz.ar(4, sig, spatialX.clip(-1, 1) * 0.5, 1, 2, 0.5)
         } {

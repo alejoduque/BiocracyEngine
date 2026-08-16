@@ -222,8 +222,8 @@
 
 // ─── Cámara de las Especies: the five seats, as voices ──────────────────────
 // Registers are consonant harmonic ratios over the drone root:
-// Unison (1.0), Major 3rd (1.25), 5th (1.5), Octave (2.0), 10th (2.5)
-~speciesBand     = #[1.0, 1.25, 1.50, 2.00, 2.50];
+// Sub-4th (0.75), Unison (1.0), Major 3rd (1.25), 5th (1.5), Minor 7th (1.75)
+~speciesBand     = #[0.75, 1.00, 1.25, 1.50, 1.75];
 ~speciesPresence = ~speciesPresence ?? { Array.fill(5, 0.5) };
 ~speciesActivity = ~speciesActivity ?? { Array.fill(5, 0.5) };
 // A species votes by sounding. This is the count the browser's VOT column has
@@ -978,7 +978,7 @@
                         while({ f < root }, { f = f * 1.5 });
                         while({ f > (root * 3.0) }, { f = f * 0.5 });
                         f
-                    } * ~speciesBand[speciesIdx]).clip(26, 750);
+                    } * ~speciesBand[speciesIdx]).clip(35, 240);
                 // Which BODY is struck, as opposed to which note. The seat
                 // decides it — so the five species are five instruments and not
                 // one instrument at five registers — and the counterparty's
@@ -1029,7 +1029,7 @@
                 case
                 { voicingMode == \single } {
                     // Single pitched note
-                    var percFreq = (baseFreq * rrand(0.95, 1.05)).clip(22, 900);
+                    var percFreq = (baseFreq * rrand(0.98, 1.02)).clip(35, 260);
                     Synth(\opalPerc, [
                         \out,          0,
                         \freq,         percFreq,
@@ -1051,7 +1051,7 @@
                 { voicingMode == \dyad } {
                     // Two-note interval
                     2.do { |voice|
-                        var harmFreq = (baseFreq * ([1.0, 1.5][voice]) * rrand(0.98, 1.02)).clip(22, 900);
+                        var harmFreq = (baseFreq * ([1.0, 1.333][voice]) * rrand(0.99, 1.01)).clip(35, 300);
                         Synth(\opalPerc, [
                             \out,          0,
                             \freq,         harmFreq,
@@ -1073,12 +1073,8 @@
                 }
                 { voicingMode == \triad } {
                     // Full harmonic series (up to harmCount)
-                    (harmCount.clip(2, 5)).do { |h|
-                        // (h+1) reached 5x on top of a 686 Hz pool note. Clamped
-                        // to the same ceiling \opalPerc enforces internally, so the
-                        // harmonics thin toward the top instead of climbing away.
-                        var harmFreq = (baseFreq * (h + 1)
-                            * resBdy.linexp(0.1, 0.8, 0.95, 1.15)).clip(22, 900);
+                    (harmCount.clip(2, 4)).do { |h|
+                        var harmFreq = (baseFreq * ([1.0, 1.25, 1.5, 1.75].wrapAt(h))).clip(35, 340);
                         Synth(\opalPerc, [
                             \out,          0,
                             \freq,         harmFreq,
