@@ -1510,6 +1510,37 @@ s.doWhenBooted({
     "Master limiter active (% ch, ceiling 0.92) — output can no longer clip."
         .format(~limiterChans).postln;
 
+    // ── MOTU channel router ─────────────────────────────────────────────────
+    // All synths write to Out.ar(0, ...) which maps to PortAudio channel 0
+    // (MOTU Main Out). On this setup the speakers are wired to MOTU analog
+    // out 3-4 = PortAudio channels 4-5 = SC bus indices 4-5.
+    //
+    // InFeedback.ar reads from the hardware output bus AFTER the limiter has
+    // already written its result — it's a one-block (512 samples / ~11 ms)
+    // echo of the final signal, which is completely inaudible on ambient music.
+    // The signal arrives at the speakers on the same callback so there is no
+    // audible latency difference.
+    //
+    // ~motuOutOffset = 0 means "no rerouting needed" (built-in audio or
+    // MOTU Main Out already connected to speakers).
+    SynthDef(\motuRouter, {
+        arg inBus = 0, outBus = 4, numCh = 2;
+        Out.ar(outBus, InFeedback.ar(inBus, numCh));
+    }).add;
+    s.sync;
+    if(~motuRouterSynth.notNil) { try { ~motuRouterSynth.free }; ~motuRouterSynth = nil };
+    if((~motuOutOffset ? 0) > 0) {
+        ~motuRouterSynth = Synth.tail(RootNode(s), \motuRouter, [
+            \inBus,  0,
+            \outBus, ~motuOutOffset,
+            \numCh,  2
+        ]);
+        "MOTU router active: SC bus 0-1 → bus % (analog out %-%)."
+            .format(~motuOutOffset, ~motuOutOffset + 1, ~motuOutOffset + 2).postln;
+    } {
+        "MOTU router inactive (motuOutOffset = 0 — speakers on Main Out).".postln;
+    };
+
     // Note: OSC handlers are defined in 6_osc_handlers.scd to avoid conflicts
 
     "Synth Definitions loaded - Lawrence English ambient style".postln;

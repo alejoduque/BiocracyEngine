@@ -36,23 +36,27 @@ thisProcess.openUDPPort(57120);
     "=====================================".postln;
 
     if(motu.notNil) {
-        "✓ MOTU detected: % — 4-ch spatial, 48000 Hz".format(motu).postln;
+        "✓ MOTU detected: % — 8-ch out, 48000 Hz".format(motu).postln;
         Server.default.options.device               = motu;
         Server.default.options.sampleRate           = 48000;
-        Server.default.options.numOutputBusChannels = 4;
+        // 8 outputs exposes all back-panel analog outs 1-8 (PortAudio ch 0-7).
+        // Speakers on analog out 3-4 = PortAudio ch 4-5 = SC bus 4-5.
+        Server.default.options.numOutputBusChannels = 8;
         Server.default.options.numInputBusChannels  = 2;
+        // The router synth in 3_synthdefs.scd uses this offset to copy
+        // SC's master bus 0-1 → the correct physical outputs.
+        ~motuOutOffset = 4;
+        "  Speaker offset: Out.ar(%) → MOTU analog 3-4".format(~motuOutOffset).postln;
     } {
-        // No MOTU in PortAudio list — use system default.
-        // Still set 48000: the system default IS the MOTU (confirmed by
-        // system_profiler); rate mismatch causes silent audio on Core Audio.
-        "⚠ MOTU not found in PortAudio device list (may appear after first boot).".postln;
-        "  → Using system default device at 48000 Hz.".postln;
-        "  → If no audio: check Audio MIDI Setup and SC post window.".postln;
-        "⚠ MOTU not found — using system default at 48000 Hz.".postln;
+        // System default = MOTU (confirmed by system_profiler).
+        // Same channel config as explicit detection path.
+        "⚠ MOTU not in PortAudio list — using system default at 48000 Hz.".postln;
+        "  Channels 0-7 exposed; speaker offset ~motuOutOffset = 4.".postln;
         Server.default.options.device               = nil;
         Server.default.options.sampleRate           = 48000;
-        Server.default.options.numOutputBusChannels = 2;
+        Server.default.options.numOutputBusChannels = 8;
         Server.default.options.numInputBusChannels  = 2;
+        ~motuOutOffset = 4;
     };
 };
 
