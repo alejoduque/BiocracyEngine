@@ -1511,32 +1511,35 @@ s.doWhenBooted({
         .format(~limiterChans).postln;
 
     // ── MOTU channel router ─────────────────────────────────────────────────
-    // All synths write to Out.ar(0, ...) which maps to PortAudio channel 0
-    // (MOTU Main Out). On this setup the speakers are wired to MOTU analog
-    // out 3-4 = PortAudio channels 4-5 = SC bus indices 4-5.
+    // All synths write to Out.ar(0, ...) which maps to PortAudio channels 0..3
+    // (MOTU Main Out / Line 1-2). On this setup the speakers are wired to MOTU
+    // analog out 3-4 = PortAudio channels 4-5 = SC bus indices 4-5.
     //
     // InFeedback.ar reads from the hardware output bus AFTER the limiter has
-    // already written its result — it's a one-block (512 samples / ~11 ms)
-    // echo of the final signal, which is completely inaudible on ambient music.
-    // The signal arrives at the speakers on the same callback so there is no
-    // audible latency difference.
-    //
-    // ~motuOutOffset = 0 means "no rerouting needed" (built-in audio or
-    // MOTU Main Out already connected to speakers).
+    // already written its result.
+    // NOTE: InFeedback numChannels MUST be an integer literal at SynthDef build time.
     SynthDef(\motuRouter, {
-        arg inBus = 0, outBus = 4, numCh = 2;
-        Out.ar(outBus, InFeedback.ar(inBus, numCh));
+        arg inBus = 0, outBus = 4;
+        var quad = InFeedback.ar(inBus, 4);
+        // Fold down 4-channel quad into stereo so no panned energy is lost on 2 speakers:
+        // Left = FrontLeft (ch0) + 0.707 * RearLeft (ch3)
+        // Right = FrontRight (ch1) + 0.707 * RearRight (ch2)
+        var left = quad[0] + (quad[3] * 0.707);
+        var right = quad[1] + (quad[2] * 0.707);
+        // Primary stereo pair out to outBus (buses 4 & 5 -> MOTU Analog 3 & 4)
+        Out.ar(outBus, [left, right]);
+        // Also send rear quad channels to outBus + 2 (buses 6 & 7 -> MOTU Analog 5 & 6)
+        Out.ar(outBus + 2, [quad[2], quad[3]]);
     }).add;
     s.sync;
     if(~motuRouterSynth.notNil) { try { ~motuRouterSynth.free }; ~motuRouterSynth = nil };
     if((~motuOutOffset ? 0) > 0) {
         ~motuRouterSynth = Synth.tail(RootNode(s), \motuRouter, [
             \inBus,  0,
-            \outBus, ~motuOutOffset,
-            \numCh,  2
+            \outBus, ~motuOutOffset
         ]);
-        "MOTU router active: SC bus 0-1 → bus % (analog out %-%)."
-            .format(~motuOutOffset, ~motuOutOffset + 1, ~motuOutOffset + 2).postln;
+        "MOTU router active: SC bus 0..3 → bus % (analog out 3-4 stereo folddown + analog 5-6 rears)."
+            .format(~motuOutOffset).postln;
     } {
         "MOTU router inactive (motuOutOffset = 0 — speakers on Main Out).".postln;
     };
