@@ -10,21 +10,24 @@
 thisProcess.openUDPPort(57120);
 
 // --- DYNAMIC DEVICE DETECTION ---
-// MOTU 828x Gen5 → 4-channel spatial mode at 48000 Hz
+// MOTU 828x → 4-channel spatial mode at 48000 Hz (native MOTU rate)
 // No MOTU → Apple Core Audio built-in → 2-channel stereo fallback
 //
-// ⚠ ROOT CAUSE OF SILENT AUDIO WITH MOTU:
-// The MOTU 828x runs at 48000 Hz natively. SuperCollider's scsynth defaults
-// to 44100 Hz. On macOS Core Audio a sample-rate mismatch does NOT produce
-// an error — scsynth boots cleanly, the GUI shows "running", and no audio
-// comes out. The fix is to set sampleRate = 48000 whenever the MOTU is
-// the active device (whether selected explicitly or via system default).
+// ROOT CAUSE OF SILENT AUDIO WITH MOTU:
+// scsynth defaults to 44100 Hz. MOTU runs at 48000 Hz. Core Audio silently
+// discards audio when rates mismatch — no error, no warning, just silence.
 ~detectAudioDevice = {
+    // ── All vars first — SC requires var declarations before any executable ──
     var outDevices = ServerOptions.outDevices ? [];
     var inDevices  = ServerOptions.inDevices  ? [];
+    // Broad match: "MOTU 828x", "MOTU AVB", "828mk3", etc.
+    // asString.toUpper guard handles nil entries PortAudio occasionally returns.
+    var motu = outDevices.select({ |d|
+        var ds = d.asString.toUpper;
+        ds.contains("MOTU") or: { ds.contains("828") } or: { ds.contains("GEN5") }
+    }).first;
 
-    // Print every PortAudio device name SC can see — essential for diagnosing
-    // name-mismatch failures where the detection regex doesn't fire.
+    // Print every PortAudio device name — makes name-mismatch failures visible.
     "=== SC AUDIO DEVICES (PortAudio) ===".postln;
     "Output devices:".postln;
     outDevices.do { |d, i| "  out[%]: %".format(i, d).postln };
@@ -32,32 +35,22 @@ thisProcess.openUDPPort(57120);
     inDevices.do  { |d, i| "  in [%]: %".format(i, d).postln };
     "=====================================".postln;
 
-    // Broad match: catches "MOTU 828x", "MOTU AVB", "828mk3", etc.
-    // asString guard handles nil entries that PortAudio occasionally returns.
-    var motu = outDevices.select({ |d|
-        var ds = d.asString.toUpper;
-        ds.contains("MOTU") or: { ds.contains("828") } or: { ds.contains("GEN5") }
-    }).first;
-
     if(motu.notNil) {
         "✓ MOTU detected: % — 4-ch spatial, 48000 Hz".format(motu).postln;
         Server.default.options.device               = motu;
-        Server.default.options.sampleRate           = 48000;  // ← must match MOTU driver
+        Server.default.options.sampleRate           = 48000;
         Server.default.options.numOutputBusChannels = 4;
         Server.default.options.numInputBusChannels  = 2;
     } {
-        // No MOTU in PortAudio list.  The device may still be the macOS
-        // system default (e.g. PortAudio returned an empty list before the
-        // server first boots, which happens on cold start).
-        // Setting device = nil lets Core Audio use the system default.
-        // We still set 48000 because the system default IS the MOTU (confirmed
-        // by system_profiler at session start); if built-ins become default
-        // later this is harmless — Core Audio will renegotiate.
+        // No MOTU in PortAudio list — use system default.
+        // Still set 48000: the system default IS the MOTU (confirmed by
+        // system_profiler); rate mismatch causes silent audio on Core Audio.
         "⚠ MOTU not found in PortAudio device list (may appear after first boot).".postln;
         "  → Using system default device at 48000 Hz.".postln;
-        "  → If you hear no audio: check Audio MIDI Setup and SC post window.".postln;
+        "  → If no audio: check Audio MIDI Setup and SC post window.".postln;
+        "⚠ MOTU not found — using system default at 48000 Hz.".postln;
         Server.default.options.device               = nil;
-        Server.default.options.sampleRate           = 48000;  // ← match system default (MOTU)
+        Server.default.options.sampleRate           = 48000;
         Server.default.options.numOutputBusChannels = 2;
         Server.default.options.numInputBusChannels  = 2;
     };
