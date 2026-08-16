@@ -122,8 +122,8 @@ s.doWhenBooted({
     // ceiling, which is a bed you notice is there without it being in front.
     ~trimDrone = 3.20 * ~trimMaster;   // the BED — continuous, holds the floor
     ~trimPad   = 0.65 * ~trimMaster;   // PADS / BELLS — harmonic resonance over the bed
-    ~trimKick  = 2.20 * ~trimMaster;   // KICK — sub-bass anchor & beater transient
-    ~trimPerc  = 0.45 * ~trimMaster;   // PERCUSSION — balanced blend, anchored to drone harmony
+    ~trimKick  = 0.35 * ~trimMaster;   // KICK — calibrated so 0.040 is ~80% of peak level
+    ~trimPerc  = 0.20 * ~trimMaster;   // PERCUSSION — calibrated so peak sits near 0.040
     // The bed is the ensemble now, so the ONE continuous voice steps back from
     // 8.0 to 3.2 and the partials carry the rest. Its job is the sub anchor
     // under them rather than the whole bed on its own.
@@ -132,7 +132,7 @@ s.doWhenBooted({
     // 0.0526; removing the former without this would drop the drone layer by
     // about 15 dB and leave the mix with no floor at all.
     ~trimDronePartial = 13.0 * ~trimMaster;
-    ~trimDust  = 0.75 * ~trimMaster;
+    ~trimDust  = 0.75 * ~trimMaster;   // DUST — granular crackle / hojarasca texture
     // Field recordings (10_sample_system.scd). Kept in this table rather than
     // beside the sample SynthDef so the whole budget stays readable in one
     // place — a layer that sets its own level somewhere else is exactly how
@@ -476,8 +476,8 @@ s.doWhenBooted({
         pitchBus=(-1), memoryBus=(-1), resonantBus=(-1),
         filterCutoffBus=(-1), noiseLevelBus=(-1), noiseFiltBus=(-1),
         droneDepthBus=(-1), droneFadeBus=(-1),
-        // Matrix mixer: this layer's live level (0 = mute, 1 = unity).
-        mixKickBus=(-1);
+        // Matrix mixer: this layer's live level (0 = mute, 1 = unity, 2 = max) + cross-layer modulation
+        mixKickBus=(-1), mixPercBus=(-1), mixDustBus=(-1);
 
         var vol   = Select.kr(masterVolBus >= 0, [0.3, In.kr(masterVolBus, 1)]);
         var tStretch= Select.kr(timeBus >= 0, [2.0, In.kr(timeBus, 1)]);
@@ -495,7 +495,18 @@ s.doWhenBooted({
         var dDepth= Select.kr(droneDepthBus >= 0, [0.3, In.kr(droneDepthBus, 1)]);
         var dFade = Select.kr(droneFadeBus  >= 0, [2.0, In.kr(droneFadeBus, 1)]);
 
+        // ─── Cross-layer acoustic modulation ──────────────────────────────
+        // Perc and Dust dynamically influence the kick's beater attack and decay
+        var percLvl = Select.kr(mixPercBus >= 0, [1.0, In.kr(mixPercBus, 1)]);
+        var dustLvl = Select.kr(mixDustBus >= 0, [1.0, In.kr(mixDustBus, 1)]);
+
         var env, pitchEnv, sig, mod, quadSig, click, sub;
+
+        // Dust adds granular micro-texture to kick beater attack
+        nLevel = (nLevel * dustLvl.linlin(0, 2, 0.6, 1.4)).clip(0, 1);
+        fmD    = (fmD * dustLvl.linlin(0, 2, 0.7, 1.3)).clip(0, 1);
+        // Perc fader tightens kick decay so kick stays punchy when perc is active
+        dec    = dec * percLvl.linlin(0, 2, 1.15, 0.8);
         
         env = EnvGen.ar(Env.perc(atk, dec * tStretch, 1, -4), doneAction: 2);
         // pitchShift transposes the whole drop, so the kick tunes with the rest
@@ -611,27 +622,24 @@ s.doWhenBooted({
         var fmR   = Select.kr(harmonicBus >= 0, [1.0, In.kr(harmonicBus, 1)]);
 
         // ─── Cross-layer acoustic modulation ──────────────────────────────
-        // Percussion dynamically reacts to Dust, Pad, Kick and Sample levels.
-        // IMPORTANT: mix buses hold fader levels (0=mute, 1=unity, 2=max).
-        // We use (bus - 1.0).max(0.0) as the non-negative push deviation so that
-        // unity (1.0) or muted (0.0) faders result in zero modulation offset.
-        // Only pushing faders above unity (> 1.0) adds cross-layer modulation.
-        var dustMod   = Select.kr(mixDustBus   >= 0, [0.0, (In.kr(mixDustBus, 1)   - 1.0).max(0.0)]);
-        var padMod    = Select.kr(mixPadBus    >= 0, [0.0, (In.kr(mixPadBus, 1)    - 1.0).max(0.0)]);
-        var kickMod   = Select.kr(mixKickBus   >= 0, [0.0, (In.kr(mixKickBus, 1)   - 1.0).max(0.0)]);
-        var sampleMod = Select.kr(mixSampleBus >= 0, [0.0, (In.kr(mixSampleBus, 1) - 1.0).max(0.0)]);
+        // Percussion dynamically reacts to Dust, Pad, Kick and Sample levels across full fader travel (0..2)
+        var dustLvl   = Select.kr(mixDustBus   >= 0, [1.0, In.kr(mixDustBus, 1)]);
+        var padLvl    = Select.kr(mixPadBus    >= 0, [1.0, In.kr(mixPadBus, 1)]);
+        var kickLvl   = Select.kr(mixKickBus   >= 0, [1.0, In.kr(mixKickBus, 1)]);
+        var sampleLvl = Select.kr(mixSampleBus >= 0, [1.0, In.kr(mixSampleBus, 1)]);
 
         var exciter, sig, wet, quadSig, partials, decays, inharm, damp, spread;
         var scream, bend, shaped, micro, steps;
 
-        // 1. Dust fader pushed above unity → opens exciter noise breath in perc
-        nLevel = (nLevel + (dustMod * 0.20)).clip(0, 1);
-        // 2. Pad fader pushed above unity → tilts perc filter cutoff upwards
-        cutoff = (cutoff + (padMod * 0.25)).clip(0, 1);
-        // 3. Kick fader pushed above unity → tightens perc resonance/inharmonicity
-        res    = (res + (kickMod * 0.15)).clip(0.1, 0.95);
-        // 4. Sample fader pushed above unity → adds extra delay feedback to perc
-        dFeed  = (dFeed + (sampleMod * 0.20)).clip(0, 0.9);
+        // 1. Dust level: injects granular breath and grain noise into the perc exciter
+        nLevel = (nLevel * dustLvl.linlin(0, 2, 0.5, 1.5)).clip(0, 1);
+        nFilt  = (nFilt  * dustLvl.linlin(0, 2, 0.7, 1.3)).clip(0, 1);
+        // 2. Pad level: tilts perc filter cutoff upwards and opens atmosphere
+        cutoff = (cutoff * padLvl.linlin(0, 2, 0.8, 1.25)).clip(0, 1);
+        // 3. Kick level: tightens resonator damping and deepens inharmonicity
+        res    = (res * kickLvl.linlin(0, 2, 0.85, 1.2)).clip(0.1, 0.95);
+        // 4. Sample level: adds subtle delay feedback
+        dFeed  = (dFeed * sampleLvl.linlin(0, 2, 0.8, 1.25)).clip(0, 0.9);
 
         // HARD-CLAMP the struck frequency, like \elektronBell's fundamental.
         // The caller can ask for almost anything: ~computePitchPool tops out at
@@ -1315,8 +1323,8 @@ s.doWhenBooted({
         // it, filterCutoff as the tilt and delayFeedback for the comb.
         harmonicBus=(-1), resonantBus=(-1), filterCutoffBus=(-1),
         noiseLevelBus=(-1), noiseFiltBus=(-1), delayFeedbackBus=(-1), droneFadeBus=(-1),
-        // Matrix mixer: this layer's live level (0 = mute, 1 = unity).
-        mixDustBus=(-1), mixSampleBus=(-1), mixPadBus=(-1);
+        // Matrix mixer: this layer's live level (0 = mute, 1 = unity, 2 = max).
+        mixDustBus=(-1), mixSampleBus=(-1), mixPadBus=(-1), mixKickBus=(-1), mixPercBus=(-1);
 
         var vol   = Select.kr(masterVolBus >= 0, [0.3, In.kr(masterVolBus, 1)]);
         var dens  = Select.kr(textureBus >= 0, [0.2, In.kr(textureBus, 1)]);
@@ -1335,14 +1343,21 @@ s.doWhenBooted({
         var dFade = Select.kr(droneFadeBus  >= 0, [2.0, In.kr(droneFadeBus, 1)]);
 
         // ─── Cross-layer acoustic modulation ──────────────────────────────
-        // Granular crackle adapts to field recording and pad presence.
-        // Non-negative push deviation: unity/muted fader = zero offset.
-        var sampleMod = Select.kr(mixSampleBus >= 0, [0.0, (In.kr(mixSampleBus, 1) - 1.0).max(0.0)]);
-        var padMod    = Select.kr(mixPadBus    >= 0, [0.0, (In.kr(mixPadBus, 1)    - 1.0).max(0.0)]);
+        // Granular crackle adapts to Kick, Perc, Field recording and Pad levels
+        var kickLvl   = Select.kr(mixKickBus   >= 0, [1.0, In.kr(mixKickBus, 1)]);
+        var percLvl   = Select.kr(mixPercBus   >= 0, [1.0, In.kr(mixPercBus, 1)]);
+        var sampleLvl = Select.kr(mixSampleBus >= 0, [1.0, In.kr(mixSampleBus, 1)]);
+        var padLvl    = Select.kr(mixPadBus    >= 0, [1.0, In.kr(mixPadBus, 1)]);
         var env, sig, grains, wet, quadSig, ring, bed;
 
-        dens  = (dens + (sampleMod * 0.20)).clip(0, 1);
-        nFilt = (nFilt + (padMod * 0.20)).clip(0, 1);
+        // 1. Kick level: ducks lowest rumble of dust and excites ring pitch
+        filt  = (filt * kickLvl.linlin(0, 2, 1.15, 0.85)).clip(100, 4000);
+        fmR   = (fmR  * kickLvl.linlin(0, 2, 0.85, 1.3)).clip(0.1, 5.0);
+        // 2. Perc level: increases grain scatter density and sparkle
+        dens  = (dens * percLvl.linlin(0, 2, 0.7, 1.4)).clip(0, 1);
+        // 3. Sample & Pad modulation
+        dens  = (dens * sampleLvl.linlin(0, 2, 0.8, 1.25)).clip(0, 1);
+        nFilt = (nFilt * padLvl.linlin(0, 2, 0.8, 1.25)).clip(0, 1);
         
         env = EnvGen.ar(Env.perc(0.01, tStretch * 0.8), doneAction: 2);
         

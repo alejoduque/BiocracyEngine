@@ -606,7 +606,7 @@
             var bMVol, bPitch, bTime, bSpec, bSpat, bText, bAtmo, bMem, bHarm, bRes;
             var elapsed = now % 300; // 5-minute macro cycle
             var rs, priorityRatio, accent;
-            var tide, tideDensity, jitTick, blockEdge, percProb;
+            var tide, tideDensity, jitTick, blockEdge, percProb, dynamicDustProb;
 
             // Proof of life for the GUI's Beat Engine light, stamped before the
             // guarded body so it reflects the loop turning rather than the loop
@@ -807,6 +807,7 @@
                 // Subtle frequency drift: ±5Hz per bar for organic feel
                 var kickFreq = 50 + ((bar % 7) - 3 * 1.5);
                 ~beatParams.kickCount = (~beatParams.kickCount ? 0) + 1;
+                ~kickExcite = 1.0;  // Kick impact excitation — triggers dust burst & ducks perc
                 // ── Onset → visuals ──────────────────────────────────────
                 // Los slots 4-9 son ahora los seis instrumentos del motor, uno
                 // cada uno, y necesitan saber CUÁNDO suena el suyo — no sólo
@@ -850,6 +851,7 @@
             if((step == 0) and: { (bar % 8) == 0 }
                 and: { blockEdge.not or: { (~beatParams.lastKickBlock ? 0) != (rs !? { rs[\blockAt] } ? 0) } }) {
                 var kickFreqH = (~droneRoot ? 55) * 0.5;  // sub-octave of root
+                ~kickExcite = 1.0;  // Heartbeat kick impact excitation
                 if(~lastVoiceAt.notNil) { ~lastVoiceAt[\kick] = now };
                 if(~visualsDest.notNil) {
                     ~visualsDest.sendMsg('/voice/kick',
@@ -893,6 +895,7 @@
             // an even density, and the phrase lengths are never the same twice
             // because nothing sets them — they fall out of the process.
             ~percExcite = (~percExcite ? 0) * 0.86;
+            ~kickExcite = (~kickExcite ? 0) * 0.72;  // Kick pressure wave decay
             // Publish it to the bed. Every live partial reads this bus and
             // answers by its own amount — see \dronePartial — so a cluster of
             // strikes brightens and swells the drone instead of sounding on top
@@ -908,6 +911,8 @@
                 * (1 + (~percExcite * 1.2))
                 // Deepens the troughs: the floor is what makes a gap a gap.
                 * tideDensity.linlin(0, 1, 0.35, 1.0)
+                // Kick ducks Perc slightly so kick impact stays transparent in the mix
+                * (1.0 - ((~kickExcite ? 0) * 0.22))
                 // …and the bed pushes back. A full ensemble thins the
                 // percussion; a sparse one invites it. The two layers TRADE
                 // rather than accumulate, which is most of what makes a pair of
@@ -1096,8 +1101,16 @@
                 });
             };
 
-            // ── 3. DUST — probability-based, not grid-locked ─────────────────────
-            if((dustProb * tideDensity).coin) {
+            // ── 3. DUST — probability-based with Kick/Perc organic coupling ─────
+            // Dust dynamically couples with Kick and Perc:
+            // - A kick impact creates a pressure shock that scatters a dust burst
+            // - Percussion excitement kicks up micro-dust
+            dynamicDustProb = (dustProb * tideDensity
+                * (1 + ((~kickExcite ? 0) * 0.50))
+                * (1 + ((~percExcite ? 0) * 0.35))
+            ).clip(0.10, 0.75);
+
+            if(dynamicDustProb.coin) {
                 if(~lastVoiceAt.notNil) { ~lastVoiceAt[\dust] = now };
                 if(~visualsDest.notNil) {
                     ~visualsDest.sendMsg('/voice/dust',
