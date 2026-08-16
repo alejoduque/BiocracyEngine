@@ -123,7 +123,7 @@ s.doWhenBooted({
     ~trimDrone = 3.20 * ~trimMaster;   // the BED — continuous, holds the floor
     ~trimPad   = 0.65 * ~trimMaster;   // PADS / BELLS — harmonic resonance over the bed
     ~trimKick  = 0.35 * ~trimMaster;   // KICK — calibrated so 0.040 is ~80% of peak level
-    ~trimPerc  = 0.20 * ~trimMaster;   // PERCUSSION — calibrated so peak sits near 0.040
+    ~trimPerc  = 0.08 * ~trimMaster;   // PERCUSSION — scaled so previous 0.8 level is 100% of the slider
     // The bed is the ensemble now, so the ONE continuous voice steps back from
     // 8.0 to 3.2 and the partials carry the rest. Its job is the sub anchor
     // under them rather than the whole bed on its own.
