@@ -10,24 +10,56 @@
 thisProcess.openUDPPort(57120);
 
 // --- DYNAMIC DEVICE DETECTION ---
-// MOTU 828x Gen5 → 4-channel spatial mode
+// MOTU 828x Gen5 → 4-channel spatial mode at 48000 Hz
 // No MOTU → Apple Core Audio built-in → 2-channel stereo fallback
+//
+// ⚠ ROOT CAUSE OF SILENT AUDIO WITH MOTU:
+// The MOTU 828x runs at 48000 Hz natively. SuperCollider's scsynth defaults
+// to 44100 Hz. On macOS Core Audio a sample-rate mismatch does NOT produce
+// an error — scsynth boots cleanly, the GUI shows "running", and no audio
+// comes out. The fix is to set sampleRate = 48000 whenever the MOTU is
+// the active device (whether selected explicitly or via system default).
 ~detectAudioDevice = {
-    var devices = ServerOptions.outDevices;
-    var motu = devices.select({ |d|
-        d.contains("MOTU") or: { d.contains("828") } or: { d.contains("Gen5") }
+    var outDevices = ServerOptions.outDevices ? [];
+    var inDevices  = ServerOptions.inDevices  ? [];
+
+    // Print every PortAudio device name SC can see — essential for diagnosing
+    // name-mismatch failures where the detection regex doesn't fire.
+    "=== SC AUDIO DEVICES (PortAudio) ===".postln;
+    "Output devices:".postln;
+    outDevices.do { |d, i| "  out[%]: %".format(i, d).postln };
+    "Input devices:".postln;
+    inDevices.do  { |d, i| "  in [%]: %".format(i, d).postln };
+    "=====================================".postln;
+
+    // Broad match: catches "MOTU 828x", "MOTU AVB", "828mk3", etc.
+    // asString guard handles nil entries that PortAudio occasionally returns.
+    var motu = outDevices.select({ |d|
+        var ds = d.asString.toUpper;
+        ds.contains("MOTU") or: { ds.contains("828") } or: { ds.contains("GEN5") }
     }).first;
 
     if(motu.notNil) {
-        "✓ MOTU 828x detected: % — enabling 4-channel spatial mode.".format(motu).postln;
-        Server.default.options.device = motu;
+        "✓ MOTU detected: % — 4-ch spatial, 48000 Hz".format(motu).postln;
+        Server.default.options.device               = motu;
+        Server.default.options.sampleRate           = 48000;  // ← must match MOTU driver
         Server.default.options.numOutputBusChannels = 4;
-        Server.default.options.numInputBusChannels = 2;
+        Server.default.options.numInputBusChannels  = 2;
     } {
-        "i MOTU not found — falling back to Apple Core Audio (2-channel stereo).".postln;
-        Server.default.options.device = nil; // Let macOS pick the default (built-in speakers)
-        Server.default.options.numOutputBusChannels = 2; // Stereo only
-        Server.default.options.numInputBusChannels = 2;
+        // No MOTU in PortAudio list.  The device may still be the macOS
+        // system default (e.g. PortAudio returned an empty list before the
+        // server first boots, which happens on cold start).
+        // Setting device = nil lets Core Audio use the system default.
+        // We still set 48000 because the system default IS the MOTU (confirmed
+        // by system_profiler at session start); if built-ins become default
+        // later this is harmless — Core Audio will renegotiate.
+        "⚠ MOTU not found in PortAudio device list (may appear after first boot).".postln;
+        "  → Using system default device at 48000 Hz.".postln;
+        "  → If you hear no audio: check Audio MIDI Setup and SC post window.".postln;
+        Server.default.options.device               = nil;
+        Server.default.options.sampleRate           = 48000;  // ← match system default (MOTU)
+        Server.default.options.numOutputBusChannels = 2;
+        Server.default.options.numInputBusChannels  = 2;
     };
 };
 
