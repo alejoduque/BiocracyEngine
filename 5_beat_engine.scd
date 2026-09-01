@@ -52,7 +52,7 @@
     // Cadencia — how often each struck layer speaks (CC 25/26/27).
     // Mirrored here by ~setParam via beatParam:, read live by the Routine.
     kickEvery: 1,
-    percRate:  0.32,
+    percRate:  0.18,
     dustRate:  0.52,
     padEvery:  34.0,
     padVoices: 2,
@@ -228,7 +228,13 @@
                     // envelope up to 1.8*tStretch, so seven of them overlapping
                     // at full length is ~390 concurrent Ringz from a single
                     // transaction. Only the primary strike blooms fully.
-                    \timeStr, 0.55,
+                    // 0.55 -> 0.22. The voice now rings for 16 * tStretch —
+                    // 32 s at the default — so seven overlapping full-length
+                    // bowls from one transaction would be a drone, not a
+                    // burst. At 0.22 a retrig hit lasts ~3.5 s: audible as a
+                    // flurry of struck rims, gone before the primary strike's
+                    // own tail has developed.
+                    \timeStr, 0.22,
                     // Falls away rather than repeating flat.
                     \amp, amp * ((1 - ((i + 1) / (count + 1))) ** 1.3) * 0.85
                 ] ++ (~voiceBusArgs.value ? []) ++ lockArgs);
