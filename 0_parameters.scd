@@ -473,6 +473,31 @@ if(File.exists(~presetDir).not) { File.mkdir(~presetDir) };
                 (dict["params"] ?? ()).keysValuesDo { |k, v|
                     ~setParam.(k.asSymbol, v.asFloat, \preset);
                 };
+
+                // Say out loud when a config arrives with layers muted.
+                //
+                // _autosave persists every 30 s and is restored at boot, so a
+                // mute made once during a session becomes the permanent
+                // opening state of the piece — and there is nothing on either
+                // surface that announces it. A session was lost to exactly
+                // this: six of the eight mix faders were saved at 0.0, so the
+                // engine came up correct and then went half-silent the moment
+                // the config landed, which reads as "the sound broke" rather
+                // than "a fader is down".
+                //
+                // Not overridden — a mute can be deliberate. Just never silent.
+                block { |break|
+                    var muted = (dict["params"] ?? ()).keys.asArray.select { |k|
+                        k.asString.beginsWith("mix")
+                            and: { ((dict["params"][k] ? 1).asFloat) <= 0.001 }
+                    }.sort;
+                    if(muted.size > 0) {
+                        ("⚠ CONFIG '" ++ safe ++ "' MUTES " ++ muted.size
+                            ++ " LAYER(S): " ++ muted.join(", ")).postln;
+                        "  Those layers will be SILENT until their faders are raised".postln;
+                        "  (matrix mixer, CC 42-49, or the browser's right rail).".postln;
+                    };
+                };
                 (dict["sample"] ?? ()).keysValuesDo { |k, v|
                     var key = k.asSymbol, val = v.asFloat;
                     if(~sampleBuses.notNil and: { ~sampleBuses[key].notNil }) {

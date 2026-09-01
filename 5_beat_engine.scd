@@ -1377,9 +1377,20 @@
     });
     
     ~beatRoutine.play;
-    if(~droneEnsemble.notNil) { ~droneEnsemble.value };
-    // Start the autonomous pad bed alongside the drone ensemble
-    if(~padBedEnsemble.notNil) { ~padBedEnsemble.value };
+    // Each ensemble is started INSIDE its own guard, and each says whether it
+    // started. Previously a throw in ~droneEnsemble would have taken the pad
+    // bed down with it silently — they were two bare statements in a row, so
+    // the second never ran and nothing said why. The drone, the pad and the
+    // beat all live in this one block, which is why they tend to disappear
+    // together.
+    try {
+        if(~droneEnsemble.notNil) { ~droneEnsemble.value; "[start] drone ensemble running".postln }
+        { "⚠ [start] ~droneEnsemble is nil — NO DRONE".postln };
+    } { |e| ("⚠ [start] drone ensemble FAILED: " ++ e.errorString).postln };
+    try {
+        if(~padBedEnsemble.notNil) { ~padBedEnsemble.value; "[start] pad bed running".postln }
+        { "⚠ [start] ~padBedEnsemble is nil — NO PAD".postln };
+    } { |e| ("⚠ [start] pad bed FAILED: " ++ e.errorString).postln };
 };
 
 // The 'Enhanced Beat Controls' window that used to live here is gone.
@@ -1410,6 +1421,16 @@ s.doWhenBooted({
     // SynthDef registration + ~buses population needs two s.sync round-trips.
     // 1.5s on AppClock gives the server enough time even under load.
     AppClock.sched(1.5, {
+        // `nil.value` returns nil in sclang — it does NOT throw. So if
+        // ~beatEngine were nil (this file having failed to finish loading),
+        // the engine would simply never start and absolutely nothing would be
+        // printed. That is the quietest possible failure for the loudest
+        // possible symptom: no beat, no drone, no pad, and a dark BEAT light.
+        if(~beatEngine.isNil) {
+            "⚠ ~beatEngine IS NIL — 5_beat_engine.scd did not finish loading.".postln;
+            "  No beat, no drone, no pad. Check the post window above for the".postln;
+            "  first error in that file.".postln;
+        };
         if(~buses.notNil and: { ~buses[\masterVolume].notNil }) {
             ~beatEngine.value;
             "Beat engine started — ~buses ready (% entries).".format(~buses.size).postln;
