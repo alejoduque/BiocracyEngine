@@ -161,6 +161,71 @@ function measureTextWidth(text, font) {
     return Math.ceil(_measureCtx.measureText(text).width) + 10;
 }
 
+// ── Tipografía CRT para las FRASES del lexicón ─────────────────────────
+//
+// Sólo las frases. Las etiquetas de zona y el sigilo de la semilla siguen
+// exactamente como estaban: son rótulos, no oraciones, y agrandarlos taparía
+// el mapa que rotulan.
+//
+// El problema real era de lectura. Las frases del LEXICON son la única prosa
+// de la pieza — oraciones completas, algunas de 45 caracteres — y se dibujaban
+// en itálica de 15 px sobre un lienzo de 40 px de alto, escaladas a 0.011 en
+// espacio-mundo. A esa medida la cursiva de Courier se deshace en cuanto la
+// cámara se aleja o la niebla sube, y lo que debería leerse como una frase se
+// vuelve una mancha con forma de texto.
+//
+// La presentación viene de camara/crt.ts (portada de @designcodeio/threeui,
+// MIT): monoespaciada de peso 600 en vez de cursiva, halo de fósforo bajo cada
+// glifo, y revelado por escritura con cursor de bloque. El brillo es lo que
+// más aporta a la legibilidad: separa el glifo del fondo sin engordar el trazo,
+// que es justo lo que fallaba cuando la frase caía sobre una zona clara.
+//
+// El COLOR no se toma del CRT. Estratos repinta todo su texto cuando cambia de
+// paleta (_recolor), y clavar el verde fósforo aquí dejaría las frases fuera de
+// cada paleta que la pieza sabe generar. Se usa this.C.ink y el halo se deriva
+// de él, así el gesto del CRT sobrevive a las seis paletas.
+const CRT_PHRASE = {
+    // 26 px contra los 15 anteriores. Con la misma escala de 0.011 a mundo, la
+    // frase queda ~1.7x más grande sin tocar el layout que la ancla.
+    size: 26,
+    h: 64,
+    padX: 10,
+    font: "600 26px ui-monospace, 'SF Mono', 'JetBrains Mono', Menlo, Consolas, monospace",
+    // Caracteres por segundo de tiempo INTERNO de la pieza, así timedilation
+    // estira o comprime la escritura junto con todo lo demás.
+    cps: 26,
+    // Retardo entre frases, para que aparezcan una tras otra como líneas de
+    // terminal y no las 12 a la vez.
+    stagger: 0.55,
+};
+
+// Separación vertical mínima entre frases, en unidades de mundo. La caja de
+// una frase mide CRT_PHRASE.h * 0.011 = 0.70; 1.6 deja aire de sobra.
+//
+// Es holgado a propósito. La cámara es perspectiva, así que la separación que
+// se calcula en mundo NO es la que se ve: dos frases a distinta profundidad se
+// proyectan con divisiones distintas y un hueco de 1.15 se cerraba en pantalla
+// justo en los pares que caían lejos una de otra en z.
+const PHRASE_GAP = 1.6;
+
+// Cuánto se amplía ese hueco por cada unidad de diferencia en z. Es la
+// corrección de perspectiva: cuanto más separadas están dos frases en
+// profundidad, menos fiable es su distancia en Y y más hay que exigirles.
+const PHRASE_GAP_Z = 0.45;
+
+/** Halo de fósforo derivado de la tinta viva de la paleta. */
+function crtGlow(hex) {
+    const h = String(hex).replace("#", "");
+    const n = h.length === 3
+        ? h.split("").map((c) => parseInt(c + c, 16))
+        : [parseInt(h.slice(0, 2), 16), parseInt(h.slice(2, 4), 16), parseInt(h.slice(4, 6), 16)];
+    const [r, g, b] = n.map((v) => (Number.isFinite(v) ? v : 200));
+    // Se aclara hacia el blanco para que el halo lea como emisión y no como
+    // una sombra dura del mismo tono.
+    const lift = (v) => Math.round(v + (255 - v) * 0.35);
+    return `rgba(${lift(r)},${lift(g)},${lift(b)},0.85)`;
+}
+
 // ── primitivas de dibujo pixel-art (idénticas en espíritu al motor 2D) ──
 function ppx(g, x, y, color, size = 1) {
     g.fillStyle = color;
@@ -641,6 +706,7 @@ class Estratos extends BaseThreeJsModule {
         this._disposables = [];
         this._sprites = [];
         this._texts = [];      // sprites de texto re-horneables (recoloreo)
+        this._crtPhrases = []; // subconjunto de _texts: las frases que escriben
         this._inkLines = [];   // materiales de línea que siguen a C.ink
         this._waves = [];
         this._particles = null;
@@ -748,6 +814,7 @@ class Estratos extends BaseThreeJsModule {
         this._disposables = [];
         this._sprites = [];
         this._texts = [];
+        this._crtPhrases = [];
         this._inkLines = [];
         this._waves = [];
         this._particles = null;
@@ -926,34 +993,121 @@ class Estratos extends BaseThreeJsModule {
     }
 
     _buildText(zones) {
+        // Orden global de aparición: las frases entran en secuencia por todo
+        // el mapa, no zona por zona, para que la lectura recorra el estrato.
+        let phraseOrder = 0;
+        const placed = [];
         zones.forEach((zone) => {
             const phrases = LEXICON[zone] || [];
             const chosen = [...phrases].sort(() => this.rng() - 0.5).slice(0, this.rint(2, 4));
             const zoneSprites = this._sprites.filter((s) => s.zone === zone);
-            chosen.forEach((phrase) => {
+            chosen.forEach((phrase, i) => {
                 const [p0, p1] = ZONE_RANGE[zone];
                 const anchor = zoneSprites.length ? this.pick(zoneSprites).anchor : new THREE.Vector3(0, toWorldY((p0 + p1) / 2), 0);
-                const x = anchor.x + this.rand(-2.5, 2.5), y = anchor.y + this.rand(-1, 1), z = anchor.z + this.rand(-1.5, 1.5);
+                // Reparto vertical determinista dentro de la zona en vez de un
+                // ±1 al azar. Con la tipografía CRT la caja de una frase mide
+                // 0.70 en mundo (64 px * 0.011), así que dos anclas sorteadas
+                // sobre el mismo sprite se solapaban a la vista: a 15 px
+                // rozaban, a 26 px se pisan la línea. PHRASE_GAP separa por
+                // encima de esa altura, y el desplazamiento en x evita que las
+                // frases de una zona queden alineadas en una columna.
+                const spread = i - (chosen.length - 1) / 2;
+                const x = anchor.x + this.rand(-2.2, 2.2) + spread * 0.9;
+                const y = anchor.y + spread * PHRASE_GAP + this.rand(-0.12, 0.12);
+                // Menos profundidad que los sprites de especie (±1.5). El
+                // reparto y la relajación separan en Y de mundo, pero la
+                // cámara es perspectiva: dos frases a la misma altura y
+                // distinta z se proyectan a alturas de PANTALLA distintas, y
+                // el hueco calculado se pierde. Estrechar z hace que la
+                // separación que se calcula sea la que se ve.
+                const z = anchor.z + this.rand(-0.8, 0.8);
 
-                const sprite = this._makeTextSprite(phrase, this.C.ink, { h: 40, font: "italic 15px 'Courier New',monospace" });
+                const sprite = this._makePhraseSprite(phrase, phraseOrder++);
                 sprite.position.set(x, y, z);
                 this.world.add(sprite);
                 this._disposables.push({ material: sprite.material, texture: sprite.material.map });
-
-                const geo = new THREE.BufferGeometry().setFromPoints([anchor.clone(), new THREE.Vector3(x, y, z)]);
-                const mat = new THREE.LineBasicMaterial({ color: new THREE.Color(this.C.ink), transparent: true, opacity: 0.3, depthWrite: false });
-                const tether = new THREE.Line(geo, mat);
-                tether.renderOrder = RO.tether;
-                this.world.add(tether);
-                this._disposables.push({ geometry: geo, material: mat });
-                this._inkLines.push(mat);
+                // El tirante se construye DESPUÉS del reparto global, porque
+                // su geometría es estática y quedaría apuntando al sitio viejo.
+                // toWorldY invierte el eje: p0 (arriba en el mapa) da la Y mayor.
+                placed.push({ sprite, anchor, yHi: toWorldY(p0), yLo: toWorldY(p1) });
             });
+        });
+
+        this._spreadPhrases(placed);
+
+        placed.forEach(({ sprite, anchor }) => {
+            const geo = new THREE.BufferGeometry().setFromPoints([anchor.clone(), sprite.position.clone()]);
+            const mat = new THREE.LineBasicMaterial({ color: new THREE.Color(this.C.ink), transparent: true, opacity: 0.3, depthWrite: false });
+            const tether = new THREE.Line(geo, mat);
+            tether.renderOrder = RO.tether;
+            this.world.add(tether);
+            this._disposables.push({ geometry: geo, material: mat });
+            this._inkLines.push(mat);
         });
 
         const sigil = this._makeTextSprite(`seed: ${this.seed.slice(0, 30)}`, this.C.ink, { h: 28, font: "12px 'Courier New',monospace" });
         sigil.position.set(0, -9.4, 0);
         this.world.add(sigil);
         this._disposables.push({ material: sigil.material, texture: sigil.material.map });
+    }
+
+    // Separa en vertical las frases que se pisan, mirando TODAS contra todas.
+    //
+    // El reparto por zona de _buildText resuelve las colisiones dentro de una
+    // franja, pero no entre franjas vecinas: BOSQUE y CORDILLERA comparten
+    // borde y sus anclas son sprites de especie que pueden caer casi a la
+    // misma altura. Ahí se pisaban "la raíz negocia lo que la hoja promete" y
+    // "la roca guarda el tiempo del parlamento", que es exactamente el caso
+    // que la tipografía grande volvió ilegible.
+    //
+    // Relajación simple: si dos cajas se solapan en x y están más cerca en y
+    // que PHRASE_GAP, se apartan medio sobrante cada una. Cuatro pasadas
+    // bastan para este número de frases (~12-20) y el coste es despreciable
+    // porque ocurre una sola vez, al construir la escena.
+    _spreadPhrases(placed) {
+        if (placed.length < 2) return;
+        // Margen interior para que la caja de la frase no asome fuera
+        // de la franja al tocar el borde.
+        const pad = (CRT_PHRASE.h * 0.011) / 2;
+        const clamp = (rec) => {
+            const lo = rec.yLo + pad, hi = rec.yHi - pad;
+            if (hi > lo) rec.sprite.position.y = Math.min(hi, Math.max(lo, rec.sprite.position.y));
+        };
+        const ITER = 10;  // los huecos crecieron: hacen falta más pasadas
+        for (let k = 0; k < ITER; k++) {
+            let moved = false;
+            for (let a = 0; a < placed.length; a++) {
+                for (let b = a + 1; b < placed.length; b++) {
+                    const A = placed[a].sprite, B = placed[b].sprite;
+                    const halfW = (A.scale.x + B.scale.x) / 2;
+                    if (Math.abs(A.position.x - B.position.x) >= halfW) continue;
+                    const dy = A.position.y - B.position.y;
+                    // Corrección de perspectiva: el par que está lejos en z
+                    // necesita más hueco en Y para conservar el mismo hueco en
+                    // pantalla. Sin esto, los pares repartidos en profundidad
+                    // pasaban el test en mundo y se pisaban a la vista.
+                    const gap = PHRASE_GAP + Math.abs(A.position.z - B.position.z) * PHRASE_GAP_Z;
+                    const need = gap - Math.abs(dy);
+                    if (need <= 0) continue;
+                    // Si coinciden exactamente, se rompe el empate con el
+                    // orden para que el desplazamiento sea determinista.
+                    const dir = dy === 0 ? (a < b ? 1 : -1) : Math.sign(dy);
+                    A.position.y += dir * need * 0.5;
+                    B.position.y -= dir * need * 0.5;
+                    // Cada frase se queda en SU estrato. Sin esta sujeción la
+                    // relajación resolvía los solapes empujando las frases
+                    // fuera de su franja — "lo pelágico no tiene territorio"
+                    // acababa sobre la cordillera — y eso deshace la tesis de
+                    // la pieza, que es que cada enunciado pertenece a su capa.
+                    // Preferible un roce ocasional a una frase en el estrato
+                    // equivocado.
+                    clamp(placed[a]);
+                    clamp(placed[b]);
+                    moved = true;
+                }
+            }
+            if (!moved) break;
+        }
     }
 
     // Pinta (o repinta) texto sobre un canvas ya dimensionado. El clearRect
@@ -967,6 +1121,97 @@ class Estratos extends BaseThreeJsModule {
         g.fillStyle = colorHex;
         g.textBaseline = "middle";
         g.fillText(text, 4, h / 2);
+    }
+
+    // Pinta una FRASE del lexicón con la presentación CRT: halo de fósforo,
+    // monoespaciada de peso 600, y sólo los caracteres ya revelados. El cursor
+    // de bloque acompaña a la escritura y desaparece al terminar la línea —
+    // el CRT original lo deja parpadeando para siempre, que es correcto para
+    // una sola pantalla y ruinoso para doce sprites en una escena 3-D: cada
+    // parpadeo obliga a repintar el lienzo y a resubir la textura.
+    _paintPhrase(t) {
+        const g = t.canvas.getContext("2d");
+        g.setTransform(1, 0, 0, 1, 0, 0);
+        g.clearRect(0, 0, t.canvas.width, t.canvas.height);
+        g.font = t.font;
+        g.textBaseline = "middle";
+
+        const shown = t.text.slice(0, Math.floor(t.shown));
+        if (!shown) return;
+
+        const cy = t.canvas.height / 2;
+        g.shadowColor = crtGlow(this.C.ink);
+        g.shadowBlur = CRT_PHRASE.size * 0.55;
+        g.fillStyle = this.C.ink;
+        g.fillText(shown, CRT_PHRASE.padX, cy);
+
+        if (!t.done) {
+            const w = g.measureText(shown).width;
+            g.fillRect(
+                CRT_PHRASE.padX + w + 2,
+                cy - CRT_PHRASE.size * 0.48,
+                Math.max(3, CRT_PHRASE.size * 0.5),
+                CRT_PHRASE.size * 0.96,
+            );
+        }
+    }
+
+    /** Repinta una entrada de _texts por su tipo. Usado por _recolor. */
+    _repaintText(t) {
+        if (t.crt) this._paintPhrase(t);
+        else this._paintText(t.canvas, t.text, this.C.ink, t.font, t.h);
+        t.tex.needsUpdate = true;
+    }
+
+    // Sprite de frase: mismo anclaje y misma escala a mundo que antes, con el
+    // lienzo dimensionado al tipo nuevo. `order` escalona el arranque para que
+    // las frases entren en secuencia.
+    _makePhraseSprite(text, order) {
+        const font = CRT_PHRASE.font;
+        const h = CRT_PHRASE.h;
+        // El halo se sale de la caja del glifo, así que el lienzo necesita
+        // margen o el fósforo queda cortado en los cuatro bordes.
+        const w = measureTextWidth(text, font) + CRT_PHRASE.padX * 2;
+        const canvas = document.createElement("canvas");
+        canvas.width = w;
+        canvas.height = h;
+
+        const tex = this._pixelTexture(canvas);
+        const mat = new THREE.SpriteMaterial({ map: tex, transparent: true, depthWrite: false, fog: false });
+        const sprite = new THREE.Sprite(mat);
+        sprite.scale.set(w * 0.011, h * 0.011, 1);
+        sprite.renderOrder = RO.text;
+
+        const rec = {
+            canvas, tex, text, font, h,
+            crt: true,
+            shown: 0,
+            done: false,
+            delay: order * CRT_PHRASE.stagger,
+        };
+        this._texts.push(rec);
+        this._crtPhrases.push(rec);
+        this._paintPhrase(rec);
+        tex.needsUpdate = true;
+        return sprite;
+    }
+
+    // Avanza la escritura. Se llama una vez por frame desde _animate con el
+    // dt YA estirado por timedilation, así que el mismo mando que dilata el
+    // tiempo de la pieza dilata la lectura. Sólo se resube la textura de las
+    // frases que están escribiendo: cuando todas terminan, el coste es cero.
+    _typePhrases(sdt) {
+        for (const t of this._crtPhrases) {
+            if (t.done) continue;
+            if (t.delay > 0) { t.delay -= sdt; continue; }
+            t.shown += CRT_PHRASE.cps * sdt;
+            if (t.shown >= t.text.length) {
+                t.shown = t.text.length;
+                t.done = true;
+            }
+            this._paintPhrase(t);
+            t.tex.needsUpdate = true;
+        }
     }
 
     _makeTextSprite(text, colorHex, opts = {}) {
@@ -1010,6 +1255,8 @@ class Estratos extends BaseThreeJsModule {
         // timedilation → el tiempo interno de la pieza se estira o comprime
         const sdt = dt * view.speed;
         if (this.animEnabled) this._t += sdt;
+        // Escritura de las frases del lexicón (presentación CRT).
+        if (this.animEnabled) this._typePhrases(sdt);
 
         // Fondo/niebla en transición suave (sin flash al cambiar paleta)
         if (this._bgTarget && this.scene.background instanceof THREE.Color) {
@@ -1118,10 +1365,7 @@ class Estratos extends BaseThreeJsModule {
 
         this._bgTarget = new THREE.Color(this.C.paper);
         this._sprites.forEach((rec) => this._paintSpecies(rec));
-        this._texts.forEach((t) => {
-            this._paintText(t.canvas, t.text, this.C.ink, t.font, t.h);
-            t.tex.needsUpdate = true;
-        });
+        this._texts.forEach((t) => this._repaintText(t));
         this._inkLines.forEach((mat) => mat.color.set(this.C.ink));
         this._waves.forEach((w) => w.base.set(this.C.blue));
         if (this._particles) this._particles.base.set(this.C[this._particles.role]);
