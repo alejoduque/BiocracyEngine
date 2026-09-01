@@ -178,10 +178,16 @@
         hasBus: false, beatParam: \kickEvery,  cc: 25),
     // Base probability numerator for percussion, divided by percDivisor.
     // 0.65 was the old sparse value; 1.5 is the current default.
-    (name: \percRate,   spec: ControlSpec(0.15, 4.0, \exp),  default: 1.5,  path: "/cadence/perc",
+    // Default 1.5 -> 0.32, and the floor drops to 0.02. The china is now a
+    // long, wide, resonant event; at 1.5 it was arriving often enough to be a
+    // texture, which is the opposite of what a 24" trash cymbal is for. At
+    // 0.32 it lands a few times a minute and each strike is allowed to be an
+    // occurrence rather than part of a pulse. The top of the range is
+    // unchanged for anyone who does want it dense.
+    (name: \percRate,   spec: ControlSpec(0.02, 4.0, \exp),  default: 0.32, path: "/cadence/perc",
         hasBus: false, beatParam: \percRate,   cc: 26),
     // Base probability per tick for dust grains, before tide and excitation.
-    (name: \dustRate,   spec: ControlSpec(0.03, 0.85, \exp), default: 0.34, path: "/cadence/dust",
+    (name: \dustRate,   spec: ControlSpec(0.03, 0.95, \exp), default: 0.52, path: "/cadence/dust",
         hasBus: false, beatParam: \dustRate,   cc: 27),
     // Seconds between pad swells. The pad had NO rate control at all — only a
     // level — so its presence could be turned down but never made denser or

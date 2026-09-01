@@ -52,8 +52,8 @@
     // Cadencia — how often each struck layer speaks (CC 25/26/27).
     // Mirrored here by ~setParam via beatParam:, read live by the Routine.
     kickEvery: 1,
-    percRate:  1.5,
-    dustRate:  0.34,
+    percRate:  0.32,
+    dustRate:  0.52,
     padEvery:  34.0,
     padVoices: 2,
     // Derived each tick, read by the [MON] line. A toggle whose effect
@@ -463,6 +463,17 @@
                         // A bed must not track the beat. Its only time control
                         // is timeDilation, via tScale inside the SynthDef.
                         \tempo,  1.0,
+                        // The envelope follows the rate knob. padEvery 34 s is
+                        // unity; at 8 s the swell is ~0.24x (about 21 s) so
+                        // voices actually free themselves between spawns, and
+                        // at 120 s it stretches to ~2.5x for one long arrival.
+                        //
+                        // Without this the knob could not thin OR thicken the
+                        // layer: an 89 s envelope against a spacing shorter
+                        // than itself means padMax gates every cycle, and the
+                        // control does nothing across most of its travel.
+                        \envScale, (((~beatParams.padEvery ? 34.0) / 34.0)
+                            ** 0.85).clip(0.12, 2.5),
                         \pan,    1.0.rand2 * 0.65
                     ] ++ (~voiceBusArgs.value ? []), targetGrp);
                     ~padVoices = (~padVoices ? []).add(syn);
@@ -1112,8 +1123,22 @@
                 // one instrument at five registers — and the counterparty's
                 // address signature nudges it, so the same seat answering a
                 // different actor is not quite the same object.
+                // Which cymbal is being struck. bodySeed sets the whole
+                // 56-mode detune pattern, so two different seeds are two
+                // different castings — this is the main defence against the
+                // layer sounding like one sample retriggered.
+                //
+                // The species index and the chain signature were the only two
+                // terms, and on an idle chain addrSig is 0, which left FIVE
+                // possible cymbals. A third term walks slowly and continuously
+                // so the plate drifts even with no chain and no species change:
+                // consecutive strikes are near-neighbours (the same instrument
+                // heard again) while strikes minutes apart are audibly
+                // different objects.
+                ~percBodyWalk = ((~percBodyWalk ? 0) + rrand(0.013, 0.041)).wrap(0, 1);
                 var bodySeed = ((speciesIdx / 4.0)
-                    + (((rs !? { rs[\addrSig] } ? 0) % 97) / 97.0 * 0.35)).wrap(0, 1);
+                    + (((rs !? { rs[\addrSig] } ? 0) % 97) / 97.0 * 0.35)
+                    + (~percBodyWalk * 0.55)).wrap(0, 1);
                 // The p-locks for THIS strike. Appended after the bus arguments
                 // at every spawn site below, so the -1s override the buses —
                 // /s_new applies arguments in order, last one wins.
@@ -1245,7 +1270,11 @@
                 };
                 s.makeBundle(s.latency + jitTick, { Synth(\opalDust, [
                     \out,         0,
-                    \amp,         ~beatParams.masterAmp * (~beatParams.transportGain ? 1) *(0.3 + (density * 0.35)) * accent,
+                    // Floor 0.3 -> 0.72. On an idle chain density is 0, so
+                    // every grain was spawned at 30% amplitude regardless of
+                    // ~trimDust — the layer could not be brought up from the
+                    // mixer because the attenuation was upstream of it.
+                    \amp,         ~beatParams.masterAmp * (~beatParams.transportGain ? 1) *(0.72 + (density * 0.28)) * accent,
                     \masterVolBus, bMVol,
                     \textureBus,   bText,
                     \spectralBus,  bSpec,

@@ -160,7 +160,12 @@ s.doWhenBooted({
     // under the bed at 1.05. This puts it above the pad (0.65) — appropriate,
     // because the hojarasca is meant to be the floor of the piece rather than
     // an occasional detail on top of it.
-    ~trimDust  = 1.60 * ~trimMaster;
+    // 1.05 -> 1.60 -> 2.60. Reported still too quiet at 1.60, and there is a
+    // second attenuation the trim alone cannot reach: the beat engine spawns
+    // dust at amp (0.3 + density*0.35), which on an idle chain is 0.3. So the
+    // layer was running at 30% of whatever this constant says. Both are raised
+    // together — see 5_beat_engine.scd.
+    ~trimDust  = 2.60 * ~trimMaster;
     // Field recordings (10_sample_system.scd). Kept in this table rather than
     // beside the sample SynthDef so the whole budget stays readable in one
     // place — a layer that sets its own level somewhere else is exactly how
@@ -885,13 +890,23 @@ s.doWhenBooted({
             // cutting the wash off while it was still developing. A 24" china
             // rings for seconds; curve -4.5 keeps the fast initial collapse so
             // it still reads as a trash hit rather than a pad.
-            Env.perc(0.001, (1.8 * tStretch).clip(0.4, 7.0), 1, -4.5),
+            // 1.8 -> 4.2 * tStretch. Rare events have to be LONG or they read
+            // as clicks in a gap; now that percRate defaults to a few hits a
+            // minute, each one is allowed to ring out and fill the space it
+            // was given. Curve -4.5 keeps the fast initial collapse so it is
+            // still a struck plate, not a swell.
+            Env.perc(0.001, (4.2 * tStretch).clip(0.8, 14.0), 1, -4.5),
             doneAction: 2);
 
         // Ping-pong delay + Reverb
         wet = CombC.ar(sig, 0.4, 0.08, 1.0) * dMix * 0.7;
         sig = sig + wet;
-        sig = sig + FreeVerb.ar(sig, revM * 0.6, 0.7, 0.4);
+        // The room. A 24" china in a hall is mostly its own reflections, and
+        // this is the layer that makes a rare strike feel like it happened
+        // somewhere rather than in the mix. Room size 0.7 -> 0.94 and damping
+        // 0.4 -> 0.15, so the tail is long and stays bright instead of going
+        // muddy — bronze reflections keep their top end.
+        sig = sig + FreeVerb.ar(sig, revM * 0.85, 0.94, 0.15);
 
         sig = sig * amp * vol * ~trimPerc
             * Lag.kr(Select.kr(mixPercBus >= 0, [1.0, In.kr(mixPercBus, 1)]), 0.08);
@@ -931,7 +946,15 @@ s.doWhenBooted({
     // RLPF with slow wobble LFOs, tanh tape saturation, Dust crackle texture,
     // Balance2 slow stereo drift, Compander+LeakDC output chain.
     SynthDef(\biocratiaPad, {
+        // envScale multiplies the whole envelope. It exists because the pad's
+        // envelope was hardcoded at [8,28,35,18] (~89 s at tScale 1.0) with no
+        // way to shorten it, which made the /cadence/pad rate knob inert below
+        // about 45 s: the routine would spawn, hit padMax, and then skip every
+        // cycle until a voice finally freed itself ~89 s later. The knob set
+        // the spacing but padMax was what actually gated the layer, so only
+        // the level fader appeared to do anything.
         arg out=0, gate=1, freq=110, amp=0.18, tempo=1.0, ratio=1.0, pan=0,
+            envScale=1.0,
             masterVolBus=(-1), pitchBus=(-1), timeBus=(-1), spectralBus=(-1),
             spatialBus=(-1), textureBus=(-1), atmosphereBus=(-1), memoryBus=(-1),
             harmonicBus=(-1), resonantBus=(-1),
@@ -962,8 +985,17 @@ s.doWhenBooted({
         var tScale = tDil.linlin(0.5, 6.0, 0.6, 1.8);
         var env = EnvGen.kr(
             Env([0, 0.65, 1.0, 0.80, 0],
-                [8, 28, 35, 18] * tScale / tempo.max(0.1),
-                [2, -2, 3, -4]),
+                [8, 28, 35, 18] * tScale * envScale.clip(0.12, 2.5) / tempo.max(0.1),
+                // Curve 2 on the attack is strongly CONVEX — it rises fast and
+                // then flattens, so most of the level arrives in the first
+                // fifth of the stage. At a full-length envelope that is only
+                // slightly abrupt; once envScale shortens the swell it becomes
+                // an audible chirp, because an 8 s attack at 0.29x is 2.3 s of
+                // which the first half-second does most of the work.
+                //
+                // \sin on the way in and out instead: a bed should arrive and
+                // leave without ever being heard to start.
+                [\sin, -2, 3, \sin]),
             gate, doneAction: 2);
 
         // Slow time reference for filter and formant drift

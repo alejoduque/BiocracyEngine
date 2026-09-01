@@ -633,10 +633,10 @@ function cadenceLabel(addr: string, n: number): string | null {
   const exp = (lo: number, hi: number) => lo * Math.pow(hi / lo, n);
   switch (addr) {
     case "/cadence/kick":       return `${Math.round(lin(1, 8))}×bar`;
-    case "/cadence/perc":       return exp(0.15, 4.0).toFixed(2);
+    case "/cadence/perc":       return exp(0.02, 4.0).toFixed(2);
     case "/cadence/pad":        return `${Math.round(exp(8, 120))}s`;
     case "/cadence/padvoices":  return `${Math.round(lin(1, 4))}`;
-    case "/cadence/dust":       return exp(0.03, 0.85).toFixed(2);
+    case "/cadence/dust":       return exp(0.03, 0.95).toFixed(2);
     default:                    return null;
   }
 }
