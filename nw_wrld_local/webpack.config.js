@@ -101,6 +101,15 @@ module.exports = (env, argv) => {
         path.join(__dirname, "dist"),
         { directory: path.join(__dirname, "src/projector/views"), publicPath: "/" },
         { directory: path.join(__dirname, "ecosystems"), publicPath: "/ecosystems/" },
+        // The derived visual tier for slot C (Cámara). It lives at the repo
+        // root rather than under nw_wrld_local because tools/build_visual.py
+        // writes it beside the audio corpus it is keyed to, and because it is
+        // ~300 MB of rebuildable h264 that has no business inside the bundle.
+        // Served read-only; nothing in the renderer writes here.
+        {
+          directory: path.join(__dirname, "..", "corpus"),
+          publicPath: "/corpus/",
+        },
       ],
       compress: true,
       port: 9001,
