@@ -10,6 +10,12 @@ import { getScAudio, bandRange, normLevel } from "./scAudio";
 import { makeEventEmitter, makeExcursionEmitter } from "./slotVoice";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
 import {
+    mountConstellationField,
+    hueRotateFor,
+    type ConstellationHandle,
+    type ConstellationParams,
+} from "./constellation/constellationField";
+import {
     Viz,
     pickSpecies,
     showStage,
@@ -30,6 +36,23 @@ const ChromaticAberrationShader = {
 };
 
 // ─── Shared helper: make a WebGLRenderer fitted to container ────────────────
+// Deliberately still opaque, and the constellation field for slots 5-9 does
+// NOT sit behind it.
+//
+// The obvious design was to open an alpha buffer here and let the field show
+// through — slots 5, 6 and 7 even end their frame with
+// `setClearColor(0x000804, lerp(0.5, 0.95, 1 - atmMix))`, an alpha that has
+// never done anything because the context had none. Measured, it still does
+// nothing: with `alpha: true` and that same clear, a screenshot amplified 6x
+// shows a flat background and no field at all. The scene goes through an
+// EffectComposer, and UnrealBloom/Afterimage/ShaderPass write an opaque alpha
+// into the final pass regardless of what the clear asked for. Chasing alpha
+// through four post passes to reveal a backdrop is not worth it.
+//
+// So the field is composited ON TOP with `mix-blend-mode: screen` instead —
+// see constellation/constellationField.ts. Screen only ever adds light, so on
+// these dark scenes it reads as atmosphere in the room rather than as a sheet
+// over the geometry, and it is independent of whatever the composer does.
 function makeRenderer(container: HTMLElement): THREE.WebGLRenderer {
     const r = new THREE.WebGLRenderer({ antialias: true, alpha: false });
     r.setClearColor(0x000804, 1);
@@ -75,6 +98,91 @@ export const INSTRUMENTS: Record<string, Instrument> = {
     // bands 11-13 — roughly 2.3-4.8 kHz.
     s9: { label: "MUESTRAS",   sub: "samplePlayer · campo",      voice: "sample", band: [0.68, 0.88], hue: 0.75 },
 };
+
+// ─── The constellation backdrop, slots 5-9 ──────────────────────────────────
+//
+// One field per slot, mounted behind the WebGL canvas and driven by that
+// slot's own voice. The point is that it is NOT wallpaper: five slots running
+// the same generic starfield would be five copies of a decoration. Each field
+// takes its colour from its instrument's hue and its behaviour from that
+// instrument's live band, so slot 7 (BOMBO, sub) throbs red and sparse while
+// slot 8 (POLVO, granular) shimmers cyan and dense.
+//
+// The knob mapping follows what each control already means elsewhere in the
+// engine rather than inventing a second vocabulary:
+//
+//   textureDepth  → density        (it is the granular-density control)
+//   filterCutoff  → length         (reach; slot 5 already sizes restLength by it)
+//   timeDilation  → speed          (with the instrument's level on top)
+//   resonantBody  → strokeWidth
+//   atmosphereMix → opacity        (the same term that opens the clear alpha)
+//   masterAmp     → brightness
+//   voice onset   → pulse()
+type SlotField = {
+    field: ConstellationHandle;
+    /** Call once per frame, after the slot has read its own state. */
+    drive: (st: ParliamentState | null) => void;
+    destroy: () => void;
+};
+
+function mountSlotField(
+    stageEl: HTMLElement,
+    inst: Instrument,
+    slotKey: string,
+    tune: Partial<ConstellationParams> = {},
+): SlotField {
+    const field = mountConstellationField(stageEl, {
+        hue: hueRotateFor(inst.hue),
+        ...tune,
+    });
+
+    // Onsets are detected as a rising edge on the voice envelope, the same way
+    // the slots detect their own flashes. Held here so the field does not
+    // depend on the slot threading a value through.
+    let lastEnv = 0;
+
+    const onResize = () => field.resize();
+    window.addEventListener("resize", onResize);
+
+    return {
+        field,
+        drive(st: ParliamentState | null) {
+            const sp = (window as unknown as Record<string, Record<string, number>>)[slotKey] ?? {};
+            const r = readInstrument(inst);
+
+            const texDep = sp.texturedepth ?? 0.5;
+            const filtC = sp.filtercutoff ?? 0.5;
+            const tDil = sp.timedilation ?? 0.5;
+            const resBody = sp.resonantbody ?? 0.4;
+            const atmMix = sp.atmospheremix ?? 0.5;
+            const masterA = sp.masteramp ?? 0.7;
+            const consensus = st?.consensus ?? 0.5;
+
+            field.drive({
+                // Level rides on top of the control so the field breathes with
+                // the note rather than only with the knob.
+                speed: (0.25 + tDil * 1.6) * (0.6 + r.level * 1.8),
+                density: 0.35 + texDep * 1.15,
+                length: 0.55 + filtC * 0.9,
+                strokeWidth: 0.5 + resBody * 1.6,
+                // atmosphereMix is the reverb space, so it reads as how much
+                // room there is around the voice — the field is that room.
+                // Floored well above zero because a screen-blended layer at
+                // 0.2 over a near-black scene is already almost invisible.
+                opacity: (0.24 + atmMix * 0.44) * (0.6 + consensus * 0.4),
+                brightness: 0.7 + masterA * 0.7,
+                saturation: 0.8 + r.level * 0.6,
+            });
+
+            if (r.env > lastEnv + 0.06) field.pulse(Math.min(1, r.env * 0.9));
+            lastEnv = r.env;
+        },
+        destroy() {
+            window.removeEventListener("resize", onResize);
+            field.destroy();
+        },
+    };
+}
 
 /** Live reading for one instrument: its register, and its last attack. */
 function readInstrument(inst: Instrument) {
@@ -599,6 +707,9 @@ export function mountDynamicGraphs(stageEl: HTMLElement, getLatestState: () => P
     // a sprite; it is gone. The binding it announced is the real one and
     // survives: this slot reads inst5's band and its voice's onsets.
     const inst5 = INSTRUMENTS.s5;
+    // The constellation backdrop for this slot, coloured by inst5's hue
+    // and driven by its band. See mountSlotField.
+    const cfield = mountSlotField(stageEl, inst5, "__slot5Soneth");
     const emitEdge5 = makeExcursionEmitter("pad");
 
     const composer = new EffectComposer(renderer);
@@ -669,6 +780,7 @@ export function mountDynamicGraphs(stageEl: HTMLElement, getLatestState: () => P
         frame++;
 
         const st = getLatestState();
+        cfield.drive(st);
         const sp5 = (window as any).__slot5Soneth ?? {};
 
         // Shared idle drift + vote flash. These six slots had NO vote channel
@@ -866,6 +978,7 @@ export function mountDynamicGraphs(stageEl: HTMLElement, getLatestState: () => P
     return {
         name: "Dynamic Graphs", key: "5",
         destroy: () => {
+            cfield.destroy();
             destroyed = true; cancelAnimationFrame(rafId);
             try { controls.dispose(); } catch { /* ignore */ }
             window.removeEventListener("resize", onResize);
@@ -927,6 +1040,9 @@ export function mountDynamicOptimality(stageEl: HTMLElement, getLatestState: () 
     // a sprite; it is gone. The binding it announced is the real one and
     // survives: this slot reads inst6's band and its voice's onsets.
     const inst6 = INSTRUMENTS.s6;
+    // The constellation backdrop for this slot, coloured by inst6's hue
+    // and driven by its band. See mountSlotField.
+    const cfield = mountSlotField(stageEl, inst6, "__slot6Soneth");
     // Slot 6's measure is the jitteriest of the six — the loop adds random
     // displacement to node positions on the line after it counts which nodes
     // have arrived, so "arrived" is partly frame noise by construction. It
@@ -994,6 +1110,7 @@ export function mountDynamicOptimality(stageEl: HTMLElement, getLatestState: () 
         frame++;
 
         const st = getLatestState();
+        cfield.drive(st);
         const sp6 = (window as any).__slot6Soneth ?? {};
 
         // Shared idle drift + vote flash. These six slots had NO vote channel
@@ -1204,6 +1321,7 @@ export function mountDynamicOptimality(stageEl: HTMLElement, getLatestState: () 
     return {
         name: "Dynamic Optimality", key: "6",
         destroy: () => {
+            cfield.destroy();
             destroyed = true; cancelAnimationFrame(rafId);
             try { controls.dispose(); } catch { /* ignore */ }
             window.removeEventListener("resize", onResize);
@@ -1265,6 +1383,9 @@ export function mountGeometry(stageEl: HTMLElement, getLatestState: () => Parlia
     // a sprite; it is gone. The binding it announced is the real one and
     // survives: this slot reads inst7's band and its voice's onsets.
     const inst7 = INSTRUMENTS.s7;
+    // The constellation backdrop for this slot, coloured by inst7's hue
+    // and driven by its band. See mountSlotField.
+    const cfield = mountSlotField(stageEl, inst7, "__slot7Soneth");
     const emitTarget7 = makeExcursionEmitter("kick");
 
     const composer = new EffectComposer(renderer);
@@ -1380,6 +1501,7 @@ export function mountGeometry(stageEl: HTMLElement, getLatestState: () => Parlia
         frame++;
 
         const st = getLatestState();
+        cfield.drive(st);
         const sp7 = (window as any).__slot7Soneth ?? {};
 
         // Shared idle drift + vote flash. These six slots had NO vote channel
@@ -1606,6 +1728,7 @@ export function mountGeometry(stageEl: HTMLElement, getLatestState: () => Parlia
     return {
         name: "Geometry", key: "7",
         destroy: () => {
+            cfield.destroy();
             destroyed = true; cancelAnimationFrame(rafId);
             try { controls.dispose(); } catch { /* ignore */ }
             window.removeEventListener("resize", onResize);
@@ -1668,6 +1791,9 @@ export function mountMemoryHierarchy(stageEl: HTMLElement, getLatestState: () =>
     // a sprite; it is gone. The binding it announced is the real one and
     // survives: this slot reads inst8's band and its voice's onsets.
     const inst8 = INSTRUMENTS.s8;
+    // The constellation backdrop for this slot, coloured by inst8's hue
+    // and driven by its band. See mountSlotField.
+    const cfield = mountSlotField(stageEl, inst8, "__slot8Soneth");
     const emitSpill8 = makeExcursionEmitter("dust");
 
     const composer = new EffectComposer(renderer);
@@ -1742,6 +1868,7 @@ export function mountMemoryHierarchy(stageEl: HTMLElement, getLatestState: () =>
         frame++;
 
         const st = getLatestState();
+        cfield.drive(st);
         const sp8 = (window as any).__slot8Soneth ?? {};
 
         // Shared idle drift + vote flash. These six slots had NO vote channel
@@ -1959,6 +2086,7 @@ export function mountMemoryHierarchy(stageEl: HTMLElement, getLatestState: () =>
     return {
         name: "Memory Hierarchy", key: "8",
         destroy: () => {
+            cfield.destroy();
             destroyed = true; cancelAnimationFrame(rafId);
             try { controls.dispose(); } catch { /* ignore */ }
             window.removeEventListener("resize", onResize);
@@ -2023,6 +2151,9 @@ export function mountHashing(stageEl: HTMLElement, getLatestState: () => Parliam
     // a sprite; it is gone. The binding it announced is the real one and
     // survives: this slot reads inst9's band and its voice's onsets.
     const inst9 = INSTRUMENTS.s9;
+    // The constellation backdrop for this slot, coloured by inst9's hue
+    // and driven by its band. See mountSlotField.
+    const cfield = mountSlotField(stageEl, inst9, "__slot9Soneth");
     const emitCollision9 = makeExcursionEmitter("sample");
 
     const composer = new EffectComposer(renderer);
@@ -2111,6 +2242,7 @@ export function mountHashing(stageEl: HTMLElement, getLatestState: () => Parliam
         frame++;
 
         const st = getLatestState();
+        cfield.drive(st);
         const sp9 = (window as any).__slot9Soneth ?? {};
 
         // Shared idle drift + vote flash. These six slots had NO vote channel
@@ -2343,6 +2475,7 @@ export function mountHashing(stageEl: HTMLElement, getLatestState: () => Parliam
     return {
         name: "Hashing", key: "9",
         destroy: () => {
+            cfield.destroy();
             destroyed = true; cancelAnimationFrame(rafId);
             try { controls.dispose(); } catch { /* ignore */ }
             window.removeEventListener("resize", onResize);
