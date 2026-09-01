@@ -1,0 +1,964 @@
+{
+ "generated": "2026-08-30T22:12:56-05:00",
+ "source": "/Users/a/Desktop/camaratrampaAgosto2026",
+ "station": "CT-MANAKAI-01",
+ "locality": "Reserva MANAKAI",
+ "register": "cameratrap",
+ "withholding": "none",
+ "opacity_control": "/camara/opacity",
+ "temporadas": {
+  "seca": [
+   335,
+   90
+  ],
+  "primeras_lluvias": [
+   91,
+   151
+  ],
+  "medio_seco": [
+   152,
+   243
+  ],
+  "segundas_lluvias": [
+   244,
+   334
+  ]
+ },
+ "ring": {
+  "recorded_days": [
+   222,
+   223,
+   224,
+   226,
+   227,
+   228,
+   229,
+   230,
+   231,
+   232,
+   234
+  ],
+  "days": [
+   {
+    "doy": 222,
+    "date": "2026-08-10",
+    "temporada": "medio_seco",
+    "clips": 1,
+    "species": []
+   },
+   {
+    "doy": 223,
+    "date": "2026-08-11",
+    "temporada": "medio_seco",
+    "clips": 1,
+    "species": [
+     "mono aullador",
+     "lluvia"
+    ]
+   },
+   {
+    "doy": 224,
+    "date": "2026-08-12",
+    "temporada": "medio_seco",
+    "clips": 1,
+    "species": [
+     "ave",
+     "grillo"
+    ]
+   },
+   {
+    "doy": 226,
+    "date": "2026-08-14",
+    "temporada": "medio_seco",
+    "clips": 1,
+    "species": [
+     "ocelote"
+    ]
+   },
+   {
+    "doy": 227,
+    "date": "2026-08-15",
+    "temporada": "medio_seco",
+    "clips": 1,
+    "species": [
+     "insectos"
+    ]
+   },
+   {
+    "doy": 228,
+    "date": "2026-08-16",
+    "temporada": "medio_seco",
+    "clips": 2,
+    "species": [
+     "puma"
+    ]
+   },
+   {
+    "doy": 229,
+    "date": "2026-08-17",
+    "temporada": "medio_seco",
+    "clips": 1,
+    "species": [
+     "garza"
+    ]
+   },
+   {
+    "doy": 230,
+    "date": "2026-08-18",
+    "temporada": "medio_seco",
+    "clips": 6,
+    "species": [
+     "mapache cangrejero",
+     "ocelote",
+     "mono aullador",
+     "ave",
+     "ave cantora"
+    ]
+   },
+   {
+    "doy": 231,
+    "date": "2026-08-19",
+    "temporada": "medio_seco",
+    "clips": 3,
+    "species": []
+   },
+   {
+    "doy": 232,
+    "date": "2026-08-20",
+    "temporada": "medio_seco",
+    "clips": 4,
+    "species": [
+     "puma",
+     "mono aullador",
+     "ave (oscura)"
+    ]
+   },
+   {
+    "doy": 234,
+    "date": "2026-08-22",
+    "temporada": "medio_seco",
+    "clips": 1,
+    "species": [
+     "mosca"
+    ]
+   }
+  ]
+ },
+ "roster": [
+  {
+   "common": "ave",
+   "taxon": "Aves",
+   "rank": "class",
+   "group": "bird",
+   "sensitivity": 0.3,
+   "clips": 2,
+   "days": [
+    224,
+    230
+   ]
+  },
+  {
+   "common": "ave (oscura)",
+   "taxon": "Aves",
+   "rank": "class",
+   "group": "bird",
+   "sensitivity": 0.3,
+   "clips": 1,
+   "days": [
+    232
+   ]
+  },
+  {
+   "common": "ave cantora",
+   "taxon": "Aves",
+   "rank": "class",
+   "group": "bird",
+   "sensitivity": 0.3,
+   "clips": 2,
+   "days": [
+    230
+   ]
+  },
+  {
+   "common": "garza",
+   "taxon": "Ardeidae",
+   "rank": "family",
+   "group": "bird",
+   "sensitivity": 0.3,
+   "clips": 1,
+   "days": [
+    229
+   ]
+  },
+  {
+   "common": "grillo",
+   "taxon": "Gryllidae",
+   "rank": "family",
+   "group": "insect",
+   "sensitivity": 0.0,
+   "clips": 1,
+   "days": [
+    224
+   ]
+  },
+  {
+   "common": "insectos",
+   "taxon": "Insecta",
+   "rank": "class",
+   "group": "insect",
+   "sensitivity": 0.0,
+   "clips": 1,
+   "days": [
+    227
+   ]
+  },
+  {
+   "common": "lluvia",
+   "taxon": null,
+   "rank": "geophony",
+   "group": "geophony",
+   "sensitivity": 0.0,
+   "clips": 1,
+   "days": [
+    223
+   ]
+  },
+  {
+   "common": "mapache cangrejero",
+   "taxon": "Procyon cancrivorus",
+   "rank": "species",
+   "group": "mammal",
+   "sensitivity": 0.5,
+   "clips": 1,
+   "days": [
+    230
+   ]
+  },
+  {
+   "common": "mono aullador",
+   "taxon": "Alouatta seniculus",
+   "rank": "species",
+   "group": "primate",
+   "sensitivity": 0.6,
+   "clips": 3,
+   "days": [
+    223,
+    230,
+    232
+   ]
+  },
+  {
+   "common": "mosca",
+   "taxon": "Diptera",
+   "rank": "order",
+   "group": "insect",
+   "sensitivity": 0.0,
+   "clips": 1,
+   "days": [
+    234
+   ]
+  },
+  {
+   "common": "ocelote",
+   "taxon": "Leopardus pardalis",
+   "rank": "species",
+   "group": "felid",
+   "sensitivity": 1.0,
+   "clips": 2,
+   "days": [
+    226,
+    230
+   ]
+  },
+  {
+   "common": "puma",
+   "taxon": "Puma concolor",
+   "rank": "species",
+   "group": "felid",
+   "sensitivity": 1.0,
+   "clips": 4,
+   "days": [
+    228,
+    232
+   ]
+  }
+ ],
+ "clips": [
+  {
+   "key": "ct_08100020_sonidosnoche",
+   "source": "/Users/a/Desktop/camaratrampaAgosto2026/08100020_sonidosnoche.MOV",
+   "station": "CT-MANAKAI-01",
+   "locality": "Reserva MANAKAI",
+   "register": "cameratrap",
+   "doy": 222,
+   "date": "2026-08-10",
+   "hour": 0,
+   "minute": 9,
+   "temporada": "medio_seco",
+   "duration_s": 10.5,
+   "width": 1920,
+   "height": 1080,
+   "fps": 20.0,
+   "diel": "noche",
+   "species": [],
+   "labels": [
+    "sonidosnoche"
+   ],
+   "unlabelled": true,
+   "sensitivity": 1.0
+  },
+  {
+   "key": "ct_08110021_lluviaYaulladores",
+   "source": "/Users/a/Desktop/camaratrampaAgosto2026/08110021_lluviaYaulladores.MOV",
+   "station": "CT-MANAKAI-01",
+   "locality": "Reserva MANAKAI",
+   "register": "cameratrap",
+   "doy": 223,
+   "date": "2026-08-11",
+   "hour": 5,
+   "minute": 53,
+   "temporada": "medio_seco",
+   "duration_s": 10.5,
+   "width": 1920,
+   "height": 1080,
+   "fps": 20.0,
+   "diel": "noche",
+   "species": [
+    {
+     "taxon": "Alouatta seniculus",
+     "rank": "species",
+     "common": "mono aullador",
+     "group": "primate",
+     "count": 1,
+     "sensitivity": 0.6
+    },
+    {
+     "taxon": null,
+     "rank": "geophony",
+     "common": "lluvia",
+     "group": "geophony",
+     "count": 1,
+     "sensitivity": 0.0
+    }
+   ],
+   "labels": [
+    "lluviayaulladores"
+   ],
+   "unlabelled": false,
+   "sensitivity": 0.6
+  },
+  {
+   "key": "ct_08120022_pasoavesonidogrillonoche",
+   "source": "/Users/a/Desktop/camaratrampaAgosto2026/08120022_pasoavesonidogrillonoche.MOV",
+   "station": "CT-MANAKAI-01",
+   "locality": "Reserva MANAKAI",
+   "register": "cameratrap",
+   "doy": 224,
+   "date": "2026-08-12",
+   "hour": 18,
+   "minute": 46,
+   "temporada": "medio_seco",
+   "duration_s": 10.5,
+   "width": 1920,
+   "height": 1080,
+   "fps": 20.0,
+   "diel": "noche",
+   "species": [
+    {
+     "taxon": "Aves",
+     "rank": "class",
+     "common": "ave",
+     "group": "bird",
+     "count": 1,
+     "sensitivity": 0.3
+    },
+    {
+     "taxon": "Gryllidae",
+     "rank": "family",
+     "common": "grillo",
+     "group": "insect",
+     "count": 1,
+     "sensitivity": 0.0
+    }
+   ],
+   "labels": [
+    "pasoavesonidogrillonoche"
+   ],
+   "unlabelled": false,
+   "sensitivity": 0.3
+  },
+  {
+   "key": "ct_08140023_ocelote",
+   "source": "/Users/a/Desktop/camaratrampaAgosto2026/08140023_ocelote.MOV",
+   "station": "CT-MANAKAI-01",
+   "locality": "Reserva MANAKAI",
+   "register": "cameratrap",
+   "doy": 226,
+   "date": "2026-08-14",
+   "hour": 19,
+   "minute": 5,
+   "temporada": "medio_seco",
+   "duration_s": 10.5,
+   "width": 1920,
+   "height": 1080,
+   "fps": 20.0,
+   "diel": "noche",
+   "species": [
+    {
+     "taxon": "Leopardus pardalis",
+     "rank": "species",
+     "common": "ocelote",
+     "group": "felid",
+     "count": 1,
+     "sensitivity": 1.0
+    }
+   ],
+   "labels": [
+    "ocelote"
+   ],
+   "unlabelled": false,
+   "sensitivity": 1.0
+  },
+  {
+   "key": "ct_08150024_insectos",
+   "source": "/Users/a/Desktop/camaratrampaAgosto2026/08150024_insectos.MOV",
+   "station": "CT-MANAKAI-01",
+   "locality": "Reserva MANAKAI",
+   "register": "cameratrap",
+   "doy": 227,
+   "date": "2026-08-15",
+   "hour": 18,
+   "minute": 35,
+   "temporada": "medio_seco",
+   "duration_s": 10.5,
+   "width": 1920,
+   "height": 1080,
+   "fps": 20.0,
+   "diel": "noche",
+   "species": [
+    {
+     "taxon": "Insecta",
+     "rank": "class",
+     "common": "insectos",
+     "group": "insect",
+     "count": 1,
+     "sensitivity": 0.0
+    }
+   ],
+   "labels": [
+    "insectos"
+   ],
+   "unlabelled": false,
+   "sensitivity": 0.0
+  },
+  {
+   "key": "ct_08160025_puma",
+   "source": "/Users/a/Desktop/camaratrampaAgosto2026/08160025_puma.MOV",
+   "station": "CT-MANAKAI-01",
+   "locality": "Reserva MANAKAI",
+   "register": "cameratrap",
+   "doy": 228,
+   "date": "2026-08-16",
+   "hour": 14,
+   "minute": 56,
+   "temporada": "medio_seco",
+   "duration_s": 10.25,
+   "width": 1920,
+   "height": 1080,
+   "fps": 60.0,
+   "diel": "dia",
+   "species": [
+    {
+     "taxon": "Puma concolor",
+     "rank": "species",
+     "common": "puma",
+     "group": "felid",
+     "count": 1,
+     "sensitivity": 1.0
+    }
+   ],
+   "labels": [
+    "puma"
+   ],
+   "unlabelled": false,
+   "sensitivity": 1.0
+  },
+  {
+   "key": "ct_08160026_puma",
+   "source": "/Users/a/Desktop/camaratrampaAgosto2026/08160026_puma.MOV",
+   "station": "CT-MANAKAI-01",
+   "locality": "Reserva MANAKAI",
+   "register": "cameratrap",
+   "doy": 228,
+   "date": "2026-08-16",
+   "hour": 14,
+   "minute": 56,
+   "temporada": "medio_seco",
+   "duration_s": 10.25,
+   "width": 1920,
+   "height": 1080,
+   "fps": 60.0,
+   "diel": "dia",
+   "species": [
+    {
+     "taxon": "Puma concolor",
+     "rank": "species",
+     "common": "puma",
+     "group": "felid",
+     "count": 1,
+     "sensitivity": 1.0
+    }
+   ],
+   "labels": [
+    "puma"
+   ],
+   "unlabelled": false,
+   "sensitivity": 1.0
+  },
+  {
+   "key": "ct_08170027_avegarza",
+   "source": "/Users/a/Desktop/camaratrampaAgosto2026/08170027_avegarza.MOV",
+   "station": "CT-MANAKAI-01",
+   "locality": "Reserva MANAKAI",
+   "register": "cameratrap",
+   "doy": 229,
+   "date": "2026-08-17",
+   "hour": 15,
+   "minute": 14,
+   "temporada": "medio_seco",
+   "duration_s": 10.25,
+   "width": 1920,
+   "height": 1080,
+   "fps": 60.0,
+   "diel": "dia",
+   "species": [
+    {
+     "taxon": "Ardeidae",
+     "rank": "family",
+     "common": "garza",
+     "group": "bird",
+     "count": 1,
+     "sensitivity": 0.3
+    }
+   ],
+   "labels": [
+    "avegarza"
+   ],
+   "unlabelled": false,
+   "sensitivity": 0.3
+  },
+  {
+   "key": "ct_08180028_mapache",
+   "source": "/Users/a/Desktop/camaratrampaAgosto2026/08180028_mapache.MOV",
+   "station": "CT-MANAKAI-01",
+   "locality": "Reserva MANAKAI",
+   "register": "cameratrap",
+   "doy": 230,
+   "date": "2026-08-18",
+   "hour": 2,
+   "minute": 32,
+   "temporada": "medio_seco",
+   "duration_s": 10.5,
+   "width": 1920,
+   "height": 1080,
+   "fps": 20.0,
+   "diel": "noche",
+   "species": [
+    {
+     "taxon": "Procyon cancrivorus",
+     "rank": "species",
+     "common": "mapache cangrejero",
+     "group": "mammal",
+     "count": 1,
+     "sensitivity": 0.5
+    }
+   ],
+   "labels": [
+    "mapache"
+   ],
+   "unlabelled": false,
+   "sensitivity": 0.5
+  },
+  {
+   "key": "ct_08180029_ocelote_aulladoresdefondo",
+   "source": "/Users/a/Desktop/camaratrampaAgosto2026/08180029_ocelote_aulladoresdefondo.MOV",
+   "station": "CT-MANAKAI-01",
+   "locality": "Reserva MANAKAI",
+   "register": "cameratrap",
+   "doy": 230,
+   "date": "2026-08-18",
+   "hour": 5,
+   "minute": 30,
+   "temporada": "medio_seco",
+   "duration_s": 10.5,
+   "width": 1920,
+   "height": 1080,
+   "fps": 20.0,
+   "diel": "noche",
+   "species": [
+    {
+     "taxon": "Leopardus pardalis",
+     "rank": "species",
+     "common": "ocelote",
+     "group": "felid",
+     "count": 1,
+     "sensitivity": 1.0
+    },
+    {
+     "taxon": "Alouatta seniculus",
+     "rank": "species",
+     "common": "mono aullador",
+     "group": "primate",
+     "count": 1,
+     "sensitivity": 0.6
+    }
+   ],
+   "labels": [
+    "ocelote",
+    "aulladoresdefondo"
+   ],
+   "unlabelled": false,
+   "sensitivity": 1.0
+  },
+  {
+   "key": "ct_08180030",
+   "source": "/Users/a/Desktop/camaratrampaAgosto2026/08180030.MOV",
+   "station": "CT-MANAKAI-01",
+   "locality": "Reserva MANAKAI",
+   "register": "cameratrap",
+   "doy": 230,
+   "date": "2026-08-18",
+   "hour": 12,
+   "minute": 40,
+   "temporada": "medio_seco",
+   "duration_s": 10.25,
+   "width": 1920,
+   "height": 1080,
+   "fps": 60.0,
+   "diel": "dia",
+   "species": [],
+   "labels": [],
+   "unlabelled": true,
+   "sensitivity": 1.0
+  },
+  {
+   "key": "ct_08180032_aves",
+   "source": "/Users/a/Desktop/camaratrampaAgosto2026/08180032_aves.MOV",
+   "station": "CT-MANAKAI-01",
+   "locality": "Reserva MANAKAI",
+   "register": "cameratrap",
+   "doy": 230,
+   "date": "2026-08-18",
+   "hour": 12,
+   "minute": 42,
+   "temporada": "medio_seco",
+   "duration_s": 10.25,
+   "width": 1920,
+   "height": 1080,
+   "fps": 60.0,
+   "diel": "dia",
+   "species": [
+    {
+     "taxon": "Aves",
+     "rank": "class",
+     "common": "ave",
+     "group": "bird",
+     "count": 1,
+     "sensitivity": 0.3
+    }
+   ],
+   "labels": [
+    "aves"
+   ],
+   "unlabelled": false,
+   "sensitivity": 0.3
+  },
+  {
+   "key": "ct_08180035_avequecanta",
+   "source": "/Users/a/Desktop/camaratrampaAgosto2026/08180035_avequecanta.MOV",
+   "station": "CT-MANAKAI-01",
+   "locality": "Reserva MANAKAI",
+   "register": "cameratrap",
+   "doy": 230,
+   "date": "2026-08-18",
+   "hour": 18,
+   "minute": 28,
+   "temporada": "medio_seco",
+   "duration_s": 10.5,
+   "width": 1920,
+   "height": 1080,
+   "fps": 20.0,
+   "diel": "noche",
+   "species": [
+    {
+     "taxon": "Aves",
+     "rank": "class",
+     "common": "ave cantora",
+     "group": "bird",
+     "count": 1,
+     "sensitivity": 0.3
+    }
+   ],
+   "labels": [
+    "avequecanta"
+   ],
+   "unlabelled": false,
+   "sensitivity": 0.3
+  },
+  {
+   "key": "ct_08180036_avequecanta2",
+   "source": "/Users/a/Desktop/camaratrampaAgosto2026/08180036_avequecanta2.MOV",
+   "station": "CT-MANAKAI-01",
+   "locality": "Reserva MANAKAI",
+   "register": "cameratrap",
+   "doy": 230,
+   "date": "2026-08-18",
+   "hour": 18,
+   "minute": 29,
+   "temporada": "medio_seco",
+   "duration_s": 10.5,
+   "width": 1920,
+   "height": 1080,
+   "fps": 20.0,
+   "diel": "noche",
+   "species": [
+    {
+     "taxon": "Aves",
+     "rank": "class",
+     "common": "ave cantora",
+     "group": "bird",
+     "count": 1,
+     "sensitivity": 0.3
+    }
+   ],
+   "labels": [
+    "avequecanta2"
+   ],
+   "unlabelled": false,
+   "sensitivity": 0.3
+  },
+  {
+   "key": "ct_08190037",
+   "source": "/Users/a/Desktop/camaratrampaAgosto2026/08190037.MOV",
+   "station": "CT-MANAKAI-01",
+   "locality": "Reserva MANAKAI",
+   "register": "cameratrap",
+   "doy": 231,
+   "date": "2026-08-19",
+   "hour": 5,
+   "minute": 38,
+   "temporada": "medio_seco",
+   "duration_s": 10.5,
+   "width": 1920,
+   "height": 1080,
+   "fps": 20.0,
+   "diel": "noche",
+   "species": [],
+   "labels": [],
+   "unlabelled": true,
+   "sensitivity": 1.0
+  },
+  {
+   "key": "ct_08190038",
+   "source": "/Users/a/Desktop/camaratrampaAgosto2026/08190038.MOV",
+   "station": "CT-MANAKAI-01",
+   "locality": "Reserva MANAKAI",
+   "register": "cameratrap",
+   "doy": 231,
+   "date": "2026-08-19",
+   "hour": 5,
+   "minute": 58,
+   "temporada": "medio_seco",
+   "duration_s": 10.5,
+   "width": 1920,
+   "height": 1080,
+   "fps": 20.0,
+   "diel": "noche",
+   "species": [],
+   "labels": [],
+   "unlabelled": true,
+   "sensitivity": 1.0
+  },
+  {
+   "key": "ct_08190040",
+   "source": "/Users/a/Desktop/camaratrampaAgosto2026/08190040.MOV",
+   "station": "CT-MANAKAI-01",
+   "locality": "Reserva MANAKAI",
+   "register": "cameratrap",
+   "doy": 231,
+   "date": "2026-08-19",
+   "hour": 18,
+   "minute": 34,
+   "temporada": "medio_seco",
+   "duration_s": 10.5,
+   "width": 1920,
+   "height": 1080,
+   "fps": 20.0,
+   "diel": "noche",
+   "species": [],
+   "labels": [],
+   "unlabelled": true,
+   "sensitivity": 1.0
+  },
+  {
+   "key": "ct_08200041_3pumas",
+   "source": "/Users/a/Desktop/camaratrampaAgosto2026/08200041_3pumas.MOV",
+   "station": "CT-MANAKAI-01",
+   "locality": "Reserva MANAKAI",
+   "register": "cameratrap",
+   "doy": 232,
+   "date": "2026-08-20",
+   "hour": 4,
+   "minute": 39,
+   "temporada": "medio_seco",
+   "duration_s": 10.5,
+   "width": 1920,
+   "height": 1080,
+   "fps": 20.0,
+   "diel": "noche",
+   "species": [
+    {
+     "taxon": "Puma concolor",
+     "rank": "species",
+     "common": "puma",
+     "group": "felid",
+     "count": 3,
+     "sensitivity": 1.0
+    }
+   ],
+   "labels": [
+    "3pumas"
+   ],
+   "unlabelled": false,
+   "sensitivity": 1.0
+  },
+  {
+   "key": "ct_08200042_3pumassec",
+   "source": "/Users/a/Desktop/camaratrampaAgosto2026/08200042_3pumassec.MOV",
+   "station": "CT-MANAKAI-01",
+   "locality": "Reserva MANAKAI",
+   "register": "cameratrap",
+   "doy": 232,
+   "date": "2026-08-20",
+   "hour": 4,
+   "minute": 39,
+   "temporada": "medio_seco",
+   "duration_s": 10.5,
+   "width": 1920,
+   "height": 1080,
+   "fps": 20.0,
+   "diel": "noche",
+   "species": [
+    {
+     "taxon": "Puma concolor",
+     "rank": "species",
+     "common": "puma",
+     "group": "felid",
+     "count": 3,
+     "sensitivity": 1.0
+    }
+   ],
+   "labels": [
+    "3pumassec"
+   ],
+   "unlabelled": false,
+   "sensitivity": 1.0
+  },
+  {
+   "key": "ct_08200044_sonidosAulladores",
+   "source": "/Users/a/Desktop/camaratrampaAgosto2026/08200044_sonidosAulladores.MOV",
+   "station": "CT-MANAKAI-01",
+   "locality": "Reserva MANAKAI",
+   "register": "cameratrap",
+   "doy": 232,
+   "date": "2026-08-20",
+   "hour": 5,
+   "minute": 49,
+   "temporada": "medio_seco",
+   "duration_s": 10.5,
+   "width": 1920,
+   "height": 1080,
+   "fps": 20.0,
+   "diel": "noche",
+   "species": [
+    {
+     "taxon": "Alouatta seniculus",
+     "rank": "species",
+     "common": "mono aullador",
+     "group": "primate",
+     "count": 1,
+     "sensitivity": 0.6
+    }
+   ],
+   "labels": [
+    "sonidosaulladores"
+   ],
+   "unlabelled": false,
+   "sensitivity": 0.6
+  },
+  {
+   "key": "ct_08200045_avenegrapasa",
+   "source": "/Users/a/Desktop/camaratrampaAgosto2026/08200045_avenegrapasa.MOV",
+   "station": "CT-MANAKAI-01",
+   "locality": "Reserva MANAKAI",
+   "register": "cameratrap",
+   "doy": 232,
+   "date": "2026-08-20",
+   "hour": 18,
+   "minute": 28,
+   "temporada": "medio_seco",
+   "duration_s": 10.5,
+   "width": 1920,
+   "height": 1080,
+   "fps": 20.0,
+   "diel": "noche",
+   "species": [
+    {
+     "taxon": "Aves",
+     "rank": "class",
+     "common": "ave (oscura)",
+     "group": "bird",
+     "count": 1,
+     "sensitivity": 0.3
+    }
+   ],
+   "labels": [
+    "avenegrapasa"
+   ],
+   "unlabelled": false,
+   "sensitivity": 0.3
+  },
+  {
+   "key": "ct_08220046_sonidomosca",
+   "source": "/Users/a/Desktop/camaratrampaAgosto2026/08220046_sonidomosca.MOV",
+   "station": "CT-MANAKAI-01",
+   "locality": "Reserva MANAKAI",
+   "register": "cameratrap",
+   "doy": 234,
+   "date": "2026-08-22",
+   "hour": 17,
+   "minute": 16,
+   "temporada": "medio_seco",
+   "duration_s": 10.5,
+   "width": 1920,
+   "height": 1080,
+   "fps": 20.0,
+   "diel": "dia",
+   "species": [
+    {
+     "taxon": "Diptera",
+     "rank": "order",
+     "common": "mosca",
+     "group": "insect",
+     "count": 1,
+     "sensitivity": 0.0
+    }
+   ],
+   "labels": [
+    "sonidomosca"
+   ],
+   "unlabelled": false,
+   "sensitivity": 0.0
+  }
+ ]
+}

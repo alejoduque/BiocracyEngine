@@ -29,6 +29,14 @@ recordings/
 # thing the engine actually reads, so it is tracked.
 corpus/*
 !corpus/manifest.json
+# The camera-trap register (tools/build_cameratrap.py). Tracked, unlike the
+# visual tier below, because its source is 22 MOV files on a Desktop that has
+# never been in this repo — so this 18 KB file is the only record here that
+# the captures exist, what was in them and where they fall on the ring.
+!corpus/cameratrap.json
+# corpus/visual/ (~115 MB of derived h264 + index.json) stays out entirely:
+# rebuildable with tools/build_visual.py, and the index is meaningless without
+# the video beside it. Slot C prints the build command when it finds neither.
 
 # Session autosave state — machine-local, not a shareable preset
 presets/_autosave.json
