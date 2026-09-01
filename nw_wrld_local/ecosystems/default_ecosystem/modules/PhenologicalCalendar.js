@@ -398,6 +398,7 @@ class PhenologicalCalendar extends BaseThreeJsModule {
         this._buildCursor();
         this._buildOverlayGroup();           // biogeochem particles + pulses
         this._buildMutualismGroup();         // trace tubes between active pairs
+        this._buildVortex();                 // flux-vortex weather around the ring
         this._buildHtmlOverlays();           // sans-serif text columns + labels
 
         // Load species data
@@ -1685,6 +1686,137 @@ class PhenologicalCalendar extends BaseThreeJsModule {
     // RENDER (per-frame + per-day)
     // ----------------------------------------------------------------
 
+
+    // ── Flux Vortex ────────────────────────────────────────────────────────
+    // Ported from @designcodeio/threeui `flux-vortex` (MIT, threeui.com):
+    // a funnelled particle field with two counter-rotating spiral guides.
+    // Unlike the CRT and the constellation field, this variant genuinely IS
+    // three.js, so the geometry and the per-frame update are the reference's
+    // own — only the palette and the data binding are this Chamber's.
+    //
+    // Monochrome on purpose. The reference is blue-on-near-black; this module
+    // is a 1-bit surface (every material in it is 0xffffff at some opacity),
+    // and dropping a coloured vortex into it would read as a different piece
+    // pasted over the calendar rather than as its weather.
+    //
+    // It is NOT decoration. The vortex is the year's throughput seen from
+    // inside: the funnel is the ring's own axis, the spin follows the day
+    // cursor, and the field thickens with the activity the calendar is
+    // already computing. See _driveVortex.
+    _buildVortex() {
+        const COUNT = 4200;   // reference uses 9500 over a whole page; this is
+                              // one panel among many and shares the frame.
+        const pos    = new Float32Array(COUNT * 3);
+        const radius = new Float32Array(COUNT);
+        const angle  = new Float32Array(COUNT);
+        const height = new Float32Array(COUNT);
+        const speed  = new Float32Array(COUNT);
+
+        for (let i = 0; i < COUNT; i++) {
+            const i3 = i * 3;
+            const y = (Math.random() - 0.5) * 7.5;
+            // The funnel: radius grows with distance from the waist, which is
+            // what makes it a vortex rather than a cylinder.
+            const funnel = 0.4 + Math.abs(y) * 0.2;
+            const r = (0.1 + Math.pow(Math.random(), 1.5) * 2.5) * funnel;
+            const a = Math.random() * Math.PI * 2;
+            height[i] = y; radius[i] = r; angle[i] = a;
+            speed[i]  = 0.5 + Math.random() * 0.8;
+            pos[i3] = Math.cos(a) * r; pos[i3 + 1] = y; pos[i3 + 2] = Math.sin(a) * r;
+        }
+
+        const geo = new THREE.BufferGeometry();
+        geo.setAttribute("position", new THREE.BufferAttribute(pos, 3));
+        const mat = new THREE.PointsMaterial({
+            size: 0.02, color: 0xffffff, transparent: true, opacity: 0.42,
+            blending: THREE.AdditiveBlending, depthWrite: false,
+        });
+
+        this._vortex = {
+            geo, mat, radius, angle, height, speed, count: COUNT,
+            points: new THREE.Points(geo, mat),
+            spin: 0,
+        };
+        // Scaled to sit inside the ring stack rather than around it — the
+        // calendar is the subject and this is the air it turns in.
+        this._vortex.points.scale.setScalar(1.15);
+        this._calendarGroup.add(this._vortex.points);
+
+        // Two counter-rotating spiral guides, the reference's own figure.
+        const mkSpiral = (turnOffset, opacity) => {
+            const pts = [];
+            for (let i = 0; i <= 200; i++) {
+                const t = i / 200;
+                const a = t * Math.PI * 14 + turnOffset;
+                const rr = 0.2 + t * 2.8;
+                pts.push(new THREE.Vector3(
+                    Math.cos(a) * rr, (t - 0.5) * 7.0, Math.sin(a) * rr,
+                ));
+            }
+            const g = new THREE.BufferGeometry().setFromPoints(pts);
+            const m = new THREE.LineBasicMaterial({
+                color: 0xffffff, transparent: true, opacity, depthWrite: false,
+            });
+            const line = new THREE.Line(g, m);
+            line.scale.setScalar(1.15);
+            this._calendarGroup.add(line);
+            return { line, geo: g, mat: m };
+        };
+        this._spiralA = mkSpiral(0, 0.30);
+        this._spiralB = mkSpiral(Math.PI, 0.22);
+    }
+
+    // Per-frame vortex update. Called from _animate with the same dt as
+    // everything else, so pausing the calendar pauses the weather too.
+    _driveVortex(dt) {
+        const v = this._vortex;
+        if (!v) return;
+
+        // What the vortex is FOR: it reports the calendar's own state.
+        //   spin      follows the day cursor, so scrubbing the year turns it
+        //   density   the fraction of species active today — a busy day is a
+        //             thick field, a dormant one thins to almost nothing
+        //   pulse     the same strike the cursor head answers to
+        // _activeCounts is what the ring already computes each time the day
+        // changes: how many species of each taxon are past the activity
+        // threshold today. Summed and normalised against the roster, it is the
+        // calendar's own reading of how awake the year is right now.
+        const counts = this._activeCounts;
+        let active = 0.35;
+        if (counts) {
+            let n = 0;
+            for (const k in counts) n += counts[k];
+            const total = (this.species && this.species.length) || 60;
+            // Against the FULL roster, not half of it. Normalising to
+            // total*0.5 pinned the field at 1.0 on any ordinary day (99 of 99
+            // species active clamps immediately), which threw away the whole
+            // top of the range and made the vortex look identical in every
+            // season — the opposite of what binding it to phenology is for.
+            active = Math.max(0, Math.min(1, n / Math.max(1, total)));
+        }
+        const pulse  = this._pulseAmount ?? 0;
+        v.spin += dt * (0.22 + active * 0.5) * (1 + pulse * 1.5);
+
+        const p = v.geo.attributes.position.array;
+        const t = this._t;
+        for (let i = 0; i < v.count; i++) {
+            const i3 = i * 3;
+            const a = v.angle[i] + v.spin * v.speed[i] + v.height[i] * 0.5;
+            const r = v.radius[i] + Math.sin(t * 1.2 + i * 0.01) * 0.05
+                    + pulse * 0.18;
+            p[i3]     = Math.cos(a) * r;
+            p[i3 + 1] = v.height[i] + Math.sin(t + i * 0.02) * 0.03;
+            p[i3 + 2] = Math.sin(a) * r;
+        }
+        v.geo.attributes.position.needsUpdate = true;
+
+        // The field thins with dormancy and brightens on a strike, so the
+        // calendar's quiet season is visibly quiet.
+        v.mat.opacity = (0.14 + active * 0.34) * (1 + pulse * 0.8);
+        if (this._spiralA) this._spiralA.line.rotation.y =  t * 0.15;
+        if (this._spiralB) this._spiralB.line.rotation.y = -t * 0.12;
+    }
+
     _animate() {
         this._animationId = requestAnimationFrame(this._animate);
         const now = performance.now();
@@ -1701,6 +1833,9 @@ class PhenologicalCalendar extends BaseThreeJsModule {
                 this._setDayInternal(this.day + adv, false);
             }
         }
+
+        // Flux vortex weather, on the same dt as everything else.
+        this._driveVortex(dt);
 
         // Pulse decay
         if (this._pulseAmount > 0) {
@@ -2336,6 +2471,24 @@ ${focusBlock}
     destroy() {
         if (this._animationId) cancelAnimationFrame(this._animationId);
         this._animationId = null;
+
+        // Flux vortex: 4200-point buffer plus two spiral lines. Disposed
+        // explicitly because they are added to _calendarGroup after the
+        // generic sweep below has already recorded what it knows about.
+        if (this._vortex) {
+            this._vortex.geo.dispose();
+            this._vortex.mat.dispose();
+            if (this._vortex.points.parent) this._vortex.points.parent.remove(this._vortex.points);
+            this._vortex = null;
+        }
+        for (const sp of [this._spiralA, this._spiralB]) {
+            if (!sp) continue;
+            sp.geo.dispose();
+            sp.mat.dispose();
+            if (sp.line.parent) sp.line.parent.remove(sp.line);
+        }
+        this._spiralA = null;
+        this._spiralB = null;
 
         // Unbind the camera-reset keydown handler so it doesn't leak between
         // mounts (every mountPhenologyCalendar adds a new one).
