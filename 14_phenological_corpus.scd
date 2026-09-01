@@ -157,7 +157,34 @@ s.waitForBoot {
     // value ~trimMaster had already moved away from, so a standalone load of
     // this file ran the corpus at less than half the level the ecosystem does
     // — the same drift the comment above warns about.
-    ~trimCorpus = 48.0 * (~trimMaster ? 0.115);
+    // 60.0 -> 48.0 -> 2.60, and the fallback is gone.
+    //
+    // This was the single loudest thing in the piece: at 48 x 0.115 it sat at
+    // +14.8 dB, ABOVE unity and 55x the glue compressor's 0.10 threshold. The
+    // compressor keys off the summed mix, so the corpus pinned the gain
+    // reduction and ducked drone, pad, kick, perc, dust and ultra underneath
+    // it — which is exactly the "I can only hear SAMPLE and CORPUS" symptom.
+    //
+    // The `? 0.055` fallback made this worse and hid it. ~trimMaster is set
+    // inside 3_synthdefs.scd's doWhenBooted block, so whether it exists when
+    // THIS file evaluates depends on boot timing, not load order: the same
+    // line could yield 60*0.055 = 3.3 on one boot and 60*0.115 = 6.9 on the
+    // next. Correcting the fallback to 0.115 silently doubled the corpus on
+    // the boots that had previously taken the stale path.
+    //
+    // No fallback now. If ~trimMaster is missing this is a load-order bug and
+    // should be loud, not silently half or double the intended level.
+    ~trimCorpus = 2.60 * ~trimMaster;
+
+    // ULTRA gets its own trim rather than borrowing ~trimCorpus.
+    //
+    // It shared it until now, which meant the corpus and the ultrasonic layer
+    // could never be balanced against each other — and it is why cutting the
+    // corpus by 25 dB would have taken ultra silently down with it. They are
+    // different material: the ultrasonic tier is heterodyned bat and insect
+    // activity, quiet at source and much narrower in band, so it needs more
+    // gain than the audible corpus to sit in the same place.
+    ~trimUltra = 4.20 * ~trimMaster;
 
     // How long one clip takes to hand over to the next, and therefore how long
     // the two overlap. Both corpus envelopes use it for their attack AND their
@@ -225,7 +252,9 @@ s.waitForBoot {
             gate, doneAction: 2);
 
         sig = sig * env * amp.clip(0, 1) * level.clip(0, 1) * veil
-            * (~trimCorpus ? 0.143)
+            // No fallback — see ~trimCorpus above. A silent half-level is
+            // worse than a loud failure.
+            * ~trimCorpus
             * Lag.kr(Select.kr(mixCorpusBus >= 0, [1.0, In.kr(mixCorpusBus, 1)]), 0.08);
 
         wet = FreeVerb.ar(sig, room.clip(0, 0.9), 0.85, 0.25);
@@ -303,7 +332,7 @@ s.waitForBoot {
 
         // Lag on the weight so moving the fader is a tide, not a switch.
         sig = sig * env * amp.clip(0, 1) * Lag.kr(weight.clip(0, 1), 4.0)
-            * level.clip(0, 1) * veil * (~trimCorpus ? 0.143)
+            * level.clip(0, 1) * veil * ~trimUltra
             * Lag.kr(Select.kr(mixUltraBus >= 0, [1.0, In.kr(mixUltraBus, 1)]), 0.08);
 
         sig = sig + (FreeVerb.ar(sig, room.clip(0, 0.9), 0.95, 0.4) * room);
