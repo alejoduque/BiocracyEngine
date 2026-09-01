@@ -1141,14 +1141,23 @@
                 // consecutive strikes are near-neighbours (the same instrument
                 // heard again) while strikes minutes apart are audibly
                 // different objects.
-                ~percBodyWalk = ((~percBodyWalk ? 0) + rrand(0.013, 0.041)).wrap(0, 1);
-                var bodySeed = ((speciesIdx / 4.0)
-                    + (((rs !? { rs[\addrSig] } ? 0) % 97) / 97.0 * 0.35)
-                    + (~percBodyWalk * 0.55)).wrap(0, 1);
+                //
+                // ⚠ The walk is assigned BELOW, with the other statements, not
+                // here. sclang requires every `var` in a block to precede the
+                // first statement, and putting this assignment between two var
+                // declarations is a SYNTAX error that fails the whole FILE —
+                // which takes ~beatEngine, ~droneEnsemble and ~padBedEnsemble
+                // with it. That is exactly what happened: no beat, no drone,
+                // no pad, and a dark BEAT light, from one misplaced line.
+                var bodySeed;
                 // The p-locks for THIS strike. Appended after the bus arguments
                 // at every spawn site below, so the -1s override the buses —
                 // /s_new applies arguments in order, last one wins.
                 var lockArgs = ~percLocks.value(rs, transactionInfluence);
+                ~percBodyWalk = ((~percBodyWalk ? 0) + rrand(0.013, 0.041)).wrap(0, 1);
+                bodySeed = ((speciesIdx / 4.0)
+                    + (((rs !? { rs[\addrSig] } ? 0) % 97) / 97.0 * 0.35)
+                    + (~percBodyWalk * 0.55)).wrap(0, 1);
                 // A hit makes the next few more likely; the decay above lets
                 // the excitement fall away again. This is what turns an evenly
                 // sprinkled layer into one that plays in gestures.
