@@ -640,6 +640,10 @@ s.doWhenBooted({
         delayFeedbackBus=(-1), droneFadeBus=(-1),
         // Matrix mixer: this layer's live level (0 = mute, 1 = unity).
         mixPercBus=(-1), mixDustBus=(-1), mixPadBus=(-1), mixKickBus=(-1), mixSampleBus=(-1),
+        // The two halves of this voice, switchable independently. Buses so
+        // the toggles reach every voice already sounding, not just the next
+        // one struck; literals as a fallback when unwired.
+        bowlOnBus=(-1), chinaOnBus=(-1), bowlOn=1, chinaOn=1,
         // ─── Parameter locks ────────────────────────────────────────────────
         // These were CONSTANTS inside the Select.kr fallbacks below, which meant
         // a trig had no way to carry its own values: every hit read the same
@@ -827,7 +831,18 @@ s.doWhenBooted({
         // pure singing bowl, at 1 the china rim is fully present on the
         // attack. The bowl is always underneath either way — it is what makes
         // the hit an event rather than a noise burst.
-        sig = bowl + (trash * fmD.linlin(0, 1, 0.10, 1.05));
+        // ── BOWL and CHINA, switchable ──────────────────────────────────────
+        // Each half can be taken out entirely. Lagged rather than hard-gated
+        // so flipping a toggle while the layer is ringing is a fade, not a
+        // click — a 32 s bowl cut dead mid-tail would be worse than the
+        // problem the toggle solves.
+        //
+        // textureDepth still morphs between them when both are on; the
+        // toggles decide whether each is in the sum at all.
+        sig = (bowl * Lag.kr(
+                Select.kr(bowlOnBus >= 0, [bowlOn, In.kr(bowlOnBus, 1)]).clip(0, 1), 0.4))
+            + (trash * fmD.linlin(0, 1, 0.10, 1.05) * Lag.kr(
+                Select.kr(chinaOnBus >= 0, [chinaOn, In.kr(chinaOnBus, 1)]).clip(0, 1), 0.4));
 
         // The trash. A china's signature is a wide, unstable band of noise
         // sitting ON TOP of the modes, sweeping as the plate wobbles. The

@@ -164,19 +164,9 @@
             
             amp = amp * (~buses[\txVolume].getSynchronous ? 0.5);
             
-            Synth(\elektronBell, [
-                \freq, note.midicps,
-                \amp, amp,
-                \atk, 0.01,
-                \dec, duration * (~buses[\bellDecay].getSynchronous ? 1.5),
-                \rel, duration * 0.8,
-                \tone, (~buses[\bellTone].getSynchronous ? 0.3),
-                \res, (~buses[\bellRes].getSynchronous ? 0.4),
-                \pan, (~buses[\bellSpread].getSynchronous ? 0.0).rand2,
-                \delayAmt, ~buses[\delayAmount].getSynchronous ? 0.2,
-                \delayTime, ~buses[\delayTime].getSynchronous ? 0.4,
-                \reverbMix, ~buses[\reverbMix].getSynchronous ? 0.3
-            ] ++ (~voiceBusArgs.value ? []));
+            // Buffer replay goes through the same gate as every other bell —
+            // it was a fourth unthrottled path into the same layer.
+            if(~strikeBell.notNil) { ~strikeBell.(note.midicps, amp) };
             
             self.updateVisualization(txData);
         };

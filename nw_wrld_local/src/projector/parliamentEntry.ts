@@ -637,6 +637,9 @@ function cadenceLabel(addr: string, n: number): string | null {
     case "/cadence/pad":        return `${Math.round(exp(8, 120))}s`;
     case "/cadence/padvoices":  return `${Math.round(lin(1, 4))}`;
     case "/cadence/bell":       return `${Math.round(exp(0.8, 30.0))}s`;
+    // Stepped 0/1 toggles — read as words, not numbers.
+    case "/voice/bowl":
+    case "/voice/china":        return n >= 0.5 ? "on" : "off";
     case "/cadence/dust":       return exp(0.03, 0.95).toFixed(2);
     default:                    return null;
   }
@@ -1680,6 +1683,8 @@ async function init() {
     "/cadence/pad":             "disp-cadence-pad",
     "/cadence/padvoices":       "disp-cadence-padvoices",
     "/cadence/bell":            "disp-cadence-bell",
+    "/voice/bowl":              "disp-voice-bowl",
+    "/voice/china":             "disp-voice-china",
     // Matrix mixer — without these the default prefix would derive
     // "disp-drone-" from /mix/drone and the readout would never update.
     "/mix/drone":  "disp-mix-drone",

@@ -272,7 +272,16 @@
             if(~padQueue.notNil and: { ~padQueue.size < (~padQueueMax ? 24) }) {
                 ~padQueue.add(args);
             } {
-                fire.({ Synth(\elektronBell, args, grp) });
+                // Slot-voice arbitration: also through the gate, so slot 5
+                // cannot reintroduce the density the rate control removes.
+                fire.({
+                    var bf = 180, ba = 0.5;
+                    args.pairsDo { |k, v|
+                        if(k == \freq) { bf = v };
+                        if(k == \amp)  { ba = v };
+                    };
+                    if(~strikeBell.notNil) { ~strikeBell.(bf, ba) };
+                });
             };
         },
 

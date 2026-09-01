@@ -70,6 +70,43 @@ s.doWhenBooted({
     // block period, so the block's own transactions fill the block's own bar.
     // Bounded queue: a heavy block drops its OLDEST pending pads rather than
     // growing without limit or lagging into the next bar.
+    // ── One door for every bell ─────────────────────────────────────────
+    //
+    // \elektronBell had FIVE spawn sites — the queue drain here, the block
+    // handler, the vote fanfare, the transaction buffer and the slot-voice
+    // arbiter — and bellEvery throttled exactly one of them. That is why the
+    // layer stayed dense after its rate control was added: four of the five
+    // paths ignored it.
+    //
+    // Every bell now goes through ~strikeBell, which enforces the rate and
+    // spawns \opalPerc rather than \elektronBell. That makes the bells the
+    // same instrument as PERC — the bowl and the china — so the BOWL and
+    // CHINA toggles govern them too, and the only remaining difference
+    // between the two layers is WHAT STRIKES THEM: the tide (percRate) or the
+    // chain (bellEvery). Frequencies are transposed down an octave and a half
+    // and clipped low, because a bowl rung by a transaction should be the
+    // deep one.
+    ~lastBellAt = ~lastBellAt ?? { 0 };
+    ~strikeBell = { |freq = 180, amp = 0.5|
+        var now = SystemClock.seconds;
+        var gap = (~beatParams !? { ~beatParams.bellEvery } ? 6.0);
+        if((now - (~lastBellAt ? 0)) >= gap) {
+            var grp = if(~defaultGroup.notNil, { ~defaultGroup }, { s.defaultGroup });
+            ~lastBellAt = now;
+            if(~lastVoiceAt.notNil) { ~lastVoiceAt[\pad] = now };
+            Synth(\opalPerc, [
+                \out,  0,
+                \freq, (freq * 0.5).clip(45, 220),
+                \amp,  amp.clip(0, 1) * 0.7,
+                \bodySeed, 1.0.rand
+            ] ++ (~voiceBusArgs.value ? []), grp);
+            true
+        } {
+            if(~bellStats.notNil) { ~bellStats[\skipGate] = (~bellStats[\skipGate] ? 0) + 1 };
+            false
+        };
+    };
+
     ~padQueue = ~padQueue ?? { List.new };
     // 24 -> 8. The queue is a buffer for one block's burst, not a backlog:
     // at 24 deep and a slower drain the layer would keep playing transactions
@@ -136,7 +173,16 @@ s.doWhenBooted({
                         if(#[\atk, \dec, \sus, \rel].includes(k)) { life = life + v };
                     };
                     ~padLive.add(SystemClock.seconds + (life * 2.2).clip(0.5, 20));
-                    Synth(\elektronBell, args ++ [\polyComp, pc]);
+                    // Through the gate like every other bell. args still
+                    // carries freq/amp from the transaction that queued it.
+                    block { |brk|
+                        var bf = 180, ba = 0.5;
+                        args.pairsDo { |k, v|
+                            if(k == \freq) { bf = v };
+                            if(k == \amp)  { ba = v };
+                        };
+                        ~strikeBell.(bf, ba);
+                    };
         // Onset del pad hacia los visuales (slot 5 es el instrumento de esta
         // voz). Se manda la amplitud efectiva y la frecuencia normalizada.
         if(~visualsDest.notNil) {
@@ -594,7 +640,14 @@ s.doWhenBooted({
             ~bellStats[\skipCap] = ~bellStats[\skipCap] + 1;
         }
         {
-            Synth(\elektronBell, synthArgs);
+            block { |brk|
+                var bf = 180, ba = 0.5;
+                synthArgs.pairsDo { |k, v|
+                    if(k == \freq) { bf = v };
+                    if(k == \amp)  { ba = v };
+                };
+                ~strikeBell.(bf, ba);
+            };
             ~lastPadTime = time;
             ~bellStats[\spawned] = ~bellStats[\spawned] + 1;
             ~bellStats[\lastAtk] = valLog.linlin(0, 1, 0.35, 2.2);
@@ -848,23 +901,11 @@ s.doWhenBooted({
         if(~buses.notNil) {
             var bi = { |name| if(~buses[name].notNil, { ~buses[name].index }, { -1 }) };
             var targetGrp = if(~defaultGroup.notNil, { ~defaultGroup }, { s.defaultGroup });
-            #[60, 67, 72].do { |note, i|
-                Synth(\elektronBell, [
-                    \freq, note.midicps,
-                    \amp, 0.22 - (i * 0.04),
-                    \atk, 0.8, \dec, 0.6, \rel, 2.5,
-                    \pan, (i - 1) * 0.5,
-                    \masterVolBus, bi.(\masterVolume),
-                    \atmosphereBus, bi.(\atmosphereMix),
-                    \memoryBus, bi.(\memoryFeed),
-                    \harmonicBus, bi.(\harmonicRich),
-                    \resonantBus, bi.(\resonantBody),
-                    \spectralBus, bi.(\spectralShift),
-                    \timeBus, bi.(\timeDilation),
-                    \textureBus, bi.(\textureDepth),
-                    \spatialBus, bi.(\spatialSpread)
-                ], targetGrp);
-            };
+            // Vote chime, through the gate. Three bells per vote, unthrottled,
+            // is a chord every few seconds on an active chamber — on top of
+            // the block handler and the queue drain. One strike now, rate-
+            // limited like the rest, at the root of what was the chord.
+            ~strikeBell.(60.midicps, 0.22);
         };
 
         // Echo vote event to visuals bridge

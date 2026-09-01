@@ -214,6 +214,21 @@
     (name: \bellEvery,  spec: ControlSpec(0.8, 30.0, \exp),  default: 6.0,  path: "/cadence/bell",
         hasBus: false, beatParam: \bellEvery,  cc: 30),
 
+    // ── The struck voice's two halves, each switchable ──────────────────
+    // \opalPerc is a fusion: a Tibetan bowl that rings for ~30 s, and a china
+    // trash cymbal that colours the first second. These take either half out
+    // of the sum entirely, so the voice can be a pure bowl, a pure cymbal, or
+    // both. textureDepth still morphs between them when both are on.
+    //
+    // Stepped specs, so 4_gui.scd renders them as BUTTONS rather than knobs —
+    // a Knob cannot serve a stepped spec (see the \bancada note there). These
+    // DO take control buses, unlike the cadence params above, because they are
+    // read inside the SynthDef and must reach voices already sounding.
+    (name: \bowlOn,     spec: ControlSpec(0, 1, \lin, 1),    default: 1,    path: "/voice/bowl",
+        cc: 31),
+    (name: \chinaOn,    spec: ControlSpec(0, 1, \lin, 1),    default: 1,    path: "/voice/china",
+        cc: 52),
+
     // ── Marea · arco de densidad (toggles 0/1) ──────────────────────────
     // The rhythm is tidal rather than gridded: onsets are probabilistic and
     // their likelihood follows a slow swell. These pick how long that swell
@@ -300,6 +315,8 @@
     \padEvery   -> "PAD EVERY",
     \padVoices  -> "PAD VOICES",
     \bellEvery  -> "BELL EVERY",
+    \bowlOn     -> "BOWL",
+    \chinaOn    -> "CHINA",
     \dustRate   -> "DUST RATE"
 ];
 

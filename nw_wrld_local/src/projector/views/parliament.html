@@ -802,6 +802,22 @@
                         data-osc="/cadence/bell">
                     <span class="ctrl-val" id="disp-cadence-bell">6s</span>
                 </div>
+                <!-- The struck voice's two halves. Both PERC (tide-struck) and
+                     the BELLS (chain-struck) are \opalPerc now, so these
+                     govern both: the only difference left between those two
+                     layers is what causes the strike. -->
+                <div class="ctrl-row">
+                    <label>Bowl</label>
+                    <input type="range" min="0" max="1" step="1" value="1"
+                        data-osc="/voice/bowl">
+                    <span class="ctrl-val" id="disp-voice-bowl">on</span>
+                </div>
+                <div class="ctrl-row">
+                    <label>China</label>
+                    <input type="range" min="0" max="1" step="1" value="1"
+                        data-osc="/voice/china">
+                    <span class="ctrl-val" id="disp-voice-china">on</span>
+                </div>
                 <div class="ctrl-row">
                     <label>Dust Rate</label>
                     <input type="range" min="0" max="1" step="0.01" value="0.83"
