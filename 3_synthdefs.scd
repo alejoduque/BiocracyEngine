@@ -123,7 +123,19 @@ s.doWhenBooted({
     ~trimDrone = 3.20 * ~trimMaster;   // the BED — continuous, holds the floor
     ~trimPad   = 0.65 * ~trimMaster;   // PADS / BELLS — harmonic resonance over the bed
     ~trimKick  = 0.35 * ~trimMaster;   // KICK — calibrated so 0.040 is ~80% of peak level
-    ~trimPerc  = 0.08 * ~trimMaster;   // PERCUSSION — scaled so previous 0.8 level is 100% of the slider
+    // PERCUSSION — china/trash cymbal. Cut from 0.08 because the voice moved
+    // its energy from under 850 Hz up into 5-13 kHz, which is the ear's most
+    // sensitive band: the same acoustic power there is perceived roughly 8-10
+    // dB louder. At the old trim the china buried the mix. This matters beyond
+    // the layer itself — the glue compressor (see ~masterLimiter) keys off the
+    // SUMMED signal, so an over-loud china pumps the drone and pad too.
+    // 0.08 -> 0.032 -> 0.075. The cut to 0.032 was made on an ESTIMATE that
+    // moving the china's energy into 5-13 kHz would gain 8-10 dB of perceived
+    // loudness. Measured by ear it did not: at 0.032 the layer sat ~26 dB under
+    // the pad and was simply inaudible. Back to roughly the old value, a touch
+    // under it to acknowledge the china really is brighter than the wooden
+    // voice it replaced. Set by listening, not by arithmetic.
+    ~trimPerc  = 0.075 * ~trimMaster;
     // The bed is the ensemble now, so the ONE continuous voice steps back from
     // 8.0 to 3.2 and the partials carry the rest. Its job is the sub anchor
     // under them rather than the whole bed on its own.
@@ -132,7 +144,12 @@ s.doWhenBooted({
     // 0.0526; removing the former without this would drop the drone layer by
     // about 15 dB and leave the mix with no floor at all.
     ~trimDronePartial = 13.0 * ~trimMaster;
-    ~trimDust  = 0.75 * ~trimMaster;   // DUST — granular crackle / hojarasca texture
+    // DUST — granular crackle / hojarasca texture. Raised 0.75 -> 1.05: the
+    // grains are short and broadband, which is the easiest thing in the mix for
+    // a sustained voice to mask, and they were disappearing under the pad bed.
+    // The pad fix removes most of that masking; this makes the layer legible
+    // on its own terms rather than depending on it.
+    ~trimDust  = 1.05 * ~trimMaster;
     // Field recordings (10_sample_system.scd). Kept in this table rather than
     // beside the sample SynthDef so the whole budget stays readable in one
     // place — a layer that sets its own level somewhere else is exactly how
@@ -621,16 +638,27 @@ s.doWhenBooted({
         var shimmer, bend, shaped;
 
         // Clamped fundamental in the warm wooden/gong range (35..320 Hz)
-        freq = (freq * (pShift.clip(-12, 12) / 12).midiratio).clip(35, 320);
+        // China/trash cymbals speak from a much higher plate than the wooden
+        // body this used to be. The caller still pre-clips to 260-340
+        // (5_beat_engine.scd), which becomes the STRUCK size; the ceiling here
+        // only has to stop slot 6 (clips to 900) being re-clamped.
+        freq = (freq * (pShift.clip(-12, 12) / 12).midiratio).clip(60, 950);
 
         // Acoustic wood/mallet exciter with subtle granular micro-variation
+        // Stick on thin bronze: a very fast, very bright contact. The old
+        // exciter was a soft mallet — 3 ms of low Dust plus a 200-1800 Hz
+        // noise burst — which cannot start a china no matter what resonates
+        // after it. This is broadband and high, and it is what makes the
+        // attack read as metal being hit rather than wood being tapped.
         exciter = Mix([
-            Dust2.ar(400 + (nLevel * 3000))
-                * EnvGen.ar(Env.perc(0.003, 0.04 + (nFilt * 0.08))) * 0.9,
-            BPF.ar(PinkNoise.ar, (200 + (nFilt * 1200)).clip(120, 1800), 0.5)
-                * EnvGen.ar(Env.perc(0.005, 0.06 + (nFilt * 0.06)))
-                * nLevel.linlin(0, 0.5, 0.3, 1.2),
-            SinOsc.ar(freq * (1 + (fmD * 0.2))) * EnvGen.ar(Env.perc(0.008, 0.05))
+            Dust2.ar(3000 + (nLevel * 12000))
+                * EnvGen.ar(Env.perc(0.0002, 0.010 + (nFilt * 0.02))) * 1.2,
+            HPF.ar(WhiteNoise.ar, 2500 + (nFilt * 4000))
+                * EnvGen.ar(Env.perc(0.0002, 0.006 + (nFilt * 0.012)))
+                * nLevel.linlin(0, 0.5, 0.5, 1.6),
+            BPF.ar(PinkNoise.ar, (900 + (nFilt * 3500)).clip(400, 6000), 0.6)
+                * EnvGen.ar(Env.perc(0.002, 0.05 + (nFilt * 0.09)))
+                * nLevel.linlin(0, 0.5, 0.4, 1.3)
         ]);
 
         // Resonator modes with warm inharmonic stiffness
@@ -638,23 +666,46 @@ s.doWhenBooted({
         damp = fmR.linexp(0.1, 5.0, 3.5, 1.2);
         spread = fmD.linlin(0, 0.6, 0.0, 0.10);
 
-        partials = Array.fill(5, { |i|
+        // A china is a CROWDED plate: many closely-spaced, strongly inharmonic
+        // modes whose beating against each other is the trash. The old set was
+        // five widely-spaced stiff-bar partials (n*sqrt(1+B n^2)) — the formula
+        // for a xylophone bar, which is exactly why it read as wood.
+        //
+        // 14 modes on an irregular ladder, deliberately NOT integer-related:
+        // each step is an irrational-ish stride so no two modes ever lock into
+        // a harmonic interval and the sum never resolves into a pitch.
+        partials = Array.fill(14, { |i|
             var n = i + 1;
-            var dev = 1 + ((bodySeed * (n + 3) * 7.13).sin * spread);
-            (n * (1 + (inharm * n * n)).sqrt * dev).clip(1.0, 4.8);
+            var dev = 1 + ((bodySeed * (n + 3) * 7.13).sin * spread * (1 + (i * 0.15)));
+            // 1.0, 1.51, 2.09, 2.73, 3.42 ... widening as it climbs.
+            var ratio = 1.0 + (n.pow(1.32) * 0.51) + (inharm * n * n * 0.06);
+            (ratio * dev).clip(1.0, 26.0);
         });
-        decays = Array.fill(5, { |i|
+        // Trash decay: short, and the top of the plate dies first, so the
+        // stroke collapses from a splash into a rattle rather than ringing on.
+        decays = Array.fill(14, { |i|
             var n = i + 1;
-            (damp.neg * n.log).exp * (tStretch * 0.45);
+            ((damp.neg * n.log).exp * (tStretch * 0.20)).clip(0.02, 2.4);
         });
 
-        sig = Ringz.ar(exciter, (freq * partials).clip(30, 1400), decays).sum
-            * (1 + (inharm * 2.0)).reciprocal * 1.1;
+        // 16 kHz, not 1400 Hz — with a 260 Hz strike the 14th mode lands near
+        // 6 kHz, and that top octave IS the china. Normalised by mode count so
+        // widening the bank does not simply make it louder.
+        sig = Ringz.ar(exciter, (freq * partials).clip(40, 16000), decays).sum
+            * 14.sqrt.reciprocal * 2.4;
 
-        // Warm resonant body shimmer (replacing the piercing 9kHz scream)
-        shimmer = BPF.ar(exciter, (freq * 1.5 * LFNoise1.kr(4).range(0.95, 1.05)).clip(50, 650), 0.05)
-            * 8 * res.linlin(0.1, 0.8, 0.4, 1.0);
-        sig = sig + (shimmer * fmD.linlin(0, 1, 0.15, 0.45));
+        // The trash. A china's signature is a wide, unstable band of noise
+        // sitting ON TOP of the modes, sweeping as the plate wobbles. The
+        // previous version deliberately caged this at 650 Hz to kill a "9 kHz
+        // scream"; for a china that band is not a defect, it is the instrument.
+        // Two detuned bands beating against one another so it never sits still.
+        shimmer = Mix([
+            BPF.ar(exciter, (freq * 7.0 * LFNoise1.kr(5.5).range(0.86, 1.18))
+                .clip(600, 13000), 0.09),
+            BPF.ar(exciter, (freq * 11.5 * LFNoise1.kr(3.1).range(0.90, 1.12))
+                .clip(900, 15000), 0.07)
+        ]) * 5 * res.linlin(0.1, 0.8, 0.5, 1.4);
+        sig = sig + (shimmer * fmD.linlin(0, 1, 0.35, 1.05));
 
         // Doppler comb tail
         bend = CombC.ar(sig * 0.35, 0.35,
@@ -662,17 +713,42 @@ s.doWhenBooted({
             dFeed.linlin(0, 0.8, 0.2, 2.0));
         sig = sig + (LeakDC.ar(bend.tanh) * dMix.linlin(0, 1, 0.3, 0.8));
 
-        // Soft waveshape saturation
-        shaped = SinOsc.ar(0, sig * fmD.linlin(0, 1, 1.2, 3.5));
-        sig = XFade2.ar(sig, shaped, fmD.linlin(0, 1, -0.7, 0.3));
+        // Saturation. tanh across the whole band for the metallic bite, plus a
+        // SMALL sine fold on a band-limited copy for the clangour.
+        //
+        // The fold is deliberately fed from a 5 kHz lowpass: SinOsc-as-
+        // waveshaper folds, and folding this much 10 kHz+ energy at 48 kHz
+        // would alias straight back down as an inharmonic whistle. Lowpassing
+        // first keeps every fold product under Nyquist.
+        shaped = (sig * fmD.linlin(0, 1, 1.4, 4.2)).tanh
+            / (1 + (fmD * 0.3));
+        sig = XFade2.ar(sig, shaped, fmD.linlin(0, 1, -0.4, 0.9));
+        sig = sig + (SinOsc.ar(0, LPF.ar(sig, 5000) * fmD.linlin(0, 1, 0.7, 2.6))
+            * fmD.linlin(0, 1, 0.08, 0.34));
+        sig = LeakDC.ar(sig);
 
-        // Low-pass filter: strictly cuts high frequencies above 850 Hz
+        // Brightness as a TILT, not a wall. The old pair of lowpasses capped
+        // this voice at 850 Hz by two independent mechanisms — the second one
+        // fixed and unreachable by any control — which is what made a bank of
+        // metal resonators come out sounding like a wood block. A china lives
+        // almost entirely above that line.
         sig = LPF.ar(sig,
-            (filt.clip(200, 1200)
-                * Lag.kr(cutoff, dFade.clip(0.1, 5)).linexp(0, 1, 0.7, 1.3)).clip(120, 850));
-        sig = LPF.ar(sig, 850); // Fixed backstop: warm wooden acoustic resonance only
+            (filt.clip(400, 11000)
+                * Lag.kr(cutoff, dFade.clip(0.1, 5)).linexp(0, 1, 0.55, 1.9))
+                .clip(700, 17000));
+        // High shelf instead of a backstop: tames the very top without
+        // removing it, so the plate stays bronze rather than turning to glass.
+        sig = BHiShelf.ar(sig, 7000, 1.0, -3.5);
+        // The plate has no fundamental down here; this only stops the comb and
+        // reverb accumulating sub-bass that the master compressor would key on.
+        sig = HPF.ar(sig, 180);
 
-        sig = sig * EnvGen.ar(Env.perc(0.03, 1.8 * tStretch), doneAction: 2);
+        // 1 ms attack — 30 ms is a mallet on wood. Curve -4.5 so it collapses
+        // fast then rattles out, which is the china's shape. Clipped so a large
+        // timeDilation cannot produce a synth that never frees.
+        sig = sig * EnvGen.ar(
+            Env.perc(0.001, (0.9 * tStretch).clip(0.25, 5.0), 1, -4.5),
+            doneAction: 2);
 
         // Ping-pong delay + Reverb
         wet = CombC.ar(sig, 0.4, 0.08, 1.0) * dMix * 0.7;
@@ -860,8 +936,20 @@ s.doWhenBooted({
         // already computes this to shape its own rhythm; writing it to a bus
         // lets the bed feel it too. Lagged slowly, because the bed should seem
         // to be resonating with the strikes rather than following them.
+        // Lagged HARD and compressed, not followed. ~percExcite is a
+        // self-exciting process: a hit raises the odds of the next, then it
+        // decays, so it has a characteristic period. Tracking it closely made
+        // the bed inherit that period — the drone rose and fell on the
+        // percussion's cycle and the whole texture became predictable within a
+        // minute or two, which is the opposite of a bed.
+        //
+        // sqrt compresses the top of the range so a saturated cluster is not
+        // dramatically more than a moderate one, and the 2.2 s lag is far
+        // longer than the excitation's own decay, so the bed reads the
+        // AVERAGE pressure of a passage rather than its individual gestures.
         var strike = Lag.kr(
-            Select.kr(strikeBus >= 0, [0.0, In.kr(strikeBus, 1)]), 0.7).clip(0, 1.6);
+            Select.kr(strikeBus >= 0, [0.0, In.kr(strikeBus, 1)]).clip(0, 1.2).sqrt,
+            2.2).clip(0, 1.1);
         var f, sig, env, quadSig, trem, respond;
         var bands, fbk, fm, mode, r1, r2, r3, grit;
 
@@ -942,12 +1030,21 @@ s.doWhenBooted({
         // barely at all, some strongly — so a busy passage lights parts of the
         // bed rather than pumping the whole thing as one block, which would
         // just be ducking with the sign flipped.
-        respond = 0.15 + (seed * 0.85);
+        // Each partial answers by its own amount AND on its own slow clock.
+        // Without the second term every partial moved in lockstep with the
+        // same strike signal — different depths, identical timing — which is
+        // what made a cluster read as one block pumping rather than as a bed
+        // being rung.
+        respond = (0.10 + (seed * 0.45))
+            * LFNoise2.kr(0.03 + (seed * 0.05)).range(0.45, 1.25);
 
         sig = LPF.ar(sig, (filt.clip(80, 4000) * cutoff.linexp(0, 1, 0.6, 2.2)
             // Percussive energy opens the partial: the bed brightens under a
             // cluster of strikes and darkens again in the silences.
-            * (1 + (strike * respond * 0.75))
+            // 0.75 -> 0.34. At the old depth a saturated cluster opened the
+            // brightest partials by 1.9x, which is not "resonating with the
+            // strikes", it is the percussion playing the drone.
+            * (1 + (strike * respond * 0.34))
             // …and so does the voice's own internal incident.
             * (1 + (grit * 1.8))).clip(90, 13000));
         sig = sig + (FreeVerb.ar(sig, revM * 0.7, dSpace.linlin(0, 1, 0.4, 0.95), 0.15) * 0.5);
@@ -963,7 +1060,7 @@ s.doWhenBooted({
         sig = sig * env * trem * amp * vol
             // …and swells it. Small: this is the bed being rung by the strikes,
             // not a second percussion layer.
-            * (1 + (strike * respond * 0.30))
+            * (1 + (strike * respond * 0.14))
             * Lag.kr(mAmp, 2.0).linlin(0, 1, 0.05, 1.4) * (~trimDronePartial ? 0.10)
             * Lag.kr(Select.kr(mixDroneBus >= 0, [1.0, In.kr(mixDroneBus, 1)]), 0.08);
 
