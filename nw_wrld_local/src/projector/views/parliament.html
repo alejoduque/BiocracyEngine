@@ -412,6 +412,43 @@
             margin-top: 4px;
             border-top: 1px solid rgba(255,255,255,0.12);
         }
+        /* Slot C's own readout: which picture the ring is on, and how much of
+           the register the Cámara Op fader is currently letting through. Green
+           rather than white so the visual register reads as its own voice
+           beside the corpus cursor above it, and matches the CRT of slot C. */
+        #camara-cursor {
+            font-size: 11px;
+            color: rgba(141,240,180,0.75);
+            letter-spacing: 0.4px;
+            padding: 4px;
+            border-top: 1px solid rgba(141,240,180,0.15);
+        }
+        #camara-cursor.veiled { color: rgba(141,240,180,0.38); }
+        /* Cursor + its advance, on one row. The readout keeps its own border
+           so the two rows still read as the stacked lines they were. */
+        .cursor-row { display: flex; align-items: stretch; gap: 0; }
+        .cursor-row > div { flex: 1 1 auto; min-width: 0; }
+        .cursor-next {
+            flex: 0 0 auto;
+            width: 22px;
+            background: transparent;
+            border: none;
+            border-top: 1px solid rgba(255,255,255,0.12);
+            color: rgba(255,255,255,0.55);
+            font-size: 11px;
+            line-height: 1;
+            cursor: pointer;
+            padding: 4px 0;
+            font-family: inherit;
+        }
+        .cursor-next:hover { color: var(--amber-bright); }
+        .cursor-next:active { color: #fff; }
+        /* The camera row is the green register; its arrow follows suit. */
+        #camara-next {
+            color: rgba(141,240,180,0.55);
+            border-top: 1px solid rgba(141,240,180,0.15);
+        }
+        #camara-next:hover { color: rgba(141,240,180,1); }
 
         /* ─── VIZ SWITCHER HUD ─── */
         #viz-hud {
@@ -604,23 +641,17 @@
                 </div>
             </div>
 
-            <!-- Acoustic Species Controls (injected by JS from live IUCN data).
-                 These were VIZ-only for as long as they existed: they emitted
-                 /agents/species/* into UDP 57120 where no OSCdef received them.
-                 6_osc_handlers.scd now does, and 5_beat_engine.scd sounds them —
-                 activity weights how often a seat is picked for a percussion
-                 hit, presence how loudly it speaks and which register it owns.
-                 The seat reports back on /agent/species/state (ACT / FREQ / VOT
-                 in the right rail). -->
-            <div class="tele-section">
-                <div class="tele-section-title">Species Activity → SC + VIZ</div>
-                <div id="species-activity-ctrl"></div>
-            </div>
-
-            <div class="tele-section">
-                <div class="tele-section-title">Species Presence → SC + VIZ</div>
-                <div id="species-presence-ctrl"></div>
-            </div>
+            <!-- REMOVED: "Species Activity" and "Species Presence" slider
+                 blocks (#species-activity-ctrl / #species-presence-ctrl).
+                 Ten sliders that dominated the left column while the seats
+                 they weight are already legible in the ACOUSTIC SPECIES readout
+                 in the right rail.
+                 The SC path is unaffected: 6_osc_handlers.scd initialises both
+                 arrays to Array.fill(5, 0.5) (see :782-783), so with nothing
+                 sending /agents/species/* every seat simply keeps its neutral
+                 weight and the percussion picker behaves as it always did.
+                 The renderers in parliamentEntry.ts are null-guarded and become
+                 no-ops when the containers are absent. -->
 
             <!-- eDNA biodiversity (dynamic from IUCN feed). Same story:
                  /agents/edna/biodiversity is received now, and the site's
@@ -720,6 +751,38 @@
                  between voices lived in the hardcoded gain budget of
                  3_synthdefs.scd and could not be touched while playing.
                  Unity is 1.0 at mid-throw, so 0.5 here is the boot state. -->
+            <!-- Cadencia. The mixer below sets how LOUD each struck layer is;
+                 this sets how OFTEN it speaks. They are the two halves of a
+                 layer's presence, and separating them is what makes either
+                 legible: at one kick per 96 s there was no second hit to hear
+                 a level change on, so /mix/kick felt inert even though it was
+                 wired correctly. Sliders are 0-1 normalised like every other
+                 one here; SC maps them through each spec (see 0_parameters). -->
+            <div class="tele-section tele-section--pheno">
+                <div class="tele-section-title">
+                    Cadencia · Layer Rates
+                    <span class="pheno-art">CC 25–27 · how often, not how loud</span>
+                </div>
+                <div class="ctrl-row">
+                    <label>Kick ×bar</label>
+                    <input type="range" min="0" max="1" step="0.01" value="0.00"
+                        data-osc="/cadence/kick">
+                    <span class="ctrl-val" id="disp-cadence-kick">1.0</span>
+                </div>
+                <div class="ctrl-row">
+                    <label>Perc Rate</label>
+                    <input type="range" min="0" max="1" step="0.01" value="0.70"
+                        data-osc="/cadence/perc">
+                    <span class="ctrl-val" id="disp-cadence-perc">1.50</span>
+                </div>
+                <div class="ctrl-row">
+                    <label>Dust Rate</label>
+                    <input type="range" min="0" max="1" step="0.01" value="0.73"
+                        data-osc="/cadence/dust">
+                    <span class="ctrl-val" id="disp-cadence-dust">0.34</span>
+                </div>
+            </div>
+
             <div class="tele-section tele-section--pheno">
                 <div class="tele-section-title">
                     Matrix Mixer · Layer Levels
@@ -1150,7 +1213,39 @@
                         data-osc="/pheno/rate">
                     <span class="ctrl-val" id="disp-pheno-rate">0.28</span>
                 </div>
-                <div id="corpus-cursor">doy — · — · quórum —</div>
+                <!-- Art. 47 as a fader rather than a constant. Slot C projects
+                     the camera trap and the spectrogram register; this decides
+                     how much of it the Chamber shows. It boots at 1.0 — every
+                     species projected, felids included — because withholding
+                     is a decision this room takes in session, not one the
+                     build script takes on its behalf. Turning it down retires
+                     the register in order of each clip's own sensitivity, so
+                     the ring keeps saying *that* it recorded even when it
+                     stops saying what. -->
+                <div class="ctrl-row">
+                    <label>Cámara Op</label>
+                    <input type="range" min="0" max="1" step="0.01" value="1.00"
+                        data-osc="/camara/opacity">
+                    <span class="ctrl-val" id="disp-camara-opacity">1.00</span>
+                </div>
+                <!-- Each cursor gets its own advance, because they are two
+                     different registers on the same ring and the performer
+                     needs to move them independently. The white line is the
+                     AudioMoth corpus (what is SOUNDING); the green one is the
+                     camera/spectrogram register in slot C (what is SEEN).
+                     ▶ on the corpus row sends /pheno/next, the same address
+                     the SC GUI's skip button already uses — so this is the
+                     surfacing of an existing control, not a new one. -->
+                <div class="cursor-row">
+                    <div id="corpus-cursor">doy — · — · quórum —</div>
+                    <button class="cursor-next" id="corpus-next"
+                        title="Siguiente día grabado (/pheno/next)">▶</button>
+                </div>
+                <div class="cursor-row">
+                    <div id="camara-cursor">cámara — · —</div>
+                    <button class="cursor-next" id="camara-next"
+                        title="Siguiente clip de la cámara">▶</button>
+                </div>
             </div>
 
         </div><!-- /right-panel -->

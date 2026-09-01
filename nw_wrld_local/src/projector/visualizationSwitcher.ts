@@ -41,6 +41,10 @@ import {
   destroyRegistro,
 } from "./registro/registro";
 import {
+  mountCamara,
+  destroyCamara,
+} from "./camara/camara";
+import {
   mountAntifonia,
   destroyAntifonia,
 } from "./antifonia/antifonia";
@@ -1843,6 +1847,56 @@ async function mountRegistroSlot(): Promise<Viz> {
   };
 }
 
+// ─── Mount: slot C — Cámara (the visual register, on a CRT) ─────────────────
+// Simpler than its neighbours because it owns no three.js scene: the module is
+// raw WebGL1 (one fullscreen triangle over a 2D canvas — see camara/crt.ts),
+// so there is no renderer/camera pair to resize and the module exposes its own
+// resize() instead.
+async function mountCamaraSlot(): Promise<Viz> {
+  const container = stageEl!;
+  showStage(stageEl);
+
+  const host = document.createElement("div");
+  host.style.cssText = "position:absolute;inset:0;width:100%;height:100%;";
+  container.appendChild(host);
+  void host.offsetWidth;
+
+  const w = window as unknown as {
+    __applySonethToViz?: (key: string, val: number) => void;
+    __sendOscToSC?: (address: string, value: number) => void;
+  };
+  const applyViz = w.__applySonethToViz ?? (() => { /* not ready */ });
+  const sendOSC = w.__sendOscToSC ?? (() => { /* WS not ready */ });
+
+  let instance: { resize?: () => void } | null = null;
+  try {
+    instance = await mountCamara(host, { applyViz, sendOSC });
+  } catch (e) {
+    console.error("[switcher] Cámara mount failed:", e);
+  }
+
+  host.style.visibility = "visible";
+  void host.offsetWidth;
+
+  await new Promise<void>((resolve) => requestAnimationFrame(() => {
+    instance?.resize?.();
+    resolve();
+  }));
+
+  const ro = new ResizeObserver(() => instance?.resize?.());
+  ro.observe(container);
+
+  return {
+    name: "Cámara",
+    key: "c",
+    destroy: () => {
+      ro.disconnect();
+      destroyCamara();
+      if (host.parentNode) host.parentNode.removeChild(host);
+    },
+  };
+}
+
 // ─── Mount: slots 4–9 — placeholder ─────────────────────────────────────────
 function mountPlaceholder(key: string): Viz {
   const container = stageEl!;
@@ -1904,6 +1958,7 @@ async function switchTo(key: string) {
     else if (key === "b") viz = await mountTransitoSlot();
     else if (key === "e") viz = await mountEstratosSlot();
     else if (key === "r") viz = await mountRegistroSlot();
+    else if (key === "c") viz = await mountCamaraSlot();
     else if (key === "a") viz = await mountAntifoniaSlot();
     else viz = mountPlaceholder(key);
   } catch (e) {
@@ -1930,17 +1985,17 @@ async function switchTo(key: string) {
 // ─── Keyboard ────────────────────────────────────────────────────────────────
 function onKeyDown(e: KeyboardEvent) {
   if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
-  // 'a' added with slot A (Antifonía). This regex is the real gate: adding a
-  // mount function without widening it produces a slot that exists, compiles,
-  // and can never be reached.
-  if (!/^[0-9pfbrea]$/.test(e.key)) return;
+  // 'a' added with slot A (Antifonía), 'c' with slot C (Cámara). This regex is
+  // the real gate: adding a mount function without widening it produces a slot
+  // that exists, compiles, and can never be reached.
+  if (!/^[0-9pfbreac]$/.test(e.key)) return;
   e.preventDefault();
   switchTo(e.key);
 
   // Send mode switch OSC message to SuperCollider (numeric slots only —
   // 'p' (phenology), 'f' (DarkForest), 'b' (Transito), 'e' (Estratos),
-  // 'r' (Registro) and 'a' (Antifonía) are parliament-side overlay slots not
-  // known to SC).
+  // 'r' (Registro), 'a' (Antifonía) and 'c' (Cámara) are parliament-side
+  // overlay slots not known to SC).
   if (/^[0-9]$/.test(e.key)) {
     const modeVal = parseInt(e.key, 10);
     if (typeof (window as any).sendParliamentAction === "function") {

@@ -52,6 +52,29 @@ const phenoParams: Record<string, number> = {
 };
 (window as unknown as { __phenoParams?: Record<string, number> }).__phenoParams = phenoParams;
 
+// Slot C (Cámara) — the visual register's own controls, kept out of
+// phenoParams because they govern what is *projected*, not what the ring
+// sounds. Slot C polls this the same way the other slots poll __sonethParams.
+//
+// opacity boots at 1.0: this Chamber projects every species it recorded,
+// felids included. Withholding is available (drag the fader) but it is never
+// the default and never decided in code — see 0_parameters.scd \camaraOpacity.
+const camaraParams: Record<string, number> = {
+  opacity: 1.0,
+};
+(window as unknown as { __camaraParams?: Record<string, number> }).__camaraParams = camaraParams;
+
+// Hand a Cámara control to the mounted module, if slot C is up. Indirected
+// through a window hook rather than an import so parliamentEntry never pulls
+// the slot C bundle in on its own — the module registers this when it mounts
+// and clears it on destroy, exactly like __applySonethToViz.
+function applyCamaraControl(key: string, v: number): void {
+  const fn = (window as unknown as {
+    __applyCamaraToViz?: (k: string, v: number) => void;
+  }).__applyCamaraToViz;
+  if (typeof fn === "function") fn(key, v);
+}
+
 // ─── OSC bridge WebSocket ───
 // ─── Pulsar plot feeds ──────────────────────────────────────────────────────
 // The most recent corpus spectrum, held so that a /pheno/clip announcement can
@@ -127,6 +150,18 @@ function connectControlWS() {
       // Read-only telemetry, so it deliberately does not touch phenoParams —
       // those mirror controls, and the cursor is not one.
       if (address === "/pheno/cursor") {
+        {
+          // Published for slot C, which draws the picture belonging to
+          // whatever day the ring is sounding. Stamped with a receive time so
+          // the module can tell a live ring from a stale last-value and
+          // self-advance when SuperCollider is not running.
+          const [doy, temporada] = args as unknown as [number, string];
+          (window as unknown as {
+            __phenoCursor?: { doy: number; temporada: string; at: number };
+          }).__phenoCursor = {
+            doy: Number(doy), temporada: String(temporada), at: performance.now(),
+          };
+        }
         const el = document.getElementById("corpus-cursor");
         if (el) {
           const [doy, temporada, clips, gap, quorum] = args as unknown as [
@@ -350,6 +385,26 @@ function connectControlWS() {
 
         // 2. Apply to the calendar instance (no-op if slot P not mounted)
         applyPhenoControl(key, v);
+      }
+
+      // Cámara (slot C) echo. Same bidirectional triple as /pheno/: SC owns
+      // the value and restores it from the autosave at boot, so the fader and
+      // the module both follow SC rather than each other.
+      if (address.startsWith("/camara/")) {
+        const v = args[0];
+        if (typeof v !== "number" || !isFinite(v)) return;
+        const key = address.slice("/camara/".length);
+
+        const slider = document.querySelector<HTMLInputElement>(
+          `input[type='range'][data-osc='${address}']`
+        );
+        if (slider) slider.value = String(v);
+        const dispEl = document.getElementById(`disp-camara-${key}`);
+        if (dispEl) dispEl.textContent = v.toFixed(2);
+
+        camaraParams[key] = v;
+        applyCamaraControl(key, v);
+        return;
       }
 
       // Matrix mixer echo. Level only — nothing here reaches a visual, so it
@@ -643,16 +698,22 @@ class SpectrogramRenderer {
       // Spectral param subtly shifts the mid-tones (not the whole palette)
       let r: number, g: number, b: number;
       if (v < 0.33) {
-        // Black → dark red/brown
+        // Black → dark red/brown. Lifted from 120,20 to 165,34 and given a
+        // small floor once there is ANY signal at all: the bottom third of the
+        // ramp is where the engine actually lives, and at the old values a
+        // real band was drawn nearly black. The floor is gated on v > 0.02 so
+        // true silence still reads as black rather than a lit panel.
         const t2 = v / 0.33;
-        r = Math.floor(120 * t2);
-        g = Math.floor(20 * t2);
+        const floor = v > 0.02 ? 0.18 : 0;
+        const t3 = floor + (1 - floor) * t2;
+        r = Math.floor(165 * t3);
+        g = Math.floor(34 * t3);
         b = 0;
       } else if (v < 0.66) {
         // Dark red → amber (with subtle spectral tint in green channel)
         const t2 = (v - 0.33) / 0.33;
-        r = Math.floor(120 + 135 * t2);
-        g = Math.floor(20 + (116 + spectral * 40) * t2);
+        r = Math.floor(165 + 90 * t2);
+        g = Math.floor(34 + (102 + spectral * 40) * t2);
         b = Math.floor(spectral * 30 * t2);
       } else {
         // Amber → bright white-amber
@@ -1119,6 +1180,16 @@ async function init() {
       // SC is notified via sendOSC() in wireSlider — no store notify needed here
       return;
     }
+    else if (addr.startsWith("/camara/")) {
+      // Applied locally as well as sent, unlike /pheno/. The pheno faders can
+      // wait for SC's echo because the thing they move lives in SC; slot C's
+      // picture is drawn in this renderer and would otherwise sit frozen at
+      // its default whenever SuperCollider is not running.
+      const key = addr.slice("/camara/".length);
+      camaraParams[key] = v;
+      applyCamaraControl(key, v);
+      return;
+    }
     // volume / fx paths: no local state equivalent, SC handles them
     else return;
 
@@ -1573,6 +1644,15 @@ async function init() {
     "/pheno/bancada":           "disp-pheno-bancada",
     "/pheno/rate":              "disp-pheno-rate",
     "/pheno/corpusLevel":       "disp-pheno-corpusLevel",
+    // Slot C's projection amount. Its own /camara namespace rather than
+    // /pheno because it governs the visual register, not the audio ring.
+    "/camara/opacity":          "disp-camara-opacity",
+    // Cadencia — layer RATES (CC 25-27). Without these the default prefix
+    // rule would derive "disp-kick-" from /cadence/kick and the readouts
+    // would never update.
+    "/cadence/kick":            "disp-cadence-kick",
+    "/cadence/perc":            "disp-cadence-perc",
+    "/cadence/dust":            "disp-cadence-dust",
     // Matrix mixer — without these the default prefix would derive
     // "disp-drone-" from /mix/drone and the readout would never update.
     "/mix/drone":  "disp-mix-drone",
@@ -1785,6 +1865,25 @@ async function init() {
     });
   }
 
+  // ── Cursor advance buttons (Cámara Fenológica, right rail) ───────────────
+  // Two registers, two arrows.
+  //
+  // corpus-next reaches SuperCollider on /pheno/next — the address
+  // 14_phenological_corpus.scd already answers with ~phenoNextRecorded, the
+  // same skip the SC GUI exposes. Nothing new is defined server-side; the
+  // control simply existed only on the SC surface until now.
+  //
+  // camara-next is browser-only: slot C's picture ring is drawn in this
+  // renderer, so it advances through a hook the module publishes when mounted
+  // and is a no-op when some other slot is up.
+  document.getElementById("corpus-next")?.addEventListener("click", () => {
+    sendOSC("/pheno/next", 1);
+  });
+  document.getElementById("camara-next")?.addEventListener("click", () => {
+    const fn = (window as unknown as { __camaraNext?: () => void }).__camaraNext;
+    if (typeof fn === "function") fn();
+  });
+
   // Wire eDNA sliders that were dynamically injected above (they're in the DOM now)
   if (ednaCtrlRows) {
     ednaCtrlRows.querySelectorAll<HTMLInputElement>("input[type='range'][data-osc]").forEach(wireSlider);
@@ -1976,8 +2075,20 @@ async function init() {
       const pos = (i / (count - 1)) * (src.length - 1);
       const lo = Math.floor(pos), hi = Math.min(src.length - 1, lo + 1);
       const v = src[lo] + (src[hi] - src[lo]) * (pos - lo);
-      // Amplitude.kr is linear; compress so quiet detail stays visible
-      out[i] = Math.min(1, Math.pow(v * 3.2, 0.6));
+      // Amplitude.kr is linear; compress so quiet detail stays visible.
+      //
+      // Gain 3.2 -> 8.0 and exponent 0.6 -> 0.45. The engine's own bands sit
+      // far lower than this curve assumed: ~trimMaster is 0.115 and the struck
+      // layers are fractions of that (perc 0.0086, dust 0.12), so a typical
+      // band arrives around 0.005-0.02 raw. The old curve mapped that to
+      // 0.08-0.19 — dark enough to read as an empty panel while the engine was
+      // audibly playing.
+      //
+      // At the new curve the same range maps to 0.23-0.44, which is visible
+      // without blowing out: raw 0.2 still lands at 1.0 rather than clipping
+      // everything above a whisper. The exponent does most of the work; raising
+      // gain alone would just crush the top.
+      out[i] = Math.min(1, Math.pow(v * 8.0, 0.45));
     }
     return out;
   }
