@@ -1160,7 +1160,8 @@ export function mountDynamicOptimality(stageEl: HTMLElement, getLatestState: () 
         const txInf     = sp6.txInfluence   ?? 0.5;
         const consensus = st?.consensus ?? 0.5;
 
-        afterimage.uniforms["damp"].value = lerp(0.73, 0.93, delayFb * 0.7 + memFeed * 0.3);
+        afterimage.uniforms["damp"].value =
+            lerp(0.73, 0.93, delayFb * 0.5 + memFeed * 0.25 + dronFd * 0.25);
         bloom.strength = lerp(0.2, 0.7, harmR * masterA);
         renderer.setClearColor(0x000804, lerp(0.5, 0.95, 1 - atmMix));
 
@@ -1297,9 +1298,34 @@ export function mountDynamicOptimality(stageEl: HTMLElement, getLatestState: () 
         edgeGeo.attributes.position.needsUpdate = true;
         edgeMat.opacity = (0.4 + vol * 0.6) * masterA;
 
-        // droneFade: background color warmth
-        const bgWarmth = Math.floor(dronFd * 6);
-        renderer.setClearColor((bgWarmth << 8) | 0x000804, 1);
+        // droneFade used to write a "background warmth" here:
+        //     setClearColor((Math.floor(dronFd * 6) << 8) | 0x000804, 1)
+        // Two things were wrong with it. It is the SECOND setClearColor of the
+        // frame (the first is above, with the atmMix alpha), so it silently
+        // overrode that one. And `<< 8` puts the warmth in the GREEN channel of
+        // a colour that already has green in it — so "warmth" was a green tint,
+        // not a warm one.
+        //
+        // On its own that is only green 8 -> 14, invisible. But this slot runs
+        // an AfterimagePass at damp 0.73-0.93, which feeds the frame back into
+        // itself: a constant tint accumulates to g/(1-damp), i.e. 52-200. That
+        // is the bright green background — measured at 64 against red 12, and
+        // unchanged with the constellation field hidden, which is what proved
+        // the field was not the cause.
+        //
+        // droneFade keeps a job here, but a legible one: it lengthens the
+        // afterimage trail instead of tinting the background. That is what a
+        // "fade" control should do in a slot built on feedback, and it is the
+        // same quantity the old line was reaching for — persistence — without
+        // routing it through the clear colour.
+        //
+        // The clear is also neutralised to 0x000201 for this slot only. The
+        // house colour 0x000804 is rgb(0,8,4) — it HAS a green bias, which
+        // every other slot gets away with because their frames are busy enough
+        // to hide it. Here the frame is mostly empty and the afterimage
+        // integrates whatever the clear is, so green 8 still settled at ~36.
+        // Near-black leaves the tree and its edges to supply the colour.
+        renderer.setClearColor(0x000201, lerp(0.5, 0.95, 1 - atmMix));
 
         // Idle drift + damping. These six had no controls at all before, so
         // this is also where ROTATION SPD reaches them.

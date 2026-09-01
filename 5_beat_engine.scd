@@ -808,9 +808,30 @@
                     // (the 16-step kickPattern that used to be rotated here is
                     //  gone with the grid — the kick now follows block seams)
                     // Shift the percussion base rate — sparse, drone-friendly
-                    percDivisor = #[6, 8, 12, 7, 10].wrapAt(phrase);
-                    // Drift drone pitch: cycle through harmonically-related notes
-                    droneBaseFreq = #[55, 62, 73, 82, 49, 65, 55, 41].wrapAt(phrase);
+                    // Both of these used to be .wrapAt(phrase) — a fixed cycle
+                    // through a fixed array, in the same order, forever. The
+                    // pitch array is 8 long and advances every 4 bars, so the
+                    // ENTIRE pitch content of the piece repeated on a 6.4-minute
+                    // loop; percDivisor repeated on 4 minutes. That is the
+                    // repetitiveness, and it is upstream of the pad: the pad,
+                    // the drone and every struck pitch all read ~droneRoot.
+                    //
+                    // Chosen at random instead, with the immediately-previous
+                    // value excluded so a root never repeats back-to-back. The
+                    // set is unchanged, so the harmonic world is the same one —
+                    // it just stops arriving in a memorised order.
+                    percDivisor = #[6, 8, 12, 7, 10].choose;
+                    // reject() removes the current root from the pool, so the
+                    // next one differs by construction — no loop, no early
+                    // exit, nothing that can spin. Falls back to the full pool
+                    // if the current root is somehow not in it.
+                    // reject() drops the current root, so the next one differs
+                    // by construction — no loop and no early exit. The pool has
+                    // 7 entries and only one is ever removed, so it can never
+                    // empty; .choose on it is always defined.
+                    droneBaseFreq = #[55, 62, 73, 82, 49, 65, 41]
+                        .reject { |f| f == droneBaseFreq }
+                        .choose;
                     // The root moves and NOTHING GLIDES. Partials born after
                     // this line arrive at the new fundamental while the ones
                     // already sounding live out their lives at the old one, so

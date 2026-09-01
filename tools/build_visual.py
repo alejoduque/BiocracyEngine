@@ -40,6 +40,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import re
 import shutil
 import subprocess
 import sys
@@ -53,6 +54,41 @@ DEST = CORPUS / "visual"
 
 MANIFEST = CORPUS / "manifest.json"
 CAMERATRAP = CORPUS / "cameratrap.json"
+
+# A second AudioMoth deployment, scanned directly rather than through
+# corpus/manifest.json.
+#
+# It is the same detector output — same clips/<domain>/<role>/ tree, same
+# events.json, mp4 spectrogram beside each wav — but it has not been through
+# build_corpus.py, and two of its fields do not survive that pipeline's
+# assumptions: `clip_path` is null on more than half its events, and `habitat`
+# holds a date string rather than one of the CORINE habitat names that
+# HABITAT_OPACITY is keyed on. So it is read here for its PICTURES only; the
+# sounding corpus is untouched.
+#
+# Everything is one day (2026-08-25, doy 237), which is why it is ADDED to the
+# ring rather than replacing it: the existing corpus spans 34 days across six
+# months, and swapping it out would leave the phenological calendar with a
+# single recorded doy out of 365.
+EXTRA_AUDIOMOTH = Path(
+    "/Volumes/Untitled/AudioMothAgosto2026/AudioMothsAgosto2026px"
+)
+
+# Kept in step with build_corpus.py / build_cameratrap.py so all three
+# registers land in the same season on the same ring.
+TEMPORADAS = (
+    ("primeras_lluvias", 91, 151),
+    ("medio_seco", 152, 243),
+    ("segundas_lluvias", 244, 334),
+)
+
+
+def temporada(doy: int) -> str:
+    """Article 42. Seca wraps the ring end (335-90)."""
+    for name, lo, hi in TEMPORADAS:
+        if lo <= doy <= hi:
+            return name
+    return "seca"
 
 # 480 px wide is the honest ceiling: the CRT surface caps at 920 px and the
 # video occupies part of it, so anything larger is bytes the screen throws
@@ -151,6 +187,67 @@ def collect_audiomoth() -> list[dict]:
         })
     if missing:
         print(f"  audiomoth: {missing} records have no sibling .mp4")
+    jobs += collect_extra_audiomoth({j["key"] for j in jobs})
+    return jobs
+
+
+def collect_extra_audiomoth(seen: set[str]) -> list[dict]:
+    """
+    The second deployment, walked from disk.
+
+    Keys are prefixed `px_` so they can never collide with a manifest key, and
+    the doy comes from the session directory's own timestamp rather than from
+    events.json — the folder name is the authority here and is present even
+    where the JSON is thin.
+    """
+    if not EXTRA_AUDIOMOTH.is_dir():
+        print(f"  extra audiomoth not mounted, skipping: {EXTRA_AUDIOMOTH}")
+        return []
+
+    jobs = []
+    # `._*` are AppleDouble sidecars from the exFAT volume, not media.
+    for mp4 in sorted(EXTRA_AUDIOMOTH.glob("*/clips/*/*/*.mp4")):
+        if mp4.name.startswith("._"):
+            continue
+        parts = mp4.parts
+        try:
+            session = parts[parts.index("clips") - 1]
+            domain, role = parts[-3], parts[-2]
+        except (ValueError, IndexError):
+            continue
+
+        m = re.search(r"(\d{8})_(\d{6})", session)
+        if not m:
+            continue
+        when = datetime.strptime(m.group(1) + m.group(2), "%Y%m%d%H%M%S")
+        doy = when.timetuple().tm_yday
+
+        key = f"px_{session}_{mp4.stem}"[:96]
+        if key in seen:
+            continue
+
+        # Duration off the filename's own span (…_0.0s-30.0s), which the
+        # detector writes and which is cheaper than probing 351 files.
+        d = re.search(r"_([\d.]+)s-([\d.]+)s", mp4.stem)
+        dur = (float(d.group(2)) - float(d.group(1))) if d else 30.0
+
+        jobs.append({
+            "key": key,
+            "register": "audiomoth",
+            "source": str(mp4),
+            "doy": doy,
+            "date": when.date().isoformat(),
+            "temporada": temporada(doy),
+            "role": role,
+            "domain": domain,
+            "duration_s": dur,
+            # No habitat to key HABITAT_OPACITY on, so this deployment carries
+            # no per-record sensitivity. It answers to /camara/opacity like
+            # everything else, just uniformly.
+            "sensitivity": 0.0,
+        })
+    if jobs:
+        print(f"  extra audiomoth: {len(jobs)} clips from {EXTRA_AUDIOMOTH.name}")
     return jobs
 
 

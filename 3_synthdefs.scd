@@ -681,18 +681,31 @@ s.doWhenBooted({
             var ratio = 1.0 + (n.pow(1.32) * 0.51) + (inharm * n * n * 0.06);
             (ratio * dev).clip(1.0, 26.0);
         });
-        // Trash decay: short, and the top of the plate dies first, so the
-        // stroke collapses from a splash into a rattle rather than ringing on.
+        // Trash decay: the top of the plate dies first, but it must still RING.
+        //
+        // The previous law was exp(-damp*ln(n)) * tStretch*0.20, i.e. n^-damp
+        // with damp ~2.3 — mode 4 and everything above it collapsed to the
+        // 0.02 s floor. Ringz amplitude is proportional to its decay time, so
+        // those modes contributed essentially nothing: a 14-mode bank that was
+        // really one ringing mode, then divided by sqrt(14) for a width it did
+        // not have. That is why the china could not be heard.
+        //
+        // n^-0.55 instead, floored at 0.06 s. Mode 14 still dies ~4x faster
+        // than mode 1, which is the plate's shape, but it is audible while it
+        // does — and the top of the bank is where the metal lives.
         decays = Array.fill(14, { |i|
             var n = i + 1;
-            ((damp.neg * n.log).exp * (tStretch * 0.20)).clip(0.02, 2.4);
+            ((n ** (0 - (damp * 0.24))) * (tStretch * 0.55)).clip(0.06, 3.0);
         });
 
         // 16 kHz, not 1400 Hz — with a 260 Hz strike the 14th mode lands near
         // 6 kHz, and that top octave IS the china. Normalised by mode count so
         // widening the bank does not simply make it louder.
+        // Normalised by sqrt of the modes that ACTUALLY ring, not the array
+        // length. With the decay law above the whole bank sounds, so sqrt(14)
+        // is honest here — it was not before.
         sig = Ringz.ar(exciter, (freq * partials).clip(40, 16000), decays).sum
-            * 14.sqrt.reciprocal * 2.4;
+            * 14.sqrt.reciprocal * 4.5;
 
         // The trash. A china's signature is a wide, unstable band of noise
         // sitting ON TOP of the modes, sweeping as the plate wobbles. The
