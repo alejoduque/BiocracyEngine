@@ -56,6 +56,7 @@
     dustRate:  0.52,
     padEvery:  34.0,
     padVoices: 2,
+    bellEvery: 6.0,
     // Derived each tick, read by the [MON] line. A toggle whose effect
     // cannot be observed is a toggle that cannot be debugged — that is the
     // lesson the seven removed rhythm toggles paid for.

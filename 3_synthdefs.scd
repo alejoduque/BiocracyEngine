@@ -139,7 +139,10 @@ s.doWhenBooted({
     // toward it last round cost it 6-21 dB of headroom over each and is
     // why the drone read as lost without its own number ever changing.
     ~trimDrone = 3.20 * ~trimMaster;
-    ~trimPad   = 0.95 * ~trimMaster;   // PADS / BELLS — pulled back from 1.30; it was crowding the bed
+    // PADS / BELLS — 0.65 -> 1.30 -> 0.95 -> 0.60. Reported too loud with
+    // Audio Gain and Volume Out at 1.0, which is ~9 dB hotter than the 0.35
+    // masterVolume every earlier calibration in this series was made against.
+    ~trimPad   = 0.60 * ~trimMaster;
     ~trimKick  = 0.75 * ~trimMaster;   // KICK — pulled back from 1.10, still 6.6 dB over its old level
     // PERCUSSION — china/trash cymbal. Cut from 0.08 because the voice moved
     // its energy from under 850 Hz up into 5-13 kHz, which is the ear's most

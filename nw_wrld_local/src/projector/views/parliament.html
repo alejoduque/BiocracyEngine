@@ -761,7 +761,7 @@
             <div class="tele-section tele-section--pheno">
                 <div class="tele-section-title">
                     Cadencia · Layer Rates
-                    <span class="pheno-art">CC 25–29 · how often, not how loud</span>
+                    <span class="pheno-art">CC 25–30 · how often, not how loud</span>
                 </div>
                 <div class="ctrl-row">
                     <label>Kick ×bar</label>
@@ -791,6 +791,16 @@
                     <input type="range" min="0" max="1" step="0.01" value="0.33"
                         data-osc="/cadence/padvoices">
                     <span class="ctrl-val" id="disp-cadence-padvoices">2</span>
+                </div>
+                <!-- BELLS are \elektronBell, the ETH transaction voice — a
+                     different layer from the pad bed above, and the one that
+                     was running at ~80 a minute because its drain routine was
+                     tied to 1/16 of the block period. -->
+                <div class="ctrl-row">
+                    <label>Bell Every</label>
+                    <input type="range" min="0" max="1" step="0.01" value="0.56"
+                        data-osc="/cadence/bell">
+                    <span class="ctrl-val" id="disp-cadence-bell">6s</span>
                 </div>
                 <div class="ctrl-row">
                     <label>Dust Rate</label>

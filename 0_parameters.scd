@@ -202,6 +202,17 @@
     // the same reason kickEvery is — ~makeKnob cannot serve a stepped one.
     (name: \padVoices,  spec: ControlSpec(1, 4, \lin),       default: 2,    path: "/cadence/padvoices",
         hasBus: false, beatParam: \padVoices,  cc: 29),
+    // Seconds between BELLS (\elektronBell, the ETH transaction voice) — a
+    // different layer from the pad bed above, and until now the only struck
+    // voice with no rate control at all.
+    //
+    // ~padDrainRoutine released one per 1/16 of the block period (~0.75 s),
+    // and eth_sonify delivers a whole block as a ~2 s burst every ~12 s, so on
+    // any busy chain the queue never emptied and the layer simply ran at 80
+    // bells a minute. 6 s is about 10 a minute; the top of the range is one
+    // every half minute.
+    (name: \bellEvery,  spec: ControlSpec(0.8, 30.0, \exp),  default: 6.0,  path: "/cadence/bell",
+        hasBus: false, beatParam: \bellEvery,  cc: 30),
 
     // ── Marea · arco de densidad (toggles 0/1) ──────────────────────────
     // The rhythm is tidal rather than gridded: onsets are probabilistic and
@@ -288,6 +299,7 @@
     \percRate   -> "PERC RATE",
     \padEvery   -> "PAD EVERY",
     \padVoices  -> "PAD VOICES",
+    \bellEvery  -> "BELL EVERY",
     \dustRate   -> "DUST RATE"
 ];
 

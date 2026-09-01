@@ -497,7 +497,7 @@
             // level change on. CC 25/26/27.
             // Cadencia. PAD joins PERC here: they are the pair the performer
             // balances, and the pad had a level but no rate at all until now.
-            [\kickEvery, \percRate, \padEvery, \padVoices, \dustRate]
+            [\kickEvery, \percRate, \padEvery, \padVoices, \bellEvery, \dustRate]
         ];
 
         // Enhanced knob function with oscilloscope aesthetics

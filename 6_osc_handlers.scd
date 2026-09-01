@@ -71,8 +71,11 @@ s.doWhenBooted({
     // Bounded queue: a heavy block drops its OLDEST pending pads rather than
     // growing without limit or lagging into the next bar.
     ~padQueue = ~padQueue ?? { List.new };
-    ~padQueueMax = 24;
-    ~padSynthMax = 24;   // 16 -> 48 -> 24. At 48 the pad layer alone reached
+    // 24 -> 8. The queue is a buffer for one block's burst, not a backlog:
+    // at 24 deep and a slower drain the layer would keep playing transactions
+    // from two blocks ago. Dropping the oldest keeps it current.
+    ~padQueueMax = 8;
+    ~padSynthMax = 10;   // 16 -> 48 -> 24 -> 10. At 48 the pad layer alone reached
                          // 2-3x full scale (it sums LINEARLY with concurrency),
                          // which is what pinned the limiter at 90-98% reduction.
 
@@ -107,9 +110,13 @@ s.doWhenBooted({
     ~padDrainRoutine = Routine({
         loop {
             var wait = 0.75, args;
-            if(~rhythmState.notNil) {
-                wait = (~rhythmState[\blockPeriod] / 16).clip(0.15, 2.0);
-            };
+            // Was blockPeriod/16 — about 0.75 s, i.e. up to 80 bells a minute
+            // for as long as the queue had anything in it, which on a busy
+            // chain is permanently. The rate is now the bellEvery knob
+            // (CC 30), jittered +/-30% so a fixed setting does not turn the
+            // layer into a metronome.
+            wait = ((~beatParams !? { ~beatParams.bellEvery } ? 6.0)
+                * rrand(0.7, 1.3)).clip(0.5, 45.0);
             if(~padQueue.notNil and: { ~padQueue.size > 0 }) {
                 args = ~padQueue.removeAt(0);
                 // Cuenta PADS, no todos los nodos del servidor. s.numSynths
