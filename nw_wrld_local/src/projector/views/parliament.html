@@ -761,7 +761,7 @@
             <div class="tele-section tele-section--pheno">
                 <div class="tele-section-title">
                     Cadencia · Layer Rates
-                    <span class="pheno-art">CC 25–27 · how often, not how loud</span>
+                    <span class="pheno-art">CC 25–29 · how often, not how loud</span>
                 </div>
                 <div class="ctrl-row">
                     <label>Kick ×bar</label>
@@ -774,6 +774,23 @@
                     <input type="range" min="0" max="1" step="0.01" value="0.70"
                         data-osc="/cadence/perc">
                     <span class="ctrl-val" id="disp-cadence-perc">1.50</span>
+                </div>
+                <!-- PAD sits directly under PERC because they are the pair the
+                     performer balances against each other: the pad is the wash
+                     the percussion is struck over. Until now the pad had a
+                     level and nothing else — it could be turned down but never
+                     made denser or sparser. -->
+                <div class="ctrl-row">
+                    <label>Pad Every</label>
+                    <input type="range" min="0" max="1" step="0.01" value="0.54"
+                        data-osc="/cadence/pad">
+                    <span class="ctrl-val" id="disp-cadence-pad">34s</span>
+                </div>
+                <div class="ctrl-row">
+                    <label>Pad Voices</label>
+                    <input type="range" min="0" max="1" step="0.01" value="0.33"
+                        data-osc="/cadence/padvoices">
+                    <span class="ctrl-val" id="disp-cadence-padvoices">2</span>
                 </div>
                 <div class="ctrl-row">
                     <label>Dust Rate</label>

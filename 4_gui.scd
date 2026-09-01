@@ -495,7 +495,9 @@
             // half of the same question and the reason the mix faders felt
             // inert: at one kick per 96 s there was no second hit to hear a
             // level change on. CC 25/26/27.
-            [\kickEvery, \percRate, \dustRate]
+            // Cadencia. PAD joins PERC here: they are the pair the performer
+            // balances, and the pad had a level but no rate at all until now.
+            [\kickEvery, \percRate, \padEvery, \padVoices, \dustRate]
         ];
 
         // Enhanced knob function with oscilloscope aesthetics
@@ -556,7 +558,14 @@
             // ALL CAPS throughout: camelCase parameter names read as two
             // words at a glance once the case is flattened, and caps hold
             // the monospace grid better than mixed case at 10px.
-            displayStr = label.asString.toUpper;
+            // A few names do not survive being flattened to caps: PADEVERY and
+            // PADVOICES read as one word and do not say which LAYER they act
+            // on, which is the whole question when a rate row sits above a
+            // level row for the same five layers. Overridden here rather than
+            // by renaming the parameters, because the names are also the OSC
+            // paths, the preset keys and the ~beatParams mirrors — renaming
+            // them would break saved configs for a cosmetic gain.
+            displayStr = ~knobLabels[label.asSymbol] ? label.asString.toUpper;
 
             valueLabel = StaticText()
                 .string_(displayStr ++ ": " ++ defaultVal.round(0.001))
@@ -1099,7 +1108,14 @@
             // ALL CAPS throughout: camelCase parameter names read as two
             // words at a glance once the case is flattened, and caps hold
             // the monospace grid better than mixed case at 10px.
-            displayStr = label.asString.toUpper;
+            // A few names do not survive being flattened to caps: PADEVERY and
+            // PADVOICES read as one word and do not say which LAYER they act
+            // on, which is the whole question when a rate row sits above a
+            // level row for the same five layers. Overridden here rather than
+            // by renaming the parameters, because the names are also the OSC
+            // paths, the preset keys and the ~beatParams mirrors — renaming
+            // them would break saved configs for a cosmetic gain.
+            displayStr = ~knobLabels[label.asSymbol] ? label.asString.toUpper;
 
             valueLabel = StaticText()
                 .string_(displayStr ++ ": " ++ defaultVal.round(0.001))

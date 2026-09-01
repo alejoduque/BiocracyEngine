@@ -618,6 +618,29 @@ function radarToCss(
 }
 
 // ─── Spectrogram canvas renderer (enriched: 256-bin, sonETH-reactive color) ───
+// Cadence readouts in NATIVE units, mirroring each spec in 0_parameters.scd.
+//
+// Every other slider here is a 0-1 normalised value whose raw number is
+// meaningful enough (a mix fader at 0.50 is unity). The cadence controls are
+// not: "0.54" says nothing, while "34s" is the whole point of the control.
+// SC echoes normalised values back, so without this the panel shows 0-1 even
+// while the engine is running.
+//
+// Kept in step with the specs: kick lin(1,8), perc exp(0.15,4.0),
+// pad exp(8,120), padvoices lin(1,4), dust exp(0.03,0.85).
+function cadenceLabel(addr: string, n: number): string | null {
+  const lin = (lo: number, hi: number) => lo + (hi - lo) * n;
+  const exp = (lo: number, hi: number) => lo * Math.pow(hi / lo, n);
+  switch (addr) {
+    case "/cadence/kick":       return `${Math.round(lin(1, 8))}×bar`;
+    case "/cadence/perc":       return exp(0.15, 4.0).toFixed(2);
+    case "/cadence/pad":        return `${Math.round(exp(8, 120))}s`;
+    case "/cadence/padvoices":  return `${Math.round(lin(1, 4))}`;
+    case "/cadence/dust":       return exp(0.03, 0.85).toFixed(2);
+    default:                    return null;
+  }
+}
+
 class SpectrogramRenderer {
   private canvas: HTMLCanvasElement;
   private ctx: CanvasRenderingContext2D;
@@ -1653,6 +1676,8 @@ async function init() {
     "/cadence/kick":            "disp-cadence-kick",
     "/cadence/perc":            "disp-cadence-perc",
     "/cadence/dust":            "disp-cadence-dust",
+    "/cadence/pad":             "disp-cadence-pad",
+    "/cadence/padvoices":       "disp-cadence-padvoices",
     // Matrix mixer — without these the default prefix would derive
     // "disp-drone-" from /mix/drone and the readout would never update.
     "/mix/drone":  "disp-mix-drone",
@@ -1759,7 +1784,8 @@ async function init() {
 
     const v = parseFloat(slider.value);
     const id = agentId !== undefined ? parseInt(agentId) : null;
-    if (dispEl) dispEl.textContent = addr.startsWith("/mix/") ? `${(v * 2.0).toFixed(2)}x` : v.toFixed(2);
+    if (dispEl) dispEl.textContent = cadenceLabel(addr, v)
+      ?? (addr.startsWith("/mix/") ? `${(v * 2.0).toFixed(2)}x` : v.toFixed(2));
 
     // 1. Send to SC
     if (id !== null) sendOSCArgs(addr, [id, v]);
@@ -1815,7 +1841,8 @@ async function init() {
 
         const dispPrefix = SLIDER_DISP_PREFIX[addr] ?? `disp-${addr.split("/").pop()}-`;
         const dispEl = document.getElementById(id !== null ? `${dispPrefix}${id}` : dispPrefix);
-        if (dispEl) dispEl.textContent = addr.startsWith("/mix/") ? `${(v * 2.0).toFixed(2)}x` : v.toFixed(2);
+        if (dispEl) dispEl.textContent = cadenceLabel(addr, v)
+      ?? (addr.startsWith("/mix/") ? `${(v * 2.0).toFixed(2)}x` : v.toFixed(2));
 
         patchStoreFromSlider(addr, id, v);
 

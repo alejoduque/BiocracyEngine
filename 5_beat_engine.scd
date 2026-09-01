@@ -54,6 +54,8 @@
     kickEvery: 1,
     percRate:  1.5,
     dustRate:  0.34,
+    padEvery:  34.0,
+    padVoices: 2,
     // Derived each tick, read by the [MON] line. A toggle whose effect
     // cannot be observed is a toggle that cannot be debugged — that is the
     // lesson the seven removed rhythm toggles paid for.
@@ -416,7 +418,7 @@
                 // The drone ensemble is what holds the floor continuously —
                 // the pad is supposed to be an occasional swell over it, and
                 // with padMax 2 it was a second drone competing with the first.
-                var padMax = 2;
+                var padMax = (~beatParams.padVoices ? 2).round.asInteger.clip(1, 4);
                 var live  = (~padVoices ? []).select { |v| v.notNil };
                 ~padVoices = live;
                 if(live.size < padMax) {
@@ -495,7 +497,10 @@
                 // sounding; the overlap is what makes it continuous WITHOUT
                 // being static, because the voices are detuned and on
                 // different ratios.
-                wait = rrand(22.0, 46.0);
+                // Centred on the padEvery knob with +/-35% jitter, so the
+                // performer sets the density and the routine keeps it from
+                // becoming a metronome.
+                wait = (~beatParams.padEvery ? 34.0) * rrand(0.65, 1.35);
             } { |e|
                 ("[pad] ensemble frame: " ++ e.errorString).postln;
                 wait = 10.0;

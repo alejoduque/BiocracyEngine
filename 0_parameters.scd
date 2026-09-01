@@ -183,6 +183,19 @@
     // Base probability per tick for dust grains, before tide and excitation.
     (name: \dustRate,   spec: ControlSpec(0.03, 0.85, \exp), default: 0.34, path: "/cadence/dust",
         hasBus: false, beatParam: \dustRate,   cc: 27),
+    // Seconds between pad swells. The pad had NO rate control at all — only a
+    // level — so its presence could be turned down but never made denser or
+    // sparser, which is the control that actually changes what the bed does.
+    // 8 s is a near-continuous wash (the envelope runs ~89 s, so voices stack);
+    // 120 s is one swell arriving every two minutes over silence.
+    (name: \padEvery,   spec: ControlSpec(8.0, 120.0, \exp), default: 34.0, path: "/cadence/pad",
+        hasBus: false, beatParam: \padEvery,   cc: 28),
+    // How many pad voices may sound at once. This is the other half of pad
+    // density and the one that decides whether it is a bed or an event: at 1
+    // there are real gaps, at 4 it is a sustained chord. Continuous spec for
+    // the same reason kickEvery is — ~makeKnob cannot serve a stepped one.
+    (name: \padVoices,  spec: ControlSpec(1, 4, \lin),       default: 2,    path: "/cadence/padvoices",
+        hasBus: false, beatParam: \padVoices,  cc: 29),
 
     // ── Marea · arco de densidad (toggles 0/1) ──────────────────────────
     // The rhythm is tidal rather than gridded: onsets are probabilistic and
@@ -256,6 +269,22 @@
 
 // Upper-cases the first letter for GUI labels. Replaces String:capitalize,
 // which SC 3.14 does not implement (it threw on every parameter write).
+// Display names for knobs whose parameter name does not read well flattened
+// to caps. PADEVERY / PADVOICES say nothing about which layer they act on,
+// which is the whole question when a rate row sits directly above a level row
+// for the same layers.
+//
+// Overridden here rather than by renaming the parameters: the names are also
+// the OSC paths, the preset keys and the ~beatParams mirrors, so renaming
+// would break every saved config for a cosmetic gain.
+~knobLabels = IdentityDictionary[
+    \kickEvery  -> "KICK ×BAR",
+    \percRate   -> "PERC RATE",
+    \padEvery   -> "PAD EVERY",
+    \padVoices  -> "PAD VOICES",
+    \dustRate   -> "DUST RATE"
+];
+
 ~labelCase = { |name|
     var s = name.asString;
     // ALL CAPS: the GUI is a 1-bit monospace surface and mixed case broke the
