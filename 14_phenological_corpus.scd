@@ -149,7 +149,15 @@ s.waitForBoot {
     // -5 dB, which is a foreground layer rather than a supporting one. That is
     // the right end of the range for this piece — the recordings ARE the
     // subject, and the corpusLevel fader is still there to pull them back.
-    ~trimCorpus = 60.0 * (~trimMaster ? 0.055);
+    // Down 20%: 60.0 -> 48.0. The raise to 60 put the corpus near -5 dB, a
+    // foreground layer, and it was covering the synthesised voices rather than
+    // sitting with them.
+    //
+    // The fallback is corrected to 0.115 at the same time. It was 0.055, a
+    // value ~trimMaster had already moved away from, so a standalone load of
+    // this file ran the corpus at less than half the level the ecosystem does
+    // — the same drift the comment above warns about.
+    ~trimCorpus = 48.0 * (~trimMaster ? 0.115);
 
     // How long one clip takes to hand over to the next, and therefore how long
     // the two overlap. Both corpus envelopes use it for their attack AND their

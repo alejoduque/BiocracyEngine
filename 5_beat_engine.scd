@@ -219,6 +219,16 @@
             s.makeBundle(s.latency + ((i + 1) * interval), {
                 Synth(\opalPerc, [
                     \out, 0, \freq, f, \bodySeed, bodySeed,
+                    // Burst hits are CHOKED: timeStr 0.55 against the default
+                    // 2.0 shortens both the mode decays and the amp envelope.
+                    //
+                    // Musically right — repeated strikes on a real plate damp
+                    // each other, they do not each ring out for three seconds.
+                    // And necessary: opalPerc is now a 56-mode bank with an
+                    // envelope up to 1.8*tStretch, so seven of them overlapping
+                    // at full length is ~390 concurrent Ringz from a single
+                    // transaction. Only the primary strike blooms fully.
+                    \timeStr, 0.55,
                     // Falls away rather than repeating flat.
                     \amp, amp * ((1 - ((i + 1) / (count + 1))) ** 1.3) * 0.85
                 ] ++ (~voiceBusArgs.value ? []) ++ lockArgs);
