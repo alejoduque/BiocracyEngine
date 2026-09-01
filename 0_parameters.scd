@@ -184,7 +184,7 @@
     // 0.32 it lands a few times a minute and each strike is allowed to be an
     // occurrence rather than part of a pulse. The top of the range is
     // unchanged for anyone who does want it dense.
-    (name: \percRate,   spec: ControlSpec(0.02, 4.0, \exp),  default: 0.18, path: "/cadence/perc",
+    (name: \percRate,   spec: ControlSpec(0.02, 4.0, \exp),  default: 0.45, path: "/cadence/perc",
         hasBus: false, beatParam: \percRate,   cc: 26),
     // Base probability per tick for dust grains, before tide and excitation.
     (name: \dustRate,   spec: ControlSpec(0.03, 0.95, \exp), default: 0.52, path: "/cadence/dust",

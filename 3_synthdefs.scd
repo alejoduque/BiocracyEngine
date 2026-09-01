@@ -134,9 +134,13 @@ s.doWhenBooted({
     // struck voices close enough together that the matrix mixer (CC 42-49)
     // can actually balance them from the surface. That is the point: these
     // constants set the STARTING POINT, the faders do the mixing.
-    ~trimDrone = 3.20 * ~trimMaster;   // the BED — continuous, holds the floor
-    ~trimPad   = 1.30 * ~trimMaster;   // PADS / BELLS — 0.65 -> 1.30, it was 14 dB under the bed
-    ~trimKick  = 1.10 * ~trimMaster;   // KICK — 0.35 -> 1.10; the low end must be felt, not inferred
+    // the BED — continuous, holds the floor. This is the REFERENCE: every
+    // ratio below is chosen as a distance beneath it. Raising four layers
+    // toward it last round cost it 6-21 dB of headroom over each and is
+    // why the drone read as lost without its own number ever changing.
+    ~trimDrone = 3.20 * ~trimMaster;
+    ~trimPad   = 0.95 * ~trimMaster;   // PADS / BELLS — pulled back from 1.30; it was crowding the bed
+    ~trimKick  = 0.75 * ~trimMaster;   // KICK — pulled back from 1.10, still 6.6 dB over its old level
     // PERCUSSION — china/trash cymbal. Cut from 0.08 because the voice moved
     // its energy from under 850 Hz up into 5-13 kHz, which is the ear's most
     // sensitive band: the same acoustic power there is perceived roughly 8-10
@@ -155,7 +159,12 @@ s.doWhenBooted({
     // noticeably hotter than what was just calibrated by ear. This is a
     // structural compensation, not a taste judgement — if it now sits wrong,
     // this is the one number to move.
-    ~trimPerc  = 0.90 * ~trimMaster;   // PERC — 0.055 -> 0.90; it was 44 dB down and inaudible
+    // PERC — pulled back from 0.90. The bowl SUSTAINS ~32 s, and a
+    // sustained tone carries far more average energy than a transient at
+    // the same peak — which is the profile that pins the glue compressor
+    // and ducks the bed. Still 16.7 dB over the level at which it was
+    // reported inaudible.
+    ~trimPerc  = 0.55 * ~trimMaster;
     // The bed is the ensemble now, so the ONE continuous voice steps back from
     // 8.0 to 3.2 and the partials carry the rest. Its job is the sub anchor
     // under them rather than the whole bed on its own.
@@ -179,7 +188,7 @@ s.doWhenBooted({
     // dust at amp (0.3 + density*0.35), which on an idle chain is 0.3. So the
     // layer was running at 30% of whatever this constant says. Both are raised
     // together — see 5_beat_engine.scd.
-    ~trimDust  = 1.90 * ~trimMaster;   // DUST — hojarasca; the floor of the piece, just under the bed
+    ~trimDust  = 1.20 * ~trimMaster;   // DUST — pulled back from 1.90, still 4 dB over its old level
     // Field recordings (10_sample_system.scd). Kept in this table rather than
     // beside the sample SynthDef so the whole budget stays readable in one
     // place — a layer that sets its own level somewhere else is exactly how
@@ -1274,9 +1283,17 @@ s.doWhenBooted({
             // …and swells it. Small: this is the bed being rung by the strikes,
             // not a second percussion layer.
             * (1 + (strike * respond * 0.14))
-            // No fallback: 0.10 against the real 1.495 is 15x too quiet, so
-            // if this path ever fired the drone bed all but disappeared.
-            * Lag.kr(mAmp, 2.0).linlin(0, 1, 0.05, 1.4) * ~trimDronePartial
+            // Guarded again, with the RIGHT number this time (13.0 * 0.115).
+            //
+            // Removing the guard was a mistake and it is worth saying why: in
+            // sclang `sig * nil` inside a SynthDef body THROWS at build time,
+            // and a SynthDef that throws is simply never added — the error
+            // prints once to the post window and the piece carries on without
+            // that voice. So the failure mode I removed the guard to avoid,
+            // a silently missing layer, is exactly the one removing it causes.
+            // A wrong fallback is audible and fixable; a missing SynthDef is
+            // just silence.
+            * Lag.kr(mAmp, 2.0).linlin(0, 1, 0.05, 1.4) * (~trimDronePartial ? 1.495)
             * Lag.kr(Select.kr(mixDroneBus >= 0, [1.0, In.kr(mixDroneBus, 1)]), 0.08);
 
         quadSig = if(~limiterChans >= 4) {

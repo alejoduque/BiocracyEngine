@@ -260,13 +260,11 @@ s.doWhenBooted({
             );
 
             sig = sig * env * controlAmp.clip(0, 1) * distanceAmp.clip(0.1, 1) * veil
-                // No fallback. It was 0.0853, a hardcoded copy of an old
-                // 1.55 * 0.055 that ~trimMaster had already moved away from
-                // twice — and ~trimSample is now 0.55, so the stale number was
-                // 1.35x the real level. A silently different level on a
-                // standalone load is worse than a loud failure; the comment
-                // above has been warning about exactly this drift.
-                * ~trimSample
+                // Guarded, with the current value (0.55 * 0.115). See the note
+                // at ~trimDronePartial in 3_synthdefs.scd: an unguarded nil
+                // here does not fail loudly, it fails by never adding the
+                // SynthDef at all.
+                * (~trimSample ? 0.0633)
                 * Lag.kr(Select.kr(mixSampleBus >= 0, [1.0, In.kr(mixSampleBus, 1)]), 0.08);
 
             // Panner chosen from the REAL output channel count, at graph-build

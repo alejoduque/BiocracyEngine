@@ -52,7 +52,7 @@
     // Cadencia — how often each struck layer speaks (CC 25/26/27).
     // Mirrored here by ~setParam via beatParam:, read live by the Routine.
     kickEvery: 1,
-    percRate:  0.18,
+    percRate:  0.45,
     dustRate:  0.52,
     padEvery:  34.0,
     padVoices: 2,
