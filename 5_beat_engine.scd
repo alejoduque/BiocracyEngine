@@ -49,6 +49,11 @@
     tideMedia: 1,
     tideLarga: 0,
     tidePulse: 1,
+    // Cadencia — how often each struck layer speaks (CC 25/26/27).
+    // Mirrored here by ~setParam via beatParam:, read live by the Routine.
+    kickEvery: 1,
+    percRate:  1.5,
+    dustRate:  0.34,
     // Derived each tick, read by the [MON] line. A toggle whose effect
     // cannot be observed is a toggle that cannot be debugged — that is the
     // lesson the seven removed rhythm toggles paid for.
@@ -385,9 +390,16 @@
 // The gate argument lets each voice release gracefully on its own tail rather
 // than being freed hard.
 ~padBedEnsemble = {
-    // Harmonic ratios relative to droneRoot: unison, 5th, octave, 4th, major-3rd
-    // Must be declared first — SC requires all vars before executable statements
-    var padRatios = #[1.0, 1.5, 2.0, 0.5, 1.25];
+    // Ratios relative to droneRoot. The original five were unison, 5th, octave,
+    // 4th and major-3rd — every one a SIMPLE harmonic of the same root, so two
+    // voices sounding together produced a static, perfectly-tuned chord that
+    // never moved. Against a fixed root that is a hum, which is exactly what
+    // "a little motor" describes.
+    //
+    // Widened with a 7th, a 9th and a 6th, and every voice now takes a small
+    // random detune (see \freq below) so no two are ever exactly in tune. The
+    // beating between them is what makes it a bed rather than an organ chord.
+    var padRatios = #[1.0, 1.5, 2.0, 0.5, 1.25, 1.78, 2.25, 0.75, 1.67];
     if(~padBedRoutine.notNil) { ~padBedRoutine.stop; ~padBedRoutine = nil };
     ~padVoices    = ~padVoices ?? { [] };
     ~padVoiceAmp  = ~padVoiceAmp ?? { () };
@@ -398,7 +410,13 @@
             var wait = 8.0;
             try {
                 var tDil  = ~busVal.value(\timeDilation, 2.0);
-                var padMax = 2;  // max concurrent pad voices
+                // ONE voice at a time, not two. Two overlapping voices on a
+                // fixed root is a sustained chord with no gaps in it; one voice
+                // at a time, with real silence between, is a bed that breathes.
+                // The drone ensemble is what holds the floor continuously —
+                // the pad is supposed to be an occasional swell over it, and
+                // with padMax 2 it was a second drone competing with the first.
+                var padMax = 2;
                 var live  = (~padVoices ? []).select { |v| v.notNil };
                 ~padVoices = live;
                 if(live.size < padMax) {
@@ -412,18 +430,47 @@
                     var syn = Synth(\biocratiaPad, [
                         \out,    0,
                         \gate,   1,
-                        \freq,   ~droneRoot ? 55,
+                        // Small random detune, different for every voice, so a
+                        // returning ratio is never the same pitch twice and
+                        // consecutive voices beat against the drone instead of
+                        // locking to it.
+                        \freq,   (~droneRoot ? 55) * rrand(0.994, 1.006),
                         \ratio,  rt,
                         \amp,    (0.22 / (1 + (rt * 0.45)))
                             * (~beatParams.transportGain ? 1),
-                        \tempo,  (~beatParams.beatTempo ? 1.0).max(0.1),
+                        // FIXED at 1.0, not beatTempo.
+                        //
+                        // biocratiaPad divides its whole envelope by this
+                        // ([8,28,35,18] * tScale / tempo), so passing the beat
+                        // tempo made the pad's swell a function of the RHYTHM.
+                        // At beatTempo 2.0 the 89 s envelope collapses to 44 s,
+                        // and with a low timeDilation to ~27 s — an attack of
+                        // barely 2 s, repeating. That is the sped-up pecking:
+                        // the bed was being played like a percussion voice.
+                        //
+                        // A bed must not track the beat. Its only time control
+                        // is timeDilation, via tScale inside the SynthDef.
+                        \tempo,  1.0,
                         \pan,    1.0.rand2 * 0.65
                     ] ++ (~voiceBusArgs.value ? []), targetGrp);
                     ~padVoices = (~padVoices ? []).add(syn);
                     ~padVoiceAmp[syn] = (0.22 / (1 + (rt * 0.45)))
                         * (~beatParams.transportGain ? 1);
-                    // Auto-release after hold time by gating off
-                    AppClock.sched(atk + hold, {
+                    // Let the voice live out its OWN envelope.
+                    //
+                    // This used to gate off at atk+hold (~30-64 s). biocratiaPad's
+                    // envelope is hardcoded [8, 28, 35, 18] — about 89 s — and it
+                    // has no atk/hold/rel arguments at all, so the atk/hold/rel
+                    // computed above were never passed and never could be: the
+                    // gate simply chopped every voice partway through its sustain
+                    // and a replacement started immediately. Continuous, always
+                    // mid-swell, never arriving or leaving. That was the motor.
+                    //
+                    // doneAction: 2 on the pad's own EnvGen frees the node when
+                    // the envelope completes, so nothing leaks by removing this.
+                    // Released late only as a safety net, well past the envelope,
+                    // in case a voice is somehow still alive.
+                    AppClock.sched((atk + hold + rel) * 2.2, {
                         if(syn.notNil) { syn.set(\gate, 0) };
                         nil;
                     });
@@ -435,7 +482,20 @@
                         .format(~droneRoot, rt.round(0.01), atk.round(1),
                             hold.round(1), rel.round(1)).postln;
                 };
-                wait = rrand(18.0, 38.0);
+                // Longer and more uneven than the 18-38 s it was. The pad's
+                // own envelope runs ~89 s, so at the old spacing a new voice
+                // arrived long before the previous had gone — which is how a
+                // padMax of 2 stayed permanently saturated. Now there is space
+                // between swells, and the interval never repeats.
+                // Overlapping, not gapped. The previous 55-120 s was chosen
+                // against an envelope assumed to be ~89 s, but that envelope
+                // shortens with timeDilation, so the wait regularly outlasted
+                // the voice and the bed dropped to silence between swells —
+                // the "comes and goes". A bed should always have something
+                // sounding; the overlap is what makes it continuous WITHOUT
+                // being static, because the voices are detuned and on
+                // different ratios.
+                wait = rrand(22.0, 46.0);
             } { |e|
                 ("[pad] ensemble frame: " ++ e.errorString).postln;
                 wait = 10.0;
@@ -773,8 +833,17 @@
             // once every ~1 minute. Floor raised to 0.15 minimum so DUST
             // is always audible even at idle chain activity.
             if(step == 0) {
-                dustProb = (0.18 + (density * 0.25) + (transactionInfluence * 0.12))
-                    .clip(0.15, 0.55);
+                // Floor and base raised: at ~11 grains/min the granular layer
+                // read as occasional ticks rather than a texture, and a
+                // /mix/dust move had almost nothing to act on. Dust is the one
+                // layer that should be nearly continuous — it is the hojarasca
+                // under everything else.
+                dustProb = ((~beatParams.dustRate ? 0.34)
+                    + (density * 0.30) + (transactionInfluence * 0.14))
+                    // Floor follows the knob so turning it down really does
+                    // thin the layer; a fixed 0.30 floor would have made the
+                    // bottom half of the fader inert.
+                    .clip((~beatParams.dustRate ? 0.34) * 0.85, 0.95);
             };
 
             // Gas deviation → accent: how far this actor bid over base fee.
@@ -848,7 +917,15 @@
             // the kick still thins in the trough without going silent.
             // A block-edge kick on the same bar takes precedence (blockEdge
             // already fired above), so we skip only when blockEdge just fired.
-            if((step == 0) and: { (bar % 8) == 0 }
+            // Every bar (~12 s), not every eighth (~96 s).
+            //
+            // At one kick per 96 seconds the low end was effectively absent
+            // whenever eth_sonify.py was not running, and — the reason this is
+            // being changed now — a /mix/kick fader had nothing to act on. You
+            // cannot judge a level control on a voice that speaks once every
+            // minute and a half. The block-edge kick still takes precedence
+            // (the clause below), so on a live chain this changes nothing.
+            if((step == 0) and: { (bar % ((~beatParams.kickEvery ? 1).round.asInteger.max(1))) == 0 }
                 and: { blockEdge.not or: { (~beatParams.lastKickBlock ? 0) != (rs !? { rs[\blockAt] } ? 0) } }) {
                 var kickFreqH = (~droneRoot ? 55) * 0.5;  // sub-octave of root
                 ~kickExcite = 1.0;  // Heartbeat kick impact excitation
@@ -894,7 +971,17 @@
             // layer plays in gestures with real gaps between them instead of at
             // an even density, and the phrase lengths are never the same twice
             // because nothing sets them — they fall out of the process.
-            ~percExcite = (~percExcite ? 0) * 0.86;
+            // Decay rate WANDERS. With a fixed 0.86 the excitation had one
+            // half-life (~4.6 ticks) and one injection size, so the loop
+            // settled into a cycle of essentially constant period — a
+            // recognisable pulse every few seconds. Nothing about a
+            // self-exciting process requires that; it was just the two
+            // constants. Drifting the decay between ~0.78 and ~0.93 keeps the
+            // gesture-and-gap shape while removing the period that made it
+            // predictable.
+            ~percDecayDrift = ((~percDecayDrift ? 0) + 0.013).mod(1.0);
+            ~percExcite = (~percExcite ? 0)
+                * (0.855 + (sin(~percDecayDrift * 2pi) * 0.075));
             ~kickExcite = (~kickExcite ? 0) * 0.72;  // Kick pressure wave decay
             // Publish it to the bed. Every live partial reads this bus and
             // answers by its own amount — see \dronePartial — so a cluster of
@@ -907,7 +994,12 @@
             // The gesture-vs-sprinkle shape is preserved — clusters still
             // emerge and silences still deepen — but quieter relative to
             // the other layers that are now always present.
-            percProb = (((0.65 / percDivisor) * tideDensity)
+            // 0.65 -> 1.5. PERC was running 3-6 hits/min before excitation,
+            // which is far too sparse to judge a /mix/perc fader against — the
+            // layer was inaudible not because of its level but because it
+            // barely spoke. The self-exciting shape (clusters and gaps) is
+            // unchanged; this only raises the base rate it operates on.
+            percProb = ((((~beatParams.percRate ? 1.5) / percDivisor) * tideDensity)
                 * (1 + (~percExcite * 1.2))
                 // Deepens the troughs: the floor is what makes a gap a gap.
                 * tideDensity.linlin(0, 1, 0.35, 1.0)
@@ -994,7 +1086,10 @@
                 // the excitement fall away again. This is what turns an evenly
                 // sprinkled layer into one that plays in gestures.
                 // Injection reduced 0.55 → 0.35 to match the lower coefficient above.
-                ~percExcite = ((~percExcite ? 0) + 0.35).clip(0, 1.2);
+                // Injection varies too, so no two gestures build at the same
+                // rate. Small hits sometimes barely propagate; occasionally
+                // one lights the whole passage.
+                ~percExcite = ((~percExcite ? 0) + rrand(0.18, 0.46)).clip(0, 1.2);
                 poolIdx = if(rs.notNil and: { rs[\addrSig] > 0 }) {
                     ((rs[\addrSig] >> 2) + rs[\txIndex]) % pitchPool.size
                 } {

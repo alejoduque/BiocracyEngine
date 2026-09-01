@@ -96,7 +96,14 @@
     // as one AudioMoth clip and the full ring takes 6h05m; 0.002 is the deep
     // reading where one day is 8 minutes — the same x8 the ultrasonic tier
     // uses, so the bat's time becomes the calendar's.
-    (name: \phenoRate,         spec: ControlSpec(0.002, 4.0, \exp),  default: 0.0167, path: "/pheno/rate",            cc: 21),
+    // Ceiling lowered 4.0 -> 0.0167 days/s: ONE MINUTE per phenological day is
+    // now the FASTEST the ring can turn, not a mid-fader value. The old top
+    // scrubbed a day in 0.2 s, which is not a calendar being read, it is a
+    // seek bar — and because the spec is exponential, most of the fader's
+    // travel sat above the useful range and it was easy to land far too fast.
+    // The floor is unchanged, so the slow reading (8 min/day) is still there
+    // and the whole fader now spans minute-per-day to eight-minutes-per-day.
+    (name: \phenoRate,         spec: ControlSpec(0.002, 0.0167, \exp), default: 0.0167, path: "/pheno/rate",            cc: 21),
     // Level of the field-recording layer against the synthesis. Its own fader
     // because the corpus is a fourth actor, not an effect on the other three.
     (name: \corpusLevel,       spec: ControlSpec(0, 1, \lin),       default: 0.5,  path: "/pheno/corpusLevel",       cc: 22),
@@ -105,6 +112,19 @@
     // chain is doing — see 17_chain_processing.scd for why this is the shape
     // the coupling takes rather than the chain playing notes.
     (name: \chainProcess,      spec: ControlSpec(0, 1, \lin),       default: 0.45, path: "/chain/process",           cc: 23),
+    // How much of the camera-trap and spectrogram register slot C actually
+    // projects. This Chamber withholds nothing by default: 1.0 is every clip
+    // at full opacity, felids included, and that is where the fader boots.
+    //
+    // It is deliberately NOT a veil list. The earlier design refused sensitive
+    // species in code, which put the decision in a constant no session could
+    // reach and made the refusal indistinguishable from missing data. Here the
+    // decision is on the surface, reversible, and visibly the Chamber's: turn
+    // it down and the register recedes in order of each clip's `sensitivity`
+    // (build_cameratrap.py) — the two felids first, insects and rain last, so
+    // at 0.0 the ring still shows that something was recorded even where it no
+    // longer shows what. Absence stays legible as absence.
+    (name: \camaraOpacity,     spec: ControlSpec(0, 1, \lin),       default: 1.0,  path: "/camara/opacity",          cc: 24),
 
     // ── Row 8: Matrix mixer — one live fader per audible layer ──────────
     // Until now the balance between layers lived only in the hardcoded gain
@@ -128,6 +148,41 @@
     // ── Beat engine (no control bus — lives in ~beatParams) ─────────────
     (name: \beatTempo, spec: ControlSpec(0.5, 2.0, \exp), default: 1.0, path: "/soneth/beatTempo",
         hasBus: false, beatParam: \beatTempo),
+
+    // ── Cadencia · how OFTEN each struck layer speaks ───────────────────
+    // The matrix mixer (CC 44-49) sets how LOUD a layer is. These three set
+    // how OFTEN it occurs, which is the other half of its presence and until
+    // now was reachable only by editing 5_beat_engine.scd.
+    //
+    // The distinction matters musically: turning a layer down and making it
+    // rarer sound nothing alike. A quiet kick on every bar is a pulse; a loud
+    // kick once a minute is an event. Both were previously collapsed into one
+    // fader, which is why the mix controls felt like they did nothing — at one
+    // hit per 96 s there was no second hit to hear the change on.
+    //
+    // hasBus: false — the beat Routine reads ~beatParams directly in sclang
+    // (In.kr inside a Routine returns a UGen, not a number), so these mirror
+    // there rather than onto a control bus. Same shape as beatTempo above.
+
+    // Bars between guaranteed kicks when the chain is idle. 1 = every bar
+    // (~12 s), 8 = the old behaviour (~96 s, effectively absent).
+    //
+    // NOT a stepped spec, deliberately. ~makeKnob cannot serve one: it rebuilds
+    // the spec without its step, ~setParam re-quantises against the real spec
+    // and writes the rounded value back into the widget, and a \vert-mode Knob
+    // drags RELATIVE to its current value — so the write-back resets the
+    // accumulator on every mouse event and the knob can never leave position 0.
+    // That is documented at the \bancada row in 4_gui.scd, which had to become
+    // a button row for exactly this reason. The beat engine rounds it instead.
+    (name: \kickEvery,  spec: ControlSpec(1, 8, \lin),       default: 1,    path: "/cadence/kick",
+        hasBus: false, beatParam: \kickEvery,  cc: 25),
+    // Base probability numerator for percussion, divided by percDivisor.
+    // 0.65 was the old sparse value; 1.5 is the current default.
+    (name: \percRate,   spec: ControlSpec(0.15, 4.0, \exp),  default: 1.5,  path: "/cadence/perc",
+        hasBus: false, beatParam: \percRate,   cc: 26),
+    // Base probability per tick for dust grains, before tide and excitation.
+    (name: \dustRate,   spec: ControlSpec(0.03, 0.85, \exp), default: 0.34, path: "/cadence/dust",
+        hasBus: false, beatParam: \dustRate,   cc: 27),
 
     // ── Marea · arco de densidad (toggles 0/1) ──────────────────────────
     // The rhythm is tidal rather than gridded: onsets are probabilistic and

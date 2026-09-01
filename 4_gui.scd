@@ -484,7 +484,18 @@
             [\tideShort, \tideMedia, \tideLarga, \tidePulse],
             // Cámara Fenológica · Corpus: the field-recording layer's own fader,
             // with the bancada selector and the transport button beside it.
-            [\corpusLevel, \chainProcess]
+            // camaraOpacity is the visual register's share of the same room —
+            // how much of the camera trap slot C projects. It sits here rather
+            // than in a row of its own because the performer reaches for it in
+            // the same gesture as corpusLevel: one decides how loud the forest
+            // is, the other how much of it is seen.
+            [\corpusLevel, \chainProcess, \camaraOpacity],
+            // Cadencia — how OFTEN, not how loud. The matrix mixer row below
+            // sets each layer's level; these set its rate. They are the other
+            // half of the same question and the reason the mix faders felt
+            // inert: at one kick per 96 s there was no second hit to hear a
+            // level change on. CC 25/26/27.
+            [\kickEvery, \percRate, \dustRate]
         ];
 
         // Enhanced knob function with oscilloscope aesthetics
