@@ -837,21 +837,16 @@ s.waitForBoot {
 
             try {
                 rate = ~phenoVal.(\phenoRate, 0.0167).clip(0.002, 4.0);
-                // timeDilation stretches the ring as well as the synth voices.
+                // timeDilation deliberately does NOT reach the corpus.
                 //
-                // It is the engine's one global time control — everywhere else
-                // it lengthens or shortens what a voice does — and the corpus
-                // was the only layer it did not reach, so the field recordings
-                // kept their own pace while everything around them slowed down
-                // or sped up. Now the whole piece dilates together.
-                //
-                // Normalised against the 2.0 default so the boot state is
-                // exactly as before: 0.5 makes days pass 4x faster (clips skip
-                // by), 6.0 makes them last 3x longer (each one is dwelt on).
-                // phenoRate still sets the base tempo of the ring; this is a
-                // multiplier over it.
-                secsPerDay = (1.0 / rate)
-                    * (~phenoVal.(\timeDilation, 2.0).clip(0.5, 6.0) / 2.0);
+                // It briefly did, and it was the wrong coupling: the field
+                // recordings are documents with their own duration, not
+                // synthesis to be stretched, and tying them to the same knob
+                // that lengthens the struck voices makes the ring speed up and
+                // slow down for a reason that has nothing to do with the
+                // calendar. phenoRate is the ring's tempo control and the only
+                // one that should be.
+                secsPerDay = 1.0 / rate;
 
                 ~phenoCursor = ~phenoCursor + 1;
                 if(~phenoCursor > 365) { ~phenoCursor = 1 };

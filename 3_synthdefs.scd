@@ -644,6 +644,13 @@ s.doWhenBooted({
         // the toggles reach every voice already sounding, not just the next
         // one struck; literals as a fallback when unwired.
         bowlOnBus=(-1), chinaOnBus=(-1), bowlOn=1, chinaOn=1,
+        // Per-strike envelope scale. timeDilation sets how long this voice
+        // rings GLOBALLY; this scales one strike against that, so the same
+        // instrument can be a 30 s bowl when the tide strikes it and a short
+        // punctuation when the chain does. Without it every bell rang the full
+        // length and, at one every 6 s, five of them overlapped permanently —
+        // 32 resonators and a room-0.94 reverb each. That was the saturation.
+        envScale=1.0,
         // ─── Parameter locks ────────────────────────────────────────────────
         // These were CONSTANTS inside the Select.kr fallbacks below, which meant
         // a trig had no way to carry its own values: every hit read the same
@@ -790,8 +797,8 @@ s.doWhenBooted({
         // timeDilation; the top of the shell fades in ~5 s. Clipped at 34 s so
         // a large timeDilation cannot leave a node alive indefinitely.
         decays = Array.fill(7, { |i|
-            (((i + 1) ** -0.42) * (tStretch * 8.0) * damp.linlin(1.2, 3.5, 1.25, 0.7))
-                .clip(1.5, 34.0);
+            (((i + 1) ** -0.42) * (tStretch * 8.0) * envScale.clip(0.1, 2.0)
+                * damp.linlin(1.2, 3.5, 1.25, 0.7)).clip(0.4, 34.0);
         });
 
         // The fundamental carries the tone; the overtones colour it.
@@ -965,7 +972,7 @@ s.doWhenBooted({
             // tail was being removed before it could develop. Curve -3.2
             // rather than -4.5: a bowl decays gently, it does not collapse.
             // Clipped at 40 s so a large timeDilation cannot strand a node.
-            Env.perc(0.002, (16.0 * tStretch).clip(2.0, 40.0), 1, -3.2),
+            Env.perc(0.002, (16.0 * tStretch * envScale.clip(0.1, 2.0)).clip(0.6, 40.0), 1, -3.2),
             doneAction: 2);
 
         // Ping-pong delay + Reverb

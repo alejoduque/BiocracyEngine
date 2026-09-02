@@ -90,15 +90,31 @@ s.doWhenBooted({
     ~strikeBell = { |freq = 180, amp = 0.5|
         var now = SystemClock.seconds;
         var gap = (~beatParams !? { ~beatParams.bellEvery } ? 6.0);
-        if((now - (~lastBellAt ? 0)) >= gap) {
+        var live = (~bellLive ? []).select { |t| t > now }.size;
+        // Hard ceiling on concurrency as well as a minimum gap. The gap alone
+        // does not bound the layer when the envelope is longer than it.
+        if(((now - (~lastBellAt ? 0)) >= gap) and: { live < 3 }) {
             var grp = if(~defaultGroup.notNil, { ~defaultGroup }, { s.defaultGroup });
             ~lastBellAt = now;
+            // Track what is still ringing, so a burst cannot stack. Entries
+            // expire on their own schedule rather than being counted from the
+            // server's node list, which also holds the drone, the limiter and
+            // every corpus voice.
+            ~bellLive = (~bellLive ? []).select { |t| t > now };
             if(~lastVoiceAt.notNil) { ~lastVoiceAt[\pad] = now };
+            ~bellLive = ~bellLive.add(now + 12);
             Synth(\opalPerc, [
                 \out,  0,
                 \freq, (freq * 0.5).clip(45, 220),
                 \amp,  amp.clip(0, 1) * 0.7,
-                \bodySeed, 1.0.rand
+                \bodySeed, 1.0.rand,
+                // A chain event is punctuation, not the main event. At full
+                // length a bell rings 32 s, and one every 6 s means five
+                // overlapping permanently — each a 32-resonator bank with its
+                // own reverb. 0.30 makes it ~10 s, so roughly 1.6 overlap.
+                // The tide-struck PERC keeps the full 1.0 and stays the long
+                // bowl; timeDilation still scales both.
+                \envScale, 0.30
             ] ++ (~voiceBusArgs.value ? []), grp);
             true
         } {
