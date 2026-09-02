@@ -191,14 +191,38 @@ function connectControlWS() {
         }
 
         // Update HTML slider + display span
-        const slider = document.querySelector<HTMLInputElement>(
+        // querySelectorAll, not querySelector: a parameter may legitimately
+        // appear on more than one slider — timeDilation now sits both in the
+        // sonETH block and under Cámara Fenológica, where it governs the ring's
+        // pace. Syncing only the first match would leave the other showing a
+        // stale position the moment SC echoed a change.
+        document.querySelectorAll<HTMLInputElement>(
           `input[type='range'][data-osc='${address}']`
-        );
-        if (slider) slider.value = String(v);
+        ).forEach((el) => { el.value = String(v); });
 
         const dispId = `disp-soneth-${key}`;
         const dispEl = document.getElementById(dispId);
         if (dispEl) dispEl.textContent = v.toFixed(2);
+        // A parameter shown in two places needs two readouts, and ids must be
+        // unique — so a MIRROR span carries data-mirror="<osc address>" instead
+        // of a second id. Used by the timeDilation copy under Cámara
+        // Fenológica, which reports what the knob means for the ring rather
+        // than repeating the raw number.
+        document.querySelectorAll<HTMLElement>(
+          `[data-mirror='${address}']`
+        ).forEach((el) => {
+          if (el.dataset.mirrorFmt === "ringx") {
+            // v arrives NORMALISED 0-1, like every echoed slider value — it
+            // has to be mapped through timeDilation's own spec before it means
+            // anything. ControlSpec(0.5, 6, \exp) => 0.5 * 12^v. Then over the
+            // 2.0 default, which is the multiplier the corpus actually applies
+            // to its seconds-per-day.
+            const dil = 0.5 * Math.pow(12, Math.max(0, Math.min(1, v)));
+            el.textContent = `${(dil / 2.0).toFixed(2)}× day`;
+          } else {
+            el.textContent = v.toFixed(2);
+          }
+        });
       }
 
       // Also handle /parliament/volume echo from SC master volume changes
@@ -364,10 +388,14 @@ function connectControlWS() {
         if (typeof v !== "number" || !isFinite(v)) return;
 
         // 1. Sync HTML slider (bidirectional triple)
-        const slider = document.querySelector<HTMLInputElement>(
+        // querySelectorAll, not querySelector: a parameter may legitimately
+        // appear on more than one slider — timeDilation now sits both in the
+        // sonETH block and under Cámara Fenológica, where it governs the ring's
+        // pace. Syncing only the first match would leave the other showing a
+        // stale position the moment SC echoed a change.
+        document.querySelectorAll<HTMLInputElement>(
           `input[type='range'][data-osc='${address}']`
-        );
-        if (slider) slider.value = String(v);
+        ).forEach((el) => { el.value = String(v); });
         const dispEl = document.getElementById(`disp-pheno-${key}`);
         if (dispEl) dispEl.textContent = v.toFixed(2);
 
@@ -395,10 +423,14 @@ function connectControlWS() {
         if (typeof v !== "number" || !isFinite(v)) return;
         const key = address.slice("/camara/".length);
 
-        const slider = document.querySelector<HTMLInputElement>(
+        // querySelectorAll, not querySelector: a parameter may legitimately
+        // appear on more than one slider — timeDilation now sits both in the
+        // sonETH block and under Cámara Fenológica, where it governs the ring's
+        // pace. Syncing only the first match would leave the other showing a
+        // stale position the moment SC echoed a change.
+        document.querySelectorAll<HTMLInputElement>(
           `input[type='range'][data-osc='${address}']`
-        );
-        if (slider) slider.value = String(v);
+        ).forEach((el) => { el.value = String(v); });
         const dispEl = document.getElementById(`disp-camara-${key}`);
         if (dispEl) dispEl.textContent = v.toFixed(2);
 
@@ -414,10 +446,14 @@ function connectControlWS() {
         const v = args[0];
         if (typeof v !== "number" || !isFinite(v)) return;
         const layer = address.slice("/mix/".length);
-        const slider = document.querySelector<HTMLInputElement>(
+        // querySelectorAll, not querySelector: a parameter may legitimately
+        // appear on more than one slider — timeDilation now sits both in the
+        // sonETH block and under Cámara Fenológica, where it governs the ring's
+        // pace. Syncing only the first match would leave the other showing a
+        // stale position the moment SC echoed a change.
+        document.querySelectorAll<HTMLInputElement>(
           `input[type='range'][data-osc='${address}']`
-        );
-        if (slider) slider.value = String(v);
+        ).forEach((el) => { el.value = String(v); });
         const dispEl = document.getElementById(`disp-mix-${layer}`);
         if (dispEl) dispEl.textContent = `${(v * 2.0).toFixed(2)}x`;
       }

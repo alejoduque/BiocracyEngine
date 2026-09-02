@@ -1265,6 +1265,18 @@
                      the register in order of each clip's own sensitivity, so
                      the ring keeps saying *that* it recorded even when it
                      stops saying what. -->
+                <!-- The same /soneth/timedilation as the sonETH block above —
+                     one parameter, shown where it is used. It multiplies the
+                     ring's seconds-per-day, so it is the skip rate of the
+                     AudioMoth clips: 0.25x flicks through them, 3x dwells.
+                     Ring Rate sets the base tempo; this stretches it. -->
+                <div class="ctrl-row">
+                    <label>Ring Dilat</label>
+                    <input type="range" min="0" max="1" step="0.01" value="0.56"
+                        data-osc="/soneth/timedilation">
+                    <span class="ctrl-val" data-mirror="/soneth/timedilation"
+                        data-mirror-fmt="ringx">1.00× day</span>
+                </div>
                 <div class="ctrl-row">
                     <label>Cámara Op</label>
                     <input type="range" min="0" max="1" step="0.01" value="1.00"
