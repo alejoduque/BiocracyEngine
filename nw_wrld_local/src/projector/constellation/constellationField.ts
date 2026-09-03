@@ -97,6 +97,14 @@ type Instance = {
   vy: number;
   /** Radians. Small — a figure upside down is not recognisable. */
   rot: number;
+  /** Slow spin, rad/frame. A constellation that never turns reads as a decal. */
+  rotVel: number;
+  /** Epicycle: the arc a figure traces on top of its linear drift. */
+  orbA: number;
+  orbR: number;
+  orbW: number;
+  /** Eased elongation, 0 = at rest. Driven by how fast the crosshair sweeps. */
+  elong: number;
   /** Per-instance size variation, so a field does not look stamped. */
   sizeVar: number;
   /** 0-1, eased toward the pointer's proximity. */
@@ -155,7 +163,7 @@ export function mountConstellationField(
   let raf = 0;
   let dead = false;
   let pulseAmt = 0;
-  const pointer = { x: -1e5, y: -1e5 };
+  const pointer = { x: -1e5, y: -1e5, vx: 0, vy: 0 };
 
   const reduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 
@@ -186,16 +194,24 @@ export function mountConstellationField(
     }
   }
 
-  /** Figures on screen at once. Fewer than the reference's node count: a
-   *  figure occupies real area, and crowding them makes every one illegible. */
+  /** Figures on screen at once.
+   *
+   *  The first mapping was `round(6 * density)`, and `density` arrives from
+   *  mountSlotField as 0.35 + textureDepth * 1.15 — so with the texture knob
+   *  down it evaluated to 2.1 and the field showed TWO animals. The knob was
+   *  silently deciding whether the piece had a cast at all.
+   *
+   *  Five is now the floor and the whole roster the ceiling: density chooses
+   *  how crowded the sky is, never whether there is one. */
   function figureCount(): number {
-    const base = width < 900 ? 4 : 6;
-    return Math.max(2, Math.min(ANIMALS.length, Math.round(base * p.density)));
+    return Math.max(5, Math.min(ANIMALS.length, Math.round(4 + p.density * 3.2)));
   }
 
-  /** Base figure radius in px, before per-instance variation. */
-  function figureScale(): number {
-    return Math.min(width, height) * 0.15 * p.size;
+  /** Base figure radius in px, before per-instance variation.
+   *  Eases down as the cast grows so nine figures do not overlap into mush. */
+  function figureScale(n: number): number {
+    const crowd = 1 - Math.max(0, n - 5) * 0.035;
+    return Math.min(width, height) * 0.15 * p.size * crowd;
   }
 
   function resize() {
@@ -225,6 +241,14 @@ export function mountConstellationField(
         // ±11°: enough that the field is not a grid, little enough that every
         // animal still reads the way it was drawn.
         rot: (Math.random() - 0.5) * 0.38,
+        // ~1 turn in 3-9 minutes at 60 fps, and either way round. Slow enough
+        // to be invisible frame to frame, obvious if you look away and back —
+        // the same discipline as the idle camera drift in vizMotion.ts.
+        rotVel: (Math.random() - 0.5) * 0.00035,
+        orbA: Math.random() * Math.PI * 2,
+        orbR: 6 + Math.random() * 22,
+        orbW: (Math.random() - 0.5) * 0.006,
+        elong: 0,
         sizeVar: 0.82 + Math.random() * 0.42,
         reveal: 0,
         phase: Math.random() * Math.PI * 2,
@@ -247,8 +271,18 @@ export function mountConstellationField(
     // The rect is cached on resize rather than read here: reading geometry on
     // every pointer event forces a synchronous layout, and at pointer rate
     // that is the expensive half of a drag.
-    pointer.x = e.clientX - hostLeft;
-    pointer.y = e.clientY - hostTop;
+    const nx = e.clientX - hostLeft;
+    const ny = e.clientY - hostTop;
+    // Sweep velocity, smoothed. This is what the figures elongate along, so it
+    // is taken per EVENT rather than per frame — a fast flick can deliver
+    // several moves inside one frame, and averaging them into the frame would
+    // throw away exactly the gesture we want to render.
+    if (pointer.x > -1e4) {
+      pointer.vx += ((nx - pointer.x) - pointer.vx) * 0.4;
+      pointer.vy += ((ny - pointer.y) - pointer.vy) * 0.4;
+    }
+    pointer.x = nx;
+    pointer.y = ny;
   };
   const onLeave = () => {
     pointer.x = -1e5;
@@ -278,7 +312,15 @@ export function mountConstellationField(
     pulseAmt *= 0.94;
     const ink = INK[p.mode];
     const now = Date.now();
-    const scale = figureScale();
+    const scale = figureScale(instances.length);
+    // The sweep decays here rather than in onMove, because mousemove simply
+    // stops firing when the pointer halts — without this the field would stay
+    // elongated forever at the last velocity it saw.
+    pointer.vx *= 0.88;
+    pointer.vy *= 0.88;
+    const sweep = Math.hypot(pointer.vx, pointer.vy);
+    // ~26 px between smoothed samples is a brisk sweep; past that it saturates.
+    const sweepN = Math.min(1, sweep / 26);
     // The pointer's reach. Same 160 px unit the reference used for LINK, so a
     // slot's `length` still means "how far this field associates".
     const reach = (150 * p.length + scale) * (1 + pulseAmt * 0.4);
@@ -301,17 +343,26 @@ export function mountConstellationField(
 
     // ── The figures ───────────────────────────────────────────────────────
     for (const inst of instances) {
+      // Linear drift carries the figure; the epicycle bends it. Straight lines
+      // with a wall bounce read as a screensaver — an arc reads as an orbit,
+      // which is what a thing in a sky is meant to be doing.
       inst.cx += inst.vx * p.speed;
       inst.cy += inst.vy * p.speed;
+      inst.orbA += inst.orbW * p.speed;
+      inst.rot += inst.rotVel * p.speed;
       const s = scale * inst.sizeVar;
-      const margin = s * 1.15;
+      const margin = s * 1.15 + inst.orbR;
       if (inst.cx < margin || inst.cx > width - margin) inst.vx *= -1;
       if (inst.cy < margin || inst.cy > height - margin) inst.vy *= -1;
       inst.cx = Math.max(margin, Math.min(width - margin, inst.cx));
       inst.cy = Math.max(margin, Math.min(height - margin, inst.cy));
+      // The drawn centre, orbit included. Bounds are tested on the guiding
+      // centre above so the epicycle can never walk a figure off the edge.
+      const px0 = inst.cx + Math.cos(inst.orbA) * inst.orbR;
+      const py0 = inst.cy + Math.sin(inst.orbA) * inst.orbR * 0.6;
 
-      const dx = pointer.x - inst.cx;
-      const dy = pointer.y - inst.cy;
+      const dx = pointer.x - px0;
+      const dy = pointer.y - py0;
       const dist = Math.hypot(dx, dy);
       // Smoothstep so a figure neither snaps on nor has a visible corner as it
       // resolves. 1 at the centre of the pointer, 0 at the edge of its reach.
@@ -334,14 +385,59 @@ export function mountConstellationField(
         leanY = (dy / dist) * lean;
       }
 
+      // ── Elongation ────────────────────────────────────────────────────
+      // The figure stretches ALONG the crosshair's sweep, like a body of light
+      // smeared by the motion that found it. Eased in and out rather than
+      // applied raw, so a flick leaves the figure still relaxing after the
+      // pointer has gone — the "flexible" half of the gesture.
+      //
+      // Target is the product of three things, so it only happens where all
+      // three are true: the figure is resolved (rev), the pointer is actually
+      // moving (sweepN), and it is close enough to be affected (proximity).
+      const near = Math.max(0, Math.min(1, 1 - dist / (reach * 0.85)));
+      const eTarget = rev * sweepN * near * 0.55;
+      inst.elong += (eTarget - inst.elong) * (eTarget > inst.elong ? 0.22 : 0.06);
+      const el = inst.elong;
+
+      // Direction of the stretch: the sweep itself while it is moving, falling
+      // back to the axis toward the pointer as it slows, so a figure never
+      // snaps orientation at the moment the sweep dies.
+      let ux = 1;
+      let uy = 0;
+      if (sweep > 0.05 || dist > 1) {
+        const bx = pointer.vx * 3 + (dist > 1 ? (dx / dist) * (1 - sweepN) * 6 : 0);
+        const by = pointer.vy * 3 + (dist > 1 ? (dy / dist) * (1 - sweepN) * 6 : 0);
+        const bl = Math.hypot(bx, by);
+        if (bl > 0.0001) { ux = bx / bl; uy = by / bl; }
+      }
+      // The perpendicular gives back SOME of what the long axis gains — not
+      // all of it. det = along * across = sqrt(1 + el), so at full stretch the
+      // long axis grows 55% while the area grows 25%: the figure reads as
+      // smeared rather than merely nearer. True area preservation (across =
+      // 1/along) pinches the waist 35% and looks rubbery on the wide figures
+      // like the bat and the macaw, which is why this is a half measure on
+      // purpose rather than by oversight.
+      const along = 1 + el;
+      const across = 1 / Math.sqrt(along);
+
       const cos = Math.cos(inst.rot);
       const sin = Math.sin(inst.rot);
-      const ox = inst.cx + leanX;
-      const oy = inst.cy + leanY;
-      const pts = inst.animal.stars.map(([sx, sy]) => [
-        ox + (sx * cos - sy * sin) * s,
-        oy + (sx * sin + sy * cos) * s,
-      ] as [number, number]);
+      const ox = px0 + leanX;
+      const oy = py0 + leanY;
+      const pts = inst.animal.stars.map(([sx, sy]) => {
+        // rotate into the figure's own orientation first
+        const rx = (sx * cos - sy * sin) * s;
+        const ry = (sx * sin + sy * cos) * s;
+        // then decompose against the stretch axis and rescale each component
+        const par = rx * ux + ry * uy;
+        const per = -rx * uy + ry * ux;
+        const pa = par * along;
+        const pe = per * across;
+        return [
+          ox + pa * ux - pe * uy,
+          oy + pa * uy + pe * ux,
+        ] as [number, number];
+      });
 
       // Bones first, so stars sit crisp on top — the reference's ordering.
       if (rev > 0.004) {
