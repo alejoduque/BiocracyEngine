@@ -162,12 +162,24 @@ s.doWhenBooted({
     // noticeably hotter than what was just calibrated by ear. This is a
     // structural compensation, not a taste judgement — if it now sits wrong,
     // this is the one number to move.
-    // PERC — pulled back from 0.90. The bowl SUSTAINS ~32 s, and a
-    // sustained tone carries far more average energy than a transient at
-    // the same peak — which is the profile that pins the glue compressor
-    // and ducks the bed. Still 16.7 dB over the level at which it was
-    // reported inaudible.
-    ~trimPerc  = 0.55 * ~trimMaster;
+    // PERC — 0.55 -> 0.055, set by ear rather than by arithmetic.
+    //
+    // Reported loud with the /mix/perc fader at 0.20x, so 0.20x becomes the
+    // fader's TOP instead of a tenth of its travel:
+    //
+    //     level now at mixPerc 0.20 = 0.55 * 0.20 = 0.110
+    //     same level at mixPerc 2.0 (fader max) => 0.110 / 2.0 = 0.055
+    //
+    // The fader keeps its 0-2 range and its unity-at-1.0 meaning; only this
+    // constant moves, so the whole travel now spans silence to what used to
+    // be a tenth of the way up — which is where the useful range actually is.
+    //
+    // This is the same number the trim held before the bells were routed into
+    // \opalPerc, and it is NOT a return to that state: this voice is now
+    // struck by the tide AND the chain, at ~38 concurrent, so ~38 copies sum
+    // where one used to. Per-voice trim and perceived level stopped being the
+    // same question when the concurrency changed.
+    ~trimPerc  = 0.055 * ~trimMaster;
     // The bed is the ensemble now, so the ONE continuous voice steps back from
     // 8.0 to 3.2 and the partials carry the rest. Its job is the sub anchor
     // under them rather than the whole bed on its own.
