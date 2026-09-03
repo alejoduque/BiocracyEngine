@@ -105,7 +105,7 @@ wss.on("connection", (ws) => {
         );
         scPort.send({ address: msg.address, args: oscArgs });
         trackMsg("b2sc", msg.address, msg.args?.[0] ?? null);
-        console.log(`[bridge] browser→SC  ${msg.address}  ${JSON.stringify(msg.args)}`);
+        if (DEBUG) console.log(`[bridge] browser→SC  ${msg.address}  ${JSON.stringify(msg.args)}`);
       }
     } catch (_) { }
   });
@@ -131,6 +131,20 @@ const udpPort = new osc.UDPPort({
   metadata: true,
 });
 
+// ─── Per-message tracing ────────────────────────────────────────────────────
+// OFF by default. These three logs sit in the hot path and one of them is
+// brutal: /spectrum matches no route, so it fell through to the raw branch and
+// printed 48 full-precision doubles — about 1.1 KB of text — twenty times a
+// second, unconditionally. start_ecosystem.sh:198 redirects sclang to a file
+// but line 158 launches this process with NO redirection, so that text goes
+// straight to the terminal, and a TTY write from Node is SYNCHRONOUS: the
+// event loop stops until the terminal accepts it. That is ~22 KB/s of blocking
+// I/O plus 960 double→string conversions per second, none of which anything
+// reads during a performance.
+//
+// Enable when actually debugging:  BRIDGE_DEBUG=1 node parliament-bridge.js
+const DEBUG = process.env.BRIDGE_DEBUG === "1";
+
 udpPort.on("message", (oscMsg) => {
   const address = oscMsg.address;
   const args = (oscMsg.args || []).map((a) => a.value);
@@ -151,7 +165,7 @@ udpPort.on("message", (oscMsg) => {
     });
     // Also send raw for parliament.html / custom subscribers
     broadcast({ address, args });
-    console.log(`[bridge] SC→browser  ${address} → /ch/${methodName}  args=${args}`);
+    if (DEBUG) console.log(`[bridge] SC→browser  ${address} → /ch/${methodName}  args=${args}`);
     return;
   }
 
@@ -163,7 +177,7 @@ udpPort.on("message", (oscMsg) => {
 
   // ── Route 3: unknown paths → pass raw (let browser decide) ───────────────
   broadcast({ address, args });
-  console.log(`[bridge] SC→browser (raw)  ${address}  args=${args}`);
+  if (DEBUG) console.log(`[bridge] SC→browser (raw)  ${address}  args=${args}`);
 });
 
 // Diagnostics are folded directly into the OSC and WS handlers above — the
