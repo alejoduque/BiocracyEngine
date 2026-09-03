@@ -141,10 +141,51 @@ export function mountConstellationField(
 
   const reduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 
+  // Style writes are throttled to real changes rather than to frames.
+  //
+  // This ran unconditionally from drive(), so once per frame per slot, and the
+  // string really did differ each time: `saturation` is audio-driven
+  // (dataStructureVisuals.ts, mountSlotField). Every frame therefore
+  // invalidated the style of a full-viewport canvas that also carries
+  // mix-blend-mode:screen — and any geometry read afterwards has to force a
+  // synchronous style recalc and layout to answer. onMove does exactly that,
+  // once per pointer event, which is why DRAGGING on slots 5-9 costs far more
+  // than the drag itself. Those five slots also emit /slot/voice from this
+  // same loop (slotVoice.ts), and SC schedules each request relative to its
+  // arrival with s.makeBundle(s.latency, …) — a fixed offset, not a jitter
+  // absorber — so a stalled loop lands directly in note timing. The audible
+  // symptom was ticking while dragging, with the server itself never late.
+  //
+  // Most of those writes could never have changed anything: /spectrum arrives
+  // at 20 Hz (3_synthdefs.scd:316) and this loop runs at display rate, so at
+  // 60 fps two frames in three already carried an identical string, and on a
+  // 120 Hz panel five in six.
+  //
+  // Quantised before comparing so that "changed" means visibly changed. The
+  // steps are well under one perceptible increment — saturate() spans 0.8-1.4
+  // here, so 0.02 is a thirtieth of the range. toFixed keeps the rounding from
+  // re-introducing the float noise that would defeat the comparison.
+  let lastFilter = "";
+  let lastOpacity = "";
+  const q = (v: number, step: number, dp: number) =>
+    (Math.round(v / step) * step).toFixed(dp);
+
   function applyFilter() {
-    canvas.style.opacity = String(p.opacity);
-    canvas.style.filter =
-      `hue-rotate(${p.hue}deg) saturate(${p.saturation}) brightness(${p.brightness})`;
+    // Opacity is its own write: it is a compositor property rather than part
+    // of the filter string, and it moves on different inputs, so folding the
+    // two together would make each one rewrite the other.
+    const opacity = q(p.opacity, 0.004, 3);
+    if (opacity !== lastOpacity) {
+      canvas.style.opacity = opacity;
+      lastOpacity = opacity;
+    }
+    const filter =
+      `hue-rotate(${q(p.hue, 0.5, 1)}deg) saturate(${q(p.saturation, 0.02, 2)})` +
+      ` brightness(${q(p.brightness, 0.02, 2)})`;
+    if (filter !== lastFilter) {
+      canvas.style.filter = filter;
+      lastFilter = filter;
+    }
   }
 
   function maxNodes(): number {
