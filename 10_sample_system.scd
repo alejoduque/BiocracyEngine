@@ -293,6 +293,10 @@ s.doWhenBooted({
         
         // Sample synth tracking for multiple simultaneous playback
         ~activeSampleSynths = [];
+        // Which buffer each live voice is playing. Needed because the only cap
+        // was a global one, so nothing stopped ONE recording stacking to the
+        // full polyphony — see ~sampleMaxPerBuffer below.
+        ~activeSampleIdx = IdentityDictionary.new;
         
         // ── Per-event overrides ─────────────────────────────────────────────
         // Bus key -> the SynthDef arg it shadows. A bus wins whenever it is
@@ -320,6 +324,7 @@ s.doWhenBooted({
         ~triggerSample = { |index, duration=nil, overrides=nil|
             var sampleName, synthArgs, newSynth, defName, buf, ov, meta;
             var bufSecs, holdSecs, startFrac, envSpan, envAtk, envHold, envRel;
+            var sameBuf;
             ov = overrides ? ();
             if(index < ~sampleBuffers.size and: { ~sampleBuffers[index].notNil }) {
                 buf = ~sampleBuffers[index];
@@ -450,10 +455,35 @@ s.doWhenBooted({
                         (ov[\sampleAmp] ? 0.7).asFloat.clip(0, 1),
                         index.asFloat / ~sampleBuffers.size.max(1));
                 };
+                // ── Un mismo bufer no se apila ──────────────────────────
+                // El unico tope era global (~sampleMaxVoices = 12), asi que
+                // NADA impedia que una sola grabacion ocupara las doce voces.
+                // aullidos.mp3 dura 2470614 frames = ~56 s, de modo que doce
+                // copias solapadas de un mismo aullador eran alcanzables — y
+                // copias identicas suman COHERENTEMENTE, hacia 12x (+21.6 dB),
+                // no hacia raiz de 12 (+10.8 dB) como sumarian doce fuentes
+                // distintas. Ahi estaba la saturacion, y es exactamente lo que
+                // se oia como "demasiadas capas de lo mismo".
+                //
+                // No toca la polifonia entre muestras DISTINTAS: las doce
+                // voces siguen ahi, pero repartidas. El desalojo suelta la
+                // puerta en vez de matar el nodo, igual que ~sampleTrimVoices,
+                // asi la cola de reverb termina y no hay clic al desalojar.
+                sameBuf = ~activeSampleSynths.select { |sy|
+                    (~activeSampleIdx[sy] ? -1) == index
+                };
+                while({ sameBuf.size >= (~sampleMaxPerBuffer ? 3) }, {
+                    var oldest = sameBuf.removeAt(0);
+                    ~activeSampleSynths.remove(oldest);
+                    ~activeSampleIdx.removeAt(oldest);
+                    try { oldest.set(\gate, 0) };
+                });
+
                 newSynth = Synth(defName, synthArgs, ~defaultGroup);
                 
                 // Add to active synths list for tracking
                 ~activeSampleSynths = ~activeSampleSynths.add(newSynth);
+                ~activeSampleIdx[newSynth] = index;
                 
                 // Auto-cleanup when synth ends (for non-looping samples)
                 // Nada programa un .free aquí. La envolvente (doneAction 2)
@@ -463,6 +493,7 @@ s.doWhenBooted({
                 // doneAction de PlayBuf compilaba a 0 en silencio.
                 newSynth.onFree({
                     ~activeSampleSynths.remove(newSynth);
+                    ~activeSampleIdx.removeAt(newSynth);
                 });
                 
                 // Keep track for individual stopping (last triggered)
@@ -511,6 +542,9 @@ s.doWhenBooted({
         // expensively. Oldest voice is freed rather than refusing the newest,
         // so the texture stays live instead of freezing at the cap.
         ~sampleMaxVoices = 12;
+        // Cuantas voces puede tener UNA misma grabacion a la vez. El total
+        // sigue en 12; esto solo impide que una sola se lo lleve entero.
+        ~sampleMaxPerBuffer = 3;
         ~sampleTrimVoices = {
             while({ (~activeSampleSynths ? []).size > ~sampleMaxVoices }, {
                 var oldest = ~activeSampleSynths[0];
