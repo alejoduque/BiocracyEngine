@@ -82,6 +82,22 @@ export type ConstellationHandle = {
   drive: (p: Partial<ConstellationParams>) => void;
   /** Register an attack. `strength` 0-1; decays on its own. */
   pulse: (strength: number) => void;
+  /**
+   * A ripple leaving a point in the SLOT'S OWN geometry, host px.
+   *
+   * This is the coupling the field was missing. The star layer sat on top of
+   * the chart and the two never touched: the chart had events — a node struck,
+   * a target acquired, a cache line spilled — and the figures above it went on
+   * drifting as though nothing had happened. Now the chart's events cross the
+   * sky as a wave and the animals move when it reaches them, which is also the
+   * honest picture: one forest, disturbed from below.
+   */
+  strike: (x: number, y: number, strength: number) => void;
+  /**
+   * Force one species to resolve without the pointer, 0-1, decaying.
+   * `index` is into the roster in animals.ts.
+   */
+  spotlight: (index: number, strength: number) => void;
   resize: () => void;
   destroy: () => void;
   canvas: HTMLCanvasElement;
@@ -105,6 +121,8 @@ type Instance = {
   orbW: number;
   /** Eased elongation, 0 = at rest. Driven by how fast the crosshair sweeps. */
   elong: number;
+  /** Forced reveal from spotlight(), decays on its own. */
+  spot: number;
   /** Per-instance size variation, so a field does not look stamped. */
   sizeVar: number;
   /** 0-1, eased toward the pointer's proximity. */
@@ -150,6 +168,8 @@ export function mountConstellationField(
     return {
       drive: () => { /* no 2d context */ },
       pulse: () => { /* no 2d context */ },
+      strike: () => { /* no 2d context */ },
+      spotlight: () => { /* no 2d context */ },
       resize: () => { /* no 2d context */ },
       destroy: () => canvas.remove(),
       canvas,
@@ -164,6 +184,8 @@ export function mountConstellationField(
   let dead = false;
   let pulseAmt = 0;
   const pointer = { x: -1e5, y: -1e5, vx: 0, vy: 0 };
+  /** Expanding wavefronts from strike(). Bounded — see the push in strike(). */
+  const ripples: { x: number; y: number; r: number; amp: number }[] = [];
 
   const reduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 
@@ -249,6 +271,7 @@ export function mountConstellationField(
         orbR: 6 + Math.random() * 22,
         orbW: (Math.random() - 0.5) * 0.006,
         elong: 0,
+        spot: 0,
         sizeVar: 0.82 + Math.random() * 0.42,
         reveal: 0,
         phase: Math.random() * Math.PI * 2,
@@ -318,6 +341,15 @@ export function mountConstellationField(
     // elongated forever at the last velocity it saw.
     pointer.vx *= 0.88;
     pointer.vy *= 0.88;
+    // Wavefronts travel outward and thin as they go. Retired once spent so
+    // the array cannot grow — a slot that strikes every frame would otherwise
+    // accumulate one record per frame forever.
+    for (let i = ripples.length - 1; i >= 0; i--) {
+      const w = ripples[i];
+      w.r += 9 * p.speed;
+      w.amp *= 0.965;
+      if (w.amp < 0.01 || w.r > Math.hypot(width, height) * 1.1) ripples.splice(i, 1);
+    }
     const sweep = Math.hypot(pointer.vx, pointer.vy);
     // ~26 px between smoothed samples is a brisk sweep; past that it saturates.
     const sweepN = Math.min(1, sweep / 26);
@@ -372,7 +404,12 @@ export function mountConstellationField(
       // so sweeping across the field leaves a wake rather than a hard edge.
       const k = target > inst.reveal ? 0.16 : 0.045;
       inst.reveal += (target - inst.reveal) * k;
-      const rev = inst.reveal;
+      // A spotlit species resolves whether or not the crosshair found it —
+      // slot 9 uses this to name the animal whose recording is sounding, so
+      // the sky agrees with what you are hearing rather than with where the
+      // mouse happens to be.
+      inst.spot *= 0.965;
+      const rev = Math.max(inst.reveal, inst.spot);
 
       // Lean toward the pointer — "they follow the mouse". Proportional to
       // reveal and hard-capped, so the figure inclines rather than chases and
@@ -433,10 +470,25 @@ export function mountConstellationField(
         const per = -rx * uy + ry * ux;
         const pa = par * along;
         const pe = per * across;
-        return [
-          ox + pa * ux - pe * uy,
-          oy + pa * uy + pe * ux,
-        ] as [number, number];
+        let wx = ox + pa * ux - pe * uy;
+        let wy = oy + pa * uy + pe * ux;
+        // Each wavefront pushes a star radially as its shell passes over it.
+        // Per STAR rather than per figure, so the wave visibly travels through
+        // the animal — the bones flex in sequence instead of the whole shape
+        // sliding, which is the difference between a ripple and a nudge.
+        for (const w of ripples) {
+          const rdx = wx - w.x;
+          const rdy = wy - w.y;
+          const rd = Math.hypot(rdx, rdy);
+          if (rd < 0.001) continue;
+          const band = Math.abs(rd - w.r);
+          if (band > 90) continue;
+          const shell = Math.cos((band / 90) * Math.PI * 0.5);
+          const push = w.amp * shell * shell * 26;
+          wx += (rdx / rd) * push;
+          wy += (rdy / rd) * push;
+        }
+        return [wx, wy] as [number, number];
       });
 
       // Bones first, so stars sit crisp on top — the reference's ordering.
@@ -521,6 +573,23 @@ export function mountConstellationField(
     },
     pulse(strength: number) {
       pulseAmt = Math.min(1.5, pulseAmt + Math.max(0, strength));
+    },
+    strike(x: number, y: number, strength: number) {
+      const a = Math.max(0, Math.min(1, strength));
+      if (a < 0.02) return;
+      // Hard ceiling on concurrent fronts. A slot firing faster than they
+      // retire would otherwise turn the per-star loop into a cost that grows
+      // without bound — the same failure the sample layer had in SC, and the
+      // reason that one saturated.
+      if (ripples.length >= 5) ripples.shift();
+      ripples.push({ x, y, r: 0, amp: a });
+    },
+    spotlight(index: number, strength: number) {
+      const a = Math.max(0, Math.min(1, strength));
+      const animal = ANIMALS[((index % ANIMALS.length) + ANIMALS.length) % ANIMALS.length];
+      for (const inst of instances) {
+        if (inst.animal === animal) inst.spot = Math.max(inst.spot, a);
+      }
     },
     resize() {
       cacheRect();

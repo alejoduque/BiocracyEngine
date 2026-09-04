@@ -8,6 +8,7 @@ import type { ParliamentState } from "./parliament/parliamentStore";
 import { getVizMotion, readVoteFlash, isAlarm } from "./vizMotion";
 import { getScAudio, bandRange, normLevel } from "./scAudio";
 import { makeEventEmitter, makeExcursionEmitter } from "./slotVoice";
+import { makeResonatorBank } from "./resonators";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
 import {
     mountConstellationField,
@@ -120,8 +121,14 @@ export const INSTRUMENTS: Record<string, Instrument> = {
 //   voice onset   → pulse()
 type SlotField = {
     field: ConstellationHandle;
-    /** Call once per frame, after the slot has read its own state. */
-    drive: (st: ParliamentState | null) => void;
+    /**
+     * Call once per frame, after the slot has read its own state.
+     * Returns the ONSET strength for this frame, 0 when the voice did not
+     * attack. The onset was already being detected here to drive pulse(); it
+     * is handed back now so the slot can spend the same event on its own
+     * geometry instead of each slot re-deriving it from a different threshold.
+     */
+    drive: (st: ParliamentState | null) => number;
     destroy: () => void;
 };
 
@@ -174,8 +181,10 @@ function mountSlotField(
                 saturation: 0.8 + r.level * 0.6,
             });
 
-            if (r.env > lastEnv + 0.06) field.pulse(Math.min(1, r.env * 0.9));
+            const onset = r.env > lastEnv + 0.06 ? Math.min(1, r.env * 0.9) : 0;
+            if (onset > 0) field.pulse(onset);
             lastEnv = r.env;
+            return onset;
         },
         destroy() {
             window.removeEventListener("resize", onResize);
@@ -711,6 +720,11 @@ export function mountDynamicGraphs(stageEl: HTMLElement, getLatestState: () => P
     // and driven by its band. See mountSlotField.
     const cfield = mountSlotField(stageEl, inst5, "__slot5Soneth");
     const emitEdge5 = makeExcursionEmitter("pad");
+    // CAMPANAS rings. damp 0.988 ≈ a 6 s tail at 60 fps, which is the pad's own
+    // character: this slot should still be moving long after the attack, where
+    // slot 7 should be still again almost at once. spread 0.5 is a soft mallet
+    // — a bell excites most of its body, not one point of it.
+    const ring5 = makeResonatorBank({ n: 24, baseFreq: 0.006, freqRatio: 1.075, damp: 0.988, spread: 0.5 });
 
     const composer = new EffectComposer(renderer);
     composer.addPass(new RenderPass(scene, camera));
@@ -780,7 +794,7 @@ export function mountDynamicGraphs(stageEl: HTMLElement, getLatestState: () => P
         frame++;
 
         const st = getLatestState();
-        cfield.drive(st);
+        const onset5 = cfield.drive(st);
         const sp5 = (window as any).__slot5Soneth ?? {};
 
         // Shared idle drift + vote flash. These six slots had NO vote channel
@@ -797,6 +811,21 @@ export function mountDynamicGraphs(stageEl: HTMLElement, getLatestState: () => P
         // (which is all these six ever did) makes it react to the intention
         // rather than to the sound.
         const au5 = readInstrument(inst5);
+        // Advance the bell body every frame, then strike it on an attack. The
+        // step comes FIRST so a strike lands on a clean phase rather than
+        // being immediately decayed by the same frame's step.
+        ring5.step();
+        if (onset5 > 0) {
+            ring5.strike(onset5, au5.tone);
+            // The same event crosses the sky. Tone places the source along the
+            // stage, so a run of different pitches sends its wavefronts from
+            // different points and the figures above answer in sequence rather
+            // than all at once.
+            cfield.field.strike(
+                stageEl.clientWidth * (0.2 + au5.tone * 0.6),
+                stageEl.clientHeight * 0.5,
+                onset5 * 0.7);
+        }
         // Which instrument is on screen, published like __antifoniaStand.
         // A label baked into a canvas sprite cannot be read back, so
         // without this the identity is unverifiable from outside.
@@ -931,14 +960,27 @@ export function mountDynamicGraphs(stageEl: HTMLElement, getLatestState: () => P
 
             // dronedepth: detail level via geometry segments (proxy: wireframe density via scale noise)
             n.mesh.rotation.z += 0.005 + droneD * 0.02 + vm5.speed * 0.02;
-            // CAMPANAS. The graph is no longer a flat sheet: each node sits at
-            // a depth given by its index, and the whole lattice breathes on Z
-            // with the pad register. A pad ATTACK snaps every node forward and
-            // it settles back — the bell being struck, not merely ringing.
+            // CAMPANAS — sympathetic resonance, not a push.
+            //
+            // This was position.z from env and a matching scale: every node
+            // moved together, once, and settled. A bell does not do that. Its
+            // body carries many modes at once and each one dies at its own
+            // rate, so the shape goes on changing after the strike rather than
+            // returning along the path it came.
+            //
+            // Each node is now one mode of the bank. Struck at au5.tone, so a
+            // high bell moves the far side of the lattice and a low one the
+            // near side — the note chooses WHERE the structure moves, which is
+            // the whole reason `tone` is on the wire.
+            const rz5 = ring5.value(i);
             n.mesh.position.z = Math.sin(i * 1.7) * 120 * (0.25 + au5.level * 1.6)
-                + au5.env * 90 * au5.amp;
-            const sc5 = 1 + au5.env * au5.amp * 0.9;
-            n.mesh.scale.setScalar(sc5);
+                + rz5 * 150 * au5.amp;
+            // Anisotropic: a ringing plate swells across its face rather than
+            // scaling as a ball, so x and y take the mode and z takes its
+            // inverse. That reads as breathing instead of as zooming.
+            const sw5 = 1 + rz5 * 0.55;
+            n.mesh.scale.set(sw5, sw5, 1 - rz5 * 0.22);
+            n.mesh.rotation.x = rz5 * 0.5;
 
             // Glow ring
             const gr = glowRings[i];
@@ -1043,6 +1085,12 @@ export function mountDynamicOptimality(stageEl: HTMLElement, getLatestState: () 
     // The constellation backdrop for this slot, coloured by inst6's hue
     // and driven by its band. See mountSlotField.
     const cfield = mountSlotField(stageEl, inst6, "__slot6Soneth");
+    // PERCUSIÓN. damp 0.93 ≈ a third of a second — struck, not rung. The tight
+    // mallet (spread 0.18) is the point of difference from slot 5: perc excites
+    // a SMALL part of the body, so a hit moves one region of the tree and the
+    // rest only trembles. freqRatio 1.19 spreads the bank wide and inharmonic,
+    // which is what \opalPerc's Ringz table is.
+    const ring6 = makeResonatorBank({ n: 28, baseFreq: 0.019, freqRatio: 1.19, damp: 0.93, spread: 0.18 });
     // Slot 6's measure is the jitteriest of the six — the loop adds random
     // displacement to node positions on the line after it counts which nodes
     // have arrived, so "arrived" is partly frame noise by construction. It
@@ -1110,7 +1158,7 @@ export function mountDynamicOptimality(stageEl: HTMLElement, getLatestState: () 
         frame++;
 
         const st = getLatestState();
-        cfield.drive(st);
+        const onset6 = cfield.drive(st);
         const sp6 = (window as any).__slot6Soneth ?? {};
 
         // Shared idle drift + vote flash. These six slots had NO vote channel
@@ -1127,6 +1175,14 @@ export function mountDynamicOptimality(stageEl: HTMLElement, getLatestState: () 
         // (which is all these six ever did) makes it react to the intention
         // rather than to the sound.
         const au6 = readInstrument(inst6);
+        ring6.step();
+        if (onset6 > 0) {
+            ring6.strike(onset6, au6.tone);
+            cfield.field.strike(
+                stageEl.clientWidth * (0.15 + au6.tone * 0.7),
+                stageEl.clientHeight * (0.3 + au6.tone * 0.3),
+                onset6);
+        }
         // Which instrument is on screen, published like __antifoniaStand.
         // A label baked into a canvas sprite cannot be read back, so
         // without this the identity is unverifiable from outside.
@@ -1256,9 +1312,22 @@ export function mountDynamicOptimality(stageEl: HTMLElement, getLatestState: () 
             // the pitch SC sends with the onset — decides which depth it hits.
             // Written INSIDE the position.set that used to hard-zero z.
             const lay6 = (n as any).layer ?? 0;
-            const z6 = lay6 * -70 * (0.4 + au6.level * 1.6)
-                + au6.env * 130 * au6.amp * (1 - Math.min(1, Math.abs(au6.tone - lay6 / 4)));
-            n.mesh.position.set(n.x, n.y, z6);
+            // A strike does not arrive everywhere at once. It enters at the
+            // root and travels, so each layer reads the bank a few modes LATER
+            // than the one above it — the delay is the depth. What was a single
+            // synchronised push is now a wave you can watch move down the tree,
+            // which is also the honest picture of a rebalance propagating.
+            const rz6 = ring6.value(i + lay6 * 5);
+            const z6 = lay6 * -70 * (0.4 + au6.level * 1.6) + rz6 * 190 * au6.amp;
+            n.mesh.position.set(
+                n.x + rz6 * 26 * Math.cos(i * 2.1),
+                n.y + rz6 * 26 * Math.sin(i * 2.1),
+                z6);
+            // Deflect, then settle. A struck body leans off its axis; it does
+            // not merely translate.
+            n.mesh.rotation.z = rz6 * 0.85;
+            const sc6 = 1 + Math.abs(rz6) * 0.5;
+            n.mesh.scale.set(sc6, sc6, 1);
             n.mesh.scale.setScalar(glW / 20);
             // Drift folded in, and the vote's rebalance shows in the boxes
             // as well as in the snap rate above.
@@ -1412,6 +1481,11 @@ export function mountGeometry(stageEl: HTMLElement, getLatestState: () => Parlia
     // The constellation backdrop for this slot, coloured by inst7's hue
     // and driven by its band. See mountSlotField.
     const cfield = mountSlotField(stageEl, inst7, "__slot7Soneth");
+    // BOMBO. Few modes, very low, and damp 0.90 so it is still again almost at
+    // once — a kick is one displacement of air, not a texture. The wide mallet
+    // (spread 0.9) moves the WHOLE field together, which is exactly how a low
+    // frequency arrives in a room: everything at the same time.
+    const ring7 = makeResonatorBank({ n: 10, baseFreq: 0.011, freqRatio: 1.04, damp: 0.90, spread: 0.9 });
     const emitTarget7 = makeExcursionEmitter("kick");
 
     const composer = new EffectComposer(renderer);
@@ -1527,7 +1601,7 @@ export function mountGeometry(stageEl: HTMLElement, getLatestState: () => Parlia
         frame++;
 
         const st = getLatestState();
-        cfield.drive(st);
+        const onset7 = cfield.drive(st);
         const sp7 = (window as any).__slot7Soneth ?? {};
 
         // Shared idle drift + vote flash. These six slots had NO vote channel
@@ -1544,6 +1618,15 @@ export function mountGeometry(stageEl: HTMLElement, getLatestState: () => Parlia
         // (which is all these six ever did) makes it react to the intention
         // rather than to the sound.
         const au7 = readInstrument(inst7);
+        ring7.step();
+        if (onset7 > 0) {
+            ring7.strike(onset7, au7.tone);
+            // From the centre, always. The kick has no place in the stereo
+            // field and it should have none here either — the wave leaves the
+            // middle and reaches every figure at once.
+            cfield.field.strike(
+                stageEl.clientWidth * 0.5, stageEl.clientHeight * 0.5, onset7);
+        }
         // Which instrument is on screen, published like __antifoniaStand.
         // A label baked into a canvas sprite cannot be read back, so
         // without this the identity is unverifiable from outside.
@@ -1619,9 +1702,21 @@ export function mountGeometry(stageEl: HTMLElement, getLatestState: () => Parlia
         // into depth. The sub band opens the cone and the kick attack punches
         // the whole reticule toward the viewer — the one visual in the set
         // that should hit you in the chest.
-        reticuleGroup.position.z = au7.env * 220 * au7.amp;
-        reticuleGroup.scale.setScalar(1 + au7.env * au7.amp * 0.35 + au7.level * 0.25);
-        root7.rotation.x = -0.07 - au7.level * 0.06;
+        // A kick is a COMPRESSION. The reticule is squashed along the axis the
+        // wave travels and bulges across it, then recovers — where before it
+        // simply flew at the camera and scaled up, which is the gesture of a
+        // thing approaching rather than of air being displaced.
+        const rz7 = ring7.value(0);
+        const rz7b = ring7.value(4);
+        reticuleGroup.position.z = rz7 * 260 * au7.amp;
+        reticuleGroup.scale.set(
+            1 + rz7 * 0.42 + au7.level * 0.25,
+            1 - rz7 * 0.30 + au7.level * 0.25,
+            1 + rz7b * 0.5);
+        // The whole frame recoils a little, and off-axis, so the impact has a
+        // direction instead of being a pure zoom.
+        root7.rotation.x = -0.07 - au7.level * 0.06 + rz7 * 0.10;
+        root7.rotation.z = rz7b * 0.045;
         reticuleGroup.rotation.z = radarAngle;
         reticuleGroup.position.y = (droneSpace - 0.5) * H * 0.15;
         const retScale = (H * (0.25 + resBody * 0.2)) / (H * 0.25);
@@ -1820,6 +1915,10 @@ export function mountMemoryHierarchy(stageEl: HTMLElement, getLatestState: () =>
     // The constellation backdrop for this slot, coloured by inst8's hue
     // and driven by its band. See mountSlotField.
     const cfield = mountSlotField(stageEl, inst8, "__slot8Soneth");
+    // POLVO. Many modes, high and fast-dying: not one gesture but a cloud of
+    // small independent ones, which is what granular synthesis is. damp 0.86
+    // is the shortest of the five — each grain is over before the next lands.
+    const ring8 = makeResonatorBank({ n: 40, baseFreq: 0.031, freqRatio: 1.11, damp: 0.86, spread: 0.7 });
     const emitSpill8 = makeExcursionEmitter("dust");
 
     const composer = new EffectComposer(renderer);
@@ -1894,7 +1993,7 @@ export function mountMemoryHierarchy(stageEl: HTMLElement, getLatestState: () =>
         frame++;
 
         const st = getLatestState();
-        cfield.drive(st);
+        const onset8 = cfield.drive(st);
         const sp8 = (window as any).__slot8Soneth ?? {};
 
         // Shared idle drift + vote flash. These six slots had NO vote channel
@@ -1911,6 +2010,16 @@ export function mountMemoryHierarchy(stageEl: HTMLElement, getLatestState: () =>
         // (which is all these six ever did) makes it react to the intention
         // rather than to the sound.
         const au8 = readInstrument(inst8);
+        ring8.step();
+        if (onset8 > 0) {
+            ring8.strike(onset8, au8.tone);
+            // Dust does not arrive from a point. Scattered origin per grain, so
+            // the sky is stirred rather than struck.
+            cfield.field.strike(
+                stageEl.clientWidth * (0.1 + Math.random() * 0.8),
+                stageEl.clientHeight * (0.1 + Math.random() * 0.8),
+                onset8 * 0.45);
+        }
         // Which instrument is on screen, published like __antifoniaStand.
         // A label baked into a canvas sprite cannot be read back, so
         // without this the identity is unverifiable from outside.
@@ -2040,12 +2149,19 @@ export function mountMemoryHierarchy(stageEl: HTMLElement, getLatestState: () =>
             }
             // Idle drift: the whole stack leans, very slowly, like a shelf
             // settling. A hierarchy should not spin — this is its idiom.
-            border.rotation.z = Math.sin(vm8.angle * 0.5) * 0.035;
+            // The grain term is added below, once rz8 exists.
             // POLVO. The hierarchy stood in a plane; each level now sits at
             // its own depth so the cache reads as a stack you could walk into.
             // The high band —where granular dust lives— scatters the levels
             // apart, and a grain firing pushes its level forward.
-            border.position.z = -j * 90 * (0.3 + au8.level * 1.8) + au8.env * 60 * au8.amp;
+            // Each layer takes a DIFFERENT mode, so the levels shimmer against
+            // one another instead of pumping together. Granular density is many
+            // uncorrelated small events; one shared envelope is precisely the
+            // wrong shape for it.
+            const rz8 = ring8.value(j * 7);
+            border.position.z = -j * 90 * (0.3 + au8.level * 1.8) + rz8 * 90 * au8.amp;
+            border.position.x = rz8 * 14;
+            border.rotation.z = Math.sin(vm8.angle * 0.5) * 0.035 + rz8 * 0.06;
 
             // Species blocks inside layer
             let blockCX = bx + 10;
@@ -2180,6 +2296,10 @@ export function mountHashing(stageEl: HTMLElement, getLatestState: () => Parliam
     // The constellation backdrop for this slot, coloured by inst9's hue
     // and driven by its band. See mountSlotField.
     const cfield = mountSlotField(stageEl, inst9, "__slot9Soneth");
+    // MUESTRAS. A recording is not struck — it is READ. Slow, nearly
+    // undamped (0.995), so the motion here is a long traverse rather than a
+    // decay: the visual equivalent of a play head crossing a buffer.
+    const ring9 = makeResonatorBank({ n: 18, baseFreq: 0.0035, freqRatio: 1.03, damp: 0.995, spread: 0.6 });
     const emitCollision9 = makeExcursionEmitter("sample");
 
     const composer = new EffectComposer(renderer);
@@ -2268,7 +2388,7 @@ export function mountHashing(stageEl: HTMLElement, getLatestState: () => Parliam
         frame++;
 
         const st = getLatestState();
-        cfield.drive(st);
+        const onset9 = cfield.drive(st);
         const sp9 = (window as any).__slot9Soneth ?? {};
 
         // Shared idle drift + vote flash. These six slots had NO vote channel
@@ -2285,6 +2405,25 @@ export function mountHashing(stageEl: HTMLElement, getLatestState: () => Parliam
         // (which is all these six ever did) makes it react to the intention
         // rather than to the sound.
         const au9 = readInstrument(inst9);
+        ring9.step();
+        if (onset9 > 0) {
+            ring9.strike(onset9, au9.tone);
+            cfield.field.strike(
+                stageEl.clientWidth * 0.5, stageEl.clientHeight * 0.62, onset9 * 0.6);
+            // ── The sky names what is sounding ───────────────────────────
+            // 15_slot_voices.scd sends /voice/sample with index / bankSize, so
+            // `tone` identifies WHICH recording is playing. The roster in
+            // animals.ts is the fauna of the same forest those recordings come
+            // from, so the figure of the animal lights up while its clip runs.
+            //
+            // Honest about what this is: the mapping is CONSISTENT, not
+            // taxonomic — the same clip always lights the same animal, but
+            // nothing in the corpus manifest says clip 37 is an ocelot. Making
+            // it true would mean carrying the species on the wire from
+            // ~sampleMeta, which is a change to the OSC payload and belongs in
+            // its own commit.
+            cfield.field.spotlight(Math.floor(au9.tone * 9), Math.min(1, onset9 * 1.3));
+        }
         // Which instrument is on screen, published like __antifoniaStand.
         // A label baked into a canvas sprite cannot be read back, so
         // without this the identity is unverifiable from outside.
@@ -2379,8 +2518,15 @@ export function mountHashing(stageEl: HTMLElement, getLatestState: () => Parliam
             {
                 const ang9 = (i / Math.max(1, keyBoxes.length)) * Math.PI * 2;
                 const rad9 = W * 0.26 * (0.6 + au9.level * 0.9);
-                keyBoxes[i].position.z = Math.cos(ang9) * rad9
-                    + au9.env * 150 * au9.amp * (1 - Math.abs(au9.tone - i / Math.max(1, keyBoxes.length)));
+                // A play head, not an envelope. The bank is nearly undamped, so
+                // what crosses the ring is a slow travelling bulge — the boxes
+                // rise as the head reaches them and stay risen behind it, which
+                // is what reading a buffer looks like from outside.
+                const rz9 = ring9.value(i);
+                keyBoxes[i].position.z = Math.cos(ang9) * rad9 + rz9 * 200 * au9.amp;
+                keyBoxes[i].position.y += rz9 * 18;
+                const sc9 = 1 + Math.abs(rz9) * 0.6;
+                keyBoxes[i].scale.set(sc9, sc9, 1 + rz9 * 0.3);
             }
             keyBoxes[i].rotation.z += 0.005 + droneD * 0.02 + vm9.speed * 0.02
               + (vf9 ? vf9.flash * 0.14 * (isAlarm(vf9.type) ? -1 : 1) : 0);
