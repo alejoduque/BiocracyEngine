@@ -84,20 +84,39 @@ function makeOrthoCamera(w: number, h: number): THREE.OrthographicCamera {
 export type Instrument = {
     label: string; sub: string; voice: string;
     band: [number, number]; hue: number;
+    // What the STRUCTURE has to do for this voice to speak, in one line.
+    // `sub` names the SynthDef, which tells a reader of the code what is
+    // making the sound and tells a viewer of the screen nothing. This says
+    // which structural event is the trigger — the thing the excursion emitter
+    // is actually watching — so the screen explains its own behaviour instead
+    // of needing this file open beside it.
+    hint: string;
 };
 export const INSTRUMENTS: Record<string, Instrument> = {
-    s4: { label: "DRONE",      sub: "opalDrone · sostenido",     voice: "drone",  band: [0.00, 0.34], hue: 0.09 },
-    s5: { label: "CAMPANAS",   sub: "elektronBell · pads",       voice: "pad",    band: [0.18, 0.62], hue: 0.13 },
-    s6: { label: "PERCUSIÓN",  sub: "opalPerc · pulso",          voice: "perc",   band: [0.30, 0.74], hue: 0.33 },
-    s7: { label: "BOMBO",      sub: "opalKick · sub",            voice: "kick",   band: [0.00, 0.18], hue: 0.02 },
-    s8: { label: "POLVO",      sub: "opalDust · granular",       voice: "dust",   band: [0.55, 1.00], hue: 0.52 },
+    s4: { label: "DRONE",      sub: "opalDrone · sostenido",     voice: "drone",  band: [0.00, 0.34], hue: 0.09,
+        hint: "la estructura sostiene · no golpea"
+    },
+    s5: { label: "CAMPANAS",   sub: "elektronBell · pads",       voice: "pad",    band: [0.18, 0.62], hue: 0.13,
+        hint: "cada arista tensada tañe"
+    },
+    s6: { label: "PERCUSIÓN",  sub: "opalPerc · pulso",          voice: "perc",   band: [0.30, 0.74], hue: 0.33,
+        hint: "cada nodo que llega golpea"
+    },
+    s7: { label: "BOMBO",      sub: "opalKick · sub",            voice: "kick",   band: [0.00, 0.18], hue: 0.02,
+        hint: "cada blanco adquirido pesa"
+    },
+    s8: { label: "POLVO",      sub: "opalDust · granular",       voice: "dust",   band: [0.55, 1.00], hue: 0.52,
+        hint: "cada derrame se dispersa"
+    },
     // [0.10, 0.95] was 85% of the spectrum — ~58 Hz to 8 kHz — and bandRange
     // is a plain mean, so this slot's level was dominated by the drone and
     // kick bands sitting near 0.15 while the field recordings it is supposed
     // to be showing sit near 0.004. It was measuring everything except itself.
     // The samples' actual register, after Antifonía's per-call hpf/lpf, is
     // bands 11-13 — roughly 2.3-4.8 kHz.
-    s9: { label: "MUESTRAS",   sub: "samplePlayer · campo",      voice: "sample", band: [0.68, 0.88], hue: 0.75 },
+    s9: { label: "MUESTRAS",   sub: "samplePlayer · campo",      voice: "sample", band: [0.68, 0.88], hue: 0.75,
+        hint: "cada colisión llama al bosque"
+    },
 };
 
 // ─── The constellation backdrop, slots 5-9 ──────────────────────────────────
@@ -141,7 +160,7 @@ function mountSlotField(
     const field = mountConstellationField(stageEl, {
         hue: hueRotateFor(inst.hue),
         ...tune,
-    });
+    }, { label: inst.label, hint: inst.hint });
 
     // Onsets are detected as a rising edge on the voice envelope, the same way
     // the slots detect their own flashes. Held here so the field does not

@@ -160,9 +160,13 @@ type Instance = {
 /** Faint background scatter. Not linked to anything — these are just stars. */
 type Dust = { x: number; y: number; vx: number; vy: number; r: number };
 
+/** What this slot IS, for the corner readout. Not driven; set once at mount. */
+export type ConstellationMeta = { label?: string; hint?: string };
+
 export function mountConstellationField(
   host: HTMLElement,
   init: Partial<ConstellationParams> = {},
+  meta: ConstellationMeta = {},
 ): ConstellationHandle {
   const p: ConstellationParams = { ...CONSTELLATION_DEFAULTS, ...init };
 
@@ -502,6 +506,33 @@ export function mountConstellationField(
     dragX = e.clientX;
     dragY = e.clientY;
   };
+  // ─── Reaching the camera again ────────────────────────────────────────────
+  //
+  // Making the sky always-navigable cost OrbitControls: this canvas sits above
+  // the WebGL one, so while it accepts pointer events the camera below receives
+  // none. Rather than bring back a mode, the field YIELDS while Alt is held —
+  // pointer-events go to none and the drag lands on the renderer exactly as it
+  // did before the sky existed.
+  //
+  // Alt and not Shift: OrbitControls reads a shift-drag as a pan, so Shift
+  // would have handed back the camera minus its rotation, which is the half
+  // that was actually missed.
+  let yielding = false;
+  function setYield(on: boolean) {
+    if (yielding === on) return;
+    yielding = on;
+    canvas.style.pointerEvents = on ? "none" : "auto";
+    // Drop any drag in progress: the pointer is about to belong to something
+    // else, and a drag that survives the handover keeps turning the sky from
+    // under the camera.
+    if (on) dragging = false;
+  }
+  const onAltDown = (e: KeyboardEvent) => { if (e.altKey) setYield(true); };
+  const onAltUp = (e: KeyboardEvent) => { if (!e.altKey) setYield(false); };
+  // Alt+Tab leaves the key logically down with no keyup ever arriving, which
+  // would strand the field yielding and make it look dead.
+  const onBlur = () => setYield(false);
+
   const onKey = (e: KeyboardEvent) => {
     const t = e.target as HTMLElement | null;
     // Never steal a keystroke from a field the performer is typing into.
@@ -521,6 +552,9 @@ export function mountConstellationField(
   window.addEventListener("mousemove", onDrag);
   window.addEventListener("mouseup", onUp);
   window.addEventListener("keydown", onKey);
+  window.addEventListener("keydown", onAltDown);
+  window.addEventListener("keyup", onAltUp);
+  window.addEventListener("blur", onBlur);
   host.addEventListener("mousemove", onMove);
   host.addEventListener("mouseleave", onLeave);
 
@@ -875,9 +909,40 @@ export function mountConstellationField(
     // A mode nobody can find is a mode that is not there. Drawn last so it
     // sits over the sky, and only while navigating — nothing is added to the
     // picture the rest of the time.
+    // ─── Corner readout ───────────────────────────────────────────────────
+    // Drawn as the tube would draw it: brackets are strokes, the text sits at
+    // low alpha, and it is deliberately small. It should be readable when
+    // looked at and invisible when not — the module explaining itself to
+    // someone standing at the machine, not a caption over the work.
+    if (meta.label) {
+      const bx = 14;
+      const by = height - 34;
+      c.globalAlpha = 0.34;
+      c.strokeStyle = ink;
+      c.lineWidth = 1;
+      c.setLineDash([]);
+      // Two corner brackets rather than a box: a closed rectangle reads as a
+      // panel sitting on top of the picture, an open one as an instrument
+      // marking a place in it.
+      c.beginPath();
+      c.moveTo(bx - 6, by - 4); c.lineTo(bx - 6, by + 22); c.lineTo(bx + 2, by + 22);
+      c.stroke();
+      c.globalAlpha = 0.78;
+      c.fillStyle = ink;
+      c.textAlign = "left";
+      c.textBaseline = "top";
+      c.font = '600 11px ui-monospace, "SF Mono", Menlo, monospace';
+      c.fillText(meta.label, bx + 2, by - 3);
+      if (meta.hint) {
+        c.globalAlpha = 0.40;
+        c.font = '10px ui-monospace, "SF Mono", Menlo, monospace';
+        c.fillText(meta.hint, bx + 2, by + 11);
+      }
+    }
+
     const offOrigin = Math.abs(view.zoom - 1) > 0.01
       || Math.abs(view.yaw) > 0.005 || Math.abs(view.pitch) > 0.005;
-    if (offOrigin) {
+    if (offOrigin || yielding) {
       c.globalAlpha = 0.72;
       c.fillStyle = ink;
       c.textAlign = "left";
@@ -890,7 +955,12 @@ export function mountConstellationField(
       );
       c.globalAlpha = 0.42;
       c.font = '10px ui-monospace, "SF Mono", Menlo, monospace';
-      c.fillText("arrastrar: girar   rueda: acercar   x/esc: origen", 14, 30);
+      c.fillText(
+        yielding
+          ? "alt · cámara del módulo"
+          : "arrastrar: girar   rueda: acercar   x/esc: origen   alt: cámara",
+        14, 30,
+      );
     }
 
     c.globalAlpha = 1;
@@ -971,6 +1041,9 @@ export function mountConstellationField(
       window.removeEventListener("mousemove", onDrag);
       window.removeEventListener("mouseup", onUp);
       window.removeEventListener("keydown", onKey);
+      window.removeEventListener("keydown", onAltDown);
+      window.removeEventListener("keyup", onAltUp);
+      window.removeEventListener("blur", onBlur);
       host.style.cursor = prevCursor;
       canvas.remove();
     },
