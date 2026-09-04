@@ -251,6 +251,15 @@ s.doWhenBooted({
             ++ "  blk:" ++ rs[\blockNum] ++ " txN:" ++ rs[\blockTxCount]
                 ++ " idx:" ++ rs[\txIndex] ++ " base:" ++ rs[\blockBaseFee].round(0.001)
             ++ "  synths:" ++ s.numSynths
+            // Perc concurrency, the layer that had no ceiling until it took the
+            // whole server down. live/max is the ceiling in use; ref counts
+            // hits refused since boot. ref climbing while live sits at max is
+            // the texture thinning under load — audible as sparser perc, which
+            // is the failure mode this is FOR. ref climbing at idle would mean
+            // the ceiling is set too low.
+            ++ "  perc:" ++ ((~percLive !? { ~percLive.size }) ? 0)
+                ++ "/" ++ (~percMaxLive ? 0)
+                ++ " ref:" ++ ((~percStats !? { ~percStats[\refused] }) ? 0)
             // Beat engine: was entirely absent from this line, so "the beats
             // are gone" could only be answered by guesswork. kick/perc are
             // cumulative spawns; tg is the transport gain (0.05 after

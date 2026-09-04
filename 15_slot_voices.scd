@@ -303,7 +303,7 @@
             var f = (pool.wrapAt((t * (pool.size - 1)).round.asInteger) * band
                 * rrand(0.95, 1.05)).clip(40, 900);
             fire.({
-                Synth(\opalPerc, [
+                ~percSpawn.([
                     \out,  0,
                     \freq, f,
                     // Slot 6's own body: derived from the same tone the

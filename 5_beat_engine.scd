@@ -193,6 +193,54 @@
     ];
 };
 
+// ─── Concurrency ceiling for the struck voice ───────────────────────────────
+//
+// \opalPerc had NO cap of any kind, and it is the most expensive voice in the
+// engine: a 56-mode bank with its own comb delays and reverb. Meanwhile one
+// trigger spawns up to four of them (triad), a retrig adds three to seven
+// more, and the bowl half rings for ~30 s — so concurrency is spawn-rate x
+// voices x ring time, and nothing bounded any of the three.
+//
+// Push the module 6 controls toward their limits and that product runs away:
+// scsynth saturates, sustained audio stops reaching the card and only the
+// attack transients get through. That is the "everything went silent but the
+// ticks" failure — not a dropout in one voice but the server unable to finish
+// a block. Reloading the browser recovered it only because reloading the
+// configs put the controls back where the rate was survivable; the minute it
+// took was the backlog of 30-second bowls draining.
+//
+// ~strikeBell has had exactly this ceiling since the bells over-fired
+// (6_osc_handlers.scd:96, live < 3). This is the same idiom for the four beat
+// sites and the slot-voice site that never got one. Entries expire on their
+// own schedule rather than being counted from the server's node list, which
+// also holds the drone, the limiter and every corpus voice.
+//
+// Refusal, not stealing: cutting a bowl mid-ring is a click, and the whole
+// point is to stop the clicking. Under load the texture THINS instead of
+// collapsing, which is the musical failure mode rather than the catastrophic
+// one — and ~percStats makes the thinning visible on the [MON] line rather
+// than leaving it to be guessed at.
+~percLive = ~percLive ?? { [] };
+~percMaxLive = ~percMaxLive ?? { 24 };
+~percStats = ~percStats ?? { (admitted: 0, refused: 0) };
+~percAdmit = { |ringSecs = 14|
+    var now = SystemClock.seconds;
+    var ok;
+    ~percLive = (~percLive ? []).select { |t| t > now };
+    ok = ~percLive.size < (~percMaxLive ? 24);
+    if(ok) {
+        ~percLive = ~percLive.add(now + ringSecs);
+        ~percStats[\admitted] = (~percStats[\admitted] ? 0) + 1;
+    } {
+        ~percStats[\refused] = (~percStats[\refused] ? 0) + 1;
+    };
+    ok;
+};
+// Spawn through this and the ceiling applies wherever the voice is fired.
+~percSpawn = { |args, grp, ringSecs = 14|
+    if(~percAdmit.value(ringSecs)) { Synth(\opalPerc, args, grp) } { nil };
+};
+
 // ─── Retrig ─────────────────────────────────────────────────────────────────
 // The other half of the Octatrack idiom: one trig becomes a burst, at a rate
 // and length set per event rather than by the sequencer.
@@ -218,7 +266,7 @@
         count.do { |i|
             var f = (freq * (glide ** ((i + 1) / count))).clip(22, 900);
             s.makeBundle(s.latency + ((i + 1) * interval), {
-                Synth(\opalPerc, [
+                ~percSpawn.([
                     \out, 0, \freq, f, \bodySeed, bodySeed,
                     // Burst hits are CHOKED: timeStr 0.55 against the default
                     // 2.0 shortens both the mode decays and the amp envelope.
@@ -238,7 +286,13 @@
                     \timeStr, 0.22,
                     // Falls away rather than repeating flat.
                     \amp, amp * ((1 - ((i + 1) / (count + 1))) ** 1.3) * 0.85
-                ] ++ (~voiceBusArgs.value ? []) ++ lockArgs);
+                // nil group is what this site always passed — nil.asTarget is
+                // the default group, so the target is unchanged. The 3 s
+                // reservation is the point: these hits are choked to
+                // timeStr 0.22 and are gone long before a bowl would be, so
+                // holding a 14 s slot for each would starve the ceiling with
+                // voices that had already stopped sounding.
+                ] ++ (~voiceBusArgs.value ? []) ++ lockArgs, nil, 3);
             });
         };
     };
@@ -1202,7 +1256,7 @@
                 { voicingMode == \single } {
                     // Single pitched note
                     var percFreq = (baseFreq * rrand(0.98, 1.02)).clip(35, 260);
-                    Synth(\opalPerc, [
+                    ~percSpawn.([
                         \out,          0,
                         \freq,         percFreq,
                         \bodySeed,     bodySeed,
@@ -1224,7 +1278,7 @@
                     // Two-note interval
                     2.do { |voice|
                         var harmFreq = (baseFreq * ([1.0, 1.333][voice]) * rrand(0.99, 1.01)).clip(35, 300);
-                        Synth(\opalPerc, [
+                        ~percSpawn.([
                             \out,          0,
                             \freq,         harmFreq,
                             \bodySeed,     bodySeed,
@@ -1247,7 +1301,7 @@
                     // Full harmonic series (up to harmCount)
                     (harmCount.clip(2, 4)).do { |h|
                         var harmFreq = (baseFreq * ([1.0, 1.25, 1.5, 1.75].wrapAt(h))).clip(35, 340);
-                        Synth(\opalPerc, [
+                        ~percSpawn.([
                             \out,          0,
                             \freq,         harmFreq,
                             \bodySeed,     bodySeed,
