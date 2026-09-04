@@ -156,11 +156,12 @@ function mountSlotField(
     inst: Instrument,
     slotKey: string,
     tune: Partial<ConstellationParams> = {},
+    reactive = true,
 ): SlotField {
     const field = mountConstellationField(stageEl, {
         hue: hueRotateFor(inst.hue),
         ...tune,
-    }, { label: inst.label, hint: inst.hint });
+    }, { label: inst.label, hint: inst.hint, reactive });
 
     // Onsets are detected as a rising edge on the voice envelope, the same way
     // the slots detect their own flashes. Held here so the field does not
@@ -184,10 +185,17 @@ function mountSlotField(
             const masterA = sp.masteramp ?? 0.7;
             const consensus = st?.consensus ?? 0.5;
 
+            // A silent field takes its parameters from the CONTROLS only. The
+            // level term is what made the drift quicken and the colour lift on
+            // every note, and that is the reactivity being removed — leaving it
+            // in while suppressing pulse() would have taken the flinch and kept
+            // the fidget.
+            const lvl = reactive ? r.level : 0.35;
+
             field.drive({
                 // Level rides on top of the control so the field breathes with
                 // the note rather than only with the knob.
-                speed: (0.25 + tDil * 1.6) * (0.6 + r.level * 1.8),
+                speed: (0.25 + tDil * 1.6) * (0.6 + lvl * 1.8),
                 density: 0.35 + texDep * 1.15,
                 length: 0.55 + filtC * 0.9,
                 strokeWidth: 0.5 + resBody * 1.6,
@@ -197,12 +205,17 @@ function mountSlotField(
                 // 0.2 over a near-black scene is already almost invisible.
                 opacity: (0.24 + atmMix * 0.44) * (0.6 + consensus * 0.4),
                 brightness: 0.7 + masterA * 0.7,
-                saturation: 0.8 + r.level * 0.6,
+                saturation: 0.8 + lvl * 0.6,
             });
 
             const onset = r.env > lastEnv + 0.06 ? Math.min(1, r.env * 0.9) : 0;
             if (onset > 0) field.pulse(onset);
             lastEnv = r.env;
+            // Still RETURNED even when silent: the slot's own chart uses this
+            // for its resonators and its own flashes, which are not what was
+            // being removed. Only the sky stops answering — field.pulse and
+            // field.strike are no-ops on a non-reactive field, guarded inside
+            // the field itself.
             return onset;
         },
         destroy() {
@@ -1103,7 +1116,7 @@ export function mountDynamicOptimality(stageEl: HTMLElement, getLatestState: () 
     const inst6 = INSTRUMENTS.s6;
     // The constellation backdrop for this slot, coloured by inst6's hue
     // and driven by its band. See mountSlotField.
-    const cfield = mountSlotField(stageEl, inst6, "__slot6Soneth");
+    const cfield = mountSlotField(stageEl, inst6, "__slot6Soneth", {}, false);
     // PERCUSIÓN. damp 0.93 ≈ a third of a second — struck, not rung. The tight
     // mallet (spread 0.18) is the point of difference from slot 5: perc excites
     // a SMALL part of the body, so a hit moves one region of the tree and the
@@ -1499,7 +1512,7 @@ export function mountGeometry(stageEl: HTMLElement, getLatestState: () => Parlia
     const inst7 = INSTRUMENTS.s7;
     // The constellation backdrop for this slot, coloured by inst7's hue
     // and driven by its band. See mountSlotField.
-    const cfield = mountSlotField(stageEl, inst7, "__slot7Soneth");
+    const cfield = mountSlotField(stageEl, inst7, "__slot7Soneth", {}, false);
     // BOMBO. Few modes, very low, and damp 0.90 so it is still again almost at
     // once — a kick is one displacement of air, not a texture. The wide mallet
     // (spread 0.9) moves the WHOLE field together, which is exactly how a low
@@ -1933,7 +1946,7 @@ export function mountMemoryHierarchy(stageEl: HTMLElement, getLatestState: () =>
     const inst8 = INSTRUMENTS.s8;
     // The constellation backdrop for this slot, coloured by inst8's hue
     // and driven by its band. See mountSlotField.
-    const cfield = mountSlotField(stageEl, inst8, "__slot8Soneth");
+    const cfield = mountSlotField(stageEl, inst8, "__slot8Soneth", {}, false);
     // POLVO. Many modes, high and fast-dying: not one gesture but a cloud of
     // small independent ones, which is what granular synthesis is. damp 0.86
     // is the shortest of the five — each grain is over before the next lands.
@@ -2314,7 +2327,7 @@ export function mountHashing(stageEl: HTMLElement, getLatestState: () => Parliam
     const inst9 = INSTRUMENTS.s9;
     // The constellation backdrop for this slot, coloured by inst9's hue
     // and driven by its band. See mountSlotField.
-    const cfield = mountSlotField(stageEl, inst9, "__slot9Soneth");
+    const cfield = mountSlotField(stageEl, inst9, "__slot9Soneth", {}, false);
     // MUESTRAS. A recording is not struck — it is READ. Slow, nearly
     // undamped (0.995), so the motion here is a long traverse rather than a
     // decay: the visual equivalent of a play head crossing a buffer.

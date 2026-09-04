@@ -161,7 +161,23 @@ type Instance = {
 type Dust = { x: number; y: number; vx: number; vy: number; r: number };
 
 /** What this slot IS, for the corner readout. Not driven; set once at mount. */
-export type ConstellationMeta = { label?: string; hint?: string };
+export type ConstellationMeta = {
+  label?: string;
+  hint?: string;
+  /**
+   * Whether the sky answers the engine at all.
+   *
+   * On slots 6-9 it does not. Those screens already carry the voice — the
+   * chart below reacts, the resonators ring, the readout names the trigger —
+   * and having the constellations flinch as well made every strike arrive
+   * three times over. Silent, the figures become the slow layer the piece
+   * needs behind a busy one: they cross, they are looked at, they leave.
+   *
+   * false disables pulse() and strike() at the source rather than at the call
+   * sites, so a slot cannot reintroduce the coupling by accident.
+   */
+  reactive?: boolean;
+};
 
 export function mountConstellationField(
   host: HTMLElement,
@@ -711,11 +727,22 @@ export function mountConstellationField(
       inst.orbA += inst.orbW * p.speed;
       inst.rot += inst.rotVel * p.speed;
       const s = scale * inst.sizeVar;
-      const margin = s * 1.15 + inst.orbR;
-      if (inst.cx < margin || inst.cx > width - margin) inst.vx *= -1;
-      if (inst.cy < margin || inst.cy > height - margin) inst.vy *= -1;
-      inst.cx = Math.max(margin, Math.min(width - margin, inst.cx));
-      inst.cy = Math.max(margin, Math.min(height - margin, inst.cy));
+      // ─── Crossing, not bouncing ───────────────────────────────────────
+      // These bounced off an inset margin, so every figure was permanently
+      // penned in the middle of the screen and the edges of the viewport were
+      // dead ground. Nothing ever arrived and nothing ever left; the field was
+      // a box of trapped things.
+      //
+      // Now they cross. A figure that leaves one side re-enters from the
+      // other, so there is always traffic, and the borders are where the sky
+      // turns over rather than where it stops. `margin` is the width of the
+      // band outside the viewport a figure keeps travelling through before it
+      // wraps, which is what lets the fade below finish before it is moved.
+      const margin = s * 1.6 + inst.orbR;
+      if (inst.cx < -margin) inst.cx = width + margin;
+      else if (inst.cx > width + margin) inst.cx = -margin;
+      if (inst.cy < -margin) inst.cy = height + margin;
+      else if (inst.cy > height + margin) inst.cy = -margin;
       // The drawn centre, orbit included. Bounds are tested on the guiding
       // centre above so the epicycle can never walk a figure off the edge.
       const px0 = inst.cx + Math.cos(inst.orbA) * inst.orbR;
@@ -725,6 +752,25 @@ export function mountConstellationField(
       // position and a figure's world position are different quantities, and
       // subtracting them would make the crosshair miss by further the further
       // in you go.
+      // ─── Edge fade ─────────────────────────────────────────────────────
+      // Measured in SCREEN space, because what counts as a border depends on
+      // the view: zoomed in, a figure leaves the visible rectangle long before
+      // it reaches the edge of the world.
+      //
+      // A figure fades over its own size rather than a fixed distance, so a
+      // large one does not pop while a small one crawls — both take the same
+      // proportion of themselves to arrive.
+      const sxc = (px0 - view.cx) * view.zoom + width / 2;
+      const syc = (py0 - view.cy) * view.zoom + height / 2;
+      const fadeBand = Math.max(40, s * view.zoom * 1.4);
+      const nearest = Math.min(sxc, width - sxc, syc, height - syc);
+      const fRaw = Math.max(0, Math.min(1, (nearest + fadeBand) / (fadeBand * 2)));
+      const edgeFade = fRaw * fRaw * (3 - 2 * fRaw);
+      // Fully outside with nothing left to draw: skip the whole figure. This
+      // is also the cull that keeps a deep zoom cheap, since at 14x most of the
+      // roster is off-screen.
+      if (edgeFade <= 0.002) continue;
+
       const dx = toWorldX(pointer.x) - px0;
       const dy = toWorldY(pointer.y) - py0;
       const dist = Math.hypot(dx, dy);
@@ -734,20 +780,32 @@ export function mountConstellationField(
       const target = t * t * (3 - 2 * t);
       // Asymmetric easing: resolves quickly under the cursor, releases slowly,
       // so sweeping across the field leaves a wake rather than a hard edge.
-      const k = target > inst.reveal ? 0.16 : 0.045;
-      inst.reveal += (target - inst.reveal) * k;
+      // In seconds. 0.16/0.045 per frame were 60 fps constants — at 96 ms and
+      // 363 ms respectively — so a figure resolved and released at different
+      // speeds on different displays. The release is now 0.9 s: a figure the
+      // crosshair has left stays legible while it drifts on, which is most of
+      // what "visible for longer" asks for.
+      const tau = target > inst.reveal ? 0.10 : 0.90;
+      inst.reveal += (target - inst.reveal) * (1 - Math.exp(-dtSec / tau));
       // A spotlit species resolves whether or not the crosshair found it —
       // slot 9 uses this to name the animal whose recording is sounding, so
       // the sky agrees with what you are hearing rather than with where the
       // mouse happens to be.
-      inst.spot *= 0.965;
+      inst.spot *= Math.exp(-dtSec / 0.281);
       // Today's being, when it is not shielded, sits a little way out of the
       // scatter whether or not the crosshair has found it — so the sky agrees
       // with the calendar rather than being a separate random draw. Well under
       // the 0.34 the name appears at: legible as a figure, still asking to be
       // looked at directly before it says what it is.
       const favoured = favouredSci !== null && genusOf(inst.animal.latin) === favouredSci;
-      const rev = Math.max(inst.reveal, inst.spot, favoured ? 0.22 : 0);
+      // A silent field has no onsets to make its figures flare, so without a
+      // floor they would only ever be visible under the crosshair — a sky of
+      // scattered dots with one animal in it. At 0.30 the bones are drawn for
+      // the whole crossing while the NAME still waits for the pointer (the
+      // caption threshold is 0.34), so the figures are present and being told
+      // what they are is still something you do on purpose.
+      const restingRev = meta.reactive === false ? 0.30 : 0;
+      const rev = Math.max(inst.reveal, inst.spot, favoured ? 0.22 : 0, restingRev);
 
       // Lean toward the pointer — "they follow the mouse". Proportional to
       // reveal and hard-capped, so the figure inclines rather than chases and
@@ -910,7 +968,8 @@ export function mountConstellationField(
         }
         c.strokeStyle = ink;
         const wBase = Math.max(0.3, p.strokeWidth * (0.55 + rev * 0.75) * Math.sqrt(view.zoom));
-        const aBase = rev * (0.30 + rev * 0.45) * (1 + pulseAmt * 0.5 + crack * 1.2);
+        const aBase = rev * (0.30 + rev * 0.45)
+          * (1 + pulseAmt * 0.5 + crack * 1.2) * edgeFade;
         c.beginPath();
         for (const [a, b] of inst.animal.edges) {
           c.moveTo(pts[a][0], pts[a][1]);
@@ -951,7 +1010,7 @@ export function mountConstellationField(
           : 1;
         const near = 1 + (0.35 - depths[i]) * 0.30;
         const r = (1.1 + rev * 1.5) * p.size * tw * Math.sqrt(view.zoom) * near;
-        const a = (0.20 + rev * 0.68) * tw * (1 + pulseAmt * 0.5) * glit;
+        const a = (0.20 + rev * 0.68) * tw * (1 + pulseAmt * 0.5) * glit * edgeFade;
         // A vertex is where the beam DWELLS — it lingers turning a corner, so
         // it burns brighter and blooms wider there than along a stroke. Halo in
         // the tube's own colour, core pushed toward white, which is what a
@@ -975,7 +1034,7 @@ export function mountConstellationField(
 
       // The name, once the figure is legible enough to deserve one.
       if (rev > 0.34 && !veiled) {
-        const la = Math.min(1, (rev - 0.34) / 0.34);
+        const la = Math.min(1, (rev - 0.34) / 0.34) * edgeFade;
         let maxY = -Infinity;
         for (const pt of pts) maxY = Math.max(maxY, pt[1]);
         c.textAlign = "center";
@@ -1117,6 +1176,7 @@ export function mountConstellationField(
       if (densityChanged) layout();
     },
     pulse(strength: number) {
+      if (meta.reactive === false) return;
       const v = Math.max(0, strength);
       // pulseAmt survives at a fraction of its old weight: the reach should
       // still breathe a little with the music, it just should not BE the
@@ -1126,6 +1186,7 @@ export function mountConstellationField(
       splash = Math.min(1.4, splash + v * 0.9);
     },
     strike(x: number, y: number, strength: number) {
+      if (meta.reactive === false) return;
       const a = Math.max(0, Math.min(1, strength));
       if (a < 0.02) return;
       // Hard ceiling on concurrent fronts. A slot firing faster than they
