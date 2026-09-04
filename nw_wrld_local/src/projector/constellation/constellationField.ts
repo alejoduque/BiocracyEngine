@@ -98,10 +98,36 @@ export type ConstellationHandle = {
    * `index` is into the roster in animals.ts.
    */
   spotlight: (index: number, strength: number) => void;
+  /** Enter/leave sky navigation: wheel zooms, drag turns the figures. */
+  setNav: (on: boolean) => void;
+  /** Whether sky navigation is currently on. */
+  navigating: () => boolean;
   resize: () => void;
   destroy: () => void;
   canvas: HTMLCanvasElement;
 };
+
+// ─── Depth ──────────────────────────────────────────────────────────────────
+//
+// animals.ts authors each figure in 2-D, which is the honest way to author a
+// constellation: a constellation is a DRAWING, true only from here. The stars
+// it joins are at wildly different distances and the animal exists only in
+// projection from this one vantage.
+//
+// So depth is not authored, it is assigned — deterministically, from the
+// animal's id and the star's index, so a given star sits at the same distance
+// every mount and the figure is stable to learn. Turn the sky and the animal
+// comes apart into the unrelated points it always was. That is the whole idea,
+// and it is why rotation is worth having rather than being a camera trick.
+const FOCAL = 2.4;
+function starDepth(id: string, i: number): number {
+  // xorshift on a cheap string hash — stable across sessions, no allocation.
+  let h = 2166136261;
+  for (let k = 0; k < id.length; k++) h = Math.imul(h ^ id.charCodeAt(k), 16777619);
+  h = Math.imul(h ^ (i * 2654435761), 2246822519);
+  h ^= h >>> 15;
+  return (((h >>> 0) / 4294967295) - 0.5) * 0.9;
+}
 
 /** One animal placed in the field. */
 type Instance = {
@@ -170,6 +196,8 @@ export function mountConstellationField(
       pulse: () => { /* no 2d context */ },
       strike: () => { /* no 2d context */ },
       spotlight: () => { /* no 2d context */ },
+      setNav: () => { /* no 2d context */ },
+      navigating: () => false,
       resize: () => { /* no 2d context */ },
       destroy: () => canvas.remove(),
       canvas,
@@ -188,6 +216,19 @@ export function mountConstellationField(
   const ripples: { x: number; y: number; r: number; amp: number }[] = [];
 
   const reduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+  // ─── The view ─────────────────────────────────────────────────────────────
+  // A camera over the field: `zoom` magnifies about (cx, cy), which is the
+  // WORLD point held at the centre of the viewport. yaw/pitch turn every figure
+  // about its own centre rather than orbiting the sky, because the ask is to
+  // look at a constellation from another angle, not to fly around the room.
+  const view = { zoom: 1, yaw: 0, pitch: 0, cx: 0, cy: 0 };
+  let nav = false;
+  let dragging = false;
+  let dragX = 0;
+  let dragY = 0;
+  const toWorldX = (sx: number) => (sx - width / 2) / view.zoom + view.cx;
+  const toWorldY = (sy: number) => (sy - height / 2) / view.zoom + view.cy;
 
   // Style writes are throttled to real changes rather than to frames — see the
   // commit that introduced this. /spectrum arrives at 20 Hz while this loop
@@ -247,6 +288,8 @@ export function mountConstellationField(
   }
 
   function layout() {
+    // Hold the middle of the field unless the performer has moved the view.
+    if (view.cx === 0 && view.cy === 0) { view.cx = width / 2; view.cy = height / 2; }
     const n = figureCount();
     // Walk the roster from a random offset rather than picking at random, so
     // a field never shows the same animal twice while others go unseen.
@@ -397,6 +440,80 @@ export function mountConstellationField(
       favouredSci = null;
     }
   }
+  // Sky navigation takes pointer events on the canvas itself. That is the whole
+  // arbitration: this layer sits above the WebGL canvas, so while it accepts
+  // events OrbitControls below receives none and the two cannot fight over the
+  // same drag. Turn it off and events fall through exactly as before.
+  function setNav(on: boolean) {
+    if (nav === on) return;
+    nav = on;
+    dragging = false;
+    canvas.style.pointerEvents = on ? "auto" : "none";
+    host.style.cursor = on ? "grab" : "crosshair";
+    if (on && view.cx === 0 && view.cy === 0) {
+      view.cx = width / 2;
+      view.cy = height / 2;
+    }
+  }
+
+  const onWheel = (e: WheelEvent) => {
+    if (!nav) return;
+    e.preventDefault();
+    // Zoom about the pointer: the world point under the cursor stays under it,
+    // so you magnify what you are looking at rather than the middle of the
+    // screen and then have to chase it.
+    const wx = toWorldX(e.clientX - hostLeft);
+    const wy = toWorldY(e.clientY - hostTop);
+    const next = Math.max(0.4, Math.min(14, view.zoom * Math.exp(-e.deltaY * 0.0016)));
+    const k = 1 - view.zoom / next;
+    view.cx += (wx - view.cx) * k;
+    view.cy += (wy - view.cy) * k;
+    view.zoom = next;
+  };
+  const onDown = (e: MouseEvent) => {
+    if (!nav) return;
+    dragging = true;
+    dragX = e.clientX;
+    dragY = e.clientY;
+    host.style.cursor = "grabbing";
+  };
+  const onUp = () => {
+    if (!dragging) return;
+    dragging = false;
+    host.style.cursor = nav ? "grab" : "crosshair";
+  };
+  const onDrag = (e: MouseEvent) => {
+    if (!dragging) return;
+    view.yaw += (e.clientX - dragX) * 0.006;
+    // Pitch is clamped just short of a right angle. Past it every figure is
+    // edge-on and the sky is a row of lines: reachable, but not somewhere to
+    // get stuck with no way back but the reset.
+    view.pitch = Math.max(-1.45, Math.min(1.45, view.pitch + (e.clientY - dragY) * 0.006));
+    dragX = e.clientX;
+    dragY = e.clientY;
+  };
+  const onKey = (e: KeyboardEvent) => {
+    const t = e.target as HTMLElement | null;
+    // Never steal a keystroke from a field the performer is typing into.
+    if (t && /^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName)) return;
+    if (e.key === "z" || e.key === "Z") { setNav(!nav); return; }
+    if (!nav) return;
+    if (e.key === "Escape") { setNav(false); return; }
+    if (e.key === "x" || e.key === "X") {
+      // Home. NOT "0": the switcher binds every digit to a slot
+      // (visualizationSwitcher.ts:1991), so a reset on 0 would have reset the
+      // view and jumped to the Parliament stage in the same keystroke —
+      // destroying the thing it was meant to recover. x is unbound.
+      view.zoom = 1; view.yaw = 0; view.pitch = 0;
+      view.cx = width / 2; view.cy = height / 2;
+    }
+  };
+
+  canvas.addEventListener("wheel", onWheel, { passive: false });
+  canvas.addEventListener("mousedown", onDown);
+  window.addEventListener("mousemove", onDrag);
+  window.addEventListener("mouseup", onUp);
+  window.addEventListener("keydown", onKey);
   host.addEventListener("mousemove", onMove);
   host.addEventListener("mouseleave", onLeave);
 
@@ -436,7 +553,10 @@ export function mountConstellationField(
     }
     const sweep = Math.hypot(pointer.vx, pointer.vy);
     // ~26 px between smoothed samples is a brisk sweep; past that it saturates.
-    const sweepN = Math.min(1, sweep / 26);
+    // A rotation drag is not a sweep. Without this, turning the sky smears
+    // every figure along the drag at full stretch, which reads as the shapes
+    // melting rather than as the sky turning.
+    const sweepN = dragging ? 0 : Math.min(1, sweep / 26);
     // The pointer's reach. Same 160 px unit the reference used for LINK, so a
     // slot's `length` still means "how far this field associates".
     const reach = (150 * p.length + scale) * (1 + pulseAmt * 0.4);
@@ -453,7 +573,11 @@ export function mountConstellationField(
       if (d.y < 0 || d.y > height) d.vy *= -1;
       c.globalAlpha = 0.10 + pulseAmt * 0.10;
       c.beginPath();
-      c.arc(d.x, d.y, d.r * p.size, 0, Math.PI * 2);
+      c.arc(
+        (d.x - view.cx) * view.zoom + width / 2,
+        (d.y - view.cy) * view.zoom + height / 2,
+        d.r * p.size * Math.sqrt(view.zoom), 0, Math.PI * 2,
+      );
       c.fill();
     }
 
@@ -477,8 +601,12 @@ export function mountConstellationField(
       const px0 = inst.cx + Math.cos(inst.orbA) * inst.orbR;
       const py0 = inst.cy + Math.sin(inst.orbA) * inst.orbR * 0.6;
 
-      const dx = pointer.x - px0;
-      const dy = pointer.y - py0;
+      // Compared in WORLD space: once `zoom` is not 1 a pointer's screen
+      // position and a figure's world position are different quantities, and
+      // subtracting them would make the crosshair miss by further the further
+      // in you go.
+      const dx = toWorldX(pointer.x) - px0;
+      const dy = toWorldY(pointer.y) - py0;
       const dist = Math.hypot(dx, dy);
       // Smoothstep so a figure neither snaps on nor has a visible corner as it
       // resolves. 1 at the centre of the pointer, 0 at the edge of its reach.
@@ -551,10 +679,39 @@ export function mountConstellationField(
       const sin = Math.sin(inst.rot);
       const ox = px0 + leanX;
       const oy = py0 + leanY;
-      const pts = inst.animal.stars.map(([sx, sy]) => {
-        // rotate into the figure's own orientation first
-        const rx = (sx * cos - sy * sin) * s;
-        const ry = (sx * sin + sy * cos) * s;
+      // ─── 3-D ──────────────────────────────────────────────────────────
+      // The authored 2-D point is treated as ALREADY PROJECTED, and the model
+      // coordinate is recovered by multiplying the perspective divide back out
+      // for that star's depth. At yaw = pitch = 0 the projection then returns
+      // the authored point EXACTLY — algebraically, not nearly:
+      //
+      //     X = x·(F+z)/F      then      x' = X·F/(F+z) = x
+      //
+      // That property is the reason it is written this way round. The
+      // silhouettes in animals.ts were checked against real animals, and a
+      // depth model that quietly bent them at rest would be a regression
+      // dressed as a feature. Turning the sky is the only thing that moves a
+      // figure now.
+      const cyw = Math.cos(view.yaw), syw = Math.sin(view.yaw);
+      const cpt = Math.cos(view.pitch), spt = Math.sin(view.pitch);
+      const depths: number[] = [];
+      const pts = inst.animal.stars.map(([sx, sy], si) => {
+        const z0 = starDepth(inst.animal.id, si);
+        const m = (FOCAL + z0) / FOCAL;
+        // roll in the figure's own plane, as before
+        let X = (sx * cos - sy * sin) * m;
+        let Y = (sx * sin + sy * cos) * m;
+        let Z = z0;
+        const X1 = X * cyw + Z * syw;          // yaw about the vertical
+        Z = -X * syw + Z * cyw;
+        X = X1;
+        const Y1 = Y * cpt - Z * spt;          // pitch about the horizontal
+        Z = Y * spt + Z * cpt;
+        Y = Y1;
+        depths.push(Z);
+        const f = FOCAL / (FOCAL + Z);
+        const rx = X * f * s;
+        const ry = Y * f * s;
         // then decompose against the stretch axis and rescale each component
         const par = rx * ux + ry * uy;
         const per = -rx * uy + ry * ux;
@@ -578,7 +735,14 @@ export function mountConstellationField(
           wx += (rdx / rd) * push;
           wy += (rdy / rd) * push;
         }
-        return [wx, wy] as [number, number];
+        // World to screen, at the one place a star position is finished.
+        // Everything above — orbit, lean, elongation, ripples — stays in world
+        // units so a strike travels the same distance whatever the zoom, and
+        // only the view maps it onto the canvas.
+        return [
+          (wx - view.cx) * view.zoom + width / 2,
+          (wy - view.cy) * view.zoom + height / 2,
+        ] as [number, number];
       });
 
       // The veil is tested HERE, at the point of drawing, and not folded into
@@ -591,7 +755,7 @@ export function mountConstellationField(
       // Bones first, so stars sit crisp on top — the reference's ordering.
       if (rev > 0.004 && !veiled) {
         c.strokeStyle = ink;
-        c.lineWidth = Math.max(0.3, p.strokeWidth * (0.55 + rev * 0.75));
+        c.lineWidth = Math.max(0.3, p.strokeWidth * (0.55 + rev * 0.75) * Math.sqrt(view.zoom));
         c.globalAlpha = rev * (0.30 + rev * 0.45) * (1 + pulseAmt * 0.5);
         c.beginPath();
         for (const [a, b] of inst.animal.edges) {
@@ -606,7 +770,12 @@ export function mountConstellationField(
       c.fillStyle = ink;
       for (let i = 0; i < pts.length; i++) {
         const tw = 0.78 + Math.sin(now * 0.0012 + inst.phase + i * 0.7) * 0.22;
-        const r = (1.1 + rev * 1.5) * p.size * tw;
+        // sqrt, not linear: at 14x a linear scale turns every star into a disc
+        // and the figure into a blob. Depth reads on top of it — a star nearer
+        // the viewer is drawn slightly larger, which is what makes a rotation
+        // legible as rotation rather than as a shape that wobbles.
+        const near = 1 + (0.35 - depths[i]) * 0.30;
+        const r = (1.1 + rev * 1.5) * p.size * tw * Math.sqrt(view.zoom) * near;
         const a = (0.20 + rev * 0.68) * tw * (1 + pulseAmt * 0.5);
         c.globalAlpha = Math.min(1, a * 0.30);
         c.beginPath();
@@ -628,11 +797,36 @@ export function mountConstellationField(
         c.fillStyle = ink;
         c.globalAlpha = la * 0.92;
         c.font = `600 ${Math.round(11 + s * 0.045)}px ui-monospace, "SF Mono", Menlo, monospace`;
-        c.fillText(inst.animal.common.toUpperCase(), ox, maxY + s * 0.16);
+        // ox is WORLD, maxY comes from pts and is SCREEN. Mixing them put the
+        // name in the right place at zoom 1 and nowhere near the figure at any
+        // other zoom. Both ends on the screen side now, and the offsets scale
+        // with the view so the caption keeps its distance from the animal.
+        const lx = (ox - view.cx) * view.zoom + width / 2;
+        const gap = s * 0.16 * view.zoom;
+        c.fillText(inst.animal.common.toUpperCase(), lx, maxY + gap);
         c.globalAlpha = la * 0.55;
         c.font = `italic ${Math.round(9 + s * 0.035)}px ui-monospace, "SF Mono", Menlo, monospace`;
-        c.fillText(inst.animal.latin, ox, maxY + s * 0.16 + Math.round(14 + s * 0.05));
+        c.fillText(inst.animal.latin, lx, maxY + gap + Math.round(14 + s * 0.05));
       }
+    }
+
+    // A mode nobody can find is a mode that is not there. Drawn last so it
+    // sits over the sky, and only while navigating — nothing is added to the
+    // picture the rest of the time.
+    if (nav) {
+      c.globalAlpha = 0.72;
+      c.fillStyle = ink;
+      c.textAlign = "left";
+      c.textBaseline = "top";
+      c.font = '600 11px ui-monospace, "SF Mono", Menlo, monospace';
+      c.fillText(
+        `CIELO  ·  ${view.zoom.toFixed(1)}x  ·  ` +
+        `${Math.round((view.yaw * 180) / Math.PI)}° / ${Math.round((view.pitch * 180) / Math.PI)}°`,
+        14, 14,
+      );
+      c.globalAlpha = 0.42;
+      c.font = '10px ui-monospace, "SF Mono", Menlo, monospace';
+      c.fillText("arrastrar: girar   rueda: acercar   x: origen   z/esc: salir", 14, 30);
     }
 
     c.globalAlpha = 1;
@@ -688,6 +882,8 @@ export function mountConstellationField(
         if (inst.animal === animal) inst.spot = Math.max(inst.spot, a);
       }
     },
+    setNav,
+    navigating: () => nav,
     resize() {
       cacheRect();
       resize();
@@ -699,6 +895,11 @@ export function mountConstellationField(
       raf = 0;
       host.removeEventListener("mousemove", onMove);
       host.removeEventListener("mouseleave", onLeave);
+      canvas.removeEventListener("wheel", onWheel);
+      canvas.removeEventListener("mousedown", onDown);
+      window.removeEventListener("mousemove", onDrag);
+      window.removeEventListener("mouseup", onUp);
+      window.removeEventListener("keydown", onKey);
       host.style.cursor = prevCursor;
       canvas.remove();
     },
