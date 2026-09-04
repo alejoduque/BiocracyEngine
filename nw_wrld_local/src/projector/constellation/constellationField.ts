@@ -334,6 +334,69 @@ export function mountConstellationField(
   // panel resize, and it costs one layout read per 24 frames instead of one
   // per scroll event.
   const RECT_TTL_MS = 400;
+
+  // ─── Article 47, the opacity clause ───────────────────────────────────────
+  //
+  // This field names nine beings on screen, in Spanish and in Latin. Slot P
+  // already decides, from live IUCN data, which being is in deepest peak today
+  // and whether it is opacity-shielded, and publishes that on
+  // window.__activeSpecies — the same object laserTap.ts reads before deciding
+  // whether to cast a marker onto the real forest (laserTap.ts:70).
+  //
+  // The laser honours the clause. This field did not: it drew and NAMED every
+  // animal in the roster regardless, which is the one thing the piece says it
+  // will not do to a vulnerable being.
+  //
+  // Veiled does NOT mean absent. The clause is about exposure, not erasure —
+  // Glissant's right to opacity is a right to be present without being made
+  // legible. So a shielded animal keeps its stars, and loses its bones and its
+  // name: you can see that something is there and you are not told what.
+  // The laser does the same thing, drawing the year ring while withholding the
+  // marker.
+  //
+  // The status is never hardcoded here. Inventing conservation statuses in a
+  // constellation file would be exactly the wrong place for them to live, and
+  // they would rot the moment the Red List moved. This asks the calendar.
+  //
+  // MATCHED ON GENUS, not on the full binomial, and that is deliberate. Slot P's
+  // roster and this one share no exact name: it carries Alouatta palliata (VU,
+  // the mantled howler) and this field draws Alouatta seniculus (the red
+  // howler). Exact matching would compile, pass, and never once fire — a rule
+  // that is really an ornament.
+  //
+  // A constellation is a drawing of a KIND. The figure labelled "mono aullador"
+  // is every howler, and if the calendar says a howler is shielded today then
+  // the howler in the sky is the being it is talking about. Genus is the right
+  // grain for what is actually on screen.
+  //
+  // It can over-veil — a shielded Puma yagouaroundi would veil the puma figure
+  // too. For a clause about withholding, that is the correct direction to err.
+  const SPECIES_TTL_MS = 500;
+  /** Genus = the first token of a binomial, lowercased. */
+  const genusOf = (sci: string) => sci.trim().split(/\s+/)[0].toLowerCase();
+  let speciesAt = -Infinity;
+  /** Binomial of a shielded being, or null. Matched against Animal.latin. */
+  let veiledSci: string | null = null;
+  /** Binomial of today's being when it is NOT shielded. */
+  let favouredSci: string | null = null;
+  function readSpecies() {
+    speciesAt = performance.now();
+    try {
+      const a = (window as unknown as {
+        __activeSpecies?: { sci?: string; sensitive?: boolean };
+      }).__activeSpecies;
+      const sci = a && typeof a.sci === "string" && a.sci.trim() !== ""
+        ? genusOf(a.sci) : null;
+      veiledSci = sci && a?.sensitive === true ? sci : null;
+      favouredSci = sci && a?.sensitive !== true ? sci : null;
+    } catch {
+      // Slot P may not be mounted. Absence of the calendar is not licence to
+      // expose anything, but it is also not evidence of shielding: leave both
+      // null and the field behaves as it always has.
+      veiledSci = null;
+      favouredSci = null;
+    }
+  }
   host.addEventListener("mousemove", onMove);
   host.addEventListener("mouseleave", onLeave);
 
@@ -361,6 +424,7 @@ export function mountConstellationField(
     // condition true on every single frame — which would force a layout per
     // frame, worse than the scroll listener this replaced.
     if (performance.now() - rectAt > RECT_TTL_MS) cacheRect();
+    if (performance.now() - speciesAt > SPECIES_TTL_MS) readSpecies();
     // Wavefronts travel outward and thin as they go. Retired once spent so
     // the array cannot grow — a slot that strikes every frame would otherwise
     // accumulate one record per frame forever.
@@ -429,7 +493,13 @@ export function mountConstellationField(
       // the sky agrees with what you are hearing rather than with where the
       // mouse happens to be.
       inst.spot *= 0.965;
-      const rev = Math.max(inst.reveal, inst.spot);
+      // Today's being, when it is not shielded, sits a little way out of the
+      // scatter whether or not the crosshair has found it — so the sky agrees
+      // with the calendar rather than being a separate random draw. Well under
+      // the 0.34 the name appears at: legible as a figure, still asking to be
+      // looked at directly before it says what it is.
+      const favoured = favouredSci !== null && genusOf(inst.animal.latin) === favouredSci;
+      const rev = Math.max(inst.reveal, inst.spot, favoured ? 0.22 : 0);
 
       // Lean toward the pointer — "they follow the mouse". Proportional to
       // reveal and hard-capped, so the figure inclines rather than chases and
@@ -511,8 +581,15 @@ export function mountConstellationField(
         return [wx, wy] as [number, number];
       });
 
+      // The veil is tested HERE, at the point of drawing, and not folded into
+      // `rev` above. reveal and spot are two different routes to legibility —
+      // the crosshair and slot 9's spotlight — and a rule that lives in only
+      // one of them is a rule with a way around it. A shielded being cannot be
+      // exposed by hovering it, by the sample player naming it, or by both.
+      const veiled = veiledSci !== null && genusOf(inst.animal.latin) === veiledSci;
+
       // Bones first, so stars sit crisp on top — the reference's ordering.
-      if (rev > 0.004) {
+      if (rev > 0.004 && !veiled) {
         c.strokeStyle = ink;
         c.lineWidth = Math.max(0.3, p.strokeWidth * (0.55 + rev * 0.75));
         c.globalAlpha = rev * (0.30 + rev * 0.45) * (1 + pulseAmt * 0.5);
@@ -542,7 +619,7 @@ export function mountConstellationField(
       }
 
       // The name, once the figure is legible enough to deserve one.
-      if (rev > 0.34) {
+      if (rev > 0.34 && !veiled) {
         const la = Math.min(1, (rev - 0.34) / 0.34);
         let maxY = -Infinity;
         for (const pt of pts) maxY = Math.max(maxY, pt[1]);
