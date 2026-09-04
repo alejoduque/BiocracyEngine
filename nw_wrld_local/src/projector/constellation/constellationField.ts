@@ -180,7 +180,7 @@ export function mountConstellationField(
   // drag despite this layer sitting above it.
   canvas.style.cssText =
     "position:absolute;inset:0;width:100%;height:100%;z-index:2;" +
-    "pointer-events:none;mix-blend-mode:screen;";
+    "pointer-events:auto;mix-blend-mode:screen;";
   host.appendChild(canvas);
 
   // The pointer is the survey instrument, so it reads as one. Set on the host
@@ -211,6 +211,26 @@ export function mountConstellationField(
   let raf = 0;
   let dead = false;
   let pulseAmt = 0;
+  // ─── The strike ───────────────────────────────────────────────────────────
+  //
+  // Every voice used to produce the same gesture here: pulseAmt swelled the
+  // reach and the brightness, so a bell, a kick and a china cymbal all made the
+  // field enlarge and retract. One shape for every sound is the same flatness
+  // as one brightness for every sound.
+  //
+  // A china is not a swell. It is a fast bright crack followed by a long
+  // inharmonic shimmer that takes seconds to die — so it is drawn as one:
+  //
+  //   crack   0.86/frame  ~0.2 s   the transient. Shatters the bones into
+  //                                dashes and spikes the beam.
+  //   splash  0.985/frame ~4 s     the wash. Scatters each star along its own
+  //                                fixed bearing, modulated by its own
+  //                                frequency, so the figure SHIMMERS rather
+  //                                than breathing in and out together.
+  //
+  // Both are zero at rest, so a quiet field is exactly the field as authored.
+  let crack = 0;
+  let splash = 0;
   const pointer = { x: -1e5, y: -1e5, vx: 0, vy: 0 };
   /** Expanding wavefronts from strike(). Bounded — see the push in strike(). */
   const ripples: { x: number; y: number; r: number; amp: number }[] = [];
@@ -223,7 +243,11 @@ export function mountConstellationField(
   // about its own centre rather than orbiting the sky, because the ask is to
   // look at a constellation from another angle, not to fly around the room.
   const view = { zoom: 1, yaw: 0, pitch: 0, cx: 0, cy: 0 };
-  let nav = false;
+  // Always navigable. The toggle was a mode, and a mode is a thing to remember
+  // being in — on an instrument the performer should be able to reach into the
+  // sky at any moment without arming anything first. The canvas therefore takes
+  // pointer events for the whole life of the field.
+  const nav = true;
   let dragging = false;
   let dragX = 0;
   let dragY = 0;
@@ -444,17 +468,6 @@ export function mountConstellationField(
   // arbitration: this layer sits above the WebGL canvas, so while it accepts
   // events OrbitControls below receives none and the two cannot fight over the
   // same drag. Turn it off and events fall through exactly as before.
-  function setNav(on: boolean) {
-    if (nav === on) return;
-    nav = on;
-    dragging = false;
-    canvas.style.pointerEvents = on ? "auto" : "none";
-    host.style.cursor = on ? "grab" : "crosshair";
-    if (on && view.cx === 0 && view.cy === 0) {
-      view.cx = width / 2;
-      view.cy = height / 2;
-    }
-  }
 
   const onWheel = (e: WheelEvent) => {
     if (!nav) return;
@@ -471,17 +484,14 @@ export function mountConstellationField(
     view.zoom = next;
   };
   const onDown = (e: MouseEvent) => {
-    if (!nav) return;
     dragging = true;
     dragX = e.clientX;
     dragY = e.clientY;
-    host.style.cursor = "grabbing";
+    // Cursor deliberately NOT changed to grab/grabbing. A hand says "this is a
+    // surface you are sliding about"; the crosshair says "this is an instrument
+    // you are aiming", which is what the field is and how the reveal reads it.
   };
-  const onUp = () => {
-    if (!dragging) return;
-    dragging = false;
-    host.style.cursor = nav ? "grab" : "crosshair";
-  };
+  const onUp = () => { dragging = false; };
   const onDrag = (e: MouseEvent) => {
     if (!dragging) return;
     view.yaw += (e.clientX - dragX) * 0.006;
@@ -496,10 +506,7 @@ export function mountConstellationField(
     const t = e.target as HTMLElement | null;
     // Never steal a keystroke from a field the performer is typing into.
     if (t && /^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName)) return;
-    if (e.key === "z" || e.key === "Z") { setNav(!nav); return; }
-    if (!nav) return;
-    if (e.key === "Escape") { setNav(false); return; }
-    if (e.key === "x" || e.key === "X") {
+    if (e.key === "x" || e.key === "X" || e.key === "Escape") {
       // Home. NOT "0": the switcher binds every digit to a slot
       // (visualizationSwitcher.ts:1991), so a reset on 0 would have reset the
       // view and jumped to the Parliament stage in the same keystroke —
@@ -523,11 +530,24 @@ export function mountConstellationField(
     c.clearRect(0, 0, width, height);
     c.lineCap = "round";
     c.lineJoin = "round";
+    // ─── Vector display ───────────────────────────────────────────────────
+    // A Vectrex has no pixels and no fills: a beam is steered along the shape
+    // and the phosphor keeps glowing behind it. Two consequences drawn here.
+    //
+    // "lighter" is additive, so where strokes cross they BLOOM instead of
+    // painting over one another — the way overlapping beam passes actually
+    // behave on a phosphor screen, and the reason a vector display's corners
+    // are brighter than its edges. It also composes correctly with the
+    // mix-blend-mode: screen this canvas already sits under, since both only
+    // ever add light.
+    c.globalCompositeOperation = "lighter";
 
     // An attack widens the reach and brightens the stars, so the field gathers
     // on the note and lets go after it. Decay is per-frame and frame-rate
     // naive, the same way the reference's own pulse term is.
     pulseAmt *= 0.94;
+    crack *= 0.86;
+    splash *= 0.985;
     const ink = INK[p.mode];
     const now = Date.now();
     const scale = figureScale(instances.length);
@@ -709,6 +729,17 @@ export function mountConstellationField(
         Z = Y * spt + Z * cpt;
         Y = Y1;
         depths.push(Z);
+        // Each star has a fixed bearing and its own shimmer rate, both derived
+        // from the same stable hash as its depth — so the wash is inharmonic
+        // across the figure and identical every time the animal is drawn.
+        if (splash > 0.001) {
+          const bearing = starDepth(inst.animal.id, si + 977) * 7.0;
+          const rate = 0.020 + Math.abs(starDepth(inst.animal.id, si + 313)) * 0.055;
+          const sh = Math.sin(now * rate + si * 1.7);
+          const mag = splash * sh * 0.16;
+          X += Math.cos(bearing) * mag;
+          Y += Math.sin(bearing) * mag;
+        }
         const f = FOCAL / (FOCAL + Z);
         const rx = X * f * s;
         const ry = Y * f * s;
@@ -754,15 +785,35 @@ export function mountConstellationField(
 
       // Bones first, so stars sit crisp on top — the reference's ordering.
       if (rev > 0.004 && !veiled) {
+        // The crack shatters the trace. A struck cymbal does not move a shape,
+        // it breaks the sound into noise before it settles — so the beam skips,
+        // and the gaps close as the transient dies. Solid again within ~0.2 s.
+        if (crack > 0.02) {
+          const on = 3 + (1 - crack) * 60;
+          c.setLineDash([on, 2 + crack * 9]);
+          c.lineDashOffset = -(now * 0.06) % 1000;
+        } else {
+          c.setLineDash([]);
+        }
         c.strokeStyle = ink;
-        c.lineWidth = Math.max(0.3, p.strokeWidth * (0.55 + rev * 0.75) * Math.sqrt(view.zoom));
-        c.globalAlpha = rev * (0.30 + rev * 0.45) * (1 + pulseAmt * 0.5);
+        const wBase = Math.max(0.3, p.strokeWidth * (0.55 + rev * 0.75) * Math.sqrt(view.zoom));
+        const aBase = rev * (0.30 + rev * 0.45) * (1 + pulseAmt * 0.5 + crack * 1.2);
         c.beginPath();
         for (const [a, b] of inst.animal.edges) {
           c.moveTo(pts[a][0], pts[a][1]);
           c.lineTo(pts[b][0], pts[b][1]);
         }
+        // Two passes over one path: a wide dim halo, then a narrow bright core.
+        // That IS the look — phosphor bleeds around the beam, and the beam
+        // itself is close to white however the tube is tinted. Cheaper and
+        // steadier than shadowBlur, which re-rasterises per stroke.
+        c.lineWidth = wBase * 3.2;
+        c.globalAlpha = Math.min(1, aBase * 0.22);
         c.stroke();
+        c.lineWidth = wBase;
+        c.globalAlpha = Math.min(1, aBase);
+        c.stroke();
+        c.setLineDash([]);
       }
 
       // Stars. Visible even at reveal 0 — the animal is always there; the
@@ -777,14 +828,25 @@ export function mountConstellationField(
         const near = 1 + (0.35 - depths[i]) * 0.30;
         const r = (1.1 + rev * 1.5) * p.size * tw * Math.sqrt(view.zoom) * near;
         const a = (0.20 + rev * 0.68) * tw * (1 + pulseAmt * 0.5);
-        c.globalAlpha = Math.min(1, a * 0.30);
+        // A vertex is where the beam DWELLS — it lingers turning a corner, so
+        // it burns brighter and blooms wider there than along a stroke. Halo in
+        // the tube's own colour, core pushed toward white, which is what a
+        // phosphor does when it saturates.
+        c.fillStyle = ink;
+        c.globalAlpha = Math.min(1, a * 0.26);
         c.beginPath();
-        c.arc(pts[i][0], pts[i][1], r * 2.6, 0, Math.PI * 2);
+        c.arc(pts[i][0], pts[i][1], r * 3.0, 0, Math.PI * 2);
         c.fill();
-        c.globalAlpha = Math.min(1, a);
+        c.globalAlpha = Math.min(1, a * 0.85);
         c.beginPath();
-        c.arc(pts[i][0], pts[i][1], r, 0, Math.PI * 2);
+        c.arc(pts[i][0], pts[i][1], r * 1.5, 0, Math.PI * 2);
         c.fill();
+        c.fillStyle = "#fff";
+        c.globalAlpha = Math.min(1, a * (0.30 + rev * 0.35 + crack * 0.5));
+        c.beginPath();
+        c.arc(pts[i][0], pts[i][1], r * 0.62, 0, Math.PI * 2);
+        c.fill();
+        c.fillStyle = ink;
       }
 
       // The name, once the figure is legible enough to deserve one.
@@ -813,7 +875,9 @@ export function mountConstellationField(
     // A mode nobody can find is a mode that is not there. Drawn last so it
     // sits over the sky, and only while navigating — nothing is added to the
     // picture the rest of the time.
-    if (nav) {
+    const offOrigin = Math.abs(view.zoom - 1) > 0.01
+      || Math.abs(view.yaw) > 0.005 || Math.abs(view.pitch) > 0.005;
+    if (offOrigin) {
       c.globalAlpha = 0.72;
       c.fillStyle = ink;
       c.textAlign = "left";
@@ -826,10 +890,11 @@ export function mountConstellationField(
       );
       c.globalAlpha = 0.42;
       c.font = '10px ui-monospace, "SF Mono", Menlo, monospace';
-      c.fillText("arrastrar: girar   rueda: acercar   x: origen   z/esc: salir", 14, 30);
+      c.fillText("arrastrar: girar   rueda: acercar   x/esc: origen", 14, 30);
     }
 
     c.globalAlpha = 1;
+    c.globalCompositeOperation = "source-over";
     raf = requestAnimationFrame(frame);
   }
 
@@ -863,7 +928,13 @@ export function mountConstellationField(
       if (densityChanged) layout();
     },
     pulse(strength: number) {
-      pulseAmt = Math.min(1.5, pulseAmt + Math.max(0, strength));
+      const v = Math.max(0, strength);
+      // pulseAmt survives at a fraction of its old weight: the reach should
+      // still breathe a little with the music, it just should not BE the
+      // gesture any more.
+      pulseAmt = Math.min(1.5, pulseAmt + v * 0.35);
+      crack = Math.min(1, crack + v);
+      splash = Math.min(1.4, splash + v * 0.9);
     },
     strike(x: number, y: number, strength: number) {
       const a = Math.max(0, Math.min(1, strength));
@@ -882,8 +953,8 @@ export function mountConstellationField(
         if (inst.animal === animal) inst.spot = Math.max(inst.spot, a);
       }
     },
-    setNav,
-    navigating: () => nav,
+    setNav: () => { /* always on — kept so the handle type stays stable */ },
+    navigating: () => true,
     resize() {
       cacheRect();
       resize();
