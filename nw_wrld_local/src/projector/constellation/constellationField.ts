@@ -313,14 +313,29 @@ export function mountConstellationField(
   };
   let hostLeft = 0;
   let hostTop = 0;
+  let rectAt = -Infinity;
   function cacheRect() {
     const r = host.getBoundingClientRect();
     hostLeft = r.left;
     hostTop = r.top;
+    rectAt = performance.now();
   }
+  // Refreshed on a timer from inside the frame loop, NOT on scroll.
+  //
+  // This listened on window scroll with capture: true, which fires for a
+  // scroll ANYWHERE in the document — including the parliament.html left
+  // column — and every one of those called getBoundingClientRect, forcing a
+  // synchronous layout of a page carrying a full-viewport canvas with
+  // mix-blend-mode: screen and a CSS filter. During a scroll drag that is
+  // 60-120 forced layouts a second, for a rect that in this layout does not
+  // move at all: the stage is not inside the scrolling column.
+  //
+  // Once every 400 ms is far more than enough to survive a window move or a
+  // panel resize, and it costs one layout read per 24 frames instead of one
+  // per scroll event.
+  const RECT_TTL_MS = 400;
   host.addEventListener("mousemove", onMove);
   host.addEventListener("mouseleave", onLeave);
-  window.addEventListener("scroll", cacheRect, true);
 
   function frame() {
     if (dead) return;
@@ -341,6 +356,11 @@ export function mountConstellationField(
     // elongated forever at the last velocity it saw.
     pointer.vx *= 0.88;
     pointer.vy *= 0.88;
+    // performance.now(), NOT the Date.now() above: rectAt is stamped from the
+    // monotonic clock, and comparing it against epoch milliseconds makes the
+    // condition true on every single frame — which would force a layout per
+    // frame, worse than the scroll listener this replaced.
+    if (performance.now() - rectAt > RECT_TTL_MS) cacheRect();
     // Wavefronts travel outward and thin as they go. Retired once spent so
     // the array cannot grow — a slot that strikes every frame would otherwise
     // accumulate one record per frame forever.
@@ -602,7 +622,6 @@ export function mountConstellationField(
       raf = 0;
       host.removeEventListener("mousemove", onMove);
       host.removeEventListener("mouseleave", onLeave);
-      window.removeEventListener("scroll", cacheRect, true);
       host.style.cursor = prevCursor;
       canvas.remove();
     },

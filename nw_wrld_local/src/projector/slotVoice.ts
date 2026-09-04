@@ -156,10 +156,38 @@ export function makeExcursionEmitter(
   const smooth = opts?.smooth ?? 0.012; // EMA weight — ~80 frames of memory
   let baseline: number | null = null;
   let armed = true;
+  let lastCallAt = -Infinity;
 
   return (count: number, amp: number, tone: number): boolean => {
-    if (baseline === null) {
+    // ─── A renderer stall is not a musical event ───────────────────────────
+    //
+    // These emitters are called once per frame from their slot's loop, so the
+    // gap between calls IS the frame interval. When the projector window is
+    // occluded — switching macOS Spaces, another window taking the screen —
+    // requestAnimationFrame stops, and the loop resumes later against a
+    // baseline that describes a structure from before the pause. The first
+    // comparison after that is not a measurement of anything the structure
+    // did; it is a measurement of the gap.
+    //
+    // That mattered most on slots 6 and 9 because their voices are the two
+    // most expensive to instantiate — \opalPerc is a 56-mode bank with comb
+    // delays and a reverb, and samplePlayer opens a long buffer with its own
+    // reverb and delay. One spawn landing in the same instant the compositor
+    // is repainting a window that just came back is enough to cost a block,
+    // and a lost block is the tick.
+    //
+    // 250 ms is ~15 missed frames at 60 fps: far beyond ordinary jitter,
+    // including a heavy GC or a slow composite, so a real structural burst is
+    // never mistaken for a stall.
+    const nowMs = performance.now();
+    const gap = nowMs - lastCallAt;
+    lastCallAt = nowMs;
+
+    // Same branch serves the mount: a slot appearing mid-performance should
+    // not announce itself for a structure that was already in that state.
+    if (baseline === null || gap > 250) {
       baseline = count;
+      armed = true;
       return false;
     }
     // The +0.5 floors both thresholds so a structure hovering near zero needs a
