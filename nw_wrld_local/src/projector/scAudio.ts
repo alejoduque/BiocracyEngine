@@ -111,7 +111,17 @@ export function noteVoiceOnset(name: string, amp: number, tone: number): void {
 export function tickScAudio(dt: number): void {
   for (const k of VOICE_NAMES) {
     const v = audio.voices[k];
-    if (v.env > 0) v.env = Math.max(0, v.env - dt * 3.2);
+    // Exponential, not linear. A linear ramp reaches zero with its velocity
+    // still finite, so every onset ended on a corner — the motion stopped
+    // rather than arrived, which is the small hard edge under "reactive but
+    // uncomfortable". exp decays asymptotically: the last of the movement is
+    // the slowest, which is how a struck body actually gives up its energy.
+    // tau 0.34 s puts it under 0.05 in about a second, close to the old 0.31 s
+    // to silence, so the timing is familiar and only the shape has changed.
+    if (v.env > 0) {
+      v.env *= Math.exp(-dt / 0.34);
+      if (v.env < 0.001) v.env = 0;
+    }
   }
   // A stopped engine must not leave the last frame frozen on screen looking
   // like sound — the same 1 s staleness rule the spectrogram already used.
@@ -139,6 +149,45 @@ export function normLevel(key: string, raw: number, dt = 0.016): number {
   const next = raw > p ? raw : p + (raw - p) * Math.min(1, dt * 0.35);
   peaks[key] = Math.max(0.02, next);
   return Math.max(0, Math.min(1, raw / peaks[key]));
+}
+
+// ─── Slew ───────────────────────────────────────────────────────────────────
+//
+// normLevel returns raw / peak, and raw is a 20 Hz staircase: /spectrum arrives
+// twenty times a second (3_synthdefs.scd:316) while the render loops run at 60
+// to 120. So every slot that drove a position from `level` was being driven by
+// a step function sampled three to six times per step, on top of the ordinary
+// jitter of an Amplitude.kr over a band-passed percussive signal. Read as
+// nervousness, because that is what it was: the geometry was tracking sampling
+// noise rather than the music.
+//
+// Asymmetric on purpose. The rise stays quick enough that an onset still
+// arrives — a voice that swells for a second has no attack — while the fall is
+// five times slower, so the picture settles instead of snapping back. Attack
+// fast, release slow is how every meter and every compressor is built, for the
+// same reason: what the ear notices is the arrival, what the eye notices is the
+// return.
+//
+// Frame-rate independent by construction. `1 - exp(-dt/tau)` gives the same
+// trajectory in seconds whatever the refresh rate, where a fixed per-frame
+// coefficient would make the identical patch settle twice as fast on a 120 Hz
+// panel as on a 60 Hz one.
+const slewVal: Record<string, number> = {};
+const slewAt: Record<string, number> = {};
+
+export function slew(key: string, target: number, riseTau = 0.18, fallTau = 0.9): number {
+  const now = performance.now();
+  const prev = slewVal[key];
+  if (prev === undefined) { slewVal[key] = target; slewAt[key] = now; return target; }
+  // Clamped: after a stall — an occluded window, a long GC — dt is enormous and
+  // an unclamped step would teleport the value, which is the very jump this
+  // exists to prevent.
+  const dt = Math.min(0.1, Math.max(0, (now - (slewAt[key] ?? now)) / 1000));
+  slewAt[key] = now;
+  const tau = target > prev ? riseTau : fallTau;
+  const next = prev + (target - prev) * (1 - Math.exp(-dt / Math.max(0.001, tau)));
+  slewVal[key] = next;
+  return next;
 }
 
 export function getScAudio(): ScAudio {

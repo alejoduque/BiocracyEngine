@@ -155,23 +155,34 @@ function connectControlWS() {
           // whatever day the ring is sounding. Stamped with a receive time so
           // the module can tell a live ring from a stale last-value and
           // self-advance when SuperCollider is not running.
-          const [doy, temporada] = args as unknown as [number, string];
+          // All five fields, not two. The ticker on slots 5-9 reports the
+          // ring's own reading — how many clips the day admitted, how deep the
+          // silence is when it admitted none, and the quorum — and those were
+          // being read off the message and thrown away here, leaving the only
+          // copy in the textContent of a DOM node the projector cannot see.
+          const [doy, temporada, clips, gap, quorum] =
+            args as unknown as [number, string, number, number, number];
           (window as unknown as {
-            __phenoCursor?: { doy: number; temporada: string; at: number };
+            __phenoCursor?: {
+              doy: number; temporada: string; clips: number;
+              gap: number; quorum: number; at: number;
+            };
           }).__phenoCursor = {
-            doy: Number(doy), temporada: String(temporada), at: performance.now(),
+            doy: Number(doy), temporada: String(temporada),
+            clips: Number(clips) || 0, gap: Number(gap) || 0,
+            quorum: Number(quorum) || 0, at: performance.now(),
           };
         }
         const el = document.getElementById("corpus-cursor");
         if (el) {
-          const [doy, temporada, clips, gap, quorum] = args as unknown as [
+          const [dDoy, dTemp, clips, gap, quorum] = args as unknown as [
             number, string, number, number, number,
           ];
           const body = Number(clips) > 0
             ? `${clips} clip${Number(clips) === 1 ? "" : "s"}`
             : `ausencia · ${gap}d`;
           el.textContent =
-            `doy ${doy} · ${temporada} · ${body} · quórum ${Number(quorum).toFixed(2)}`;
+            `doy ${dDoy} · ${dTemp} · ${body} · quórum ${Number(quorum).toFixed(2)}`;
         }
         return;
       }

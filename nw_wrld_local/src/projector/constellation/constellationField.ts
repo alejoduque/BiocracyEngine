@@ -442,6 +442,56 @@ export function mountConstellationField(
   //
   // It can over-veil — a shielded Puma yagouaroundi would veil the puma figure
   // too. For a clause about withholding, that is the correct direction to err.
+  // ─── The ticker ───────────────────────────────────────────────────────────
+  //
+  // The ring's own reading of where it is in the year, crawling along the foot
+  // of the screen. /pheno/cursor carries it (14_phenological_corpus.scd) and
+  // parliamentEntry publishes it on window.__phenoCursor.
+  //
+  // It reports the day, the temporada, and — the part worth having — whether
+  // the day admitted any recording at all. 331 of the 365 days in this corpus
+  // have none, so "AUSENCIA · 12 D" is the honest majority reading and not an
+  // error state. A ticker that only ever showed clip counts would imply a year
+  // that was recorded.
+  //
+  // Slow on purpose: 16 px/s is about a word every two seconds. It is there to
+  // be caught sideways over a long sitting, not read.
+  const TICKER_TTL_MS = 900;
+  const TICKER_SPEED = 16;
+  let tickerAt = -Infinity;
+  let tickerText = "";
+  let tickerX = 0;
+  let lastFrameAt = 0;
+  function readTicker() {
+    tickerAt = performance.now();
+    let head = "SIN ANILLO · SuperCollider en silencio";
+    try {
+      const pc = (window as unknown as {
+        __phenoCursor?: {
+          doy: number; temporada: string; clips: number;
+          gap: number; quorum: number; at: number;
+        };
+      }).__phenoCursor;
+      if (pc && typeof pc.doy === "number") {
+        const body = pc.clips > 0
+          ? `${pc.clips} CLIP${pc.clips === 1 ? "" : "S"}`
+          : `AUSENCIA · ${Math.round(pc.gap)} D`;
+        head = `DOY ${pc.doy}  ·  ${String(pc.temporada).toUpperCase()}  ·  ${body}`
+          + `  ·  QUÓRUM ${pc.quorum.toFixed(2)}`;
+      }
+    } catch { /* keep the fallback */ }
+    // The standing fact rides along behind the live reading: the corpus covers
+    // 34 of 365 days, and both rain seasons are missing entirely. Stating it on
+    // the same line as the day is the point — the ring is always somewhere, and
+    // it is usually somewhere nobody recorded.
+    const next = `${head}     ·     34 / 365 DÍAS REGISTRADOS  ·  BOSQUE SECO TROPICAL     ·     `;
+    if (next !== tickerText) {
+      // Only the TEXT changes; tickerX is untouched so the crawl never jumps
+      // when the day turns over.
+      tickerText = next;
+    }
+  }
+
   const SPECIES_TTL_MS = 500;
   /** Genus = the first token of a binomial, lowercased. */
   const genusOf = (sci: string) => sci.trim().split(/\s+/)[0].toLowerCase();
@@ -584,6 +634,11 @@ export function mountConstellationField(
     splash *= 0.985;
     const ink = INK[p.mode];
     const now = Date.now();
+    // Seconds since the previous frame, clamped. Anything that should move at
+    // a rate in the WORLD rather than per frame reads this.
+    const tNow = performance.now();
+    const dtSec = Math.min(0.1, Math.max(0, (tNow - (lastFrameAt || tNow)) / 1000));
+    lastFrameAt = tNow;
     const scale = figureScale(instances.length);
     // The sweep decays here rather than in onMove, because mousemove simply
     // stops firing when the pointer halts — without this the field would stay
@@ -596,6 +651,7 @@ export function mountConstellationField(
     // frame, worse than the scroll listener this replaced.
     if (performance.now() - rectAt > RECT_TTL_MS) cacheRect();
     if (performance.now() - speciesAt > SPECIES_TTL_MS) readSpecies();
+    if (performance.now() - tickerAt > TICKER_TTL_MS) readTicker();
     // Wavefronts travel outward and thin as they go. Retired once spent so
     // the array cannot grow — a slot that strikes every frame would otherwise
     // accumulate one record per frame forever.
@@ -909,6 +965,35 @@ export function mountConstellationField(
     // A mode nobody can find is a mode that is not there. Drawn last so it
     // sits over the sky, and only while navigating — nothing is added to the
     // picture the rest of the time.
+    // ─── Ticker ───────────────────────────────────────────────────────────
+    if (tickerText) {
+      const ty = height - 13;
+      c.font = '10px ui-monospace, "SF Mono", Menlo, monospace';
+      const w = c.measureText(tickerText).width;
+      if (w > 0) {
+        // dtSec, not a per-frame constant: the crawl must cross the screen at
+        // the same rate on a 60 and a 120 Hz panel, and after a stall it must
+        // resume rather than leap — hence the same 0.1 s clamp the slew uses.
+        tickerX -= TICKER_SPEED * dtSec;
+        if (tickerX <= -w) tickerX += w;
+        // A rule above it, and the text repeated until the width is covered so
+        // the crawl is seamless rather than a block that slides past.
+        c.globalAlpha = 0.16;
+        c.strokeStyle = ink;
+        c.lineWidth = 1;
+        c.setLineDash([]);
+        c.beginPath();
+        c.moveTo(0, ty - 7);
+        c.lineTo(width, ty - 7);
+        c.stroke();
+        c.globalAlpha = 0.46;
+        c.fillStyle = ink;
+        c.textAlign = "left";
+        c.textBaseline = "top";
+        for (let x = tickerX; x < width; x += w) c.fillText(tickerText, x, ty);
+      }
+    }
+
     // ─── Corner readout ───────────────────────────────────────────────────
     // Drawn as the tube would draw it: brackets are strokes, the text sits at
     // low alpha, and it is deliberately small. It should be readable when

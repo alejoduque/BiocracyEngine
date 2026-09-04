@@ -6,7 +6,7 @@ import { AfterimagePass }  from "three/examples/jsm/postprocessing/AfterimagePas
 import { ShaderPass }      from "three/examples/jsm/postprocessing/ShaderPass.js";
 import type { ParliamentState } from "./parliament/parliamentStore";
 import { getVizMotion, readVoteFlash, isAlarm } from "./vizMotion";
-import { getScAudio, bandRange, normLevel } from "./scAudio";
+import { getScAudio, bandRange, normLevel, slew } from "./scAudio";
 import { makeEventEmitter, makeExcursionEmitter } from "./slotVoice";
 import { makeResonatorBank } from "./resonators";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
