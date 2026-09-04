@@ -627,11 +627,7 @@ export function mountConstellationField(
     c.globalCompositeOperation = "lighter";
 
     // An attack widens the reach and brightens the stars, so the field gathers
-    // on the note and lets go after it. Decay is per-frame and frame-rate
-    // naive, the same way the reference's own pulse term is.
-    pulseAmt *= 0.94;
-    crack *= 0.86;
-    splash *= 0.985;
+    // on the note and lets go after it.
     const ink = INK[p.mode];
     const now = Date.now();
     // Seconds since the previous frame, clamped. Anything that should move at
@@ -639,12 +635,22 @@ export function mountConstellationField(
     const tNow = performance.now();
     const dtSec = Math.min(0.1, Math.max(0, (tNow - (lastFrameAt || tNow)) / 1000));
     lastFrameAt = tNow;
+    // Per SECOND, not per frame. As fixed per-frame coefficients these three
+    // decayed twice as fast on a 120 Hz panel as on a 60 Hz one, so the same
+    // strike had a different length depending on the display — the same class
+    // of bug the slew in scAudio.ts avoids. Half-lives preserved: 0.94/frame
+    // at 60 fps is exp(-dt/0.161), 0.86 is exp(-dt/0.110), 0.985 is
+    // exp(-dt/1.103).
+    pulseAmt *= Math.exp(-dtSec / 0.161);
+    crack *= Math.exp(-dtSec / 0.110);
+    splash *= Math.exp(-dtSec / 1.103);
     const scale = figureScale(instances.length);
     // The sweep decays here rather than in onMove, because mousemove simply
     // stops firing when the pointer halts — without this the field would stay
     // elongated forever at the last velocity it saw.
-    pointer.vx *= 0.88;
-    pointer.vy *= 0.88;
+    const pDecay = Math.exp(-dtSec / 0.13);
+    pointer.vx *= pDecay;
+    pointer.vy *= pDecay;
     // performance.now(), NOT the Date.now() above: rectAt is stamped from the
     // monotonic clock, and comparing it against epoch milliseconds makes the
     // condition true on every single frame — which would force a layout per
@@ -657,8 +663,12 @@ export function mountConstellationField(
     // accumulate one record per frame forever.
     for (let i = ripples.length - 1; i >= 0; i--) {
       const w = ripples[i];
-      w.r += 9 * p.speed;
-      w.amp *= 0.965;
+      // In seconds, like everything else here. 9 px/frame and 0.965/frame were
+      // 60 fps constants, so on a 120 Hz panel the wavefront crossed the screen
+      // twice as fast and died in half the time — the strike was a different
+      // event depending on the display.
+      w.r += 540 * p.speed * dtSec;
+      w.amp *= Math.exp(-dtSec / 0.281);
       if (w.amp < 0.01 || w.r > Math.hypot(width, height) * 1.1) ripples.splice(i, 1);
     }
     const sweep = Math.hypot(pointer.vx, pointer.vy);
@@ -822,11 +832,24 @@ export function mountConstellationField(
         // Each star has a fixed bearing and its own shimmer rate, both derived
         // from the same stable hash as its depth — so the wash is inharmonic
         // across the figure and identical every time the animal is drawn.
-        if (splash > 0.001) {
+        if (crack > 0.002) {
+          // A ONE-SHOT THROW, not an oscillation.
+          //
+          // This was a sine at 3-7 Hz scaled by `splash`, and `splash` is
+          // topped up by every onset — perc arrives every 520 ms against a
+          // 4.3 s tail, so it never fell below ~0.9 and each star sat
+          // permanently vibrating through +/-16% of the figure. Written as a
+          // wash that dies away; in practice a tremor that never stopped, and
+          // the reason the sky read as nervous.
+          //
+          // Tied to `crack` instead: the strike throws each star outward along
+          // its own bearing and it settles back as the transient dies, gone in
+          // 0.43 s. A struck body displaces and recovers — it does not shake
+          // for as long as you keep hitting it. Amplitude down from 0.16 to
+          // 0.05 because a displacement you watch return can be far smaller
+          // than one competing with its own oscillation to be seen.
           const bearing = starDepth(inst.animal.id, si + 977) * 7.0;
-          const rate = 0.020 + Math.abs(starDepth(inst.animal.id, si + 313)) * 0.055;
-          const sh = Math.sin(now * rate + si * 1.7);
-          const mag = splash * sh * 0.16;
+          const mag = crack * 0.05;
           X += Math.cos(bearing) * mag;
           Y += Math.sin(bearing) * mag;
         }
@@ -915,9 +938,20 @@ export function mountConstellationField(
         // and the figure into a blob. Depth reads on top of it — a star nearer
         // the viewer is drawn slightly larger, which is what makes a rotation
         // legible as rotation rather than as a shape that wobbles.
+        // The wash lives here now, in brightness rather than position. A
+        // cymbal read visually is GLITTER — points catching and losing the
+        // light at their own rates — and glitter at 1 Hz is beautiful where
+        // the same modulation applied to position at 5 Hz was just shake.
+        // Slow enough to shimmer rather than strobe.
+        const glit = splash > 0.001
+          ? 1 + Math.sin(
+              now * (0.004 + Math.abs(starDepth(inst.animal.id, i + 313)) * 0.008)
+              + i * 1.7,
+            ) * splash * 0.45
+          : 1;
         const near = 1 + (0.35 - depths[i]) * 0.30;
         const r = (1.1 + rev * 1.5) * p.size * tw * Math.sqrt(view.zoom) * near;
-        const a = (0.20 + rev * 0.68) * tw * (1 + pulseAmt * 0.5);
+        const a = (0.20 + rev * 0.68) * tw * (1 + pulseAmt * 0.5) * glit;
         // A vertex is where the beam DWELLS — it lingers turning a corner, so
         // it burns brighter and blooms wider there than along a stroke. Halo in
         // the tube's own colour, core pushed toward white, which is what a
