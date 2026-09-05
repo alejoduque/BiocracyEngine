@@ -68,6 +68,31 @@ Server.default.options.memSize = 8192 * 64;
 Server.default.options.maxNodes = 1024 * 32;
 Server.default.options.numInputBusChannels = 2;
 
+// ── How long the server has to finish a block ───────────────────────────────
+//
+// This was never set, so scsynth used its default of 512 frames: at 48 kHz the
+// audio callback has 10.7 ms to produce 10.7 ms of sound. Miss that deadline by
+// a microsecond and the driver gets an unfinished buffer — which is heard as a
+// tick, and on macOS the commonest way to miss it is not the audio at all.
+// Switching Spaces makes WindowServer recomposite every window on the machine,
+// and that spike lands on the same cores scsynth is running on.
+//
+//     512 frames  = 10.7 ms      1024 = 21.3 ms      2048 = 42.7 ms
+//
+// 1024 doubles the cushion. It costs LATENCY and nothing else — no level, no
+// polyphony, no CPU. That matters here because this instrument has no
+// keyboard: the performer turns knobs and the answer is a swell, so 21 ms is
+// invisible. It would be the wrong trade for something played by hand.
+//
+// Note this is a different clock from s.latency, which is the scheduling
+// margin on OSC bundles. That one already has slack; this one had none.
+//
+// IF SPACE SWITCHES STILL TICK, this is the first number to raise. 2048 is
+// still imperceptible for this material and gives 43 ms — enough to sit
+// through a fairly brutal compositing spike. Past that the problem is not
+// the buffer.
+Server.default.options.hardwareBufferSize = 1024;
+
 // Create initialization routine
 ~serverInitRoutine = Routine({
     // Boot server if not already running
