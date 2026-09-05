@@ -527,6 +527,40 @@ if(File.exists(~presetDir).not) { File.mkdir(~presetDir) };
                         "  (matrix mixer, CC 42-49, or the browser's right rail).".postln;
                     };
                 };
+                // And say it just as loudly in the other direction.
+                //
+                // The mute warning above exists because a fader left at 0.0
+                // became the permanent opening state of the piece. A control
+                // left at its CEILING does exactly the same thing and was not
+                // announced at all — so a session spent pushing module 6 to
+                // find its limits was saved at 20:46 and restored at every
+                // boot afterwards, and the engine came up already saturating
+                // with no interaction at all. Same trap, opposite end, and it
+                // cost more because "it clicks from startup" reads as a broken
+                // build rather than as a knob that was left up.
+                //
+                // Only the parameters whose ceiling actually compounds — spawn
+                // rates, ring lengths, the transaction latch. A mix fader at
+                // maximum is a balance decision and none of this business.
+                block { |break|
+                    var watch = [\timeDilation, \percRate, \dustRate, \bellEvery,
+                                 \transactionInfluence, \pulseGain, \windowWidth];
+                    var hot = watch.select { |k|
+                        var def = ~paramDefs.detect { |d| d[\name] == k };
+                        var v = (dict["params"] ?? ())[k.asString];
+                        (def.notNil and: { v.notNil }) and: {
+                            var spec = def[\spec];
+                            // within 2% of the top of its own range
+                            (spec.unmap(v.asFloat.clip(spec.minval, spec.maxval)) >= 0.98)
+                        };
+                    };
+                    if(hot.size > 0) {
+                        ("⚠ CONFIG '" ++ safe ++ "' RESTORES " ++ hot.size
+                            ++ " CONTROL(S) AT MAXIMUM: " ++ hot.join(", ")).postln;
+                        "  These compound — a rate and a ring length at once is what".postln;
+                        "  saturates the engine before anything has been touched.".postln;
+                    };
+                };
                 (dict["sample"] ?? ()).keysValuesDo { |k, v|
                     var key = k.asSymbol, val = v.asFloat;
                     if(~sampleBuses.notNil and: { ~sampleBuses[key].notNil }) {

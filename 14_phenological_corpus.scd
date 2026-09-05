@@ -799,6 +799,20 @@ s.waitForBoot {
     };
     // NOT rejected here. The entry lives until synth.onFree removes it, so the
     // slot it holds stays protected for the whole release.
+    //
+    // But onFree is the ONLY remover now, and this function used to be a second
+    // one. If a node ever fails to report its end the list would grow without
+    // bound, and since ~corpusMaxVoices counts this list, the Cámara would
+    // quietly choke itself to silence — trading a loud failure for a silent
+    // one, which is worse. So retired entries are swept once they are past
+    // their own release plus the same two seconds of margin the eviction guard
+    // allows. A voice that is genuinely finished is dropped here even if
+    // nothing told us.
+    ~corpusVoices = ~corpusVoices.reject { |v|
+        (v[\retired] == true) and: {
+            (Main.elapsedTime - (v[\retiredAt] ? 0)) > ((v[\retireRel] ? 1.2) + 2.0)
+        }
+    };
 
     // 2. If open voice slots exist (< 2 sounding), pick replacement(s) from eligible candidates
     if(sounding.size < 2 and: { all.size > 0 }) {
