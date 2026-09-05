@@ -65,7 +65,8 @@
     // session). Using 0 as the "unset" sentinel re-seeded the phase on every
     // tick until the clock had run a while, which held the tide at its trough
     // exactly when the piece is starting.
-    tideEpoch: nil,
+    // Wall-clock of the last tide tick; the phase advances by the gap.
+    tideAt: nil,
     tidePhase: 0,
     tideValue: 0.65,
     tideArc: \media,
@@ -360,21 +361,54 @@
 // motion between them is gradual - the difference between weather and a
 // sawtooth. Flat mode holds a constant mid-high value so "no arc" still
 // plays steadily instead of going quiet.
+// PHASE IS INTEGRATED, NOT DIVIDED — and that is the whole of this function.
+//
+// It used to read
+//
+//     phase = ((now - tideEpoch) / span).mod(1.0)
+//
+// with span = arc * blockPeriod, and blockPeriod is an EMA of the measured
+// Ethereum cadence that is rewritten on EVERY block
+// (6_osc_handlers.scd:437). So the divisor moved under a fixed epoch, and
+// phase = elapsed/span relocates whenever span does — by
+// elapsed·d(span)/span², which grows the longer the set runs. Modelled against
+// blocks varying 8-16 s, the worst single-block jump in the tide value:
+//
+//     corto  0.973        medio  0.998        largo  0.970
+//
+// on a 0-1 range. The tide was not a swell at all: it teleported, once every
+// twelve seconds, further as the evening went on. tideDensity drives
+// percussion probability, pad amplitude and dust probability, so what reached
+// the ear was a texture stepping at random around its mean — which is exactly
+// why the arcs could be switched without anything seeming to happen.
+//
+// Pressing an arco button was worse still: at t=200 s, medio sits at tide
+// 0.067 and largo at 0.750, so the button jumped the swell by 0.683 on the
+// spot instead of changing how fast it breathes.
+//
+// Integrating fixes both at once. span now sets the RATE, so changing it — by
+// switching arc, or by the chain speeding up — changes how fast the tide
+// moves and never where it is. Continuous by construction, and the arcs
+// finally do the one thing they are named for.
 ~tideCompute = { |blockPeriod = 12.0|
-    var arc = ~tideArc.value, span, phase, tide, now;
+    var arc = ~tideArc.value, span, phase, tide, now, dt;
+    now = SystemClock.seconds;
+    // Clamped: after a stall the tide should resume, not leap.
+    dt = if(~beatParams.tideAt.isNil) { 0 } { (now - ~beatParams.tideAt).clip(0, 5.0) };
+    ~beatParams.tideAt = now;
     if(arc[1] <= 0) {
-        ~beatParams.tidePhase = 0;
+        // Flat holds a steady mid-high value. The phase is DEPOSITED rather
+        // than zeroed, so turning the arcs back on resumes the swell where it
+        // was instead of restarting it.
         ~beatParams.tideValue = 0.65;
         ~beatParams.tideArc = arc[0];
         0.65
     } {
-        now = SystemClock.seconds;
-        if(~beatParams.tideEpoch.isNil) { ~beatParams.tideEpoch = now };
         // blockPeriod is clamped because a single late or duplicated block
         // timestamp must not stretch the arc to something that never
         // completes inside a set, nor collapse it into a tremolo.
         span  = arc[1] * blockPeriod.clip(4.0, 30.0);
-        phase = ((now - ~beatParams.tideEpoch) / span).mod(1.0);
+        phase = (((~beatParams.tidePhase ? 0) + (dt / span)).mod(1.0));
         tide  = (1 - cos(2pi * phase)) * 0.5;
         ~beatParams.tidePhase = phase;
         ~beatParams.tideValue = tide;
