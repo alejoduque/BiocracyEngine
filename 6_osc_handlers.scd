@@ -797,8 +797,24 @@ s.doWhenBooted({
             ~visualsDest.sendMsg("/pheno/jumpSeason", season)
         };
         // Pulse the beat engine via existing txInfluence boost (smooth decay)
+        //
+        // CLIPPED. This added 0.6 to a control specced 0-1 with no bound at
+        // all, and this handler is the four temporada buttons — Seca, 1as
+        // Lluv, Med Seco, 2as Lluv. Click through them once and the value is
+        // 2.4, four times its own maximum, and it is not a display number:
+        // transactionInfluence sets perc and bell amplitude, the probability
+        // that ~percRetrig fires its 3-7 extra synths, and a trigger chance
+        // that bypasses percRate entirely. So walking the seasons wound the
+        // engine up and nothing ever wound it down — the decay only ever
+        // divided a number that had already been multiplied past its range.
+        //
+        // It is also how the autosave came to hold 0.969: not a knob anyone
+        // set, an accumulation nobody could see. Bounding it here is what
+        // stops the state that has to be clamped on the next boot from being
+        // created in the first place.
         if(~beatParams.notNil) {
-            ~beatParams.transactionInfluence = (~beatParams.transactionInfluence ? 0.0) + 0.6;
+            ~beatParams.transactionInfluence =
+                ((~beatParams.transactionInfluence ? 0.0) + 0.6).clip(0, 1);
         };
     }, "/pheno/jumpSeason");
 

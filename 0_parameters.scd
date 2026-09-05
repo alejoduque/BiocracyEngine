@@ -499,8 +499,64 @@ if(File.exists(~presetDir).not) { File.mkdir(~presetDir) };
                 ("Config '%' deferred 2s (buses not ready)".format(safe)).postln;
                 AppClock.sched(2.0, { ~loadConfig.(safe, true); nil });
             } {
-                (dict["params"] ?? ()).keysValuesDo { |k, v|
-                    ~setParam.(k.asSymbol, v.asFloat, \preset);
+                // ── Safe boot ───────────────────────────────────────────
+                //
+                // _autosave is not an artistic decision. It is written every
+                // 30 s and records wherever the knobs happened to be — so a
+                // session spent finding the limits of module 6 becomes the
+                // permanent opening state of the instrument, and the engine
+                // comes up already saturating with nothing touched. That is
+                // what happened: timeDilation and percRate both restored at
+                // 100% of range, which is maximum ring length against nine
+                // times the default spawn rate, and the two compound.
+                //
+                // So the autosave gets a ceiling that a NAMED preset does not.
+                // A preset the performer saved deliberately is reproduced
+                // exactly, extremes and all; the autosave is only allowed to
+                // put the instrument back somewhere it can be heard.
+                //
+                // 0.85 of range, and only for the controls whose ceiling
+                // compounds — a rate, a ring length, the transaction latch.
+                // Everything else, mix faders included, restores untouched:
+                // balance is the performer's business.
+                //
+                // This LIMITS rather than forbids. Every one of these is still
+                // reachable live, at its full range, the moment it is asked
+                // for. What is no longer possible is arriving at the extreme by
+                // simply starting the program.
+                block { |break|
+                    var isAuto = (safe == "_autosave");
+                    var compounding = [\timeDilation, \percRate, \dustRate,
+                                       \bellEvery, \transactionInfluence,
+                                       \pulseGain, \windowWidth];
+                    var clamped = [];
+                    (dict["params"] ?? ()).keysValuesDo { |k, v|
+                        var key = k.asSymbol;
+                        var val = v.asFloat;
+                        if(isAuto and: { compounding.includes(key) }) {
+                            var def = ~paramDefs.detect { |d| d[\name] == key };
+                            if(def.notNil) {
+                                var spec = def[\spec];
+                                var norm = spec.unmap(val.clip(spec.minval, spec.maxval));
+                                if(norm > 0.85) {
+                                    var capped = spec.map(0.85);
+                                    clamped = clamped.add(
+                                        key.asString ++ " " ++ val.round(0.001)
+                                        ++ "->" ++ capped.round(0.001));
+                                    val = capped;
+                                };
+                            };
+                        };
+                        ~setParam.(key, val, \preset);
+                    };
+                    if(clamped.size > 0) {
+                        ("⚠ SAFE BOOT: " ++ clamped.size
+                            ++ " control(s) held below their ceiling on restore: "
+                            ++ clamped.join(", ")).postln;
+                        "  The autosave had them at the top. Push them back up if".postln;
+                        "  that is where you want them — this only stops the engine".postln;
+                        "  from STARTING there.".postln;
+                    };
                 };
 
                 // Say out loud when a config arrives with layers muted.
