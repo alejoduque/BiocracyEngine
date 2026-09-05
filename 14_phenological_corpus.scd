@@ -440,8 +440,25 @@ s.waitForBoot {
         slot = ~corpusRam.detect { |sl| sl[\buf].isNil };
         if(slot.isNil) {
             // Evict the coldest slot that no live voice is still reading.
+            // A slot is HELD while any voice on it is still reading, and a
+            // voice that has been gated off is still reading — the release
+            // runs for a whole second after the gate. Retired entries stay in
+            // ~corpusVoices for exactly that reason (see ~phenoSyncVoices and
+            // ~phenoFadeVoices) and must be honoured here, or the buffer is
+            // freed out from under a live PlayBuf.
+            //
+            // Bounded, so a synth that somehow never frees cannot pin a slot
+            // for the rest of the session: past its own release plus two
+            // seconds of margin a retired entry stops counting.
             victim = ~corpusRam.reject { |sl|
-                ~corpusVoices.any { |v| v[\slot] === sl }
+                ~corpusVoices.any { |v|
+                    (v[\slot] === sl) and: {
+                        (v[\retired] != true) or: {
+                            (Main.elapsedTime - (v[\retiredAt] ? 0))
+                                < ((v[\retireRel] ? 1.2) + 2.0)
+                        }
+                    }
+                }
             }.sort { |a, b| (a[\used] ? 0) < (b[\used] ? 0) }.first;
             if(victim.isNil) { onReady.value(nil); nil } {
                 victim[\buf].free;
@@ -683,15 +700,36 @@ s.waitForBoot {
     try { synth.set(\gate, -1.0 - rel.clip(0.02, 30)) };
 };
 
+// Gating a voice off does not stop it. The forced release runs for `rel`
+// seconds and the synth keeps reading its buffer the whole time, so the entry
+// has to stay in ~corpusVoices until doneAction actually frees the node —
+// synth.onFree removes it, and that is the only correct place.
+//
+// Every path here used to gate AND drop the entry in the same breath, which
+// left a one-second window where a sounding voice held a RAM slot that nothing
+// knew about. ~corpusSlotFor would then pick that slot as its coldest victim
+// and call .free on a buffer a PlayBuf was reading. That is a use-after-free on
+// audio, and it is heard as a tick — SC-side, so reloading the browser never
+// touched it, and worst while the Cámara controls are being moved because
+// every change to bancada, quórum or opacity retires voices and immediately
+// asks for new ones.
+~phenoRetire = { |v, rel = 1.2|
+    v[\retired] = true;
+    v[\retiredAt] = Main.elapsedTime;
+    v[\retireRel] = rel;
+};
+
 ~phenoFadeVoices = { |rel = 1.2, onlyRingDay = nil|
     ~corpusVoices.do { |v|
         if(onlyRingDay.isNil or: { v[\ringDay] == onlyRingDay }) {
             ~phenoGateOff.(v[\synth], rel);
+            ~phenoRetire.(v, rel);
         };
     };
-    ~corpusVoices = ~corpusVoices.select { |v|
-        onlyRingDay.notNil and: { v[\ringDay] != onlyRingDay }
-    };
+    // The list is NOT truncated. With onlyRingDay nil the old predicate was
+    // `nil.notNil and: {...}` — false for every element — so this emptied
+    // ~corpusVoices outright while every one of those voices was still
+    // sounding through its release.
 };
 
 // ─── Making the Chamber answer while a day is still running ─────────────────
@@ -721,17 +759,23 @@ s.waitForBoot {
     var xfade = (~phenoXfade ? 6.0);
     var now = Main.elapsedTime;
     var candidates, needed, changed = false;
-    var sounding = ~corpusVoices.select { |v| ((v[\endsAt] ? inf) - now) > xfade };
+    // Retired voices are still audible but they are on their way out, so they
+    // must not count as "already sounding" — otherwise a clip that was just
+    // let go would block its own replacement for a second.
+    var sounding = ~corpusVoices.select { |v|
+        (v[\retired] != true) and: { ((v[\endsAt] ? inf) - now) > xfade }
+    };
 
     // 1. Retire only clips that are no longer admitted by the filter (threshold/bancada/opacity)
     ~corpusVoices.do { |v|
         if((v[\ringDay] == doy) and: { all.any { |c| c[\key] == v[\key] }.not }) {
             ~phenoGateOff.(v[\synth], 1.2);
-            v[\retired] = true;
+            ~phenoRetire.(v, 1.2);
             changed = true;
         };
     };
-    ~corpusVoices = ~corpusVoices.reject { |v| v[\retired] == true };
+    // NOT rejected here. The entry lives until synth.onFree removes it, so the
+    // slot it holds stays protected for the whole release.
 
     // 2. If open voice slots exist (< 2 sounding), pick replacement(s) from eligible candidates
     if(sounding.size < 2 and: { all.size > 0 }) {
@@ -814,8 +858,7 @@ s.waitForBoot {
     // function printed its confirmation and left every voice sounding: both
     // corpus envelopes are fixed-length, so a zero gate is not a release.
     // /pheno/stop stopped the ring clock and nothing else.
-    ~corpusVoices.do { |v| ~phenoGateOff.(v[\synth], 0.6) };
-    ~corpusVoices = [];
+    ~corpusVoices.do { |v| ~phenoGateOff.(v[\synth], 0.6); ~phenoRetire.(v, 0.6) };
     ~corpusDisk.do { |sl|
         if(sl[\synth].notNil) { ~phenoGateOff.(sl[\synth], 0.6); sl[\synth] = nil; sl[\key] = nil };
     };
