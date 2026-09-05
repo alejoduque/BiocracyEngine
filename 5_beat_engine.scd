@@ -247,11 +247,32 @@
 ~percLive = ~percLive ?? { [] };
 ~percMaxLive = ~percMaxLive ?? { 20 };
 ~percStats = ~percStats ?? { (admitted: 0, refused: 0) };
+// NO AGE CUTOFF. The previous version dropped entries after 90 s, and that
+// turned the ceiling into a leak — the exact failure it was meant to prevent,
+// only worse.
+//
+// A voice's mode decays scale with timeDilation:
+//
+//     timeDilation 2.00 -> 16 s      4.13 -> 33 s      6.00 -> 48 s
+//
+// and the amp envelope is stretched by the same factor, so at the top of the
+// range a voice routinely outlives 90 s. The sweep then FORGOT a synth that
+// was still sounding, freeing its slot in the count while the node kept
+// running. New voices took the freed slots, aged past 90 s, were forgotten in
+// turn, and the real node count climbed without bound while perc:live sat
+// innocently at 20/20:
+//
+//     synths 44 -> 1988,  cpu 38% -> 960%,  peak 2289%
+//
+// The list is the count. Only onFree may shorten it, because only the server
+// knows a node has ended — which was the whole lesson of the corpus voices and
+// I broke it again in the act of applying it.
+//
+// If onFree ever failed the list would fill and perc would go quiet: visible on
+// [MON] as live pinned with ref climbing, and safe. That is the correct
+// direction to fail. An age cutoff fails the other way.
 ~percSweep = {
-    var now = SystemClock.seconds;
-    ~percLive = (~percLive ? []).select { |e|
-        e[\synth].notNil and: { (now - (e[\at] ? 0)) < 90 }
-    };
+    ~percLive = (~percLive ? []).select { |e| e[\synth].notNil };
 };
 // Spawn through this and the ceiling applies wherever the voice is fired.
 // ringSecs is accepted and ignored: lifetime is now observed, not declared.
