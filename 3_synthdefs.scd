@@ -232,7 +232,35 @@ s.doWhenBooted({
     // live at vol/amp 0.70: outPk p90 0.933, just over the 0.5-0.9 band.
     ~trimSample= 0.55 * ~trimMaster;   // SAMPLE — 1.55 -> 0.55; it was covering the synthesised voices
 
-    ~limiterChans = s.options.numOutputBusChannels;
+    // THE MIX IS FOUR CHANNELS WIDE. This was numOutputBusChannels — 8 — which
+    // is how many channels the HARDWARE exposes, not how many the mix occupies.
+    // Eight are opened because the MOTU router needs somewhere to put its
+    // fold-down; the music itself is quad and lives on buses 0-3. Every voice
+    // agrees: `quadSig = if(~limiterChans >= 4)`.
+    //
+    // Conflating the two put three faults in the master chain at once.
+    //
+    // The nodes run limiter -> scope -> router, all Synth.tail. So when the
+    // limiter read In.ar(0, 8) it was reading buses 4-7 as well — and 4-7 hold
+    // the ROUTER'S OUTPUT from the previous block, which is a delayed copy of
+    // buses 0-3 folded to stereo. The detector was therefore keyed on the mix
+    // plus a delayed copy of itself: a feedback path in the sidechain.
+    //
+    // Then it divided that by 8 while only 4 channels carried the music, so
+    // the key read about half the true level and the 0.10 threshold behaved
+    // like 0.20 — the compressor engaged far less than the chain's makeup
+    // (x1.495, unconditional) assumes it has. That is most of the missing
+    // headroom, and it is why pulling the master amp down restores stability:
+    // it is doing by hand what the compressor was not doing by itself.
+    //
+    // And ReplaceOut.ar(0, lim) then wrote all 8, overwriting 4-7 with limited
+    // nonsense that the router immediately overwrote again — work done to be
+    // discarded.
+    //
+    // \masterScope reads the same way, so /spectrum — the visuals' only real
+    // measurement of the engine — was also looking at the mix plus its own
+    // fold-down. min() so a stereo rig still works.
+    ~limiterChans = min(4, s.options.numOutputBusChannels);
     // ─── Master chain: glue, then weight, then safety ────────────────────
     // This was sum -> LeakDC -> Limiter and nothing else. A limiter is a safety
     // net: it can stop a mix being too loud and can do nothing whatever about a
@@ -1747,8 +1775,28 @@ s.doWhenBooted({
         // Right = FrontRight (ch1) + 0.707 * RearRight (ch2)
         var left = quad[0] + (quad[3] * 0.707);
         var right = quad[1] + (quad[2] * 0.707);
-        // Primary stereo pair out to outBus (buses 4 & 5 -> MOTU Analog 3 & 4)
-        Out.ar(outBus, [left, right]);
+        // LIMITED AGAIN AFTER THE FOLD, and it has to be.
+        //
+        // The master limiter guarantees each channel <= ceiling, and the boot
+        // log says so out loud: "output can no longer clip". That is true of
+        // buses 0-3 and false of the pair that actually reaches the speakers,
+        // because this sum is taken AFTER it:
+        //
+        //     0.92 + 0.92 * 0.707 = 1.571
+        //
+        // +3.9 dB over full scale, with nothing between it and the interface.
+        // Whenever front and rear on the same side are loud together the fold
+        // clips in the driver, and no meter in the engine shows it — the scope
+        // sits on buses 0-3 and reports the mix as clean.
+        //
+        // Limiting rather than scaling by 1/1.707 on purpose: a fixed scale
+        // would cost 4.6 dB on every quiet passage to protect against a peak
+        // that is rare, and this engine is already quiet. The limiter only
+        // acts on the peaks that would have clipped.
+        //
+        // Same ceiling as the master, so the two agree about what full scale
+        // means.
+        Out.ar(outBus, Limiter.ar([left, right], 0.92, 0.01));
         // Also send rear quad channels to outBus + 2 (buses 6 & 7 -> MOTU Analog 5 & 6)
         Out.ar(outBus + 2, [quad[2], quad[3]]);
     }).add;
