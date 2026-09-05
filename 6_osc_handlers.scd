@@ -1074,6 +1074,25 @@ s.doWhenBooted({
         ~broadcastPresetList.value;
     }, "/preset/list");
 
+    // ── Tell the browser what presets exist, unprompted ─────────────────
+    //
+    // The dropdown was empty and the performer could only change config from
+    // the SC GUI. The request path was fine — the browser asks /preset/list
+    // when its WebSocket opens and OSCdef(\presetList) answers — but it asks
+    // exactly ONCE per connection, and SC never volunteered the list. So
+    // whenever SuperCollider finished booting AFTER the browser had connected,
+    // which is the normal order (sclang takes ~20 s, the bridge is up in
+    // under one), that single request arrived before this file had registered
+    // anything to hear it, and nothing ever asked again.
+    //
+    // Announcing here covers the late-SC order; the browser's own request on
+    // open covers the late-browser order. Between them there is no arrival
+    // sequence that leaves the dropdown blank. The 3 s repeat is for the case
+    // where the bridge itself is still coming up as this line runs — a
+    // duplicate list costs nothing, the handler just rebuilds the same options.
+    ~broadcastPresetList.value;
+    AppClock.sched(3.0, { ~broadcastPresetList.value; nil });
+
     "OSC Handlers initialized:".postln;
     "- Listening on port: %".format(NetAddr.langPort).postln;
     "- Transaction sonification & Front-End OSC mappings ready".postln;

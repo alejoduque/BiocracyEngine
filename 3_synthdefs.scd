@@ -364,7 +364,19 @@ s.doWhenBooted({
 
         var env, sig, mod, carrier, grains, wet, noise, distance, distanceAmp, quadSig, innerMod;
         // MIDI bus inputs - Lawrence English ambient style with bus parameter fallbacks
-        var masterVol = Select.kr(masterVolBus >= 0, [0.3, In.kr(masterVolBus, 1)]);
+        // LAGGED, like the mix buses beneath it — 0.08 is their figure too.
+        //
+        // This read was raw at all SEVEN sites, and the value multiplies the
+        // signal directly: drone, pad, kick, perc, dust and both bell paths.
+        // So any change to masterVolume stepped the amplitude of every
+        // SUSTAINED voice inside one control block, and a step in a signal
+        // that is already sounding is a click by definition.
+        //
+        // Loading a config is where it bit: ~loadConfig applies every stored
+        // parameter in a single pass, masterVolume among them, so changing
+        // preset from the SC GUI clicked every time. The mix faders had been
+        // given exactly this treatment and the master had been left out.
+        var masterVol = Lag.kr(Select.kr(masterVolBus >= 0, [0.3, In.kr(masterVolBus, 1)]), 0.08);
         var pitchOffset = Select.kr(pitchBus >= 0, [0.0, In.kr(pitchBus, 1)]);
         var timeStretch = Select.kr(timeBus >= 0, [2.0, In.kr(timeBus, 1)]);
         var spectralFreq = Select.kr(spectralBus >= 0, [1000, In.kr(spectralBus, 1)]);
@@ -550,7 +562,7 @@ s.doWhenBooted({
         // Matrix mixer: this layer's live level (0 = mute, 1 = unity, 2 = max) + cross-layer modulation
         mixKickBus=(-1), mixPercBus=(-1), mixDustBus=(-1);
 
-        var vol   = Select.kr(masterVolBus >= 0, [0.3, In.kr(masterVolBus, 1)]);
+        var vol   = Lag.kr(Select.kr(masterVolBus >= 0, [0.3, In.kr(masterVolBus, 1)]), 0.08);
         var tStretch= Select.kr(timeBus >= 0, [2.0, In.kr(timeBus, 1)]);
         var fmR   = Select.kr(harmonicBus >= 0, [1.0, In.kr(harmonicBus, 1)]);
         var fmD   = Select.kr(textureBus >= 0, [0.2, In.kr(textureBus, 1)]);
@@ -674,7 +686,7 @@ s.doWhenBooted({
         texture = 0.2, resonance = 0.4, noiseF = 0.5, noiseL = 0.1,
         delayFb = 0.3, timeStr = 2.0, memory = 0.3;
 
-        var vol   = Select.kr(masterVolBus >= 0, [0.3, In.kr(masterVolBus, 1)]);
+        var vol   = Lag.kr(Select.kr(masterVolBus >= 0, [0.3, In.kr(masterVolBus, 1)]), 0.08);
         var tStretch= Select.kr(timeBus >= 0, [timeStr, In.kr(timeBus, 1)]);
         var filt  = Select.kr(spectralBus >= 0, [1000, In.kr(spectralBus, 1)]);
         var res   = Select.kr(resonantBus >= 0, [resonance, In.kr(resonantBus, 1)]);
@@ -1052,7 +1064,7 @@ s.doWhenBooted({
             // Matrix mixer: this layer's live level (0=mute, 1=unity, 2=max)
             mixPadBus=(-1);
 
-        var masterVol  = Select.kr(masterVolBus  >= 0, [0.28, In.kr(masterVolBus, 1)]);
+        var masterVol  = Lag.kr(Select.kr(masterVolBus >= 0, [0.28, In.kr(masterVolBus, 1)]), 0.08);
         var pShift     = Select.kr(pitchBus      >= 0, [0.0,  In.kr(pitchBus, 1)]);
         var tDil       = Select.kr(timeBus       >= 0, [2.0,  In.kr(timeBus, 1)]);
         var filt       = Select.kr(spectralBus   >= 0, [1000, In.kr(spectralBus, 1)]);
@@ -1180,7 +1192,7 @@ s.doWhenBooted({
             masterAmpBus=(-1), filterCutoffBus=(-1), droneFadeBus=(-1),
             droneSpaceBus=(-1), mixDroneBus=(-1), strikeBus=(-1);
 
-        var vol   = Select.kr(masterVolBus >= 0, [0.3, In.kr(masterVolBus, 1)]);
+        var vol   = Lag.kr(Select.kr(masterVolBus >= 0, [0.3, In.kr(masterVolBus, 1)]), 0.08);
         var pShift= Select.kr(pitchBus >= 0, [0.0, In.kr(pitchBus, 1)]);
         var filt  = Select.kr(spectralBus >= 0, [1000, In.kr(spectralBus, 1)]);
         var spatialX= Select.kr(spatialBus >= 0, [0.0, In.kr(spatialBus, 1)]);
@@ -1361,7 +1373,7 @@ s.doWhenBooted({
         // Matrix mixer: this layer's live level (0 = mute, 1 = unity).
         mixDroneBus=(-1);
 
-        var vol   = Select.kr(masterVolBus >= 0, [0.3, In.kr(masterVolBus, 1)]);
+        var vol   = Lag.kr(Select.kr(masterVolBus >= 0, [0.3, In.kr(masterVolBus, 1)]), 0.08);
         var pShift= Select.kr(pitchBus >= 0, [0.0, In.kr(pitchBus, 1)]);
         var tStretch= Select.kr(timeBus >= 0, [2.0, In.kr(timeBus, 1)]);
         var filt  = Select.kr(spectralBus >= 0, [1000, In.kr(spectralBus, 1)]);
@@ -1545,7 +1557,7 @@ s.doWhenBooted({
         // Matrix mixer: this layer's live level (0 = mute, 1 = unity, 2 = max).
         mixDustBus=(-1), mixSampleBus=(-1), mixPadBus=(-1), mixKickBus=(-1), mixPercBus=(-1);
 
-        var vol   = Select.kr(masterVolBus >= 0, [0.3, In.kr(masterVolBus, 1)]);
+        var vol   = Lag.kr(Select.kr(masterVolBus >= 0, [0.3, In.kr(masterVolBus, 1)]), 0.08);
         var dens  = Select.kr(textureBus >= 0, [0.25, In.kr(textureBus, 1)]);
         var filt  = Select.kr(spectralBus >= 0, [600, In.kr(spectralBus, 1)]);
         var tStretch= Select.kr(timeBus >= 0, [2.0, In.kr(timeBus, 1)]);
