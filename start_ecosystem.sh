@@ -18,6 +18,47 @@ cd "$SCRIPT_DIR" || { echo "No se puede entrar a $SCRIPT_DIR"; exit 1; }
 require() {
     command -v "$1" &>/dev/null || { echo "❌ Falta: $1 (instálalo y reintenta)"; exit 1; }
 }
+# ── (1b) Entorno del compositor de macOS ────────────────────────────────────
+# scsynth es de UN SOLO HILO y tiene una fecha límite por bloque. No importa
+# cuántos núcleos ni cuánta RAM tenga la máquina: lo único que cuenta es que
+# nadie le quite ese núcleo mientras calcula. Medido en esta máquina, un cambio
+# de escritorio le robaba ~19-35 ms a un bloque que dispone de 42.7 ms — con la
+# carga de audio en apenas 35%. El núcleo no se llenaba, se lo llevaban.
+#
+# Stage Manager es el peor de los culpables porque redibuja miniaturas VIVAS de
+# las aplicaciones recientes cada vez que se cambia de app o de escritorio. No
+# depende de qué app sea, que es exactamente como se oía el fallo.
+#
+# Nada de esto detiene el arranque. Son ajustes del usuario y esta es su
+# máquina; el guion sólo dice lo que ve, porque de otro modo es invisible y
+# vuelve a costar una sesión entera de depuración en el sitio equivocado.
+mac_env_check() {
+    command -v defaults &>/dev/null || return 0
+    local warned=0
+    local sm; sm=$(defaults read com.apple.WindowManager GloballyEnabled 2>/dev/null || echo 0)
+    if [ "$sm" = "1" ]; then
+        echo "⚠  Stage Manager ACTIVO — redibuja miniaturas en cada cambio de app."
+        echo "   Ajustes > Escritorio y Dock > Stage Manager (desactivar)."
+        warned=1
+    fi
+    local rm; rm=$(defaults read com.apple.universalaccess reduceMotion 2>/dev/null || echo 0)
+    if [ "$rm" != "1" ]; then
+        echo "·  Reducir movimiento DESACTIVADO — la animación de cambio de espacio"
+        echo "   es la parte cara. Accesibilidad > Pantalla > Reducir movimiento."
+        warned=1
+    fi
+    local sp; sp=$(defaults read com.apple.spaces spans-displays 2>/dev/null || echo 0)
+    if [ "$sp" != "1" ]; then
+        echo "·  \"Las pantallas tienen espacios separados\" ACTIVADO — multiplica el"
+        echo "   trabajo del compositor. Ajustes > Escritorio y Dock."
+        warned=1
+    fi
+    [ "$warned" = "0" ] && echo "   entorno gráfico: sin ajustes conocidos que roben el núcleo de audio."
+    return 0
+}
+echo ">> Verificando entorno de macOS (latencia de audio)..."
+mac_env_check
+
 echo ">> Verificando dependencias..."
 require node
 require npm
