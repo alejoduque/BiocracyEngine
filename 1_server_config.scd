@@ -87,11 +87,31 @@ Server.default.options.numInputBusChannels = 2;
 // Note this is a different clock from s.latency, which is the scheduling
 // margin on OSC bundles. That one already has slack; this one had none.
 //
-// IF SPACE SWITCHES STILL TICK, this is the first number to raise. 2048 is
-// still imperceptible for this material and gives 43 ms — enough to sit
-// through a fairly brutal compositing spike. Past that the problem is not
-// the buffer.
-Server.default.options.hardwareBufferSize = 1024;
+// MEASURED AT 1024 AND RAISED. With the CPU readout working, a window switch
+// on module 6 produced this, one MON frame apart:
+//
+//     38.1 avg / 39.6 peak   44 synths   perc 20/20
+//     70.8 avg / 127.3 peak  43 synths   perc 20/20   <- overrun
+//
+// Same graph, FEWER synths, identical perc — and twice the CPU. The work did
+// not grow; the time the block was allowed to take did. That is scsynth being
+// descheduled while WindowServer recomposites, not a load problem.
+//
+// Decomposing the 127.3%: at 21.3 ms available and 38% steady DSP, the block
+// spent 8.1 ms computing and lost about 19 ms to the OS.
+//
+//     1024   avail 21.3 ms   dsp  8.1 ms (38%)  + steal 19.0 ms  = 127%  overrun
+//     2048   avail 42.7 ms   dsp 16.3 ms (38%)  + steal 19.0 ms  =  83%  fits
+//
+// The steal is a FIXED number of milliseconds — the OS takes what it takes.
+// DSP scales with the buffer so its share stays 38%; only the steal shrinks as
+// a fraction. Which is why the buffer is the lever and cutting voices is not:
+// at 38% steady the baseline was never the problem, and removing perc voices
+// would buy a few percent against a 19 ms theft.
+//
+// 43 ms of latency. Still invisible on an instrument with no keyboard, where
+// the answer to a knob is a swell.
+Server.default.options.hardwareBufferSize = 2048;
 
 // Create initialization routine
 ~serverInitRoutine = Routine({

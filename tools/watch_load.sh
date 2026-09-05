@@ -57,7 +57,14 @@ fi
 
 echo "  CPU%avg  CPU%peak   worst   synths   perc    refused"
 echo "  -------------------------------------------------------"
-tail -F -n 0 "$LOG" 2>/dev/null | awk "$READ"'
+# grep first. Without it awk sees EVERY line in the log — TX announcements,
+# postln chatter, all of it — and the print block fires on each one carrying
+# whatever the last MON line left behind, so a single sample is repeated dozens
+# of times and the cadence of the readout is lost. Which is what it did.
+tail -F -n 0 "$LOG" 2>/dev/null | grep --line-buffered -a "\[MON\]" | awk "$READ"'
   { if(peak>worst) worst=peak
-    printf "  %6.1f   %7.1f   %5.1f   %6d   %2d/%-2d   %8d\n", avg,peak,worst,syn,live,max,ref
+    # An overrun is the whole point of watching, so it is marked rather than
+    # left to be spotted in a column of numbers.
+    flag = (peak > 100) ? "  <<< OVERRUN — dropout" : ""
+    printf "  %6.1f   %7.1f   %5.1f   %6d   %2d/%-2d   %8d%s\n", avg,peak,worst,syn,live,max,ref,flag
     fflush() }'
