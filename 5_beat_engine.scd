@@ -221,25 +221,53 @@
 // collapsing, which is the musical failure mode rather than the catastrophic
 // one — and ~percStats makes the thinning visible on the [MON] line rather
 // than leaving it to be guessed at.
+// COUNTED, NOT ESTIMATED — and the first version of this got it wrong.
+//
+// It held TIMESTAMPS and reserved each voice for 14 s. But the bowl half is
+// documented as ringing about 30 s (0_parameters.scd:218) and \timeStr
+// stretches it further, so entries expired while their synths were still
+// sounding and the count under-read by two to three times:
+//
+//     one \opalPerc = 48 resonators + 2 CombC + FreeVerb
+//       7 bowl plate modes + 7 detuned twins + 18 trash + 8 shimmer + 8 chug
+//
+//     cap 24, voices really lasting 30 s -> ~51 alive = ~2,500 Ringz
+//                                  45 s -> ~77 alive = ~3,700 Ringz
+//
+// each carrying its own reverb. That is the clog: a ceiling that believed it
+// was holding 24 while three times that number were running.
+//
+// So hold the NODES and let the server say when they end, exactly as the
+// corpus voices do. onFree is the only thing that knows the truth.
+//
+// The stale sweep is the backstop: if a node ever fails to report its end the
+// list would grow and the layer would choke itself silent, which is the same
+// trap the corpus fix had to close. 90 s is far beyond any real ring, so it
+// only ever removes entries that are genuinely finished.
 ~percLive = ~percLive ?? { [] };
-~percMaxLive = ~percMaxLive ?? { 24 };
+~percMaxLive = ~percMaxLive ?? { 20 };
 ~percStats = ~percStats ?? { (admitted: 0, refused: 0) };
-~percAdmit = { |ringSecs = 14|
+~percSweep = {
     var now = SystemClock.seconds;
-    var ok;
-    ~percLive = (~percLive ? []).select { |t| t > now };
-    ok = ~percLive.size < (~percMaxLive ? 24);
-    if(ok) {
-        ~percLive = ~percLive.add(now + ringSecs);
-        ~percStats[\admitted] = (~percStats[\admitted] ? 0) + 1;
-    } {
-        ~percStats[\refused] = (~percStats[\refused] ? 0) + 1;
+    ~percLive = (~percLive ? []).select { |e|
+        e[\synth].notNil and: { (now - (e[\at] ? 0)) < 90 }
     };
-    ok;
 };
 // Spawn through this and the ceiling applies wherever the voice is fired.
+// ringSecs is accepted and ignored: lifetime is now observed, not declared.
 ~percSpawn = { |args, grp, ringSecs = 14|
-    if(~percAdmit.value(ringSecs)) { Synth(\opalPerc, args, grp) } { nil };
+    var syn;
+    ~percSweep.value;
+    if(~percLive.size >= (~percMaxLive ? 20)) {
+        ~percStats[\refused] = (~percStats[\refused] ? 0) + 1;
+        nil
+    } {
+        syn = Synth(\opalPerc, args, grp);
+        ~percLive = ~percLive.add((synth: syn, at: SystemClock.seconds));
+        ~percStats[\admitted] = (~percStats[\admitted] ? 0) + 1;
+        syn.onFree({ ~percLive = ~percLive.reject { |e| e[\synth] === syn } });
+        syn
+    };
 };
 
 // ─── Retrig ─────────────────────────────────────────────────────────────────
