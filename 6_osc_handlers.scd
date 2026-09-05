@@ -89,8 +89,17 @@ s.doWhenBooted({
     ~lastBellAt = ~lastBellAt ?? { 0 };
     ~strikeBell = { |freq = 180, amp = 0.5|
         var now = SystemClock.seconds;
+        var bell;
         var gap = (~beatParams !? { ~beatParams.bellEvery } ? 6.0);
-        var live = (~bellLive ? []).select { |t| t > now }.size;
+        // OBSERVED, not declared. This was `t > now` over timestamps stamped
+        // `now + 12`, and a bell IS an \opalPerc — the same 48-resonator bank
+        // whose bowl half rings about 30 s. So each entry expired while its
+        // synth was still sounding and the cap of 3 was really allowing seven
+        // or eight. The last place in the engine that guessed a lifetime it
+        // could have watched.
+        var live;
+        ~bellLive = (~bellLive ? []).select { |sy| sy.notNil };
+        live = ~bellLive.size;
         // Hard ceiling on concurrency as well as a minimum gap. The gap alone
         // does not bound the layer when the envelope is longer than it.
         if(((now - (~lastBellAt ? 0)) >= gap) and: { live < 3 }) {
@@ -100,10 +109,14 @@ s.doWhenBooted({
             // expire on their own schedule rather than being counted from the
             // server's node list, which also holds the drone, the limiter and
             // every corpus voice.
-            ~bellLive = (~bellLive ? []).select { |t| t > now };
             if(~lastVoiceAt.notNil) { ~lastVoiceAt[\pad] = now };
-            ~bellLive = ~bellLive.add(now + 12);
-            Synth(\opalPerc, [
+            // Through ~percSpawn like every other \opalPerc site. One SynthDef
+            // should answer to one ceiling: a bell costs the server exactly
+            // what a beat perc costs, so counting them separately meant
+            // perc:live on the [MON] line was never the whole truth about this
+            // voice. Under real load a bell can now be refused, which is
+            // correct — it is the same DSP competing for the same room.
+            bell = ~percSpawn.([
                 \out,  0,
                 \freq, (freq * 0.5).clip(45, 220),
                 \amp,  amp.clip(0, 1) * 0.7,
@@ -116,7 +129,11 @@ s.doWhenBooted({
                 // bowl; timeDilation still scales both.
                 \envScale, 0.30
             ] ++ (~voiceBusArgs.value ? []), grp);
-            true
+            if(bell.notNil) {
+                ~bellLive = ~bellLive.add(bell);
+                bell.onFree({ ~bellLive = ~bellLive.reject { |sy| sy === bell } });
+            };
+            bell.notNil
         } {
             if(~bellStats.notNil) { ~bellStats[\skipGate] = (~bellStats[\skipGate] ? 0) + 1 };
             false
