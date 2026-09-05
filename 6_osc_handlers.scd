@@ -267,6 +267,22 @@ s.doWhenBooted({
             ++ " dens:" ++ (~currentDensity ? 0).round(0.001)
             ++ "  blk:" ++ rs[\blockNum] ++ " txN:" ++ rs[\blockTxCount]
                 ++ " idx:" ++ rs[\txIndex] ++ " base:" ++ rs[\blockBaseFee].round(0.001)
+            // CPU, which this line has never carried — and it is the number
+            // that decides the argument it was missing from.
+            //
+            // scsynth is SINGLE-THREADED: every voice, every reverb, both
+            // 48-band scopes and the whole master chain share one core. When
+            // macOS steals that core — a Space switch, an app switch, any
+            // compositing spike — the block is late and the driver gets an
+            // unfinished buffer, which is a tick. Whether that happens is not
+            // about the spike, it is about how much of the block was already
+            // spoken for.
+            //
+            // avg is the steady load, peak is the worst block since the last
+            // status reply. peak is the one that matters here: a peak near 100
+            // means blocks are already arriving at the wire, and any
+            // interruption at all will cost one.
+            ++ "  cpu:" ++ s.avgCPU.round(0.1) ++ "/" ++ s.peakCPU.round(0.1)
             ++ "  synths:" ++ s.numSynths
             // Perc concurrency, the layer that had no ceiling until it took the
             // whole server down. live/max is the ceiling in use; ref counts
