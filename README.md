@@ -79,6 +79,34 @@ Fundamentado en la *Acustemología* (epistemología acústica) de Steven Feld, e
 * **Pauline Oliveros y la Escucha Profunda (Deep Listening):** La espacialización a través de un campo cuadrafónico de 4 canales crea un entorno de escucha expandida a 360 grados donde conviven la atención ambiental global y la escucha focal.
 * **La Ausencia es Voz:** Los días fenológicos no grabados o las especies que caen por debajo del umbral de detección no son eliminadas ni puestas a cero. Bajo el Artículo 44, suenan como una capa ultrasónica de alta frecuencia (grabaciones AudioMoth expandidas 8× en tiempo), afirmando que lo no medido también participa.
 
+### La Cámara: el Recinto del Parlamento como Instrumento Acústico
+
+Hasta ahora cada voz del motor llevaba su propia reverberación breve —trece en los `SynthDefs`, unas cuarenta salas independientes sonando a la vez—. Cada fuente llegaba con su acústica privada y no compartía una sola reflexión temprana con ninguna otra. Eso es exactamente lo que hace que una mezcla se oiga como un conjunto de sintetizadores próximos entre sí y no como un lugar.
+
+`\resonantChamber` es **una sola sala** por la que se escucha todo el motor: una red de retardo realimentada (FDN) de cuatro líneas con mezcla Householder, amortiguada dentro del lazo. La realimentación no se ajusta a oído sino que se **deriva** de la longitud de cada línea y del RT60 buscado, `g = 10^(-3·t/RT60)`, de modo que todas decaen a la misma *velocidad* y la red no resuena en una sola altura.
+
+**La acústica se sigue de quién está en la sala.** La ecuación de Sabine dice que el tiempo de reverberación cae al aumentar la absorción total:
+
+> RT60 = 0.161 · V / A
+
+y un ocupante *es* absorción. Una sala vacía retumba; una llena es sorda. Es acústica ordinaria, y leída al revés es el argumento de la obra: el recinto de un parlamento suena distinto según quién lo habite, y **un recinto vacío no está en silencio: está resonando**.
+
+El quórum ya se calcula una vez por día fenológico (`~phenoQuorum`, Art. 45): la fracción de los seres elegibles ese día cuya presencia supera el umbral. Ahora gobierna la sala:
+
+| Quórum | RT60 | Amortiguación | Proporción oída por la sala común |
+| :---: | :---: | :---: | :---: |
+| 0.00 | 6.6 s | 2130 Hz | 45 % |
+| 0.50 | 4.8 s | 1651 Hz | 73 % |
+| 1.00 | 3.0 s | 1172 Hz | 100 % |
+
+Tres consecuencias que son el mismo hecho:
+
+* **La cola se acorta a medida que la asamblea se llena.** La expectativa ingenua es que más voces produzcan un sonido mayor; acústicamente ocurre lo contrario, y esa verdad es la mejor afirmación: una asamblea no agranda el recinto, *lo absorbe*. La presencia es lo que vuelve íntimo el espacio.
+* **Los agudos se oscurecen**, porque los cuerpos absorben primero las altas frecuencias. Una sala llena es más cálida además de más cercana.
+* **Sube la proporción que se oye por la sala común.** Una asamblea plena queda *constituida* por estar en un mismo espacio. Una vacía son unas pocas voces cada una en su acústica propia —que es justo lo que siguen aportando las reverberaciones por voz—. Así dejan de ser redundantes y pasan a ser **el sonido de no estar reunidos: la disidencia tiene acústica privada**.
+
+El quórum se envía **todos los días del anillo, incluidos aquellos en que vale cero**. Un día no grabado no detiene la cámara: la vacía. Como 331 de los 365 días del corpus no tienen registro, durante la mayor parte del año esta es una sala sin nadie dentro. El Artículo 44 deja de ser una declaración y se vuelve audible: la ausencia no es un hueco en el programa, es un escaño, y el escaño resuena.
+
 ### BioTokens no Financiarizados e Investigación-Acción Participativa (IAP)
 El proyecto incorpora la Investigación-Acción Participativa (IAP, Orlando Fals Borda) para desintermediar los circuitos extractivos de las ONG:
 * **BioToken:** Formulado como una unidad no negociable de inscripción política y escucha profunda, invirtiendo la lógica especulativa de los créditos de carbono.
@@ -147,6 +175,8 @@ Todos los parámetros están registrados de forma centralizada en [0_parameters.
 | **noiseLevel** | `CC 7` | `/soneth/noiselevel` | `0.0 .. 0.5` (lin) | Nivel de ruido/aliento excita |
 | **noiseFilt** | `CC 8` | `/soneth/noisefilt` | `0.0 .. 1.0` (lin) | Corte de filtro de ruido excita |
 | **droneDepth** | `CC 9` | `/soneth/dronedepth` | `0.0 .. 1.0` (lin) | Peso de fundamental sub-grave |
+| **chamberMix** | `CC 37` | `/soneth/chambermix` | `0.0 .. 1.0` (lin) | Techo de la proporción oída por la sala común |
+| **chamberSize** | `CC 38` | `/soneth/chambersize` | `RT60 2 .. 28 s` | Tamaño del recinto; el quórum lo acorta (Sabine) |
 | **activityThreshold**| `CC 10`| `/pheno/activityThreshold`|`0.20 .. 0.85` (lin)| Art. 45 — Umbral de presencia de especie |
 | **windowWidth** | `CC 11`| `/pheno/windowWidth` | `0.4 .. 2.5` (lin) | Art. 43 — Alcance gaussiano en días |
 | **seasonalBias** | `CC 12`| `/pheno/seasonalBias` | `-1.0 .. +1.0` (lin) | Seca (-1) ↔ Lluvias (+1) |

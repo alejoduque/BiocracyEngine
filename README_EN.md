@@ -79,6 +79,34 @@ Rooted in Steven Feld’s *Acoustemology* (acoustic epistemology), the soundscap
 * **Pauline Oliveros & Deep Listening:** Spatialization across a 4-channel quadraphonic field creates an expanded, 365-degree listening environment where global ambient attention and focal listening coexist.
 * **Absence is Voice:** Unrecorded phenological days or species falling below sensory detection thresholds are not zeroed out. Under Article 44, they sound as a high-frequency ultrasonic layer (×8 time-expanded AudioMoth recordings), asserting that what is unmeasured still participates.
 
+### The Chamber: the Parliament's Room as an Acoustic Instrument
+
+Until now every voice in the engine carried its own short reverb — thirteen in the `SynthDefs`, which at a normal voice count is about forty independent little rooms running at once. Each source arrived with its own private acoustic and shared not one early reflection with any other. That is exactly what makes a mix read as a set of synthesisers standing near each other rather than as a place.
+
+`\resonantChamber` is **one room** through which the whole engine is heard: a four-line feedback delay network with Householder mixing, damped inside the loop. The feedback is not dialled by ear but **derived** from each line's length and the wanted RT60, `g = 10^(-3·t/RT60)`, so every line decays at the same *rate* and the network does not ring on a single pitch.
+
+**The acoustics follow from who is in the room.** Sabine's equation says reverberation time falls as total absorption rises:
+
+> RT60 = 0.161 · V / A
+
+and an occupant *is* absorption. An empty hall rings; a full one is dead. This is ordinary room acoustics, and read the other way it is the work's own argument: a parliamentary chamber sounds different according to who inhabits it, and **an empty chamber is not silent — it is resonant**.
+
+The quorum is already computed once per phenological day (`~phenoQuorum`, Art. 45): the fraction of the beings eligible that day whose presence clears the threshold. It now governs the room:
+
+| Quorum | RT60 | Damping | Share heard through the common room |
+| :---: | :---: | :---: | :---: |
+| 0.00 | 6.6 s | 2130 Hz | 45 % |
+| 0.50 | 4.8 s | 1651 Hz | 73 % |
+| 1.00 | 3.0 s | 1172 Hz | 100 % |
+
+Three consequences that are the same fact:
+
+* **The tail shortens as the assembly fills.** The naive expectation is that more voices make a bigger sound; acoustically the opposite is true, and that truth is the better statement: an assembly does not enlarge the room, it *absorbs* it. Presence is what makes the space intimate.
+* **The top darkens**, because bodies absorb high frequencies first. A full room is warmer as well as closer.
+* **The share heard through the common room rises.** A full assembly is *constituted* by being in one space. An empty one is a few voices each in their own acoustic — which is exactly what the per-voice reverbs still provide. They stop being redundant and become **the sound of not being assembled: dissent has a private acoustic**.
+
+The quorum is sent **every ring day, including the days it is zero**. An unrecorded day does not stop the chamber, it empties it. Since 331 of the corpus's 365 days carry no recording, for most of the year this is a room with nobody in it. Article 44 stops being a declaration and becomes audible: absence is not a gap in the programme, it is a seat, and the seat resonates.
+
 ### Non-Financialized BioTokens & Decolonial IAP
 The project incorporates Investigación-Acción Participativa (IAP, Orlando Fals Borda) to disintermediate extractive NGO circuits:
 * **BioToken:** Formulated as a non-tradable unit of political inscription and deep listening, inverting the speculative logic of carbon offsets.
@@ -147,6 +175,8 @@ All parameters are centrally registered in [0_parameters.scd](file:///Users/a/Do
 | **noiseLevel** | `CC 7` | `/soneth/noiselevel` | `0.0 .. 0.5` (lin) | Exciter noise breath level |
 | **noiseFilt** | `CC 8` | `/soneth/noisefilt` | `0.0 .. 1.0` (lin) | Exciter noise filter cutoff |
 | **droneDepth** | `CC 9` | `/soneth/dronedepth` | `0.0 .. 1.0` (lin) | Sub-bass fundamental weight |
+| **chamberMix** | `CC 37` | `/soneth/chambermix` | `0.0 .. 1.0` (lin) | Ceiling on the share heard through the common room |
+| **chamberSize** | `CC 38` | `/soneth/chambersize` | `RT60 2 .. 28 s` | Room size; the quorum shortens it (Sabine) |
 | **activityThreshold**| `CC 10`| `/pheno/activityThreshold`|`0.20 .. 0.85` (lin)| Art. 45 — Species presence threshold |
 | **windowWidth** | `CC 11`| `/pheno/windowWidth` | `0.4 .. 2.5` (lin) | Art. 43 — Gaussian reach in ring days |
 | **seasonalBias** | `CC 12`| `/pheno/seasonalBias` | `-1.0 .. +1.0` (lin) | Dry season (-1) ↔ Rainy season (+1) |
