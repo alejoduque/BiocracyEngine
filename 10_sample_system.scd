@@ -212,7 +212,33 @@ s.doWhenBooted({
             // Granular path (stereo output)
             grains = GrainBuf.ar(
                 2,
-                Dust.kr(overlap / controlGrainSize),
+                // CLIPPED HERE TOO. The very next line clips this same value
+                // for the grain DURATION and this one did not clip it for the
+                // grain RATE — so the two disagreed, and grain density is the
+                // product of them:
+                //
+                //   grainSize   rate/s   dur     concurrent   vs intended
+                //     0.20         20    0.200       4.0        1x
+                //     0.05         80    0.050       4.0        1x
+                //     0.02        200    0.050      10.0        3x
+                //     0.01        400    0.050      20.0        5x
+                //     0.001      4000    0.050     200.0       50x
+                //
+                // and at zero the divisor is infinite: Dust triggers every
+                // sample. controlGrainSize is read from a BUS, so it is not
+                // protected by ~sampleParamSpecs — anything that writes the bus
+                // directly, or a config restoring an out-of-range value, lands
+                // here unguarded.
+                //
+                // This matters because the sample voice is where the CPU
+                // spikes live. Over 225 monitored frames, peak CPU exceeded
+                // 100% on 8 of them, and the discriminator was not perc
+                // concurrency (19.2 vs 18.2, no difference) but live sample
+                // voices: 2.1 during the spikes against 0.3 outside them.
+                // GrainBuf is the only expensive thing in this SynthDef.
+                //
+                // overlap is bounded for the same reason: it is the numerator.
+                Dust.kr(overlap.clip(1, 8) / controlGrainSize.clip(0.05, 1.0)),
                 controlGrainSize.clip(0.05, 1.0),
                 buf, finalRate,
                 LFNoise2.kr(0.1).range(0, 1),
