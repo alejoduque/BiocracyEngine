@@ -1770,15 +1770,53 @@ s.doWhenBooted({
     // this block's voices, and its own output must not re-enter. The only
     // recirculation is the one inside the network, bounded by g < 1 by
     // construction.
+    // ── Who is in the room ───────────────────────────────────────────────
+    //
+    // ~phenoQuorum is the fraction of the beings eligible today whose presence
+    // clears the threshold (14_phenological_corpus.scd:568) — a quorum in the
+    // literal sense, and the Cámara already computes it once per phenological
+    // day. It lived only in sclang, so the room could not hear it. Now it has a
+    // bus.
+    //
+    // Default 0.0, and that is a position rather than a placeholder: before the
+    // ring is running there is no assembly, and the room should say so.
+    ~chamberOccupancyBus = ~chamberOccupancyBus ?? { Bus.control(s, 1) };
+    ~chamberOccupancyBus.set(0.0);
+
     SynthDef(\resonantChamber, {
-        arg in = 0, mixBus = (-1), sizeBus = (-1), damp = 0.42;
+        arg in = 0, mixBus = (-1), sizeBus = (-1), occBus = (-1), damp = 0.42;
         var chans = ~limiterChans;
         var src   = In.ar(in, chans);
         // Long lags: this is architecture, and a room that changes shape in
         // 80 ms is a glitch rather than a gesture.
         var mix   = Lag.kr(Select.kr(mixBus  >= 0, [0.18, In.kr(mixBus, 1)]), 0.8);
         var size  = Lag.kr(Select.kr(sizeBus >= 0, [0.45, In.kr(sizeBus, 1)]), 1.5);
-        var rt60  = size.linexp(0, 1, 2.0, 28.0);
+        // ── Sabine, and the politics that follow from it ─────────────────
+        //
+        //     RT60 = 0.161 V / A
+        //
+        // Reverberation time falls as total ABSORPTION rises, and an occupant
+        // is absorption. This is ordinary room acoustics: an empty hall rings
+        // and a full one is dead. It is also, read the other way, the piece's
+        // own argument — the chamber of a parliament sounds different according
+        // to who is in it, and an empty chamber is not silent, it is
+        // RESONANT. Article 44 says an unrecorded day is not filled in; here
+        // that day is heard as a room with nobody in it.
+        //
+        // So the mapping is not decorative and it is not inverted for effect:
+        //
+        //   quorum 0.0   nobody present    A small    RT60 long    voices alone
+        //   quorum 1.0   full assembly     A large    RT60 short   voices close
+        //
+        // The naive expectation is that more voices should make a bigger sound.
+        // Acoustically the opposite is true, and the truth is the more
+        // interesting statement: an assembly does not enlarge the room, it
+        // absorbs it. Presence is what makes the space intimate.
+        var occ   = Lag.kr(Select.kr(occBus >= 0, [0.0, In.kr(occBus, 1)]), 4.0);
+        // Bodies absorb the top first, which is why a full room sounds warmer
+        // as well as shorter.
+        var absorb = occ.clip(0, 1);
+        var rt60  = size.linexp(0, 1, 2.0, 28.0) * absorb.linlin(0, 1, 1.0, 0.45);
         var times = [0.0431, 0.0567, 0.0713, 0.0895];
         var mono, diff, fb, lines, mixed, wet;
 
@@ -1798,7 +1836,8 @@ s.doWhenBooted({
         };
         // Damped in the loop, so the tail darkens as it decays the way a room
         // does rather than hissing on forever.
-        lines = LPF.ar(lines, damp.linexp(0, 1, 900, 7000));
+        lines = LPF.ar(lines,
+            damp.linexp(0, 1, 900, 7000) * absorb.linlin(0, 1, 1.0, 0.55));
 
         // Householder mixing: every line feeds every other, which is what makes
         // the network dense instead of four parallel echoes.
@@ -1813,7 +1852,12 @@ s.doWhenBooted({
         // away into the output.
         LocalOut.ar(LeakDC.ar(mixed).tanh);
 
-        wet = mixed * mix;
+        // The share heard through the common room rises with the quorum. A
+        // full assembly is CONSTITUTED by being in one space; an empty one is
+        // a few voices each in their own acoustic, which is what the per-voice
+        // reverbs still provide. The performer's chamberMix sets the ceiling of
+        // that, not a fixed amount — the room decides how much of it is used.
+        wet = mixed * mix * absorb.linlin(0, 1, 0.45, 1.0);
         Out.ar(in, wet);
     }).add;
     s.sync;
@@ -1821,7 +1865,8 @@ s.doWhenBooted({
     ~chamberSynth = Synth.tail(RootNode(s), \resonantChamber, [
         \in, 0,
         \mixBus,  ((~buses !? { ~buses[\chamberMix]  } !? { |b| b.index }) ? -1),
-        \sizeBus, ((~buses !? { ~buses[\chamberSize] } !? { |b| b.index }) ? -1)
+        \sizeBus, ((~buses !? { ~buses[\chamberSize] } !? { |b| b.index }) ? -1),
+        \occBus,  (~chamberOccupancyBus !? { |b| b.index } ? -1)
     ]);
     "La cámara active — one shared room, RT60 2-28 s.".postln;
 

@@ -993,6 +993,17 @@ s.waitForBoot {
                 pulse = ~phenoVal.(\pulseGain, 1.0);
                 ~phenoBreath.(quorum, pulse);
 
+                // ── Seat the assembly ────────────────────────────────
+                // The room's absorption IS the quorum (see \resonantChamber).
+                // Sent every ring day including the days when it is zero: an
+                // unrecorded day does not stop the chamber, it empties it, and
+                // an empty chamber rings longer than a full one. Article 44
+                // heard rather than merely declared — 331 of 365 days in this
+                // corpus have no recording, so for most of the year this is a
+                // room with nobody in it, and that is the truthful sound of it.
+                if(~chamberOccupancyBus.notNil) {
+                    ~chamberOccupancyBus.set(quorum.clip(0, 1));
+                };
                 if(~visualsDest.notNil) {
                     ~visualsDest.sendMsg('/bio/consensus', quorum);
                     ~visualsDest.sendMsg('/pheno/cursor',
