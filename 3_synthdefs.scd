@@ -1743,6 +1743,88 @@ s.doWhenBooted({
     // Wait for SynthDefs to be added to server
     s.sync;
 
+    // ─── La cámara · the shared resonant chamber ─────────────────────────
+    //
+    // A feedback delay network, not another FreeVerb. FreeVerb is a Schroeder
+    // box with a fixed short character — fine as a per-voice ambience, wrong as
+    // a room, and there are already about forty of them running privately
+    // inside the voices. This is ONE space that everything is heard through.
+    //
+    // Four delay lines with mutual feedback, fed from a diffused mono sum, each
+    // damped in the loop. Feedback is DERIVED from the delay length and the
+    // wanted RT60 rather than dialled by ear:
+    //
+    //     g = 10 ^ (-3 * delayTime / RT60)
+    //
+    // so every line decays at the same RATE regardless of its length, which is
+    // what stops an FDN ringing on one pitch. Times are mutually prime-ish so
+    // the echo pattern does not collapse into a comb.
+    //
+    // RT60 spans 2 s to 28 s. At the top it stops being reverb and becomes a
+    // body that the material excites — the drone keeps it lit and everything
+    // else arrives inside something already sounding. That is why it is a live
+    // control and not a mastering setting.
+    //
+    // Reads bus 0 with In.ar and adds back to bus 0, sitting AFTER the voice
+    // group and BEFORE the limiter. In.ar rather than InFeedback: it must see
+    // this block's voices, and its own output must not re-enter. The only
+    // recirculation is the one inside the network, bounded by g < 1 by
+    // construction.
+    SynthDef(\resonantChamber, {
+        arg in = 0, mixBus = (-1), sizeBus = (-1), damp = 0.42;
+        var chans = ~limiterChans;
+        var src   = In.ar(in, chans);
+        // Long lags: this is architecture, and a room that changes shape in
+        // 80 ms is a glitch rather than a gesture.
+        var mix   = Lag.kr(Select.kr(mixBus  >= 0, [0.18, In.kr(mixBus, 1)]), 0.8);
+        var size  = Lag.kr(Select.kr(sizeBus >= 0, [0.45, In.kr(sizeBus, 1)]), 1.5);
+        var rt60  = size.linexp(0, 1, 2.0, 28.0);
+        var times = [0.0431, 0.0567, 0.0713, 0.0895];
+        var mono, diff, fb, lines, mixed, wet;
+
+        mono = Mix(src) / chans.max(1);
+        // Input diffusion, so a transient arrives as a wash rather than as
+        // four discrete echoes.
+        diff = mono;
+        [0.0043, 0.0071, 0.0113, 0.0173].do { |t|
+            diff = AllpassC.ar(diff, 0.02, t, 0.09);
+        };
+
+        fb = LocalIn.ar(4);
+        lines = 4.collect { |i|
+            var t = times[i] * size.linlin(0, 1, 0.7, 1.8);
+            var g = (10 ** (-3 * t / rt60)).clip(0, 0.97);
+            DelayC.ar(diff + (fb[i] * g), 0.25, t)
+        };
+        // Damped in the loop, so the tail darkens as it decays the way a room
+        // does rather than hissing on forever.
+        lines = LPF.ar(lines, damp.linexp(0, 1, 900, 7000));
+
+        // Householder mixing: every line feeds every other, which is what makes
+        // the network dense instead of four parallel echoes.
+        mixed = [
+            lines[0] + lines[1] + lines[2] - lines[3],
+            lines[0] + lines[1] - lines[2] + lines[3],
+            lines[0] - lines[1] + lines[2] + lines[3],
+            lines[1] + lines[2] + lines[3] - lines[0]
+        ] * 0.5;
+        // Belt and braces on a feedback loop: LeakDC stops offset accumulating
+        // and the soft clip means no control value can make the network run
+        // away into the output.
+        LocalOut.ar(LeakDC.ar(mixed).tanh);
+
+        wet = mixed * mix;
+        Out.ar(in, wet);
+    }).add;
+    s.sync;
+    if(~chamberSynth.notNil) { try { ~chamberSynth.free }; ~chamberSynth = nil };
+    ~chamberSynth = Synth.tail(RootNode(s), \resonantChamber, [
+        \in, 0,
+        \mixBus,  ((~buses !? { ~buses[\chamberMix]  } !? { |b| b.index }) ? -1),
+        \sizeBus, ((~buses !? { ~buses[\chamberSize] } !? { |b| b.index }) ? -1)
+    ]);
+    "La cámara active — one shared room, RT60 2-28 s.".postln;
+
     // ── Spawn the master limiter at the tail of the root node ───────────
     // addToTail on RootNode puts it after ~defaultGroup, so it sees everything
     // already summed on the output bus. Freed first so re-running this file

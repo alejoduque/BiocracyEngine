@@ -54,6 +54,32 @@
     (name: \harmonicRich,  spec: ControlSpec(0.1, 5, \exp),   default: 1.0,  path: "/soneth/harmonicrich",  cc: 35),
     (name: \resonantBody,  spec: ControlSpec(0.1, 0.8, \lin), default: 0.4,  path: "/soneth/resonantbody",  cc: 36),
 
+    // ── La cámara · one room instead of forty ────────────────────────────
+    //
+    // Every voice in this engine carries its own small FreeVerb — thirteen in
+    // the SynthDefs, which at a normal voice count is around forty independent
+    // little rooms running at once. That is why the mix reads as a set of
+    // synthesisers standing near each other rather than as a place: each
+    // source arrives with its own private acoustic, and nothing shares an
+    // early reflection with anything else.
+    //
+    // The reference this project names in its own first comment — Lawrence
+    // English — is built the other way round. The room is the instrument. What
+    // makes those records feel physical is that everything is heard through
+    // ONE space, so the drone, the field recording and the noise are the same
+    // distance away and belong to the same architecture.
+    //
+    // chamberMix is how much of the whole engine is heard through that room.
+    // chamberSize is how big it is: RT60 from 2 s to 28 s. At the long end it
+    // stops being reverb and becomes a resonating body that the material
+    // excites — which is the point, and the reason it is a performance control
+    // rather than a mastering setting.
+    //
+    // Defaults are deliberately modest so that adding this does not rewrite
+    // the sound of the existing presets. Turn it up on purpose.
+    (name: \chamberMix,   spec: ControlSpec(0, 1, \lin),      default: 0.18, path: "/soneth/chambermix",  cc: 37),
+    (name: \chamberSize,  spec: ControlSpec(0, 1, \lin),      default: 0.45, path: "/soneth/chambersize", cc: 38),
+
     // ── Row 3: Drone/Noise Controls ──────────────────────────────────────
     // beatParam mirror added: the beat engine already multiplies
     // ~beatParams.masterAmp into every percussion \amp, but without this field
