@@ -379,6 +379,29 @@ s.waitForBoot {
     // Allocating buffers at trigger time fragments server memory and drops
     // audio. Everything the layer will ever need is claimed here and recycled.
     ~corpusRamSlots = 16;
+    // The most corpus voices that may be AUDIBLE at once, counting the ones
+    // that have been let go and are still running out their release.
+    //
+    // The admission test is `sounding.size < 2`, and `sounding` excludes
+    // retired voices — correctly, since a voice on its way out must not block
+    // its own replacement. But nothing then counted them, and they are still
+    // heard for the whole 1.2 s. So every change to bancada, quórum or
+    // opacity retired what was playing and admitted two more on top of it,
+    // and repeating the gesture stacked them:
+    //
+    //     0.5 click/s ->  4 audible   +6.0 dB over the intended two
+    //     1   click/s ->  6           +9.5 dB
+    //     2   click/s ->  8          +12.0 dB
+    //     3   click/s -> 10          +14.0 dB
+    //
+    // bounded only by the 16 RAM slots, which is a memory limit and not a
+    // musical one. corpusVoice is cheap DSP — PlayBuf, RLPF, HPF — so this
+    // was never CPU: it was LEVEL, which is why it arrived as saturation
+    // rather than as a dropout.
+    //
+    // Four allows the crossfade the design wants (two sounding, two leaving)
+    // and refuses the pile.
+    ~corpusMaxVoices = 4;
     ~corpusDiskSlots = 4;
 
     ~corpusRam = Array.fill(~corpusRamSlots, { () });   // slot: (buf:, key:, used:)
@@ -785,7 +808,14 @@ s.waitForBoot {
                 ~phenoRotate = ((~phenoRotate ? 0) + 1) % candidates.size;
                 candidates = candidates.rotate(~phenoRotate.neg);
             };
-            needed = (2 - sounding.size).min(candidates.size);
+            // Never more than the ceiling allows, counting what is still
+            // running out its release. Refusing to admit is the right failure:
+            // the day simply speaks with fewer voices for a moment, instead of
+            // the Cámara getting louder every time it is touched.
+            needed = (2 - sounding.size)
+                .min(candidates.size)
+                .min((~corpusMaxVoices ? 4) - ~corpusVoices.size)
+                .max(0);
             candidates[..needed - 1].do { |clip|
                 ~phenoPlayClip.(clip, holdSecs);
                 changed = true;
@@ -860,7 +890,13 @@ s.waitForBoot {
     // /pheno/stop stopped the ring clock and nothing else.
     ~corpusVoices.do { |v| ~phenoGateOff.(v[\synth], 0.6); ~phenoRetire.(v, 0.6) };
     ~corpusDisk.do { |sl|
-        if(sl[\synth].notNil) { ~phenoGateOff.(sl[\synth], 0.6); sl[\synth] = nil; sl[\key] = nil };
+        // NOT cleared here. A disk slot is judged free by sl[\synth].isNil
+        // (~phenoPlayUltrasonic), and the next voice to take it calls
+        // cueSoundFile on its buffer — while this DiskIn is still streaming
+        // through its 0.6 s release. The read head would find new audio
+        // mid-stream. Same use-after-free as the RAM pool had, one pool over.
+        // onFree clears both fields when the node actually dies.
+        if(sl[\synth].notNil) { ~phenoGateOff.(sl[\synth], 0.6) };
     };
     "[pheno] all corpus voices released".postln;
 };
