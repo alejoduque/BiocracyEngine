@@ -349,7 +349,7 @@ function connectControlWS() {
           `input[type='range'][data-osc='${address}']`
         ).forEach((el) => { el.value = String(v); });
         const dispEl = document.getElementById(`disp-voice-${half}`);
-        if (dispEl) dispEl.textContent = cadenceLabel(address, v) ?? (v >= 0.5 ? "on" : "off");
+        if (dispEl) dispEl.textContent = cadenceLabel(address, v) ?? v.toFixed(2);
         fanToSlots(`voice:${half}`, v);
         return;
       }
@@ -759,9 +759,11 @@ function cadenceLabel(addr: string, n: number): string | null {
     // A FLOOR on the gap, not a period — ~strikeBell refuses anything closer
     // together than this, and the chain decides everything above it.
     case "/cadence/bell":       return `≥${Math.round(exp(0.8, 30.0))}s gap`;
-    // Stepped 0/1 toggles — read as words, not numbers.
+    // Continuous now, so a number rather than a word — these are the balance
+    // between the two halves of the struck voice, not a switch. "off" is kept
+    // for a true zero, because silent is worth saying outright.
     case "/voice/bowl":
-    case "/voice/china":        return n >= 0.5 ? "on" : "off";
+    case "/voice/china":        return n <= 0.001 ? "off" : n.toFixed(2);
     case "/cadence/dust":       return `${exp(0.03, 0.95).toFixed(2)} dens`;
     default:                    return null;
   }

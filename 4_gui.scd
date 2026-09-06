@@ -514,8 +514,9 @@
             // Cadencia. PAD joins PERC here: they are the pair the performer
             // balances, and the pad had a level but no rate at all until now.
             [\kickEvery, \percRate, \padEvery, \padVoices, \bellEvery, \dustRate],
-            // The struck voice's two halves. Stepped specs, so these render as
-            // toggle buttons beside the rates that drive them.
+            // The struck voice's two halves, as a balance rather than a
+            // switch. Continuous specs, so these are knobs beside the rates
+            // that drive them.
             [\bowlOn, \chinaOn]
         ];
 
@@ -991,14 +992,20 @@
             );
             cadenceRow.layout.add(~knobs[key]);
         };
-        // ~makeToggle, never ~makeKnob: both are stepped specs, and 4_gui.scd
-        // documents at the \bancada note above why a Knob cannot serve one —
-        // it rebuilds the spec without its step, ~setParam re-quantises and
-        // writes the rounded value back, and a \vert Knob drags relative to
-        // its own value, so the write-back resets the accumulator every event
-        // and the control can never leave zero.
+        // KNOBS now, not toggles. These were stepped specs and had to be
+        // buttons for the reason the \bancada note above gives; the specs are
+        // continuous as of the same change that put these here, so the
+        // objection no longer applies and a button can no longer express what
+        // the control does. Bowl and china are a BALANCE between the two halves
+        // of the struck voice, not a choice of three states.
         ~knobParameters[7].do { |key|
-            ~knobs[key] = ~makeToggle.value(key, ~knobLabels[key] ? key.asString);
+            ~knobs[key] = ~makeKnob.value(
+                key.asString,
+                ~controlSpecs[key].minval,
+                ~controlSpecs[key].maxval,
+                ~controlValues[key],
+                ~controlSpecs[key].warp
+            );
             cadenceRow.layout.add(~knobs[key]);
         };
 

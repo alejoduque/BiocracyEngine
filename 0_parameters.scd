@@ -251,13 +251,22 @@
     // of the sum entirely, so the voice can be a pure bowl, a pure cymbal, or
     // both. textureDepth still morphs between them when both are on.
     //
-    // Stepped specs, so 4_gui.scd renders them as BUTTONS rather than knobs —
-    // a Knob cannot serve a stepped spec (see the \bancada note there). These
-    // DO take control buses, unlike the cadence params above, because they are
-    // read inside the SynthDef and must reach voices already sounding.
-    (name: \bowlOn,     spec: ControlSpec(0, 1, \lin, 1),    default: 1,    path: "/voice/bowl",
+    // CONTINUOUS, not stepped. They were 0-or-1 and the step was never needed:
+    // both reach the SynthDef as a plain multiplier — bowlGate and chinaGate,
+    // each already Lag.kr'd over 0.4 s — so a value of 0.35 has always been
+    // meaningful and the spec was the only thing forbidding it.
+    //
+    // As faders they stop being "which half exists" and become the balance
+    // between the two halves, which is what the voice is actually for: a pure
+    // bowl, a pure cymbal, or any mixture, rather than three states. The
+    // chinaGate factor now also carries shimmer, wash, chug and both combs, so
+    // fading china in brings its colouring up with it instead of switching it.
+    //
+    // They DO take control buses, unlike the cadence params above, because they
+    // are read inside the SynthDef and must reach voices already sounding.
+    (name: \bowlOn,     spec: ControlSpec(0, 1, \lin),       default: 1,    path: "/voice/bowl",
         cc: 31),
-    (name: \chinaOn,    spec: ControlSpec(0, 1, \lin, 1),    default: 1,    path: "/voice/china",
+    (name: \chinaOn,    spec: ControlSpec(0, 1, \lin),       default: 1,    path: "/voice/china",
         cc: 52),
 
     // ── Marea · arco de densidad (toggles 0/1) ──────────────────────────
