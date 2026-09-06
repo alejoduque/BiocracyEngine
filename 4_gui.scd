@@ -15,7 +15,7 @@
 (
 // Defer all GUI creation to AppClock to avoid Qt threading issues
 {
-    var statusView, counterView, coreRow, ambientRow, droneRow, phenoRow, tideRow, corpusRow, cadenceRow, strikeRow;
+    var statusView, counterView, coreRow, ambientRow, droneRow, phenoRow, tideRow, corpusRow, cadenceRow;
     var mixerView;
     var sampleView, sampleControlView, sampleHeader, sampleButtonView, stopButton;
     var container, recordingView, presetView, laserView;
@@ -108,6 +108,12 @@
 
         // Create main container views for merged controls + samples.
         //
+        // Every control row uses spacing 6, not a mix of 8 and 10. The pitch
+        // between columns has to be identical or the rows do not form a grid,
+        // and at 10 the eight-control Cadencia strip came to 1144 px against an
+        // 1118 px surface — it overflowed on the spacing alone, which is the
+        // thing my earlier width arithmetic kept leaving out.
+        //
         // Chrome budget, second pass: margins 6→4 and horizontal spacing
         // 20→10 across every row. The first pass took the vertical padding
         // out; this one takes the horizontal air out, which is what let the
@@ -120,28 +126,28 @@
         counterView = View().background_(backgroundColor.blend(mainTheme.accent, 0.03))
             .layout_(HLayout().margins_(4).spacing_(10));
         coreRow = View().background_(backgroundColor.blend(mainTheme.accent, 0.05))
-            .layout_(HLayout().margins_(4).spacing_(10));
+            .layout_(HLayout().margins_(4).spacing_(6));
         ambientRow = View().background_(backgroundColor.blend(mainTheme.accent, 0.05))
-            .layout_(HLayout().margins_(4).spacing_(10));
+            .layout_(HLayout().margins_(4).spacing_(6));
         droneRow = View().background_(backgroundColor.blend(mainTheme.accent, 0.04))
-            .layout_(HLayout().margins_(4).spacing_(10));
+            .layout_(HLayout().margins_(4).spacing_(6));
         // Row 5: Cámara Fenológica — 1-bit aesthetic. Pure black background,
         // white knobs (cite of slot P visual style). Marks these controls as
         // belonging to the "escaño del tiempo" (phenological chamber), not to
         // sonETH performance.
         phenoRow = View().background_(Color.black)
-            .layout_(HLayout().margins_(4).spacing_(10));
+            .layout_(HLayout().margins_(4).spacing_(6));
         // Row 6: Marea. Booleans, so these are toggle buttons rather than
         // knobs — a Knob on a stepped 0/1 spec is unreadable at a glance and
         // this row has to be checkable mid-performance.
         tideRow = View().background_(backgroundColor.blend(mainTheme.accent, 0.06))
-            .layout_(HLayout().margins_(4).spacing_(8));
+            .layout_(HLayout().margins_(4).spacing_(6));
         // Row 7: the field-recording layer's own transport and fader. Same
         // 1-bit black-and-white palette as row 5 so it reads as belonging to
         // the Cámara, but a separate row with its own caption so the corpus
         // fader is findable rather than the eighth knob along.
         corpusRow = View().background_(Color.black)
-            .layout_(HLayout().margins_(4).spacing_(10));
+            .layout_(HLayout().margins_(4).spacing_(6));
         // The matrix mixer: the only row on this surface whose controls change
         // loudness rather than timbre.
         // ── Cadencia · how OFTEN each layer speaks ──────────────────────
@@ -157,14 +163,7 @@
         // struck. Six knobs at 132 px plus two stretching toggles fills the
         // ~1100 px surface without a horizontal scroller.
         cadenceRow = View().background_(backgroundColor.blend(mainTheme.accent, 0.05))
-            .layout_(HLayout().margins_(4).spacing_(10));
-        // Bowl and china are not cadence — they are the BALANCE between the two
-        // halves of the struck voice, and they were only sharing the rate row
-        // because a two-control strip looked thin. Ten controls at 132 px is
-        // 1320, against a 1118 px surface with the laser column shown, so that
-        // economy had started costing a horizontal scroller.
-        strikeRow = View().background_(backgroundColor.blend(mainTheme.accent, 0.05))
-            .layout_(HLayout().margins_(4).spacing_(10));
+            .layout_(HLayout().margins_(4).spacing_(6));
 
         mixerView = View().background_(Color.black)
             .layout_(HLayout().margins_(4).spacing_(6));
@@ -185,7 +184,6 @@
         tideRow.fixedHeight = 58;
         corpusRow.fixedHeight = 88;
         cadenceRow.fixedHeight = 88;
-        strikeRow.fixedHeight = 88;
         mixerView.fixedHeight = 150;
         // sampleControlView is 52 px of knob + two label lines + margins.
         sampleControlView.fixedHeight = 92;
@@ -1021,6 +1019,16 @@
         // objection no longer applies and a button can no longer express what
         // the control does. Bowl and china are a BALANCE between the two halves
         // of the struck voice, not a choice of three states.
+        // Folded into the CORPUS strip, not the Marea one. Marea is six
+        // controls and these are two: 8 x 132 plus a marker plus 10 px of
+        // spacing between nine items comes to 1228 against an 1118 px surface,
+        // so that pairing overflowed once the spacing was counted.
+        //
+        // The corpus strip absorbs them because ~phenoCursorLabel stretches —
+        // it is the one row on the surface with an elastic element, so extra
+        // fixed-width content shortens the readout instead of pushing the row
+        // past the edge.
+        corpusRow.layout.add(~inlineHead.value("BOWL/CHINA"));
         ~knobParameters[7].do { |key|
             ~knobs[key] = ~makeKnob.value(
                 key.asString,
@@ -1029,9 +1037,8 @@
                 ~controlValues[key],
                 ~controlSpecs[key].warp
             );
-            strikeRow.layout.add(~knobs[key]);
+            corpusRow.layout.add(~knobs[key]);
         };
-        strikeRow.layout.add(View().background_(backgroundColor.blend(mainTheme.accent, 0.05)));
 
         // ─── BANCADA · Article 43, as five seats you can press ────────────
         // This was a Knob until it was found to be unusable. A Knob cannot
@@ -1686,6 +1693,18 @@
         //
         // Same widget as LASER · GALVO SAFETY below, so the surface keeps one
         // visual language for a section title.
+        // A group marker INSIDE a row, for strips that carry two groups. The
+        // separate-row version wastes the width: bowl and china are two knobs,
+        // 264 px of an 1118 px surface, and a heading of their own above them
+        // spent a further 14 px of height to say so.
+        ~inlineHead = { |caption|
+            StaticText().string_(caption)
+                .stringColor_(mainTheme.accent)
+                .font_(Font(~monoFont, 9, true))
+                .align_(\right)
+                .fixedWidth_(58)
+        };
+
         ~sectionHead = { |caption|
             StaticText().string_(caption)
                 .stringColor_(mainTheme.accent)
@@ -1710,7 +1729,7 @@
         // pitch and the surface is finally a grid.
         phenoRow.layout.add(View().background_(backgroundColor.blend(mainTheme.accent, 0.05)));
         ~scrollCanvas.layout.add(phenoRow);
-        ~scrollCanvas.layout.add(~sectionHead.("CORPUS"));
+        ~scrollCanvas.layout.add(~sectionHead.("CORPUS · VOZ PERCUTIDA"));
         // Trailing filler, like coreRow and ambientRow already had. Without it
         // an HLayout distributes its slack BETWEEN the knobs, so a row of three
         // spread across the full width while a row of seven sat tight — no two
@@ -1731,8 +1750,6 @@
         // pitch and the surface is finally a grid.
         cadenceRow.layout.add(View().background_(backgroundColor.blend(mainTheme.accent, 0.05)));
         ~scrollCanvas.layout.add(cadenceRow);
-        ~scrollCanvas.layout.add(~sectionHead.("VOZ PERCUTIDA · BOWL / CHINA"));
-        ~scrollCanvas.layout.add(strikeRow);
         ~scrollCanvas.layout.add(~sectionHead.("MEZCLA"));
         ~scrollCanvas.layout.add(mixerView);
         ~scrollCanvas.layout.add(sampleView);

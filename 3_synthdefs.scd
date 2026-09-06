@@ -1232,7 +1232,7 @@ s.doWhenBooted({
         // thing in the layer, and the point of the control is where the pad
         // sits, not that it can be made to lurch.
         var padPitch = Lag.kr(
-            Select.kr(padPitchBus >= 0, [2.0, In.kr(padPitchBus, 1)]).clip(0.5, 4.0), 4.0);
+            Select.kr(padPitchBus >= 0, [1.0, In.kr(padPitchBus, 1)]).clip(0.25, 2.0), 4.0);
         var baseFreq = (freq * ratio * padPitch
             * (pShift.clip(-24, 24) / 12).midiratio).clip(22, 900);
 
