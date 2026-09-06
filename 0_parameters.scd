@@ -243,8 +243,14 @@
     // rotation. It was hardcoded at 1.0, so every voice moved at exactly the
     // same rates and they never drifted apart. That is the uniformity: not a
     // lack of modulation but modulation in lockstep.
+    // padPitch takes a BUS, unlike the rest of this row. The others are read
+    // in sclang when a voice is spawned, which is right for a rate — but a pad
+    // voice lives 43-94 s, so a spawn-time pitch meant the control appeared
+    // dead: you moved it and waited a minute and a half for the old voices to
+    // die before hearing anything. On a bus it reaches voices already sounding
+    // and the whole bed glides.
     (name: \padPitch,   spec: ControlSpec(0.5, 4.0, \exp),   default: 2.0,  path: "/cadence/padpitch",
-        hasBus: false, beatParam: \padPitch,   cc: 53),
+        beatParam: \padPitch,   cc: 53),
     (name: \padMotion,  spec: ControlSpec(0.1, 4.0, \exp),   default: 1.0,  path: "/cadence/padmotion",
         hasBus: false, beatParam: \padMotion,  cc: 54),
     // How many pad voices may sound at once. This is the other half of pad

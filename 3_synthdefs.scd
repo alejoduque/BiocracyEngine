@@ -1206,7 +1206,12 @@ s.doWhenBooted({
             masterAmpBus=(-1), filterCutoffBus=(-1), noiseLevelBus=(-1),
             noiseFiltBus=(-1), droneDepthBus=(-1), droneFadeBus=(-1),
             // Matrix mixer: this layer's live level (0=mute, 1=unity, 2=max)
-            mixPadBus=(-1);
+            mixPadBus=(-1),
+            // Register, live. Read here rather than folded into \freq at the
+            // spawn so it reaches voices that are ALREADY SOUNDING — a pad
+            // voice lives 43-94 s and a spawn-time pitch made the control look
+            // broken for a minute and a half.
+            padPitchBus=(-1);
 
         var masterVol  = Lag.kr(Select.kr(masterVolBus >= 0, [0.28, In.kr(masterVolBus, 1)]), 0.08);
         var pShift     = Select.kr(pitchBus      >= 0, [0.0,  In.kr(pitchBus, 1)]);
@@ -1222,7 +1227,14 @@ s.doWhenBooted({
         var dFade      = Select.kr(droneFadeBus  >= 0, [3.0,  In.kr(droneFadeBus, 1)]);
 
         // Apply pitch shift (same transposition path as other voices)
-        var baseFreq = (freq * ratio * (pShift.clip(-24, 24) / 12).midiratio).clip(22, 900);
+        // Lag 4 s: the bed GLIDES to a new register rather than jumping. On a
+        // voice whose attack alone is 7-14 s a step would be the only sudden
+        // thing in the layer, and the point of the control is where the pad
+        // sits, not that it can be made to lurch.
+        var padPitch = Lag.kr(
+            Select.kr(padPitchBus >= 0, [2.0, In.kr(padPitchBus, 1)]).clip(0.5, 4.0), 4.0);
+        var baseFreq = (freq * ratio * padPitch
+            * (pShift.clip(-24, 24) / 12).midiratio).clip(22, 900);
 
         // ── Long evolving envelope (8s atk / 28s sustain / 18s release)
         // tDil stretches all stages so the timeDilation knob makes this

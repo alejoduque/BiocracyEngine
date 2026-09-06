@@ -594,14 +594,10 @@
                         // returning ratio is never the same pitch twice and
                         // consecutive voices beat against the drone instead of
                         // locking to it.
-                        // padPitch multiplies the root, so the bed still tracks
-                        // the drone's harmony and only changes register. At the
-                        // default 2.0 the range is 55-247 Hz rather than
-                        // 27-124 — four detuned Saws at 27 Hz is a motor, not a
-                        // pad, and that was the "little engine".
-                        \freq,   (~droneRoot ? 55)
-                            * ((~beatParams.padPitch ? 2.0).clip(0.5, 4.0))
-                            * rrand(0.994, 1.006),
+                        // Just the root. padPitch is applied INSIDE the voice
+                        // from its bus, so it reaches voices already sounding
+                        // instead of only the next one to be born.
+                        \freq,   (~droneRoot ? 55) * rrand(0.994, 1.006),
                         \ratio,  rt,
                         \amp,    (0.22 / (1 + (rt * 0.45)))
                             * (~beatParams.transportGain ? 1),
@@ -640,7 +636,10 @@
                         // control does nothing across most of its travel.
                         \envScale, (((~beatParams.padEvery ? 34.0) / 34.0)
                             ** 0.85).clip(0.12, 2.5),
-                        \pan,    1.0.rand2 * 0.65
+                        \pan,    1.0.rand2 * 0.65,
+                        // Not in ~voiceBusArgs: that list goes to every voice and
+                        // only this SynthDef declares the control.
+                        \padPitchBus, (~bidx.value(\padPitch) ? -1)
                     ] ++ (~voiceBusArgs.value ? []), targetGrp);
                     ~padVoices = (~padVoices ? []).add(syn);
                     ~padVoiceAmp[syn] = (0.22 / (1 + (rt * 0.45)))
