@@ -697,7 +697,7 @@ s.doWhenBooted({
         // one struck; literals as a fallback when unwired.
         bowlOnBus=(-1), chinaOnBus=(-1), bowlOn=1, chinaOn=1,
         // Where the bowl's share of the room goes, and how much of it.
-        chamberAux=(-1), bowlSend=0.6, bowlLevel=0.4,
+        chamberAux=(-1), bowlSend=0.6, bowlLevel=0.04, chinaLevel=2.0,
         // Per-strike envelope scale. timeDilation sets how long this voice
         // rings GLOBALLY; this scales one strike against that, so the same
         // instrument can be a 30 s bowl when the tide strikes it and a short
@@ -960,11 +960,26 @@ s.doWhenBooted({
         // attack while the bowl rings for sixteen seconds, so even at equal
         // peak the bowl delivers far more energy and reads far louder.
         //
-        // bowlLevel is a plain argument so it can be moved without touching
-        // any of the logic. 0.4 is a starting point set against the china's
-        // typical 0.575, not a measurement — trust the ear over this number.
+        // MEASURED this time, not estimated. Ringz output scales with DECAY
+        // TIME, and that is the whole imbalance — the bowl's fundamental rings
+        // 20 s against the trash's 0.32 s:
+        //
+        //   bowl   sum(decay x modeAmp) x 2 banks   = 51.23
+        //   trash  sum(decay) / sqrt(18) x 3.4      =  1.83
+        //                                     ratio = 28 : 1
+        //
+        // My previous 0.4 left it at 19.5 : 1, which is why 0.05 on the fader
+        // was already too loud: 0.05 was doing the job 1.0 should do.
+        //
+        //   bowl  51.23 x 0.04          = 2.05
+        //   china  1.83 x 0.575 x 2.0   = 2.10     parity at fader 1.0
+        //
+        // chinaLevel lifts the pair together, because the china at 1.0 was too
+        // quiet as well — matching them at the old china level would have left
+        // both too low. mixPerc is still the fader for the voice as a whole.
         sig = (bowl * bowlGate * bowlLevel.clip(0, 2))
-            + (trash * fmD.linlin(0, 1, 0.10, 1.05) * chinaGate);
+            + (trash * fmD.linlin(0, 1, 0.10, 1.05) * chinaGate
+                * chinaLevel.clip(0, 4));
 
         // The trash. A china's signature is a wide, unstable band of noise
         // sitting ON TOP of the modes, sweeping as the plate wobbles. The
