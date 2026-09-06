@@ -697,7 +697,7 @@ s.doWhenBooted({
         // one struck; literals as a fallback when unwired.
         bowlOnBus=(-1), chinaOnBus=(-1), bowlOn=1, chinaOn=1,
         // Where the bowl's share of the room goes, and how much of it.
-        chamberAux=(-1), bowlSend=0.6,
+        chamberAux=(-1), bowlSend=0.6, bowlLevel=0.4,
         // Per-strike envelope scale. timeDilation sets how long this voice
         // rings GLOBALLY; this scales one strike against that, so the same
         // instrument can be a 30 s bowl when the tide strikes it and a short
@@ -943,13 +943,27 @@ s.doWhenBooted({
         // aux would otherwise be Out.ar(-1, ...), which is not a bus. With the
         // guard an unset aux writes silence to bus 0, and Out.ar ADDS, so that
         // is exactly a no-op rather than a leak into the main mix.
+        // bowlLevel applies here too: the room should hear the bowl at the
+        // level the bowl is actually being played at, not at the one it had
+        // before it was balanced against the china.
         Out.ar(chamberAux.max(0),
-            bowl * bowlGate * bowlSend.clip(0, 1) * 0.55 * (chamberAux >= 0));
+            bowl * bowlGate * bowlLevel.clip(0, 2)
+                * bowlSend.clip(0, 1) * 0.55 * (chamberAux >= 0));
 
         chinaGate = Lag.kr(
             Select.kr(chinaOnBus >= 0, [chinaOn, In.kr(chinaOnBus, 1)]).clip(0, 1), 0.4);
 
-        sig = (bowl * bowlGate)
+        // ── Balance ──────────────────────────────────────────────────────
+        // The china is scaled by fmD.linlin(0.10, 1.05) and the bowl by
+        // nothing at all — it went out at unity while the china was attenuated
+        // by up to ten times. On top of that the trash is confined to the
+        // attack while the bowl rings for sixteen seconds, so even at equal
+        // peak the bowl delivers far more energy and reads far louder.
+        //
+        // bowlLevel is a plain argument so it can be moved without touching
+        // any of the logic. 0.4 is a starting point set against the china's
+        // typical 0.575, not a measurement — trust the ear over this number.
+        sig = (bowl * bowlGate * bowlLevel.clip(0, 2))
             + (trash * fmD.linlin(0, 1, 0.10, 1.05) * chinaGate);
 
         // The trash. A china's signature is a wide, unstable band of noise
@@ -1032,7 +1046,12 @@ s.doWhenBooted({
         bend = CombC.ar(sig * 0.35, 0.35,
             LFNoise1.kr(0.4 + (bodySeed * 2)).range(0.01, 0.15).clip(0.005, 0.25),
             dFeed.linlin(0, 0.8, 0.2, 2.0));
-        sig = sig + (LeakDC.ar(bend.tanh) * dMix.linlin(0, 1, 0.3, 0.8));
+        // The comb IS the echo. A CombC at 10-150 ms with up to 2 s of decay
+        // repeats rather than resonates, and short comb delays are pitched, so
+        // it was also half of the "metallic". Gated: with CHINA off the bowl's
+        // tail is its own modal decay plus the chamber, which is a room and
+        // not a repeat — resonance rather than echo.
+        sig = sig + (LeakDC.ar(bend.tanh) * dMix.linlin(0, 1, 0.3, 0.8) * chinaGate);
 
         // Saturation. tanh across the whole band for the metallic bite, plus a
         // SMALL sine fold on a band-limited copy for the clangour.
@@ -1043,9 +1062,18 @@ s.doWhenBooted({
         // first keeps every fold product under Nyquist.
         shaped = (sig * fmD.linlin(0, 1, 1.4, 4.2)).tanh
             / (1 + (fmD * 0.3));
-        sig = XFade2.ar(sig, shaped, fmD.linlin(0, 1, -0.4, 0.9));
+        // These two stages are described in the comment above as "the metallic
+        // bite" and "the clangour" — they are china character by their own
+        // account, and they were being applied to everything.
+        //
+        // The crossfade is lerped to fully dry rather than gated on the wet
+        // side, because XFade2's pan is -1..1 and multiplying it would land at
+        // 0, which is half wet. -1 + ((p + 1) * gate) is the same value at
+        // gate 1 and fully dry at gate 0.
+        sig = XFade2.ar(sig, shaped,
+            -1 + ((fmD.linlin(0, 1, -0.4, 0.9) + 1) * chinaGate));
         sig = sig + (SinOsc.ar(0, LPF.ar(sig, 5000) * fmD.linlin(0, 1, 0.7, 2.6))
-            * fmD.linlin(0, 1, 0.08, 0.34));
+            * fmD.linlin(0, 1, 0.08, 0.34) * chinaGate);
         sig = LeakDC.ar(sig);
 
         // Brightness as a TILT, not a wall. The old pair of lowpasses capped
@@ -1090,7 +1118,18 @@ s.doWhenBooted({
             doneAction: 2);
 
         // Ping-pong delay + Reverb
-        wet = CombC.ar(sig, 0.4, 0.08, 1.0) * dMix * 0.7;
+        //
+        // The SECOND comb in this voice, and the other half of the echo. 80 ms
+        // with a 1 s decay is a slapback: it REPEATS, where the complaint was
+        // that the bowl echoes instead of resonating. Gated with the china
+        // like the rest of this colouring — the comment below says what the
+        // whole block is for, "a 24 inch china in a hall is mostly its own
+        // reflections", and that is a statement about the cymbal.
+        //
+        // With CHINA off the bowl's ambience is the per-voice FreeVerb beneath
+        // this plus the shared chamber it sends into. A reverb is resonance; a
+        // comb is a repeat. The bowl keeps the first and loses the second.
+        wet = CombC.ar(sig, 0.4, 0.08, 1.0) * dMix * 0.7 * chinaGate;
         sig = sig + wet;
         // The room. A 24" china in a hall is mostly its own reflections, and
         // this is the layer that makes a rare strike feel like it happened
