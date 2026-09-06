@@ -340,15 +340,77 @@
 // Overridden here rather than by renaming the parameters: the names are also
 // the OSC paths, the preset keys and the ~beatParams mirrors, so renaming
 // would break every saved config for a cosmetic gain.
+// Extended to EVERY rendered parameter. It held eight entries, and all eight
+// belonged to the two rows that were never drawn — so the labels that existed
+// were on the controls nobody could see, while all 35 visible knobs fell
+// through to `label.asString.toUpper` and printed camelCase run together:
+// TRANSACTIONINFLUENCE, ACTIVITYTHRESHOLD, ABSENCEWEIGHT.
+//
+// Kept under about eleven characters: the knob column is 132 px
+// (4_gui.scd:519) and anything longer is truncated or wraps into the value.
+//
+// Spanish where the group around it is already Spanish — the Cámara row sits
+// beside BANCADA and TODAS / NOCTURNA / INSECTOS, and the Marea toggles are
+// ARCO CORTO / PULSO — English where the engine's own vocabulary is English
+// and the mixer strips already say DRONE, PAD, KICK.
 ~knobLabels = IdentityDictionary[
+    // ── Núcleo ──────────────────────────────────────────────────────────
+    \masterVolume         -> "MASTER VOL",
+    \pitchShift           -> "PITCH",
+    \timeDilation         -> "TIME DIL",
+    // The main LPF cutoff in Hz, in every voice. Named for what it does
+    // rather than for the abstraction it is registered under.
+    \spectralShift        -> "LPF CUTOFF",
+    \spatialSpread        -> "SPREAD",
+    \textureDepth         -> "TEXTURE",
+    \atmosphereMix        -> "ATMOS MIX",
+    // ── Ambiente y ruido ────────────────────────────────────────────────
+    \memoryFeed           -> "MEM FEED",
+    \harmonicRich         -> "HARMONICS",
+    \resonantBody         -> "RES BODY",
+    \masterAmp            -> "MASTER AMP",
+    \filterCutoff         -> "FILT TILT",
+    \noiseLevel           -> "NOISE LVL",
+    \noiseFilt            -> "NOISE FILT",
+    // ── Drone ───────────────────────────────────────────────────────────
+    \droneDepth           -> "DRONE SUB",
+    \droneFade            -> "DRONE FADE",
+    \droneSpace           -> "DRONE SPACE",
+    // NOT a second drone level — it is dLayer, the blend BETWEEN the drone's
+    // layers (3_synthdefs.scd:1419). The name has read as a fader for as long
+    // as it has existed; the label says what it is.
+    \droneMix             -> "DRONE LAYER",
+    \delayFeedback        -> "DELAY FB",
+    \transactionInfluence -> "TX INFL",
+    \beatTempo            -> "TEMPO",
+    // ── La sala · el recinto compartido ─────────────────────────────────
+    // SALA, not CÁMARA: this surface already has a Cámara Fenológica, and two
+    // groups called cámara on one screen is worse than a slightly plainer
+    // word. RT60 because that is exactly what the control sets, 2-28 s.
+    \chamberMix           -> "SALA MIX",
+    \chamberSize          -> "SALA RT60",
+    // ── Cámara Fenológica ───────────────────────────────────────────────
+    \activityThreshold    -> "UMBRAL",
+    \windowWidth          -> "VENTANA",
+    \seasonalBias         -> "SESGO EST",
+    \absenceWeight        -> "AUSENCIA",
+    \pulseGain            -> "PULSO GAIN",
+    \opacityFloor         -> "OPACIDAD",
+    \phenoRate            -> "RITMO",
+    // ── Corpus ──────────────────────────────────────────────────────────
+    \corpusLevel          -> "CORPUS LVL",
+    \chainProcess         -> "CADENA",
+    \camaraOpacity        -> "OPAC CÁM",
+    // ── Cadencia · how often, not how loud ──────────────────────────────
     \kickEvery  -> "KICK ×BAR",
     \percRate   -> "PERC RATE",
     \padEvery   -> "PAD EVERY",
     \padVoices  -> "PAD VOICES",
     \bellEvery  -> "BELL EVERY",
+    \dustRate   -> "DUST RATE",
+    // ── Las dos mitades de la voz percutida ─────────────────────────────
     \bowlOn     -> "BOWL",
-    \chinaOn    -> "CHINA",
-    \dustRate   -> "DUST RATE"
+    \chinaOn    -> "CHINA"
 ];
 
 ~labelCase = { |name|

@@ -15,7 +15,7 @@
 (
 // Defer all GUI creation to AppClock to avoid Qt threading issues
 {
-    var statusView, counterView, controlView, controlViewRow2, controlViewRow3, controlViewRow5, controlViewRow6, controlViewRow7;
+    var statusView, counterView, coreRow, ambientRow, droneRow, phenoRow, tideRow, corpusRow, cadenceRow;
     var mixerView;
     var sampleView, sampleControlView, sampleHeader, sampleButtonView, stopButton;
     var container, recordingView, presetView, laserView;
@@ -115,31 +115,46 @@
             .layout_(HLayout().margins_(4).spacing_(10));
         counterView = View().background_(backgroundColor.blend(mainTheme.accent, 0.03))
             .layout_(HLayout().margins_(4).spacing_(10));
-        controlView = View().background_(backgroundColor.blend(mainTheme.accent, 0.05))
+        coreRow = View().background_(backgroundColor.blend(mainTheme.accent, 0.05))
             .layout_(HLayout().margins_(4).spacing_(10));
-        controlViewRow2 = View().background_(backgroundColor.blend(mainTheme.accent, 0.05))
+        ambientRow = View().background_(backgroundColor.blend(mainTheme.accent, 0.05))
             .layout_(HLayout().margins_(4).spacing_(10));
-        controlViewRow3 = View().background_(backgroundColor.blend(mainTheme.accent, 0.04))
+        droneRow = View().background_(backgroundColor.blend(mainTheme.accent, 0.04))
             .layout_(HLayout().margins_(4).spacing_(10));
         // Row 5: Cámara Fenológica — 1-bit aesthetic. Pure black background,
         // white knobs (cite of slot P visual style). Marks these controls as
         // belonging to the "escaño del tiempo" (phenological chamber), not to
         // sonETH performance.
-        controlViewRow5 = View().background_(Color.black)
+        phenoRow = View().background_(Color.black)
             .layout_(HLayout().margins_(4).spacing_(10));
         // Row 6: Marea. Booleans, so these are toggle buttons rather than
         // knobs — a Knob on a stepped 0/1 spec is unreadable at a glance and
         // this row has to be checkable mid-performance.
-        controlViewRow6 = View().background_(backgroundColor.blend(mainTheme.accent, 0.06))
+        tideRow = View().background_(backgroundColor.blend(mainTheme.accent, 0.06))
             .layout_(HLayout().margins_(4).spacing_(8));
         // Row 7: the field-recording layer's own transport and fader. Same
         // 1-bit black-and-white palette as row 5 so it reads as belonging to
         // the Cámara, but a separate row with its own caption so the corpus
         // fader is findable rather than the eighth knob along.
-        controlViewRow7 = View().background_(Color.black)
+        corpusRow = View().background_(Color.black)
             .layout_(HLayout().margins_(4).spacing_(10));
         // The matrix mixer: the only row on this surface whose controls change
         // loudness rather than timbre.
+        // ── Cadencia · how OFTEN each layer speaks ──────────────────────
+        // ~knobParameters[6] and [7] were defined, wired, reachable from MIDI
+        // and from the browser, and never rendered here: the render loops
+        // covered rows 0-5 and simply stopped. Ten controls that existed
+        // everywhere except at the machine the performer sits at.
+        //
+        // The two rows share one strip because the source already argued they
+        // should: row 7's own comment says the toggles "render as toggle
+        // buttons beside the rates that drive them", and bowl/china are which
+        // halves of the struck voice exist while percRate is how often it is
+        // struck. Six knobs at 132 px plus two stretching toggles fills the
+        // ~1100 px surface without a horizontal scroller.
+        cadenceRow = View().background_(backgroundColor.blend(mainTheme.accent, 0.05))
+            .layout_(HLayout().margins_(4).spacing_(10));
+
         mixerView = View().background_(Color.black)
             .layout_(HLayout().margins_(4).spacing_(6));
 
@@ -152,12 +167,13 @@
         // Set fixed heights for sections. A knob row is now 60 px of knob +
         // ~14 px of label + 8 px of margin = 82.
         [statusView, counterView].do { |view| view.fixedHeight = 46; };
-        [controlView, controlViewRow2, controlViewRow3].do { |view|
+        [coreRow, ambientRow, droneRow].do { |view|
             view.fixedHeight = 88;
         };
-        controlViewRow5.fixedHeight = 88;
-        controlViewRow6.fixedHeight = 58;
-        controlViewRow7.fixedHeight = 88;
+        phenoRow.fixedHeight = 88;
+        tideRow.fixedHeight = 58;
+        corpusRow.fixedHeight = 88;
+        cadenceRow.fixedHeight = 88;
         mixerView.fixedHeight = 150;
         // sampleControlView is 52 px of knob + two label lines + margins.
         sampleControlView.fixedHeight = 92;
@@ -624,14 +640,14 @@
                 ~controlValues[key],
                 ~controlSpecs[key].warp
             );
-            controlView.layout.add(~knobs[key]);
+            coreRow.layout.add(~knobs[key]);
         };
 
         // Trailing stretch. The knob cells are a fixed width now, so a row with
         // five of them would otherwise have its spare space shared out as wider
         // gaps and the columns would stop lining up with the seven-knob Cámara
         // row below. An empty View at the end absorbs the remainder instead.
-        controlView.layout.add(View().background_(backgroundColor.blend(mainTheme.accent, 0.05)));
+        coreRow.layout.add(View().background_(backgroundColor.blend(mainTheme.accent, 0.05)));
 
         // Second row knobs
         ~knobParameters[1].do { |key|
@@ -642,9 +658,9 @@
                 ~controlValues[key],
                 ~controlSpecs[key].warp
             );
-            controlViewRow2.layout.add(~knobs[key]);
+            ambientRow.layout.add(~knobs[key]);
         };
-        controlViewRow2.layout.add(View().background_(backgroundColor.blend(mainTheme.accent, 0.05)));
+        ambientRow.layout.add(View().background_(backgroundColor.blend(mainTheme.accent, 0.05)));
 
         // Third row knobs (drone/noise controls)
         ~knobParameters[2].do { |key|
@@ -655,9 +671,9 @@
                 ~controlValues[key],
                 ~controlSpecs[key].warp
             );
-            controlViewRow3.layout.add(~knobs[key]);
+            droneRow.layout.add(~knobs[key]);
         };
-        controlViewRow3.layout.add(View().background_(backgroundColor.blend(mainTheme.accent, 0.04)));
+        droneRow.layout.add(View().background_(backgroundColor.blend(mainTheme.accent, 0.04)));
 
         // Fourth row knobs (additional controls)
 
@@ -680,7 +696,7 @@
         ~phenoAmber    = Color(1.0, 0.62, 0.10);
         ~phenoAmberDim = Color(1.0, 0.76, 0.45);
         ~phenoAmberBg  = Color.black.blend(~phenoAmber, 0.06);
-        controlViewRow5.background_(~phenoAmberBg);
+        phenoRow.background_(~phenoAmberBg);
         ~knobParameters[3].do { |key|
             var knobContainer;
             ~knobs[key] = ~makeKnob.value(
@@ -701,16 +717,16 @@
                 ~controlLabels[key].stringColor_(~phenoAmberDim);
                 ~controlLabels[key].font_(Font(~monoFont, 10, true));
             };
-            controlViewRow5.layout.add(knobContainer);
+            phenoRow.layout.add(knobContainer);
         };
-        controlViewRow5.layout.add(View().background_(~phenoAmberBg));
+        phenoRow.layout.add(View().background_(~phenoAmberBg));
 
         // ─── Row 7: Cámara Fenológica · Corpus ────────────────────────────
         // The AudioMoth layer's transport and fader, same 1-bit palette as
         // row 5 but captioned, because "where is the corpus fader" has to have
         // an answer you can see. The caption is a plain StaticText added to the
         // row's HLayout ahead of the knobs.
-        controlViewRow7.layout.add(
+        corpusRow.layout.add(
             StaticText()
                 .string_("CÁMARA\nFENOLÓGICA\n· CORPUS ·")
                 .font_(Font(~monoFont, 10, true))
@@ -736,17 +752,17 @@
                 ~controlLabels[key].stringColor_(Color.white);
                 ~controlLabels[key].font_(Font(~monoFont, 10, true));
             };
-            controlViewRow7.layout.add(knobContainer);
+            corpusRow.layout.add(knobContainer);
         };
 
-        controlViewRow7.layout.add(View().background_(Color.black));
+        corpusRow.layout.add(View().background_(Color.black));
         // The ring's own reading of where it is, refreshed by 14_'s routine.
         ~phenoCursorLabel = StaticText()
             .string_("doy — · —")
             .font_(Font(~monoFont, 11, true))
             .stringColor_(Color.gray(0.75))
             .align_(\left);
-        controlViewRow7.layout.add(~phenoCursorLabel);
+        corpusRow.layout.add(~phenoCursorLabel);
 
         // Skip the silence. 331 of 365 ring days have no recording, so at the
         // default rate the corpus is inaudible for up to three hours at a
@@ -761,7 +777,7 @@
                 if(~phenoNextRecorded.notNil) { ~phenoNextRecorded.value }
                     { "[pheno] corpus layer not loaded".postln };
             });
-        controlViewRow7.layout.add(~phenoSkipButton);
+        corpusRow.layout.add(~phenoSkipButton);
 
         // ─── MATRIX MIXER ─────────────────────────────────────────────────
         // One fader per audible layer, plus a mute. Until now the balance
@@ -907,7 +923,11 @@
                 .value_((~controlValues[key] ? 0).asInteger);
 
             valueLabel = StaticText()
-                .string_(~labelCase.(key) ++ ": " ++ (~controlValues[key] ? 0))
+                // ~knobLabels first, ~labelCase only as the fallback — this read
+                // the raw key, so a toggle printed BOWLON and CHINAON while the
+                // knobs beside it had proper labels.
+                .string_((~knobLabels[key] ? ~labelCase.(key)) ++ ": "
+                    ++ (~controlValues[key] ? 0))
                 .stringColor_(mainTheme.foreground)
                 .font_(Font(~monoFont, 9))
                 .align_(\center);
@@ -938,7 +958,48 @@
         );
         ~knobParameters[4].do { |key|
             ~knobs[key] = ~makeToggle.value(key, ~tideCaptions[key] ? key.asString);
-            controlViewRow6.layout.add(~knobs[key]);
+            tideRow.layout.add(~knobs[key]);
+        };
+        // La sala joins the Marea row rather than taking one of its own. Both
+        // are whole-engine qualities — the arc of density and the room it all
+        // sounds in — and neither fills a strip alone. It cannot go on the
+        // drone row where space and delay live: that row already holds seven
+        // knobs at 132 px, and nine would be 1188 px against a surface of about
+        // 1100, which buys a horizontal scroller for two controls.
+        [\chamberMix, \chamberSize].do { |key|
+            ~knobs[key] = ~makeKnob.value(
+                key.asString,
+                ~controlSpecs[key].minval,
+                ~controlSpecs[key].maxval,
+                ~controlValues[key],
+                ~controlSpecs[key].warp
+            );
+            tideRow.layout.add(~knobs[key]);
+        };
+
+        // ─── Cadencia · rate, and the two halves of the struck voice ──────
+        // Rows 6 and 7, rendered at last. Placed immediately above the mixer
+        // because rate and level are the two halves of one question: at one
+        // kick per 96 s there is no second hit to hear a level change on.
+        ~knobParameters[6].do { |key|
+            ~knobs[key] = ~makeKnob.value(
+                key.asString,
+                ~controlSpecs[key].minval,
+                ~controlSpecs[key].maxval,
+                ~controlValues[key],
+                ~controlSpecs[key].warp
+            );
+            cadenceRow.layout.add(~knobs[key]);
+        };
+        // ~makeToggle, never ~makeKnob: both are stepped specs, and 4_gui.scd
+        // documents at the \bancada note above why a Knob cannot serve one —
+        // it rebuilds the spec without its step, ~setParam re-quantises and
+        // writes the rounded value back, and a \vert Knob drags relative to
+        // its own value, so the write-back resets the accumulator every event
+        // and the control can never leave zero.
+        ~knobParameters[7].do { |key|
+            ~knobs[key] = ~makeToggle.value(key, ~knobLabels[key] ? key.asString);
+            cadenceRow.layout.add(~knobs[key]);
         };
 
         // ─── BANCADA · Article 43, as five seats you can press ────────────
@@ -975,7 +1036,7 @@
             // clamped a value this function had not.
             ~bancadaShown = nil;
         };
-        controlViewRow6.layout.add(
+        tideRow.layout.add(
             StaticText().string_("BANCADA")
                 .font_(Font(~monoFont, 9, true))
                 .stringColor_(Color.gray(0.75))
@@ -996,7 +1057,7 @@
             // MIDI CC or a browser click lands here identically.
             btn.action = { ~bancadaSet.(i) };
             ~bancadaButtons[i] = btn;
-            controlViewRow6.layout.add(btn);
+            tideRow.layout.add(btn);
         };
 
 
@@ -1555,16 +1616,43 @@
         ~mainWindow.layout.add(laserView);
 
         // Add all views to the scroll canvas (5 control rows + samples + REC)
+        // ─── The grid ─────────────────────────────────────────────────────
+        //
+        // Each strip gets a caption. Eleven anonymous rows of knobs is a
+        // surface you have to have written to read, and the groups were only
+        // ever legible from the comments in ~knobParameters — which is also how
+        // two whole rows came to be orphaned without anyone noticing.
+        //
+        // Same widget as LASER · GALVO SAFETY below, so the surface keeps one
+        // visual language for a section title.
+        ~sectionHead = { |caption|
+            StaticText().string_(caption)
+                .stringColor_(mainTheme.accent)
+                .font_(Font(~monoFont, 10, true))
+                .fixedHeight_(14)
+        };
+
         ~scrollCanvas.layout.add(~header);
         ~scrollCanvas.layout.add(statusView);
         ~scrollCanvas.layout.add(counterView);
-        ~scrollCanvas.layout.add(controlView);
-        ~scrollCanvas.layout.add(controlViewRow2);
-        ~scrollCanvas.layout.add(controlViewRow3);
-        ~scrollCanvas.layout.add(controlViewRow5);
-        ~scrollCanvas.layout.add(controlViewRow7);
+        ~scrollCanvas.layout.add(~sectionHead.("NÚCLEO"));
+        ~scrollCanvas.layout.add(coreRow);
+        ~scrollCanvas.layout.add(~sectionHead.("AMBIENTE · RUIDO"));
+        ~scrollCanvas.layout.add(ambientRow);
+        ~scrollCanvas.layout.add(~sectionHead.("DRONE"));
+        ~scrollCanvas.layout.add(droneRow);
+        ~scrollCanvas.layout.add(~sectionHead.("CÁMARA FENOLÓGICA"));
+        ~scrollCanvas.layout.add(phenoRow);
+        ~scrollCanvas.layout.add(~sectionHead.("CORPUS"));
+        ~scrollCanvas.layout.add(corpusRow);
+        // Marea moved UP, out from behind the mixer. It sat after it, separated
+        // from every other control row, for no reason the layout could state.
+        ~scrollCanvas.layout.add(~sectionHead.("MAREA · SALA"));
+        ~scrollCanvas.layout.add(tideRow);
+        ~scrollCanvas.layout.add(~sectionHead.("CADENCIA"));
+        ~scrollCanvas.layout.add(cadenceRow);
+        ~scrollCanvas.layout.add(~sectionHead.("MEZCLA"));
         ~scrollCanvas.layout.add(mixerView);
-        ~scrollCanvas.layout.add(controlViewRow6);
         ~scrollCanvas.layout.add(sampleView);
         ~scrollCanvas.layout.add(recordingView);
         ~scrollCanvas.layout.add(presetView);
