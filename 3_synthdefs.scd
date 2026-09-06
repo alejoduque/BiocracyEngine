@@ -696,6 +696,8 @@ s.doWhenBooted({
         // the toggles reach every voice already sounding, not just the next
         // one struck; literals as a fallback when unwired.
         bowlOnBus=(-1), chinaOnBus=(-1), bowlOn=1, chinaOn=1,
+        // Where the bowl's share of the room goes, and how much of it.
+        chamberAux=(-1), bowlSend=0.6,
         // Per-strike envelope scale. timeDilation sets how long this voice
         // rings GLOBALLY; this scales one strike against that, so the same
         // instrument can be a 30 s bowl when the tide strikes it and a short
@@ -740,7 +742,7 @@ s.doWhenBooted({
         var sampleLvl = Select.kr(mixSampleBus >= 0, [1.0, In.kr(mixSampleBus, 1)]);
 
         var exciter, sig, wet, quadSig, partials, decays, inharm, damp, spread;
-        var shimmer, wash, chug, modeAmps, bend, shaped;
+        var shimmer, wash, chug, modeAmps, bend, shaped, bowlFreq, bowlGate;
         var bowl, trash, trashRatios, trashDecays, beats;
 
         // Clamped fundamental in the warm wooden/gong range (35..320 Hz)
@@ -848,20 +850,45 @@ s.doWhenBooted({
         // Long, and longer at the bottom. Mode 1 rings ~16 s at the default
         // timeDilation; the top of the shell fades in ~5 s. Clipped at 34 s so
         // a large timeDilation cannot leave a node alive indefinitely.
+        // ── Bowl, not bell ───────────────────────────────────────────────
+        //
+        // The partial RATIOS were already right — 1, 2.74, 5.12, 8.06 is close
+        // to a real singing bowl. The two ROLLOFFS made it a bell:
+        //
+        //   amp   (i+1)^-0.62   mode 6 at 0.299, sitting at 3956 Hz
+        //   decay (i+1)^-0.42   mode 6 still ringing after 7.1 s
+        //
+        // A bell is defined by loud, long-lived upper partials. A bowl is
+        // defined by the opposite: its energy sits in the first two or three
+        // modes and everything above dies inside a second, which is why a
+        // struck bowl settles into a hum instead of staying a chime.
+        //
+        //   amp   -0.62 -> -1.45   mode 6 down to 0.086, about 11 dB quieter
+        //   decay -0.42 -> -1.15   mode 6 down to roughly 1.7 s
+        //
+        // The fundamental keeps its long ring — that is the bowl's whole
+        // character. What goes is the bright tail sitting on top of it.
         decays = Array.fill(7, { |i|
-            (((i + 1) ** -0.42) * (tStretch * 8.0) * envScale.clip(0.1, 2.0)
+            (((i + 1) ** -1.15) * (tStretch * 8.0) * envScale.clip(0.1, 2.0)
                 * damp.linlin(1.2, 3.5, 1.25, 0.7)).clip(0.4, 34.0);
         });
 
         // The fundamental carries the tone; the overtones colour it.
-        modeAmps = Array.fill(7, { |i| ((i + 1) ** -0.62) });
+        modeAmps = Array.fill(7, { |i| ((i + 1) ** -1.45) });
+
+        // AN OCTAVE DOWN, and only the bowl. The beat engine hands this voice
+        // 100-300 Hz, which for a bowl is a small one struck near the rim; a
+        // large Tibetan bowl sings around 70-150. The china half keeps the
+        // original register — a china cymbal is supposed to be bright, and
+        // dropping both would only make the whole voice dull.
+        bowlFreq = (freq * 0.5).clip(35, 480);
 
         bowl = Mix([
-            (Ringz.ar(exciter, (freq * partials).clip(30, 16000), decays)
+            (Ringz.ar(exciter, (bowlFreq * partials).clip(30, 16000), decays)
                 * modeAmps).sum,
             // The twin bank, half a hair sharp and slightly quieter.
             (Ringz.ar(exciter,
-                ((freq * partials) + beats).clip(30, 16000), decays)
+                ((bowlFreq * partials) + beats).clip(30, 16000), decays)
                 * modeAmps).sum * 0.85
         ]) * 7.sqrt.reciprocal * 2.9;
 
@@ -898,8 +925,28 @@ s.doWhenBooted({
         //
         // textureDepth still morphs between them when both are on; the
         // toggles decide whether each is in the sum at all.
-        sig = (bowl * Lag.kr(
-                Select.kr(bowlOnBus >= 0, [bowlOn, In.kr(bowlOnBus, 1)]).clip(0, 1), 0.4))
+        bowlGate = Lag.kr(
+            Select.kr(bowlOnBus >= 0, [bowlOn, In.kr(bowlOnBus, 1)]).clip(0, 1), 0.4);
+
+        // ── The bowl rings the room ──────────────────────────────────────
+        // Sent into the chamber's aux ON TOP of the dry path, and only while
+        // the bowl half is active. A struck bowl in a stone room is mostly
+        // room: the direct sound is brief and what is heard for the next half
+        // minute is the building answering. Gated by bowlGate, so switching
+        // BOWL off takes the resonance with it rather than leaving the room
+        // lit by a voice that is no longer there.
+        //
+        // Pre-envelope on purpose — the send carries the bowl's own long modal
+        // decay into a space that decays again on its own terms, which is what
+        // makes the tail belong to the room rather than to the note.
+        // .max(0) on the index and the (>= 0) factor on the signal: an unset
+        // aux would otherwise be Out.ar(-1, ...), which is not a bus. With the
+        // guard an unset aux writes silence to bus 0, and Out.ar ADDS, so that
+        // is exactly a no-op rather than a leak into the main mix.
+        Out.ar(chamberAux.max(0),
+            bowl * bowlGate * bowlSend.clip(0, 1) * 0.55 * (chamberAux >= 0));
+
+        sig = (bowl * bowlGate)
             + (trash * fmD.linlin(0, 1, 0.10, 1.05) * Lag.kr(
                 Select.kr(chinaOnBus >= 0, [chinaOn, In.kr(chinaOnBus, 1)]).clip(0, 1), 0.4));
 
@@ -1782,9 +1829,21 @@ s.doWhenBooted({
     // ring is running there is no assembly, and the room should say so.
     ~chamberOccupancyBus = ~chamberOccupancyBus ?? { Bus.control(s, 1) };
     ~chamberOccupancyBus.set(0.0);
+    // ── An aux into the room ─────────────────────────────────────────────
+    // The chamber hears bus 0, so every voice already reaches it in proportion
+    // to how loud it is. This is a way for a voice to excite the room BEYOND
+    // its own level — to leave something behind in the space rather than only
+    // pass through it.
+    //
+    // The bowl is the reason it exists. A struck singing bowl in a stone room
+    // is mostly room: the direct sound is brief and what you actually hear for
+    // the next half minute is the building answering. Mono, because the
+    // chamber sums to mono at its input anyway.
+    ~chamberAuxBus = ~chamberAuxBus ?? { Bus.audio(s, 1) };
 
     SynthDef(\resonantChamber, {
-        arg in = 0, mixBus = (-1), sizeBus = (-1), occBus = (-1), damp = 0.42;
+        arg in = 0, aux = (-1), mixBus = (-1), sizeBus = (-1), occBus = (-1),
+            damp = 0.42;
         var chans = ~limiterChans;
         var src   = In.ar(in, chans);
         // Long lags: this is architecture, and a room that changes shape in
@@ -1820,7 +1879,12 @@ s.doWhenBooted({
         var times = [0.0431, 0.0567, 0.0713, 0.0895];
         var mono, diff, fb, lines, mixed, wet;
 
-        mono = Mix(src) / chans.max(1);
+        // The mix, plus whatever any voice has deliberately sent into the room.
+        // Read with In.ar and not InFeedback: the aux is written by voices in
+        // ~defaultGroup, which runs before this node, so the current block's
+        // sends are already there.
+        mono = (Mix(src) / chans.max(1))
+            + Select.ar(aux >= 0, [DC.ar(0), In.ar(aux.max(0), 1)]);
         // Input diffusion, so a transient arrives as a wash rather than as
         // four discrete echoes.
         diff = mono;
@@ -1866,7 +1930,8 @@ s.doWhenBooted({
         \in, 0,
         \mixBus,  ((~buses !? { ~buses[\chamberMix]  } !? { |b| b.index }) ? -1),
         \sizeBus, ((~buses !? { ~buses[\chamberSize] } !? { |b| b.index }) ? -1),
-        \occBus,  (~chamberOccupancyBus !? { |b| b.index } ? -1)
+        \occBus,  (~chamberOccupancyBus !? { |b| b.index } ? -1),
+        \aux,     (~chamberAuxBus !? { |b| b.index } ? -1)
     ]);
     "La cámara active — one shared room, RT60 2-28 s.".postln;
 

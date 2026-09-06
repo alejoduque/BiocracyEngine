@@ -338,7 +338,19 @@ function connectControlWS() {
       // state and not an event.
       if (address === "/voice/bowl" || address === "/voice/china") {
         const v = Number(args[0]) || 0;
-        fanToSlots(`voice:${address.slice("/voice/".length)}`, v);
+        const half = address.slice("/voice/".length);
+        // Sync the SURFACE, not only the modules. These are range inputs with
+        // step 1 rather than checkboxes, so they take the /mix/ treatment: set
+        // the value and the readout. Without this the panel and the SC GUI
+        // disagreed the moment either one was touched — ~setParam echoes on the
+        // canonical path (0_parameters.scd, step 5) and nothing here was
+        // listening for it.
+        document.querySelectorAll<HTMLInputElement>(
+          `input[type='range'][data-osc='${address}']`
+        ).forEach((el) => { el.value = String(v); });
+        const dispEl = document.getElementById(`disp-voice-${half}`);
+        if (dispEl) dispEl.textContent = cadenceLabel(address, v) ?? (v >= 0.5 ? "on" : "off");
+        fanToSlots(`voice:${half}`, v);
         return;
       }
 

@@ -475,7 +475,12 @@
                 // EVERY ~setParam call (3419 times in one session log), so the
                 // knob labels never updated and the flood buried every real
                 // error in sclang_log.txt. ~labelCase does the same job.
-                label.string = ~labelCase.(name) ++ ": " ++ val.round(0.001);
+                // ~knobLabels first: ~labelCase returns the raw parameter
+                // name, so every refresh clobbered the widget's own caption —
+                // BOWL became BOWLON and TX INFL became TRANSACTIONINFLUENCE
+                // the first time anything touched the parameter.
+                label.string = (~knobLabels[name] ? ~labelCase.(name))
+                    ++ ": " ++ val.round(0.001);
             };
         }.defer;
 

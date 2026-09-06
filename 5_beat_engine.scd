@@ -283,7 +283,11 @@
         ~percStats[\refused] = (~percStats[\refused] ? 0) + 1;
         nil
     } {
-        syn = Synth(\opalPerc, args, grp);
+        // The chamber aux goes on here rather than at each of the five spawn
+        // sites: one place to add it, and no site can forget it.
+        syn = Synth(\opalPerc,
+            args ++ [\chamberAux, (~chamberAuxBus !? { |b| b.index } ? -1)],
+            grp);
         ~percLive = ~percLive.add((synth: syn, at: SystemClock.seconds));
         ~percStats[\admitted] = (~percStats[\admitted] ? 0) + 1;
         syn.onFree({ ~percLive = ~percLive.reject { |e| e[\synth] === syn } });
