@@ -747,15 +747,22 @@ function cadenceLabel(addr: string, n: number): string | null {
   const lin = (lo: number, hi: number) => lo + (hi - lo) * n;
   const exp = (lo: number, hi: number) => lo * Math.pow(hi / lo, n);
   switch (addr) {
-    case "/cadence/kick":       return `${Math.round(lin(1, 8))}×bar`;
-    case "/cadence/perc":       return exp(0.02, 4.0).toFixed(2);
+    // Units, because half of these were bare numbers. kickEvery is `bar % N`
+    // in the beat engine — one kick EVERY N bars — and "4×bar" read as four
+    // per bar, which is the opposite.
+    case "/cadence/kick":       return `every ${Math.round(lin(1, 8))} bar${Math.round(lin(1,8)) === 1 ? "" : "s"}`;
+    // A density, not a rate: percRate is divided by percDivisor into a
+    // probability per tick. Saying so stops 4.00 looking like 4 of anything.
+    case "/cadence/perc":       return `${exp(0.02, 4.0).toFixed(2)} dens`;
     case "/cadence/pad":        return `${Math.round(exp(8, 120))}s`;
     case "/cadence/padvoices":  return `${Math.round(lin(1, 4))}`;
-    case "/cadence/bell":       return `${Math.round(exp(0.8, 30.0))}s`;
+    // A FLOOR on the gap, not a period — ~strikeBell refuses anything closer
+    // together than this, and the chain decides everything above it.
+    case "/cadence/bell":       return `≥${Math.round(exp(0.8, 30.0))}s gap`;
     // Stepped 0/1 toggles — read as words, not numbers.
     case "/voice/bowl":
     case "/voice/china":        return n >= 0.5 ? "on" : "off";
-    case "/cadence/dust":       return exp(0.03, 0.95).toFixed(2);
+    case "/cadence/dust":       return `${exp(0.03, 0.95).toFixed(2)} dens`;
     default:                    return null;
   }
 }

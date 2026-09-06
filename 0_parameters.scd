@@ -402,12 +402,27 @@
     \chainProcess         -> "CADENA",
     \camaraOpacity        -> "OPAC CÁM",
     // ── Cadencia · how often, not how loud ──────────────────────────────
-    \kickEvery  -> "KICK ×BAR",
-    \percRate   -> "PERC RATE",
+    //
+    // percRate and bellEvery fire the SAME SynthDef — \opalPerc, bowl and
+    // china together. They differ only in what TRIGGERS them: percRate is the
+    // density of strikes from the beat engine, bellEvery the minimum gap
+    // between strikes asked for by the chain (~strikeBell, called from the
+    // transaction buffer and the OSC handlers). Naming them for their trigger
+    // is the only way the pair stops looking like two instruments.
+    //
+    // "BELL" leaves the vocabulary altogether. There is no bell in this engine
+    // and there has not been one since \elektronBell became \opalPerc; the
+    // word is what made a rate control for the struck voice read as a
+    // different instrument from the other rate control for the same voice.
+    \percRate   -> "STRIKE BEAT",
+    \bellEvery  -> "STRIKE CHAIN",
+    // bar % N — one kick EVERY N bars. "KICK ×BAR" read as N per bar, which is
+    // the opposite of what the beat engine does with it.
+    \kickEvery  -> "KICK EVERY",
     \padEvery   -> "PAD EVERY",
     \padVoices  -> "PAD VOICES",
-    \bellEvery  -> "BELL EVERY",
-    \dustRate   -> "DUST RATE",
+    // A probability per tick, not a rate in anything per second.
+    \dustRate   -> "DUST DENS",
     // ── Las dos mitades de la voz percutida ─────────────────────────────
     \bowlOn     -> "BOWL",
     \chinaOn    -> "CHINA"

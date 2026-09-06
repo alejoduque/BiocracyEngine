@@ -742,7 +742,7 @@ s.doWhenBooted({
         var sampleLvl = Select.kr(mixSampleBus >= 0, [1.0, In.kr(mixSampleBus, 1)]);
 
         var exciter, sig, wet, quadSig, partials, decays, inharm, damp, spread;
-        var shimmer, wash, chug, modeAmps, bend, shaped, bowlFreq, bowlGate;
+        var shimmer, wash, chug, modeAmps, bend, shaped, bowlFreq, bowlGate, chinaGate;
         var bowl, trash, trashRatios, trashDecays, beats;
 
         // Clamped fundamental in the warm wooden/gong range (35..320 Hz)
@@ -946,9 +946,11 @@ s.doWhenBooted({
         Out.ar(chamberAux.max(0),
             bowl * bowlGate * bowlSend.clip(0, 1) * 0.55 * (chamberAux >= 0));
 
+        chinaGate = Lag.kr(
+            Select.kr(chinaOnBus >= 0, [chinaOn, In.kr(chinaOnBus, 1)]).clip(0, 1), 0.4);
+
         sig = (bowl * bowlGate)
-            + (trash * fmD.linlin(0, 1, 0.10, 1.05) * Lag.kr(
-                Select.kr(chinaOnBus >= 0, [chinaOn, In.kr(chinaOnBus, 1)]).clip(0, 1), 0.4));
+            + (trash * fmD.linlin(0, 1, 0.10, 1.05) * chinaGate);
 
         // The trash. A china's signature is a wide, unstable band of noise
         // sitting ON TOP of the modes, sweeping as the plate wobbles. The
@@ -964,7 +966,20 @@ s.doWhenBooted({
         // All three noise layers below are now the STRIKE, not the voice. The
         // bowl is what should be left in the room after half a second, so
         // these come down hard — at their old levels they simply buried it.
-        sig = sig + (shimmer * fmD.linlin(0, 1, 0.12, 0.38));
+        // ── The bright layers belong to the CHINA ────────────────────────
+        // shimmer, wash and chug were added AFTER the two-half gate, so neither
+        // toggle touched them. With BOWL on and CHINA off the modal bank played
+        // at 35-150 Hz and all three of these played on top of it — two
+        // band-passes at freq x7 and x11.5, band-passed noise at x6.5, and
+        // eight saturated pulses high-passed at 400-5000 Hz. That is the bell
+        // that would not go away, and it is why steepening the modal rolloffs
+        // changed so little: it darkened the half that was already dark.
+        //
+        // They are attack colour, which is the china's whole character — the
+        // two-bank note above says it outright: "a china is all attack and no
+        // sustain, a Tibetan bowl is all sustain and almost no attack." They
+        // were ungated by omission, not by design.
+        sig = sig + (shimmer * fmD.linlin(0, 1, 0.12, 0.38) * chinaGate);
 
         // ── The wash between the modes ──────────────────────────────────────
         // A resonator bank alone is always a little synthetic: it is discrete
@@ -982,7 +997,7 @@ s.doWhenBooted({
             1.6
         ) * EnvGen.ar(Env.perc(0.001, (0.30 * tStretch).clip(0.10, 1.4), 1, -5))
           * res.linlin(0.1, 0.8, 0.35, 1.1) * 0.22;
-        sig = sig + wash;
+        sig = sig + (wash * chinaGate);
 
         // ── The chug: inharmonic square-wave cluster ────────────────────────
         // The third layer of the standard china model. Eight Pulse oscillators
@@ -1011,7 +1026,7 @@ s.doWhenBooted({
         chug = (chug * (1 + (fmD * 2.2))).tanh;
         sig = sig + (chug
             * EnvGen.ar(Env.perc(0.0008, (0.10 * tStretch).clip(0.04, 0.35), 1, -6))
-            * res.linlin(0.1, 0.8, 0.12, 0.34));
+            * res.linlin(0.1, 0.8, 0.12, 0.34) * chinaGate);
 
         // Doppler comb tail
         bend = CombC.ar(sig * 0.35, 0.35,
