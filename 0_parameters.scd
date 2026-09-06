@@ -77,8 +77,13 @@
     //
     // Defaults are deliberately modest so that adding this does not rewrite
     // the sound of the existing presets. Turn it up on purpose.
-    (name: \chamberMix,   spec: ControlSpec(0, 1, \lin),      default: 0.18, path: "/soneth/chambermix",  cc: 37),
-    (name: \chamberSize,  spec: ControlSpec(0, 1, \lin),      default: 0.45, path: "/soneth/chambersize", cc: 38),
+    // CC 50/51, not 37/38. Those were taken — droneFade holds 37 and droneSpace
+    // holds 38 (see Row 3 below) — so one Faderfox knob was moving two
+    // parameters at once, silently, in opposite halves of the engine. 50 and 51
+    // are the first free pair; 52 is bowl/china and everything below 50 is
+    // spoken for.
+    (name: \chamberMix,   spec: ControlSpec(0, 1, \lin),      default: 0.18, path: "/soneth/chambermix",  cc: 50),
+    (name: \chamberSize,  spec: ControlSpec(0, 1, \lin),      default: 0.45, path: "/soneth/chambersize", cc: 51),
 
     // ── Row 3: Drone/Noise Controls ──────────────────────────────────────
     // beatParam mirror added: the beat engine already multiplies

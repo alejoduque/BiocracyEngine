@@ -597,7 +597,20 @@
             color: #000;
             border-color: #fff;
         }
-    </style>
+    
+        /* A macro owns these sliders as well as the performer.
+           /parliament/rotation drives beatTempo; /parliament/consensus drives
+           harmonicrich and noiselevel (REPLICA_MACROS, parliamentEntry.ts).
+           Without the tag those three jump with no visible cause and the panel
+           appears to be lying about its own state. Deliberately faint: it is a
+           note about ownership, not a second label competing with the first. */
+        .macro-src {
+            opacity: 0.42;
+            font-size: 0.78em;
+            font-style: italic;
+            letter-spacing: 0.02em;
+        }
+</style>
 </head>
 <body>
 <div id="app">
@@ -929,7 +942,7 @@
                     <span class="ctrl-val" id="disp-soneth-memoryfeed">0.40</span>
                 </div>
                 <div class="ctrl-row">
-                    <label>Harmonic Ri</label>
+                    <label>Harmonic Ri <span class="macro-src">← consenso</span></label>
                     <input type="range" min="0" max="1" step="0.01" value="0.5"
                         data-osc="/soneth/harmonicrich">
                     <span class="ctrl-val" id="disp-soneth-harmonicrich">0.50</span>
@@ -955,7 +968,7 @@
                     <span class="ctrl-val" id="disp-soneth-filtercutoff">0.50</span>
                 </div>
                 <div class="ctrl-row">
-                    <label>Noise Level</label>
+                    <label>Noise Level <span class="macro-src">← consenso</span></label>
                     <input type="range" min="0" max="1" step="0.01" value="0.2"
                         data-osc="/soneth/noiselevel">
                     <span class="ctrl-val" id="disp-soneth-noiselevel">0.20</span>
@@ -986,6 +999,23 @@
                         data-osc="/soneth/dronespace">
                     <span class="ctrl-val" id="disp-soneth-dronespace">0.50</span>
                 </div>
+                <!-- La Cámara · the parliament's own room. One shared space that
+                     the whole engine is heard through, as against the private
+                     reverb each voice still carries. Its RT60 is shortened by
+                     the quorum: an assembly absorbs the room it sits in, so a
+                     full chamber is close and an empty one rings. -->
+                <div class="ctrl-row">
+                    <label>Cámara Mix</label>
+                    <input type="range" min="0" max="1" step="0.01" value="0.18"
+                        data-osc="/soneth/chambermix">
+                    <span class="ctrl-val" id="disp-soneth-chambermix">0.18</span>
+                </div>
+                <div class="ctrl-row">
+                    <label>Cámara Tamaño</label>
+                    <input type="range" min="0" max="1" step="0.01" value="0.45"
+                        data-osc="/soneth/chambersize">
+                    <span class="ctrl-val" id="disp-soneth-chambersize">0.45</span>
+                </div>
                 <div class="ctrl-row">
                     <label>Drone Mix</label>
                     <input type="range" min="0" max="1" step="0.01" value="0.4"
@@ -1001,7 +1031,7 @@
                 <!-- Beat Engine -->
                 <div class="tele-section-title" style="font-size:12px;opacity:0.5;margin-top:4px">BEAT ENGINE</div>
                 <div class="ctrl-row">
-                    <label>Beat Tempo</label>
+                    <label>Beat Tempo <span class="macro-src">← rotación</span></label>
                     <input type="range" min="0" max="1" step="0.01" value="0.5"
                         data-osc="/soneth/beatTempo">
                     <span class="ctrl-val" id="disp-soneth-beatTempo">0.50</span>

@@ -332,6 +332,16 @@ function connectControlWS() {
       // what has just begun. Without the attack a visual is always late and
       // smeared — energy in a band tells you a bell is ringing, not that it
       // was struck.
+      // bowl and china are TOGGLES sharing the /voice/ prefix with the onset
+      // broadcasts below. Handled first so they are never mistaken for an
+      // onset — they say which half of the struck voice exists, which is a
+      // state and not an event.
+      if (address === "/voice/bowl" || address === "/voice/china") {
+        const v = Number(args[0]) || 0;
+        fanToSlots(`voice:${address.slice("/voice/".length)}`, v);
+        return;
+      }
+
       if (address.startsWith("/voice/")) {
         const name = address.slice("/voice/".length);
         noteVoiceOnset(name, Number(args[0]) || 0, Number(args[1]) || 0);
@@ -453,6 +463,21 @@ function connectControlWS() {
       // Matrix mixer echo. Level only — nothing here reaches a visual, so it
       // syncs the slider and its readout and stops. SC is the owner: a mute
       // pressed on the SC GUI arrives as 0.0 and the fader here follows.
+      // ── Cadencia · how often each voice speaks ────────────────────────
+      // There was no echo branch for these at all — the sliders sent to SC and
+      // nothing came back, so neither the panel nor the modules ever saw a
+      // cadence value that MIDI or a preset had changed.
+      if (address.startsWith("/cadence/")) {
+        const v = args[0];
+        if (typeof v !== "number" || !isFinite(v)) return;
+        const name = address.slice("/cadence/".length);
+        document.querySelectorAll<HTMLInputElement>(
+          `input[type='range'][data-osc='${address}']`
+        ).forEach((el) => { el.value = String(v); });
+        fanToSlots(`cadence:${name}`, v);
+        return;
+      }
+
       if (address.startsWith("/mix/")) {
         const v = args[0];
         if (typeof v !== "number" || !isFinite(v)) return;
@@ -467,9 +492,40 @@ function connectControlWS() {
         ).forEach((el) => { el.value = String(v); });
         const dispEl = document.getElementById(`disp-mix-${layer}`);
         if (dispEl) dispEl.textContent = `${(v * 2.0).toFixed(2)}x`;
+        // ── and on to the modules ──────────────────────────────────────
+        // Every /mix, /cadence and /voice control reached the sound and
+        // stopped there: twenty controls with no visual consequence on slots
+        // 5-9 at all. applySonethToViz already fans a key into every
+        // __slotNSoneth; these handlers simply never called it.
+        //
+        // Namespaced so nothing can collide with a soneth key of the same
+        // name — `mix:perc` is the fader, `texturedepth` is a soneth param,
+        // and they must never be confused in a mirror they share.
+        fanToSlots(`mix:${layer}`, v);
       }
     } catch (_) { }
   };
+}
+
+/**
+ * Write one namespaced key into every slot's parameter mirror.
+ *
+ * applySonethToViz does this for /soneth/*, but it lives inside the projector
+ * setup closure and is published on window late. This is the same fan-out for
+ * the families that were never wired — /mix, /cadence and the bowl/china
+ * toggles — and it is deliberately tolerant: the mirrors are plain objects
+ * created on demand, and a control that arrives before the modules are mounted
+ * should still leave its value where the module will find it.
+ */
+function fanToSlots(key: string, v: number) {
+  try {
+    const w = window as unknown as Record<string, Record<string, number>>;
+    for (let i = 4; i <= 9; i++) {
+      const slotKey = `__slot${i}Soneth`;
+      if (!w[slotKey]) w[slotKey] = {};
+      w[slotKey][key] = v;
+    }
+  } catch { /* a mirror that cannot be written is not worth an exception */ }
 }
 
 // Single-value OSC

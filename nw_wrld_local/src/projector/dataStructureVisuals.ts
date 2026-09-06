@@ -185,6 +185,61 @@ function mountSlotField(
             const masterA = sp.masteramp ?? 0.7;
             const consensus = st?.consensus ?? 0.5;
 
+            // ── The controls that reached the sound and stopped there ──────
+            //
+            // /mix, /cadence and the bowl/china toggles were audible and
+            // invisible: twenty controls with no consequence on these five
+            // screens. They are read here, ONCE, so all five inherit them
+            // rather than five slots each growing their own version.
+            //
+            // Keyed off inst.voice, so a slot answers to ITS OWN fader and no
+            // other — slot 6 is perc and reads mix:perc; moving mix:kick must
+            // do nothing here. That asymmetry is the whole point of the
+            // one-slot-one-voice arrangement in INSTRUMENTS, and a global
+            // response would quietly undo it.
+            //
+            // Echoed values arrive normalised 0-1 whatever the parameter's own
+            // spec — /cadence/perc is exp 0.02-4.0 in SC and still 0-1 on the
+            // wire — so they can be used directly without knowing each range.
+            const mixOwn = sp[`mix:${inst.voice}`] ?? 0.5;
+            const cadOwn = sp[`cadence:${inst.voice}`];
+            // The room. chamberMix and chamberSize are /soneth/ paths, so they
+            // already arrive through the existing fan-out; they were simply
+            // never read. Every screen shows the same room because there is
+            // only one — that is the point of it.
+            const chMix = sp.chambermix ?? 0.18;
+            const chSize = sp.chambersize ?? 0.45;
+            // Bowl and china say which halves of the struck voice exist, so
+            // they belong to the perc slot and nowhere else. They are STATE
+            // rather than events, which is why they are read here and not
+            // expressed through crack/splash — those are onsets, and on a
+            // silent field they never fire.
+            //
+            // The two halves are drawn as what they are. A bowl rings long and
+            // fills the room, so it lengthens the reach. A china is bright and
+            // short, so it sharpens the line and adds light. Both on is the
+            // fusion the voice actually is; both off leaves the sky as it was.
+            const isPerc = inst.voice === "perc";
+            const bowlOn = isPerc ? (sp["voice:bowl"] ?? 1) : 0;
+            const chinaOn = isPerc ? (sp["voice:china"] ?? 1) : 0;
+            // La marea. Sent by 5_beat_engine.scd:1455 as /tide/state with the
+            // value and the phase, captured by parliamentEntry, and until now
+            // read only by slot A. It is a GLOBAL arc, so unlike everything
+            // above it is deliberately not per-voice: all five screens swell
+            // together on one phase or it is not an arc, it is five drifts.
+            const tideV = (() => {
+                try {
+                    const t = (window as unknown as {
+                        __tideState?: { value?: number; t?: number };
+                    }).__tideState;
+                    if (!t || typeof t.value !== "number") return 0.65;
+                    // Stale means SuperCollider stopped; hold the flat value
+                    // rather than freezing at whatever the last swell was.
+                    if (t.t && (Date.now() / 1000 - t.t) > 8) return 0.65;
+                    return Math.max(0, Math.min(1, t.value));
+                } catch { return 0.65; }
+            })();
+
             // A silent field takes its parameters from the CONTROLS only. The
             // level term is what made the drift quicken and the colour lift on
             // every note, and that is the reactivity being removed — leaving it
@@ -195,16 +250,32 @@ function mountSlotField(
             field.drive({
                 // Level rides on top of the control so the field breathes with
                 // the note rather than only with the knob.
-                speed: (0.25 + tDil * 1.6) * (0.6 + lvl * 1.8),
+                // Cadence is how often the voice speaks, so it becomes how
+                // fast the sky moves. Absent for drone and sample, which have
+                // no /cadence control — those keep the tide alone.
+                speed: (0.25 + tDil * 1.6) * (0.6 + lvl * 1.8)
+                    * (cadOwn === undefined ? 1 : (0.55 + cadOwn * 0.9))
+                    * (0.75 + tideV * 0.5),
                 density: 0.35 + texDep * 1.15,
-                length: 0.55 + filtC * 0.9,
-                strokeWidth: 0.5 + resBody * 1.6,
+                // The chamber's reach. A larger room associates further, which
+                // is what `length` already means here.
+                length: (0.55 + filtC * 0.9) * (0.85 + chSize * 0.5)
+                    * (1 + bowlOn * 0.22),
+                strokeWidth: (0.5 + resBody * 1.6) * (1 - chinaOn * 0.28),
                 // atmosphereMix is the reverb space, so it reads as how much
                 // room there is around the voice — the field is that room.
                 // Floored well above zero because a screen-blended layer at
                 // 0.2 over a near-black scene is already almost invisible.
-                opacity: (0.24 + atmMix * 0.44) * (0.6 + consensus * 0.4),
-                brightness: 0.7 + masterA * 0.7,
+                // The voice's own fader is how present it is in the room, so
+                // it is how present its sky is. Floored well above zero: a
+                // layer pulled down should recede, not disappear — it still
+                // holds a seat.
+                opacity: (0.24 + atmMix * 0.44) * (0.6 + consensus * 0.4)
+                    * (0.45 + mixOwn * 0.75) * (0.72 + tideV * 0.42),
+                // More of the engine heard through the common room reads as
+                // more light shared across the field.
+                brightness: (0.7 + masterA * 0.7) * (0.9 + chMix * 0.45)
+                    * (1 + chinaOn * 0.18),
                 saturation: 0.8 + lvl * 0.6,
             });
 
