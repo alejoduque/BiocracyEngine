@@ -1,0 +1,11 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(xargs -I{} sh -c '[ {} -eq 1 ] && echo \"branch in sync\" || echo \"OUT OF SYNC\"')",
+      "Bash(python3 -c ' *)",
+      "Bash(awk '{print $2}')",
+      "Bash(sort -t' ' -k2 -n)",
+      "Bash(awk '$1>1{print \"  COLLISION CC \"$3}')"
+    ]
+  }
+}
