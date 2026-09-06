@@ -15,7 +15,7 @@
 (
 // Defer all GUI creation to AppClock to avoid Qt threading issues
 {
-    var statusView, counterView, coreRow, ambientRow, droneRow, phenoRow, tideRow, corpusRow, cadenceRow;
+    var statusView, counterView, coreRow, ambientRow, droneRow, phenoRow, tideRow, corpusRow, cadenceRow, strikeRow;
     var mixerView;
     var sampleView, sampleControlView, sampleHeader, sampleButtonView, stopButton;
     var container, recordingView, presetView, laserView;
@@ -96,11 +96,15 @@
         ~mainWindow.layout.add(~scrollView, stretch: 1);
 
         // Create header
-        ~header = StaticText()
+        // A row rather than a bare StaticText: the laser collapse button has to
+        // live somewhere that does not vanish when the laser column does.
+        ~headerText = StaticText()
             .string_("SøNETH — BIOCRACY ENGINE")
             .font_(Font(~monoFont, 16, true))
             .align_(\center)
             .stringColor_(mainTheme.yellow);
+        ~header = View().layout_(HLayout().margins_(0).spacing_(6));
+        ~header.fixedHeight_(24);
 
         // Create main container views for merged controls + samples.
         //
@@ -154,6 +158,13 @@
         // ~1100 px surface without a horizontal scroller.
         cadenceRow = View().background_(backgroundColor.blend(mainTheme.accent, 0.05))
             .layout_(HLayout().margins_(4).spacing_(10));
+        // Bowl and china are not cadence — they are the BALANCE between the two
+        // halves of the struck voice, and they were only sharing the rate row
+        // because a two-control strip looked thin. Ten controls at 132 px is
+        // 1320, against a 1118 px surface with the laser column shown, so that
+        // economy had started costing a horizontal scroller.
+        strikeRow = View().background_(backgroundColor.blend(mainTheme.accent, 0.05))
+            .layout_(HLayout().margins_(4).spacing_(10));
 
         mixerView = View().background_(Color.black)
             .layout_(HLayout().margins_(4).spacing_(6));
@@ -174,6 +185,7 @@
         tideRow.fixedHeight = 58;
         corpusRow.fixedHeight = 88;
         cadenceRow.fixedHeight = 88;
+        strikeRow.fixedHeight = 88;
         mixerView.fixedHeight = 150;
         // sampleControlView is 52 px of knob + two label lines + margins.
         sampleControlView.fixedHeight = 92;
@@ -872,7 +884,12 @@
                     };
                 });
 
-            strip.layout.add(slider);
+            // Centred under its caption. The slider is maxWidth 30 inside a
+            // VLayout, so it sat hard left while the label above and the value
+            // below were both align_(\center) across the full strip — the
+            // column read as if the fader belonged to the strip to its left.
+            // HLayout(nil, …, nil) puts stretchable space on both sides.
+            strip.layout.add(HLayout(nil, slider, nil));
             strip.layout.add(valueLabel);
             strip.layout.add(muteButton);
 
@@ -914,6 +931,11 @@
             spec = ~controlSpecs[key];
             container = View().background_(backgroundColor);
             container.layout_(VLayout().margins_(3).spacing_(3));
+            // One grid column wide, the same as ~makeKnob's container. Without
+            // it a toggle stretched to fill whatever space the row had left,
+            // so a row of four toggles and a row of seven knobs put nothing
+            // above anything — which is most of why the grid reads as holes.
+            container.fixedWidth_(132);
 
             button = Button()
                 .states_([
@@ -1007,8 +1029,9 @@
                 ~controlValues[key],
                 ~controlSpecs[key].warp
             );
-            cadenceRow.layout.add(~knobs[key]);
+            strikeRow.layout.add(~knobs[key]);
         };
+        strikeRow.layout.add(View().background_(backgroundColor.blend(mainTheme.accent, 0.05)));
 
         // ─── BANCADA · Article 43, as five seats you can press ────────────
         // This was a Knob until it was found to be unusable. A Knob cannot
@@ -1623,6 +1646,36 @@
         // right and stays put while the surface scrolls under it.
         ~mainWindow.layout.add(laserView);
 
+        // ─── Collapsing the laser column ──────────────────────────────────
+        //
+        // laserView is a fixed 452 px and the window is capped at 1570, so it
+        // takes nearly a third of the surface permanently — for a column that
+        // matters only when a projector is actually plugged in. Hidden, the
+        // HLayout gives every one of those pixels to the control surface, and
+        // rows that were reaching the horizontal scroller stop reaching it.
+        //
+        // The button lives OUTSIDE the collapsing view, in the header row, or
+        // it would disappear along with the thing it collapses.
+        ~laserCollapsed = ~laserCollapsed ? false;
+        ~laserToggle = Button()
+            .states_([
+                ["LÁSER ▸", mainTheme.dim, backgroundColor],
+                ["LÁSER ◂", backgroundColor, mainTheme.accent]
+            ])
+            .font_(Font(~monoFont, 9, true))
+            .fixedWidth_(74).fixedHeight_(18)
+            .value_(if(~laserCollapsed, 1, 0));
+        ~laserToggle.action = { |b|
+            ~laserCollapsed = (b.value > 0);
+            laserView.visible = ~laserCollapsed.not;
+        };
+        laserView.visible = ~laserCollapsed.not;
+
+        // Populated here, not where ~header is created: the button does not
+        // exist until laserView does, and it has to sit beside the title.
+        ~header.layout.add(~headerText);
+        ~header.layout.add(~laserToggle);
+
         // Add all views to the scroll canvas (5 control rows + samples + REC)
         // ─── The grid ─────────────────────────────────────────────────────
         //
@@ -1650,15 +1703,36 @@
         ~scrollCanvas.layout.add(~sectionHead.("DRONE"));
         ~scrollCanvas.layout.add(droneRow);
         ~scrollCanvas.layout.add(~sectionHead.("CÁMARA FENOLÓGICA"));
+        // Trailing filler, like coreRow and ambientRow already had. Without it
+        // an HLayout distributes its slack BETWEEN the knobs, so a row of three
+        // spread across the full width while a row of seven sat tight — no two
+        // rows shared a column. With it every row packs left at the same 132 px
+        // pitch and the surface is finally a grid.
+        phenoRow.layout.add(View().background_(backgroundColor.blend(mainTheme.accent, 0.05)));
         ~scrollCanvas.layout.add(phenoRow);
         ~scrollCanvas.layout.add(~sectionHead.("CORPUS"));
+        // Trailing filler, like coreRow and ambientRow already had. Without it
+        // an HLayout distributes its slack BETWEEN the knobs, so a row of three
+        // spread across the full width while a row of seven sat tight — no two
+        // rows shared a column. With it every row packs left at the same 132 px
+        // pitch and the surface is finally a grid.
+        corpusRow.layout.add(View().background_(backgroundColor.blend(mainTheme.accent, 0.05)));
         ~scrollCanvas.layout.add(corpusRow);
         // Marea moved UP, out from behind the mixer. It sat after it, separated
         // from every other control row, for no reason the layout could state.
         ~scrollCanvas.layout.add(~sectionHead.("MAREA · SALA"));
+        tideRow.layout.add(View().background_(backgroundColor.blend(mainTheme.accent, 0.06)));
         ~scrollCanvas.layout.add(tideRow);
         ~scrollCanvas.layout.add(~sectionHead.("CADENCIA"));
+        // Trailing filler, like coreRow and ambientRow already had. Without it
+        // an HLayout distributes its slack BETWEEN the knobs, so a row of three
+        // spread across the full width while a row of seven sat tight — no two
+        // rows shared a column. With it every row packs left at the same 132 px
+        // pitch and the surface is finally a grid.
+        cadenceRow.layout.add(View().background_(backgroundColor.blend(mainTheme.accent, 0.05)));
         ~scrollCanvas.layout.add(cadenceRow);
+        ~scrollCanvas.layout.add(~sectionHead.("VOZ PERCUTIDA · BOWL / CHINA"));
+        ~scrollCanvas.layout.add(strikeRow);
         ~scrollCanvas.layout.add(~sectionHead.("MEZCLA"));
         ~scrollCanvas.layout.add(mixerView);
         ~scrollCanvas.layout.add(sampleView);
