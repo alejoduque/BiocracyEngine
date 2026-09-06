@@ -756,6 +756,10 @@ function cadenceLabel(addr: string, n: number): string | null {
     case "/cadence/perc":       return `${exp(0.02, 4.0).toFixed(2)} dens`;
     case "/cadence/pad":        return `${Math.round(exp(8, 120))}s`;
     case "/cadence/padvoices":  return `${Math.round(lin(1, 4))}`;
+    // Both exponential, both multipliers on something the bed already has —
+    // padPitch on the drone root, padMotion on every LFO in the voice.
+    case "/cadence/padpitch":   return `${exp(0.5, 4.0).toFixed(2)}x`;
+    case "/cadence/padmotion":  return `${exp(0.1, 4.0).toFixed(2)}x`;
     // A FLOOR on the gap, not a period — ~strikeBell refuses anything closer
     // together than this, and the chain decides everything above it.
     case "/cadence/bell":       return `≥${Math.round(exp(0.8, 30.0))}s gap`;

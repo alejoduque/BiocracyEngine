@@ -513,7 +513,8 @@
             // level change on. CC 25/26/27.
             // Cadencia. PAD joins PERC here: they are the pair the performer
             // balances, and the pad had a level but no rate at all until now.
-            [\kickEvery, \percRate, \padEvery, \padVoices, \bellEvery, \dustRate],
+            [\kickEvery, \percRate, \padEvery, \padVoices, \padPitch, \padMotion,
+             \bellEvery, \dustRate],
             // The struck voice's two halves, as a balance rather than a
             // switch. Continuous specs, so these are knobs beside the rates
             // that drive them.

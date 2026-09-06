@@ -594,7 +594,14 @@
                         // returning ratio is never the same pitch twice and
                         // consecutive voices beat against the drone instead of
                         // locking to it.
-                        \freq,   (~droneRoot ? 55) * rrand(0.994, 1.006),
+                        // padPitch multiplies the root, so the bed still tracks
+                        // the drone's harmony and only changes register. At the
+                        // default 2.0 the range is 55-247 Hz rather than
+                        // 27-124 — four detuned Saws at 27 Hz is a motor, not a
+                        // pad, and that was the "little engine".
+                        \freq,   (~droneRoot ? 55)
+                            * ((~beatParams.padPitch ? 2.0).clip(0.5, 4.0))
+                            * rrand(0.994, 1.006),
                         \ratio,  rt,
                         \amp,    (0.22 / (1 + (rt * 0.45)))
                             * (~beatParams.transportGain ? 1),
@@ -610,7 +617,18 @@
                         //
                         // A bed must not track the beat. Its only time control
                         // is timeDilation, via tScale inside the SynthDef.
-                        \tempo,  1.0,
+                        // Hardcoded 1.0 until now, so every voice ran its LFOs
+                        // at identical rates — the two drifts, both filter
+                        // wobbles and the pan rotation all in lockstep. Two
+                        // voices moving in perfect step read as one uniform
+                        // thing however much modulation each one has.
+                        //
+                        // The rrand is the important half: padMotion sets the
+                        // pace, and the +/-25% per voice means no two are ever
+                        // synchronised, so the bed keeps drifting in and out of
+                        // phase with itself for as long as it sounds.
+                        \tempo,  ((~beatParams.padMotion ? 1.0).clip(0.1, 4.0))
+                            * rrand(0.78, 1.28),
                         // The envelope follows the rate knob. padEvery 34 s is
                         // unity; at 8 s the swell is ~0.24x (about 21 s) so
                         // voices actually free themselves between spawns, and

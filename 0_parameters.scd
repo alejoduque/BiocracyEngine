@@ -227,6 +227,26 @@
     // 120 s is one swell arriving every two minutes over silence.
     (name: \padEvery,   spec: ControlSpec(8.0, 120.0, \exp), default: 34.0, path: "/cadence/pad",
         hasBus: false, beatParam: \padEvery,   cc: 28),
+    // ── The pad's register and how fast it moves ────────────────────────
+    //
+    // The bed was locked to ~droneRoot (55 Hz) and its voices are four detuned
+    // Saws and two Pulses. padRatios reaches down to 0.5, so the lowest voices
+    // were sawtooths at 27 Hz — which is not a pad, it is a motor, and that is
+    // the "little engine".
+    //
+    // padPitch multiplies the root, so the bed still tracks the drone's
+    // harmony and can simply sit higher. Default 2.0: one octave up puts the
+    // range at 55-247 Hz instead of 27-124, which is where a pad belongs.
+    //
+    // padMotion scales \tempo, which every LFO inside \biocratiaPad is
+    // multiplied by — the two SinOsc drifts, both filter wobbles and the pan
+    // rotation. It was hardcoded at 1.0, so every voice moved at exactly the
+    // same rates and they never drifted apart. That is the uniformity: not a
+    // lack of modulation but modulation in lockstep.
+    (name: \padPitch,   spec: ControlSpec(0.5, 4.0, \exp),   default: 2.0,  path: "/cadence/padpitch",
+        hasBus: false, beatParam: \padPitch,   cc: 53),
+    (name: \padMotion,  spec: ControlSpec(0.1, 4.0, \exp),   default: 1.0,  path: "/cadence/padmotion",
+        hasBus: false, beatParam: \padMotion,  cc: 54),
     // How many pad voices may sound at once. This is the other half of pad
     // density and the one that decides whether it is a bed or an event: at 1
     // there are real gaps, at 4 it is a sustained chord. Continuous spec for
@@ -429,6 +449,8 @@
     // the opposite of what the beat engine does with it.
     \kickEvery  -> "KICK EVERY",
     \padEvery   -> "PAD EVERY",
+    \padPitch   -> "PAD PITCH",
+    \padMotion  -> "PAD MOTION",
     \padVoices  -> "PAD VOICES",
     // A probability per tick, not a rate in anything per second.
     \dustRate   -> "DUST DENS",
