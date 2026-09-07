@@ -640,6 +640,90 @@
             container;
         };
 
+        // ── Factories, defined before anything calls them ────────────────
+        // This file is one linear script: an environment variable holds nil
+        // until its assignment line RUNS. ~inlineHead lived down beside the
+        // scroll-canvas assembly, six hundred lines after the rows that use
+        // it, so every one of those calls was nil.value(...) -> nil, and
+        // layout.add(nil) is a silent no-op. NÚCLEO, AMBIENTE, DRONE, CÁMARA,
+        // BOWL/CHINA and CADENCIA have never once been drawn.
+        //
+        // ~makeToggle had the same shape and cost the marea its toggles the
+        // moment they moved up into the corpus strip: at their old position
+        // they happened to sit after the definition, at the new one they sit
+        // before it. Nothing about the move was wrong except the ordering,
+        // and nothing reported it — no error, just four missing buttons.
+        // A group marker INSIDE a row, for strips that carry two groups. The
+        // separate-row version wastes the width: bowl and china are two knobs,
+        // 264 px of an 1118 px surface, and a heading of their own above them
+        // spent a further 14 px of height to say so.
+        ~inlineHead = { |caption|
+            StaticText().string_(caption)
+                .stringColor_(mainTheme.accent)
+                .font_(Font(~monoFont, 9, true))
+                .align_(\right)
+                .fixedWidth_(50)
+        };
+
+        ~sectionHead = { |caption|
+            StaticText().string_(caption)
+                .stringColor_(mainTheme.accent)
+                .font_(Font(~monoFont, 10, true))
+                .fixedHeight_(14)
+        };
+
+        // ─── Row 6: Marea — arco de densidad ──────────────────────────────
+        // Toggles, not knobs. They register into ~knobViews / ~controlLabels
+        // exactly like ~makeKnob does, so ~setParam's deferred GUI update
+        // (0_parameters.scd step 4) drives them with no special-casing:
+        // Button:value_ accepts the 0.0/1.0 that spec.unmap returns. That is
+        // what makes the radio behaviour visible here when the browser or a
+        // MIDI CC is the surface that moved.
+        ~makeToggle = { |key, caption|
+            var container, button, valueLabel, spec;
+            spec = ~controlSpecs[key];
+            container = View().background_(backgroundColor);
+            container.layout_(VLayout().margins_(3).spacing_(3));
+            // One grid column wide, the same as ~makeKnob's container. Without
+            // it a toggle stretched to fill whatever space the row had left,
+            // so a row of four toggles and a row of seven knobs put nothing
+            // above anything — which is most of why the grid reads as holes.
+            container.fixedWidth_(98);
+
+            button = Button()
+                .states_([
+                    [caption, mainTheme.dim,    backgroundColor],
+                    [caption, backgroundColor, mainTheme.accent]
+                ])
+                .font_(Font(~monoFont, 11, true))
+                .maxHeight_(24)
+                .value_((~controlValues[key] ? 0).asInteger);
+
+            valueLabel = StaticText()
+                // ~knobLabels first, ~labelCase only as the fallback — this read
+                // the raw key, so a toggle printed BOWLON and CHINAON while the
+                // knobs beside it had proper labels.
+                .string_((~knobLabels[key] ? ~labelCase.(key)) ++ ": "
+                    ++ (~controlValues[key] ? 0))
+                .stringColor_(mainTheme.foreground)
+                .font_(Font(~monoFont, 9))
+                .align_(\center);
+
+            // Route through the single write path so exclusivity, the beat
+            // mirror and the browser echo all happen; value_ from ~setParam
+            // does not re-fire this action, so there is no feedback loop.
+            button.action = { |b| ~setParam.(key, b.value, \gui) };
+
+            container.layout.add(button);
+            container.layout.add(valueLabel);
+
+            ~knobViews = ~knobViews ?? ();
+            ~knobViews[key] = button;
+            ~controlLabels = ~controlLabels ?? ();
+            ~controlLabels[key] = valueLabel;
+            container;
+        };
+
         // Create control knobs
         ~knobs = ();
         
@@ -961,57 +1045,6 @@
             mixerView.layout.add(~makeMixStrip.value(pair[0], pair[1]));
         };
 
-        // ─── Row 6: Marea — arco de densidad ──────────────────────────────
-        // Toggles, not knobs. They register into ~knobViews / ~controlLabels
-        // exactly like ~makeKnob does, so ~setParam's deferred GUI update
-        // (0_parameters.scd step 4) drives them with no special-casing:
-        // Button:value_ accepts the 0.0/1.0 that spec.unmap returns. That is
-        // what makes the radio behaviour visible here when the browser or a
-        // MIDI CC is the surface that moved.
-        ~makeToggle = { |key, caption|
-            var container, button, valueLabel, spec;
-            spec = ~controlSpecs[key];
-            container = View().background_(backgroundColor);
-            container.layout_(VLayout().margins_(3).spacing_(3));
-            // One grid column wide, the same as ~makeKnob's container. Without
-            // it a toggle stretched to fill whatever space the row had left,
-            // so a row of four toggles and a row of seven knobs put nothing
-            // above anything — which is most of why the grid reads as holes.
-            container.fixedWidth_(98);
-
-            button = Button()
-                .states_([
-                    [caption, mainTheme.dim,    backgroundColor],
-                    [caption, backgroundColor, mainTheme.accent]
-                ])
-                .font_(Font(~monoFont, 11, true))
-                .maxHeight_(24)
-                .value_((~controlValues[key] ? 0).asInteger);
-
-            valueLabel = StaticText()
-                // ~knobLabels first, ~labelCase only as the fallback — this read
-                // the raw key, so a toggle printed BOWLON and CHINAON while the
-                // knobs beside it had proper labels.
-                .string_((~knobLabels[key] ? ~labelCase.(key)) ++ ": "
-                    ++ (~controlValues[key] ? 0))
-                .stringColor_(mainTheme.foreground)
-                .font_(Font(~monoFont, 9))
-                .align_(\center);
-
-            // Route through the single write path so exclusivity, the beat
-            // mirror and the browser echo all happen; value_ from ~setParam
-            // does not re-fire this action, so there is no feedback loop.
-            button.action = { |b| ~setParam.(key, b.value, \gui) };
-
-            container.layout.add(button);
-            container.layout.add(valueLabel);
-
-            ~knobViews = ~knobViews ?? ();
-            ~knobViews[key] = button;
-            ~controlLabels = ~controlLabels ?? ();
-            ~controlLabels[key] = valueLabel;
-            container;
-        };
 
         // The button carries the caption; the StaticText under it is the same
         // value readout every other row has (~setParam rewrites it as
@@ -1708,24 +1741,6 @@
         //
         // Same widget as LASER · GALVO SAFETY below, so the surface keeps one
         // visual language for a section title.
-        // A group marker INSIDE a row, for strips that carry two groups. The
-        // separate-row version wastes the width: bowl and china are two knobs,
-        // 264 px of an 1118 px surface, and a heading of their own above them
-        // spent a further 14 px of height to say so.
-        ~inlineHead = { |caption|
-            StaticText().string_(caption)
-                .stringColor_(mainTheme.accent)
-                .font_(Font(~monoFont, 9, true))
-                .align_(\right)
-                .fixedWidth_(50)
-        };
-
-        ~sectionHead = { |caption|
-            StaticText().string_(caption)
-                .stringColor_(mainTheme.accent)
-                .font_(Font(~monoFont, 10, true))
-                .fixedHeight_(14)
-        };
 
         ~scrollCanvas.layout.add(~header);
         ~scrollCanvas.layout.add(statusView);

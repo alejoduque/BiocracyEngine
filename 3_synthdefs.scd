@@ -697,7 +697,7 @@ s.doWhenBooted({
         // one struck; literals as a fallback when unwired.
         bowlOnBus=(-1), chinaOnBus=(-1), bowlOn=1, chinaOn=1,
         // Where the bowl's share of the room goes, and how much of it.
-        chamberAux=(-1), bowlSend=0.6, bowlLevel=0.04, chinaLevel=4.0,
+        chamberAux=(-1), bowlSend=0.6, bowlLevel=0.02, chinaLevel=4.0,
         // Per-strike envelope scale. timeDilation sets how long this voice
         // rings GLOBALLY; this scales one strike against that, so the same
         // instrument can be a 30 s bowl when the tide strikes it and a short
@@ -743,6 +743,7 @@ s.doWhenBooted({
 
         var exciter, sig, wet, quadSig, partials, decays, inharm, damp, spread;
         var shimmer, wash, chug, modeAmps, bend, shaped, bowlFreq, bowlGate, chinaGate;
+        var symp, symPresence, symDecay;
         var bowl, trash, trashRatios, trashDecays, beats;
 
         // Clamped fundamental in the warm wooden/gong range (35..320 Hz)
@@ -974,6 +975,18 @@ s.doWhenBooted({
         //   bowl  51.23 x 0.04          = 2.05
         //   china  1.83 x 0.575 x 2.0   = 2.10     parity at fader 1.0
         //
+        // 0.04 was still 2x too loud, and the ear had already given the number:
+        // "the BOWL slider at 0.05 is already too loud" means slider 0.05 is
+        // the loudness the bowl should have at FULL THROW. At the old 0.4 that
+        // is 0.4 x 0.05 x 51.23 = 1.02, so bowlLevel is 0.02, not 0.04 —
+        // 0.02 x 51.23 = 1.02, the same figure, now reached at the top of the
+        // fader instead of at one twentieth of it. The whole throw is usable.
+        //
+        //   bowl  51.23 x 0.02          = 1.02
+        //   china  1.83 x 0.575 x 4.0   = 4.21     4.1 : 1 to the china on
+        //                                          peak, against 50 : 1 to the
+        //                                          bowl on sustain.
+        //
         // chinaLevel 2.0 -> 4.0, ceiling 4 -> 8. Parity was the wrong target:
         // measured they matched, but the bowl SUSTAINS for sixteen seconds
         // while the trash is confined to the attack, and a long tone reads far
@@ -984,8 +997,49 @@ s.doWhenBooted({
         // is the half that announces the strike. Nothing about either voice's
         // TIMBRE is touched — this is two multipliers.
         //
+        // ── Simpatía: the two voices ringing one another ─────────────────
+        // Two metals in one room do not simply sum. The china's strike is a
+        // broadband transient, and a bowl standing nearby answers it — the
+        // plate excites the bowl's modes without anybody touching the bowl.
+        // That sympathetic ring is the drone: not a third voice added on top,
+        // but what the pair produce BETWEEN them, sustained where each of them
+        // alone is an event.
+        //
+        // symPresence is the PRODUCT of the two gates, so this layer exists
+        // only in the overlap. Either fader at zero and it is exactly zero:
+        // BOWL alone and CHINA alone are bit-identical to what they were, and
+        // neither voice's own timbre is touched. It is presence together that
+        // makes it — which is the same rule the chamber runs on, where a
+        // quorum of voices is what gives the room its reverberation time.
+        //
+        // Driven by the china's own trash, high-passed so it is the strike
+        // and not the body doing the exciting, into the bowl's lowest three
+        // modes at 1.7x their decay. Normalised by 4/symDecay because Ringz
+        // output scales with decay time — without it timeDilation would turn
+        // the coupling into a runaway, which is the mistake this file has
+        // already made once.
+        symDecay = (decays[0] * 1.7).clip(0.6, 40.0);
+        symp = Ringz.ar(
+            HPF.ar(trash, 900) * 0.25,
+            (bowlFreq * [1.0, 2.74, 5.12]).clip(30, 12000),
+            [symDecay, symDecay * 0.55, symDecay * 0.3]
+        );
+        symp = (symp * [1.0, 0.5, 0.24]).sum * 3.sqrt.reciprocal
+            * (4.0 / symDecay.max(0.6));
+        symPresence = bowlGate * chinaGate;
+        symp = LeakDC.ar(symp) * symPresence
+            * bowlLevel.clip(0, 2) * chinaLevel.clip(0, 8) * 4.0;
+
+        // Mostly into the room, a little in the dry path. A sympathetic ring
+        // heard dry is an effect; heard through the chamber it is the building
+        // holding a note the players never struck. Out.ar ADDS, so this is a
+        // second send to the same aux the bowl already feeds.
+        Out.ar(chamberAux.max(0),
+            symp * bowlSend.clip(0, 1) * 0.9 * (chamberAux >= 0));
+
         // mixPerc is still the fader for the struck voice as a whole.
-        sig = (bowl * bowlGate * bowlLevel.clip(0, 2))
+        sig = (symp * 0.45)
+            + (bowl * bowlGate * bowlLevel.clip(0, 2))
             + (trash * fmD.linlin(0, 1, 0.10, 1.05) * chinaGate
                 * chinaLevel.clip(0, 8));
 
