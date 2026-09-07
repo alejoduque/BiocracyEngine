@@ -697,7 +697,7 @@ s.doWhenBooted({
         // one struck; literals as a fallback when unwired.
         bowlOnBus=(-1), chinaOnBus=(-1), bowlOn=1, chinaOn=1,
         // Where the bowl's share of the room goes, and how much of it.
-        chamberAux=(-1), bowlSend=0.6, bowlLevel=0.04, chinaLevel=2.0,
+        chamberAux=(-1), bowlSend=0.6, bowlLevel=0.04, chinaLevel=4.0,
         // Per-strike envelope scale. timeDilation sets how long this voice
         // rings GLOBALLY; this scales one strike against that, so the same
         // instrument can be a 30 s bowl when the tide strikes it and a short
@@ -974,12 +974,20 @@ s.doWhenBooted({
         //   bowl  51.23 x 0.04          = 2.05
         //   china  1.83 x 0.575 x 2.0   = 2.10     parity at fader 1.0
         //
-        // chinaLevel lifts the pair together, because the china at 1.0 was too
-        // quiet as well — matching them at the old china level would have left
-        // both too low. mixPerc is still the fader for the voice as a whole.
+        // chinaLevel 2.0 -> 4.0, ceiling 4 -> 8. Parity was the wrong target:
+        // measured they matched, but the bowl SUSTAINS for sixteen seconds
+        // while the trash is confined to the attack, and a long tone reads far
+        // louder than a short one at the same peak. So the bowl was "loud
+        // enough" at a fader of 0.04 while the china at 0.99 was still thin.
+        //
+        // The china carries the presence now, which is the right way round: it
+        // is the half that announces the strike. Nothing about either voice's
+        // TIMBRE is touched — this is two multipliers.
+        //
+        // mixPerc is still the fader for the struck voice as a whole.
         sig = (bowl * bowlGate * bowlLevel.clip(0, 2))
             + (trash * fmD.linlin(0, 1, 0.10, 1.05) * chinaGate
-                * chinaLevel.clip(0, 4));
+                * chinaLevel.clip(0, 8));
 
         // The trash. A china's signature is a wide, unstable band of noise
         // sitting ON TOP of the modes, sweeping as the plate wobbles. The
@@ -1232,9 +1240,12 @@ s.doWhenBooted({
         // thing in the layer, and the point of the control is where the pad
         // sits, not that it can be made to lurch.
         var padPitch = Lag.kr(
-            Select.kr(padPitchBus >= 0, [1.0, In.kr(padPitchBus, 1)]).clip(0.25, 2.0), 4.0);
+            Select.kr(padPitchBus >= 0, [0.5, In.kr(padPitchBus, 1)]).clip(0.125, 1.0), 4.0);
+        // Floor 22 -> 18 Hz. At the bottom of the new padPitch range most
+        // voices were landing on the clip, so the control stopped doing
+        // anything across its lowest third — it was pinned, not quiet.
         var baseFreq = (freq * ratio * padPitch
-            * (pShift.clip(-24, 24) / 12).midiratio).clip(22, 900);
+            * (pShift.clip(-24, 24) / 12).midiratio).clip(18, 900);
 
         // ── Long evolving envelope (8s atk / 28s sustain / 18s release)
         // tDil stretches all stages so the timeDilation knob makes this

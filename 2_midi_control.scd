@@ -40,6 +40,21 @@ MIDIdef.cc(\paramControl, { |val, num, chan, src|
         if(newVal.notNil) {
             "MIDI CC % -> %: %".format(num, paramName, newVal.round(0.001)).postln;
         };
+    } {
+        // An UNMAPPED CC said nothing at all, which made a controller
+        // impossible to explore: the only way to learn what a knob sends was
+        // to already know. Now every unrecognised CC names itself, so any
+        // control on the device can be identified by turning it and reading
+        // the log.
+        //
+        // Throttled per CC number rather than per message — a knob sends a
+        // continuous stream and one line per turn is the useful amount.
+        ~lastUnmappedCC = ~lastUnmappedCC ?? { () };
+        if((Main.elapsedTime - (~lastUnmappedCC[num] ? 0)) > 1.0) {
+            ~lastUnmappedCC[num] = Main.elapsedTime;
+            "MIDI CC % is UNMAPPED (value %) — free to assign in 0_parameters.scd"
+                .format(num, val).postln;
+        };
     };
 }, nil, nil);  // Listen on all channels
 

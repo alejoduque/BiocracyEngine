@@ -253,17 +253,17 @@
     // — it is a lead — and the whole point of this layer is the floor under
     // everything else. 0.25-2.0 keeps every position low:
     //
-    //     0.25x   22- 31 Hz    sub, felt more than heard
-    //     0.50x   22- 62 Hz
-    //     1.00x   28-124 Hz    the original register
-    //     2.00x   55-248 Hz    the top, and the old default
+    //     0.125x  18- 15 Hz    below pitch; the bed as pressure
+    //     0.250x  18- 31 Hz
+    //     0.500x  18- 62 Hz    the new default
+    //     1.000x  28-124 Hz    the top, and the old default
     //
     // Default back to 1.0. The "little engine" was diagnosed at this register,
     // but the cause turned out to be padMotion's lockstep — every voice running
     // its LFOs at exactly 1.0 — and that is fixed independently. Raising the
     // pitch was treating the symptom, so the register returns to where the bed
     // belongs and 2.0 is available if the low end ever sits too heavy.
-    (name: \padPitch,   spec: ControlSpec(0.25, 2.0, \exp),  default: 1.0,  path: "/cadence/padpitch",
+    (name: \padPitch,   spec: ControlSpec(0.125, 1.0, \exp), default: 0.5,  path: "/cadence/padpitch",
         beatParam: \padPitch,   cc: 53),
     (name: \padMotion,  spec: ControlSpec(0.1, 4.0, \exp),   default: 1.0,  path: "/cadence/padmotion",
         hasBus: false, beatParam: \padMotion,  cc: 54),

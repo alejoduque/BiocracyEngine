@@ -65,7 +65,7 @@
         // lives in a ScrollView canvas: small screens scroll vertically
         // instead of clipping the REC strip; knob/button sizes unchanged.
         ~guiScreen = Window.availableBounds;
-        ~mainWindow = Window("SøNETH — BiocracyEngine Control", Rect(
+        ~mainWindow = Window("BiocracyEngine", Rect(
             60, 40,
             // +470 for the laser column, which lives OUTSIDE the scroll area
             // and so has to be paid for in window width rather than taken from
@@ -99,7 +99,7 @@
         // A row rather than a bare StaticText: the laser collapse button has to
         // live somewhere that does not vanish when the laser column does.
         ~headerText = StaticText()
-            .string_("SøNETH — BIOCRACY ENGINE")
+            .string_("BiocracyEngine")
             .font_(Font(~monoFont, 16, true))
             .align_(\center)
             .stringColor_(mainTheme.yellow);
@@ -785,6 +785,27 @@
             corpusRow.layout.add(~knobs[key]);
         };
 
+        // ── Marea, moved up ──────────────────────────────────────────────
+        // The four arc toggles sat on their own strip with the chamber pair and
+        // the five BANCADA buttons. The corpus strip above had the room, and
+        // these belong nearer the ring they modulate anyway — the arc of
+        // density is a reading of the same year the cursor is walking.
+        //
+        // Placed BEFORE the black filler: after it they would be pushed past
+        // the right edge by the thing that absorbs the row's slack, which is
+        // exactly what happened to bowl and china.
+        ~tideCaptions = (
+            tideShort: "ARCO CORTO",
+            tideMedia: "ARCO MEDIO",
+            tideLarga: "ARCO LARGO",
+            tidePulse: "PULSO"
+        );
+        corpusRow.layout.add(~inlineHead.value("MAREA"));
+        ~knobParameters[4].do { |key|
+            ~knobs[key] = ~makeToggle.value(key, ~tideCaptions[key] ? key.asString);
+            corpusRow.layout.add(~knobs[key]);
+        };
+
         corpusRow.layout.add(View().background_(Color.black));
         // The ring's own reading of where it is, refreshed by 14_'s routine.
         ~phenoCursorLabel = StaticText()
@@ -995,17 +1016,6 @@
         // The button carries the caption; the StaticText under it is the same
         // value readout every other row has (~setParam rewrites it as
         // "TideShort: 1.0"). Captions are Spanish, matching the HTML surface.
-        ~tideCaptions = (
-            tideShort: "ARCO CORTO",
-            tideMedia: "ARCO MEDIO",
-            tideLarga: "ARCO LARGO",
-            tidePulse: "PULSO"
-        );
-        tideRow.layout.add(~inlineHead.value("MAREA"));
-        ~knobParameters[4].do { |key|
-            ~knobs[key] = ~makeToggle.value(key, ~tideCaptions[key] ? key.asString);
-            tideRow.layout.add(~knobs[key]);
-        };
         // La sala joins the Marea row rather than taking one of its own. Both
         // are whole-engine qualities — the arc of density and the room it all
         // sounds in — and neither fills a strip alone. It cannot go on the
@@ -1763,7 +1773,7 @@
 
         // Add footer
         ~footer = StaticText()
-            .string_("SøNETH BiocracyEngine — Spatial Audio + Samples")
+            .string_("BiocracyEngine — Spatial Audio + Samples")
             .font_(Font(~monoFont, 8))
             .align_(\right)
             .stringColor_(mainTheme.dim.alpha_(0.6));
