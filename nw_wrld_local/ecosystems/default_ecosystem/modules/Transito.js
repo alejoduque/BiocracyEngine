@@ -104,7 +104,17 @@ class Transito extends BaseThreeJsModule {
   constructor(container) {
     super(container);
 
-    this._t = 0;
+    // ── The machine is never found at the beginning ────────────────────
+    // _t was 0 on every mount, which meant the seasonal drift, the branch
+    // wobble and the pulse phases all started from the same instant every time
+    // slot B was recalled. Together with a fixed camera that made the module
+    // open on one identical frame, always — a diagram being switched on rather
+    // than a process that has been running whether or not anyone was watching,
+    // which is the opposite of what it is about.
+    //
+    // A phase between 0 and 600 s, so the drift (period ~78 s) and the branch
+    // wobble are somewhere in the middle of their cycles at the first frame.
+    this._t = Math.random() * 600;
     this._last = performance.now();
     this._animationId = null;
 
@@ -145,7 +155,21 @@ class Transito extends BaseThreeJsModule {
     this.camera.fov = 50;
     this.camera.near = 0.1;
     this.camera.far = 400;
-    this.camera.position.set(2.5, 2.0, 22);
+    // A different vantage on each recall. The scene is drawn on paper — the
+    // curves live in a plane near z=0 — so the AZIMUTH swing is kept narrow:
+    // turn much further and the whole diagram is read edge-on and becomes
+    // illegible. What varies most is where the reader is standing back to, and
+    // how high, which changes the framing without changing what can be seen.
+    //
+    //   distance  16..29   (controls clamp at 6..90)
+    //   azimuth   ±20°     around the original three-quarter view
+    //   height     1.1..3.4
+    {
+      const R = 16 + Math.random() * 13;
+      const az = Math.atan2(2.5, 22) + (Math.random() - 0.5) * (Math.PI / 4.5);
+      const y = 1.1 + Math.random() * 2.3;
+      this.camera.position.set(Math.sin(az) * R, y, Math.cos(az) * R);
+    }
     this.camera.updateProjectionMatrix();
 
     if (this.controls) {
@@ -179,6 +203,22 @@ class Transito extends BaseThreeJsModule {
     this._buildMachine();
     this._buildDesintermediation();
     this._buildHUD();
+
+    // ── Caught mid-flow ────────────────────────────────────────────────
+    // The curves exist by now, so the transit can be seeded. Without this the
+    // module opens on an empty machine and the first voice reaches the simplex
+    // some seconds later; with it there are already events in transit at
+    // different points along the path, which is what "it has been running"
+    // looks like. Spread across the whole curve, not bunched at the start.
+    {
+      const n = 4 + ((Math.random() * 5) | 0);
+      for (let i = 0; i < n; i++) {
+        this._spawnVoice();
+        const v = this.voices[this.voices.length - 1];
+        if (v) v.t = Math.random() * 1.9;
+      }
+      this._updateVoices(0.0001);
+    }
 
     this.show();
     this._animate = this._animate.bind(this);

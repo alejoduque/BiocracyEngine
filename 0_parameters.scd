@@ -157,6 +157,24 @@
     // longer shows what. Absence stays legible as absence.
     (name: \camaraOpacity,     spec: ControlSpec(0, 1, \lin),       default: 1.0,  path: "/camara/opacity",          cc: 24),
 
+    // ── The two VIZ controls, no longer strangers to this registry ───────
+    // /parliament/rotation and /parliament/consensus were the only two
+    // sliders on the browser panel with no entry here, and the markup said so
+    // in a comment: "VIZ-only: SC has no handler". That had three consequences
+    // nobody asked for. A config could not carry them, so the one control that
+    // sets how the whole projection moves was the one thing a saved state
+    // forgot. Nothing echoed them, so the SC surface could not show or change
+    // them. And they could not be reached from MIDI at all.
+    //
+    // hasBus: false — no synth reads either of them; they are the browser's
+    // business. But the REGISTRY is not the audio engine, it is the place a
+    // control exists at all, and these are controls.
+    //
+    // Rotation is the automatic drift rate every module turns at; consensus is
+    // the chamber's agreement, which the vote already reads.
+    (name: \vizRotation,       spec: ControlSpec(0.1, 2.0, \lin),   default: 1.0,  path: "/parliament/rotation",     cc: 55, hasBus: false),
+    (name: \vizConsensus,      spec: ControlSpec(0, 1, \lin),       default: 0.5,  path: "/parliament/consensus",    cc: 56, hasBus: false),
+
     // ── Row 8: Matrix mixer — one live fader per audible layer ──────────
     // Until now the balance between layers lived only in the hardcoded gain
     // budget of 3_synthdefs.scd (~trimDrone, ~trimPad, …), which is fixed at
@@ -403,6 +421,9 @@
 // ARCO CORTO / PULSO — English where the engine's own vocabulary is English
 // and the mixer strips already say DRONE, PAD, KICK.
 ~knobLabels = IdentityDictionary[
+    // ── VIZ ─────────────────────────────────────────────────────────────
+    \vizRotation          -> "GIRO AUTO",
+    \vizConsensus         -> "CONSENSO",
     // ── Núcleo ──────────────────────────────────────────────────────────
     \masterVolume         -> "MASTER VOL",
     \pitchShift           -> "PITCH",
@@ -610,6 +631,46 @@ if(File.exists(~presetDir).not) { File.mkdir(~presetDir) };
     };
 };
 
+// ─── Say the WHOLE state out loud ───────────────────────────────────────────
+//
+// ~setParam echoes one value on one path, which is right for one knob moving.
+// A config load is not one knob moving: it is sixty of them at once, in a tight
+// sclang loop, and the browser's picture of the instrument after it is only as
+// complete as the least reliable of those sixty datagrams. Nothing retries and
+// nothing reconciles, so a single UDP packet lost between sclang and the bridge
+// leaves one fader on the panel showing a value the engine is not playing, with
+// no way to notice except by moving it.
+//
+// So the load ENDS by declaring everything, deliberately and in one pass. The
+// browser sets slider positions from an echo without firing an input event, so
+// a resend is idempotent — the worst it can do is confirm what already arrived.
+//
+// Also the answer to "the browser connected after SuperCollider did". Until now
+// a client arriving late got the preset LIST and nothing else: every fader on
+// the panel stayed at its markup default while the engine played the restored
+// autosave, and the two surfaces disagreed from the first second.
+//
+// Paced with a yield every 12 messages rather than fired in one burst. Sixty
+// datagrams back to back is precisely the shape that drops one.
+~broadcastAllParams = {
+    if(~visualsDest.notNil) {
+        Routine({
+            var n = 0;
+            ~paramDefs.do { |def|
+                var name = def[\name];
+                if(def[\path].notNil) {
+                    ~visualsDest.sendMsg(def[\path],
+                        def[\spec].unmap(
+                            (~controlValues[name] ? def[\default])
+                                .clip(def[\spec].minval, def[\spec].maxval)));
+                    n = n + 1;
+                    if(n % 12 == 0) { 0.02.wait };
+                };
+            };
+        }).play(AppClock);
+    };
+};
+
 ~saveConfig = { |name, quiet=false|
     var safe = ~presetNameSafe.(name ? "unnamed");
     var path = ~presetDir +/+ safe ++ ".json";
@@ -804,6 +865,26 @@ if(File.exists(~presetDir).not) { File.mkdir(~presetDir) };
                     };
                 };
                 ("Config loaded: " ++ safe).postln;
+                // WHICH config, so the browser's dropdown can follow the SC
+                // GUI's LOAD button instead of showing whatever was last
+                // picked there — and the reverse, since the same line runs
+                // when the load came in on /preset/load from the panel.
+                if(~visualsDest.notNil) {
+                    ~visualsDest.sendMsg("/preset/loaded", safe);
+                };
+                // And the whole state, once, after every value has landed.
+                // See ~broadcastAllParams: sixty echoes fired from a tight loop
+                // is exactly the burst that loses one, and a lost one leaves the
+                // two surfaces disagreeing with nothing to notice it.
+                if(~broadcastAllParams.notNil) { ~broadcastAllParams.value };
+                // The SC GUI's own dropdown, when the load came from the
+                // browser. ~presetMenu is nil until 4_gui has run.
+                {
+                    if(~presetMenu.notNil) {
+                        var i = (~listConfigs.value ? []).indexOf(safe);
+                        if(i.notNil) { ~presetMenu.value = i };
+                    };
+                }.defer;
             };
         };
     };

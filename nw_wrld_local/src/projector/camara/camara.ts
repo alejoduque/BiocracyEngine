@@ -124,6 +124,26 @@ const _regSeen = new Map<string, number>();
 /** Visit count per ring day, so a multi-clip day rotates instead of pinning. */
 const _doySeen = new Map<number, number>();
 let _lastDoy = -1;
+/**
+ * The camera-trap latch.
+ *
+ * AUTO is the ring: the day decides, and on a day holding both registers the
+ * two alternate — an animal, then the machine's reading of the same night. It
+ * is the right default and it is also why the trap is hard to WATCH. There are
+ * 22 captures against 612 spectrograms, all 22 inside eleven days of August, so
+ * in automatic traversal an animal arrives roughly every other clip and is gone
+ * again in ten seconds.
+ *
+ * The arrow latches. From the first click the window shows camera trap and
+ * nothing else, each capture running to its own end and handing straight to the
+ * next — 22 clips of about 10.5 s, so a little under four minutes of continuous
+ * footage from a single press. Clicking again skips ahead within the trap
+ * rather than leaving it, and the latch does NOT time out: "if no new click on
+ * the arrow is given it should remain on videos from the camera trap".
+ *
+ * Released by clicking the readout, which is also where the mode is legible.
+ */
+let _camtrapOnly = false;
 let _loadFailed: string | null = null;
 let _pendingKey: string | null = null;
 let _lastReported = "";
@@ -200,11 +220,16 @@ function show(i: number): void {
   // Silent by construction; muted as well as trackless so no autoplay policy
   // can block the element on audio grounds.
   v.muted = true;
-  v.loop = true;
+  // Concatenated while latched: each capture plays ONCE and hands to the next
+  // on `ended`, which is what makes 22 clips read as one continuous stretch of
+  // footage rather than as 22 things that each repeat until a timer notices.
+  // In AUTO the loop stays — a 0.62 s spectrogram would otherwise be a blink.
+  v.loop = !_camtrapOnly;
   const p = v.play();
   if (p && typeof p.catch === "function") p.catch(() => { /* poster stands in */ });
 
   report(clip);
+  publishState();
 }
 
 /**
@@ -308,12 +333,84 @@ function nextIndex(): number {
   return pool[seen % pool.length];
 }
 
+/**
+ * The next camera trap, chronologically, wrapping at the end of the season.
+ *
+ * Deliberately NOT nextIndex()'s alternating walk: that one exists to keep both
+ * registers in view, which is the opposite of what the latch is for.
+ */
+function nextCamtrapIndex(): number {
+  const pool: number[] = [];
+  for (let i = 0; i < _order.length; i++) {
+    if (_order[i].register === "cameratrap") pool.push(i);
+  }
+  if (!pool.length) return (_cursor + 1) % _order.length;
+  // First position strictly after the cursor; wrap to the first otherwise.
+  const at = pool.find((i) => i > _cursor);
+  return at !== undefined ? at : pool[0];
+}
+
+/** Latch on and step to the next capture. Bound to the ▶ in the right rail. */
+function camtrapNext(): void {
+  if (!_order.length) return;
+  _camtrapOnly = true;
+  publishState();
+  show(nextCamtrapIndex());
+}
+
+/** Back to the ring. Bound to the readout. */
+function camtrapAuto(): void {
+  _camtrapOnly = false;
+  // Let the ring re-pick on its next day rather than holding the last capture
+  // until the day happens to change.
+  _lastDoy = -1;
+  _lastAdvance = 0;
+  publishState();
+}
+
+/**
+ * What the window is showing, for the panel's readout.
+ *
+ * #camara-cursor was markup and nothing else: it has said "cámara — · —" since
+ * it was added, because slot C reports its position over OSC to SuperCollider
+ * and SC has no registry entry for /camara/doy to echo back. The two surfaces
+ * are the same renderer, so this goes straight across.
+ */
+function publishState(): void {
+  const clip = _order[_cursor];
+  try {
+    (window as unknown as { __camaraState?: unknown }).__camaraState = clip
+      ? {
+        key: clip.key,
+        register: clip.register,
+        doy: clip.doy,
+        date: clip.date,
+        temporada: clip.temporada,
+        reveal: reveal(clip),
+        species: (clip.species ?? []).map((sp) => sp.common || sp.taxon || "").filter(Boolean),
+        mode: _camtrapOnly ? "trampa" : "auto",
+        at: performance.now(),
+      }
+      : { mode: _camtrapOnly ? "trampa" : "auto", at: performance.now() };
+  } catch { /* a readout that cannot be published is not worth an exception */ }
+}
+
 function advance(now: number): void {
   if (!_order.length) return;
 
   // Follow the audio ring when it is live: the picture belongs to the day the
   // corpus is sounding. Falls back to self-advancing when SC is not running,
   // so slot C is legible on its own.
+  // The latch outranks the ring. A performer who pressed ▶ is watching the
+  // camera trap, and the day moving underneath is not a reason to take it away.
+  if (_camtrapOnly) {
+    // The `ended` handler does the work when the element is playing. This is
+    // the backstop for a clip whose play() was refused, where `ended` never
+    // fires and the window would otherwise hold one frame forever.
+    if (now - _lastAdvance > _holdMs + 2000) show(nextCamtrapIndex());
+    return;
+  }
+
   const cur = w().__phenoCursor;
   if (cur && now - cur.at < CURSOR_STALE_MS) {
     if (cur.doy !== _lastDoy) {
@@ -605,6 +702,10 @@ export async function mountCamara(host: HTMLElement, hooks: CamaraHooks = {}) {
   video.loop = true;
   video.playsInline = true;
   video.preload = "auto";
+  // Only ever fires while latched — in AUTO the element loops and never ends.
+  video.addEventListener("ended", () => {
+    if (_camtrapOnly && _order.length) show(nextCamtrapIndex());
+  });
   _video = video;
 
   await loadIndex();
@@ -629,9 +730,8 @@ export async function mountCamara(host: HTMLElement, hooks: CamaraHooks = {}) {
   // only needs to know that something moved.
   // Manual advance for the ▶ in the right rail. Steps the same interleaved
   // traversal the self-advance uses, so a click behaves exactly like waiting.
-  (window as unknown as { __camaraNext?: () => void }).__camaraNext = () => {
-    if (_order.length) show(nextIndex());
-  };
+  (window as unknown as { __camaraNext?: () => void }).__camaraNext = camtrapNext;
+  (window as unknown as { __camaraAuto?: () => void }).__camaraAuto = camtrapAuto;
 
   w().__applyCamaraToViz = (key: string, _v: number) => {
     if (key === "opacity" && _order[_cursor]) {
@@ -678,6 +778,8 @@ export function destroyCamara(): void {
   {
     const g = window as unknown as Record<string, unknown>;
     delete g.__camaraNext;
+    delete (g as unknown as { __camaraAuto?: unknown }).__camaraAuto;
+    delete (g as unknown as { __camaraState?: unknown }).__camaraState;
     delete g.__camaraNow;
     delete g.__camaraHoldMs;
     delete g.__camaraGeom;

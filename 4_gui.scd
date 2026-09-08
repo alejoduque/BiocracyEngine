@@ -528,7 +528,13 @@
             // The struck voice's two halves, as a balance rather than a
             // switch. Continuous specs, so these are knobs beside the rates
             // that drive them.
-            [\bowlOn, \chinaOn]
+            [\bowlOn, \chinaOn],
+            // VIZ. Neither of these reaches a synth — they are the browser's
+            // projection controls — but they are controls, and until they
+            // entered the registry the SC surface could not show them, MIDI
+            // could not reach them, and a saved config forgot the one setting
+            // that decides how the whole projection moves.
+            [\vizRotation, \vizConsensus]
         ];
 
         // Enhanced knob function with oscilloscope aesthetics
@@ -1072,6 +1078,17 @@
         // kick per 96 s there is no second hit to hear a level change on.
         cadenceRow.layout.add(~inlineHead.value("CADENCIA"));
         ~knobParameters[6].do { |key|
+            ~knobs[key] = ~makeKnob.value(
+                key.asString,
+                ~controlSpecs[key].minval,
+                ~controlSpecs[key].maxval,
+                ~controlValues[key],
+                ~controlSpecs[key].warp
+            );
+            cadenceRow.layout.add(~knobs[key]);
+        };
+        cadenceRow.layout.add(~inlineHead.value("VIZ"));
+        ~knobParameters[8].do { |key|
             ~knobs[key] = ~makeKnob.value(
                 key.asString,
                 ~controlSpecs[key].minval,

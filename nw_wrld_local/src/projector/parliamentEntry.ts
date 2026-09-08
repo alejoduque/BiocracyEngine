@@ -247,6 +247,44 @@ function connectControlWS() {
         if (dispEl) dispEl.textContent = v.toFixed(2);
       }
 
+      // Which config the engine is standing in. SC says so after every load,
+      // whichever surface asked for it — so the SC GUI's LOAD button now moves
+      // this dropdown, which is the half of the round trip that was missing.
+      if (address === "/preset/loaded") {
+        const name = String(args[0] ?? "");
+        const sel = document.getElementById("preset-select") as HTMLSelectElement | null;
+        if (sel && name && Array.from(sel.options).some((o) => o.value === name)) {
+          sel.value = name;
+        }
+        return;
+      }
+
+      // ── The two VIZ parameters ──────────────────────────────────────
+      // Registered in 0_parameters.scd now, so they echo on the canonical path
+      // like every other control and a preset carries them. Setting .value
+      // fires no input event, so a browser-origin change echoes back
+      // harmlessly.
+      if (address === "/parliament/rotation" || address === "/parliament/consensus") {
+        const v = args[0];
+        if (typeof v !== "number" || !isFinite(v)) return;
+        document.querySelectorAll<HTMLInputElement>(
+          `input[type='range'][data-osc='${address}']`
+        ).forEach((el) => { el.value = String(v); });
+        const dispEl = document.getElementById(
+          address === "/parliament/rotation" ? "disp-rotation" : "disp-consensus");
+        if (dispEl) dispEl.textContent = cadenceLabel(address, v) ?? v.toFixed(2);
+        // Straight into the store: patchStoreFromSlider lives inside the
+        // setup closure and this handler does not. ROT_MIN/ROT_SPAN are the
+        // same ControlSpec(0.1, 2.0) SC maps through — vizMotion multiplies by
+        // state.rotation in those units, not in the normalised one.
+        const st = parliamentStore.state;
+        if (st) {
+          if (address === "/parliament/rotation") st.rotation = 0.1 + v * 1.9;
+          else st.consensus = v;
+        }
+        return;
+      }
+
       // ── Cámara Fenológica (Capítulo VI) ─────────────────────────────
       // SC echoes /pheno/<key> values back to the browser whenever a knob,
       // MIDI CC, or HTML slider moves. Three things happen here:
@@ -769,6 +807,10 @@ function cadenceLabel(addr: string, n: number): string | null {
     case "/voice/bowl":
     case "/voice/china":        return n <= 0.001 ? "off" : n.toFixed(2);
     case "/cadence/dust":       return `${exp(0.03, 0.95).toFixed(2)} dens`;
+    // Registry-backed as of \vizRotation, so it travels normalised like the
+    // rest and needs its own spec to read as anything. The multiplier is what
+    // the performer is actually setting: 1.00x is one turn every ~3 minutes.
+    case "/parliament/rotation": return `${lin(0.1, 2.0).toFixed(2)}x`;
     default:                    return null;
   }
 }
@@ -1308,11 +1350,19 @@ async function init() {
   // Expose so visualizationSwitcher.ts can reach it at runtime via window
   (window as any).__sonethParams = sonethParams;
 
+  // ControlSpec(0.1, 2.0, \lin) — the same numbers 0_parameters.scd holds for
+  // \vizRotation. One definition on each side of the bridge and no third.
+  const ROT_MIN = 0.1;
+  const ROT_SPAN = 1.9;
+
   function patchStoreFromSlider(addr: string, id: number | null, v: number) {
     const st = parliamentStore.state;
     if (!st) return;
     if (addr === "/parliament/consensus") { st.consensus = v; }
-    else if (addr === "/parliament/rotation") { st.rotation = v; }
+    // 0-1 on the wire, like every other registry-backed slider, mapped here
+    // through the same ControlSpec(0.1, 2.0) SuperCollider holds. state.rotation
+    // stays in its own units because vizMotion multiplies by it directly.
+    else if (addr === "/parliament/rotation") { st.rotation = ROT_MIN + v * ROT_SPAN; }
     else if (addr === "/agents/species/activity" && id !== null && st.species?.[id]) { st.species[id].activity = v; }
     else if (addr === "/agents/species/presence" && id !== null && st.species?.[id]) { st.species[id].presence = v; }
     else if (addr === "/agents/edna/biodiversity" && id !== null && st.edna?.[id]) { st.edna[id].biodiversity = v; }
@@ -1882,7 +1932,7 @@ async function init() {
   const REPLICA_MACROS: Record<string, (v: number) => void> = {
     // Rotation of the assembly = the cyclical cadence → beat tempo.
     // (slider range is 0.1–2.0; normalise to 0–1 for the beatTempo fader)
-    "/parliament/rotation": (v) => driveSonethSlider("beatTempo", (v - 0.1) / 1.9),
+    "/parliament/rotation": (v) => driveSonethSlider("beatTempo", v),
     // Consensus = harmonic resolution: fuller harmonics + a quieter noise floor.
     "/parliament/consensus": (v) => {
       driveSonethSlider("harmonicrich", 0.35 + v * 0.5);
@@ -2041,10 +2091,57 @@ async function init() {
   document.getElementById("corpus-next")?.addEventListener("click", () => {
     sendOSC("/pheno/next", 1);
   });
+  // ▶ LATCHES the window to the camera trap and steps to the next capture.
+  // From there the 22 captures run one into the next — about four minutes of
+  // continuous footage — and the ring does not take it back. Clicking again
+  // skips ahead within the trap.
   document.getElementById("camara-next")?.addEventListener("click", () => {
     const fn = (window as unknown as { __camaraNext?: () => void }).__camaraNext;
     if (typeof fn === "function") fn();
   });
+  // And the readout releases it. The mode is legible there, so that is where
+  // it is undone; in AUTO the day decides and both registers alternate.
+  document.getElementById("camara-cursor")?.addEventListener("click", () => {
+    const fn = (window as unknown as { __camaraAuto?: () => void }).__camaraAuto;
+    if (typeof fn === "function") fn();
+  });
+
+  // ── The cámara readout, which has never said anything ──────────────────
+  // #camara-cursor has shown its markup placeholder "cámara — · —" since it was
+  // added. Slot C reports its position to SuperCollider on /camara/doy, but SC
+  // has no registry entry for that path, so nothing was ever echoed back and no
+  // code in this renderer wrote the element. Both surfaces are the same
+  // renderer, so it reads slot C's published state directly.
+  //
+  // Polled rather than pushed: slot C is mounted and unmounted as the performer
+  // switches slots, and a poll needs no teardown. 500 ms — a clip holds the
+  // screen for six seconds at the very least.
+  setInterval(() => {
+    const el = document.getElementById("camara-cursor");
+    if (!el) return;
+    const st = (window as unknown as {
+      __camaraState?: {
+        register?: string; doy?: number; temporada?: string; date?: string;
+        reveal?: number; species?: string[]; mode?: string;
+      };
+    }).__camaraState;
+    if (!st || st.doy === undefined) {
+      el.textContent = "cámara — · —";
+      el.classList.remove("veiled");
+      return;
+    }
+    const reg = st.register === "cameratrap" ? "trampa" : "sonograma";
+    // Article 47 again: a clip the Chamber is holding back is announced as
+    // withheld rather than named. The picture is already withdrawn in the
+    // module; saying the species here would put it back.
+    const veiled = (st.reveal ?? 1) < 0.12;
+    const who = veiled
+      ? "reservado"
+      : (st.species && st.species.length ? st.species.join(", ") : reg);
+    el.classList.toggle("veiled", veiled);
+    el.textContent =
+      `cámara doy ${st.doy} · ${who} · ${st.mode === "trampa" ? "TRAMPA" : "auto"}`;
+  }, 500);
 
   // Wire eDNA sliders that were dynamically injected above (they're in the DOM now)
   if (ednaCtrlRows) {

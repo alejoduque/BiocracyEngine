@@ -82,6 +82,26 @@ export function noteInteraction(): void {
   lastInteraction = now();
 }
 
+/**
+ * ROTATION SPD is the one control that must NOT reset the idle clock.
+ *
+ * Every slider on the panel fires `input`, `input` is one of the events that
+ * counts as operating the instrument, and operating the instrument suppresses
+ * the drift for IDLE_AFTER + RAMP = twelve seconds. So the single control whose
+ * whole job is to set the automatic rotation speed was the one control
+ * guaranteed to stop the automatic rotation dead — every module froze the
+ * instant you reached for it, and stayed frozen for as long as you kept
+ * adjusting. It has never once been possible to see what this fader does.
+ *
+ * Touching it now ARMS the drift instead: the idle clock is pushed back past
+ * the ramp so the new speed is running, at full amount, in the same gesture
+ * that sets it. That is what a speed control is for — you have to be able to
+ * watch it.
+ */
+export function noteRotationIntent(): void {
+  lastInteraction = now() - (IDLE_AFTER + RAMP + 1);
+}
+
 function bindListeners(): void {
   if (listenersBound || typeof document === "undefined") return;
   listenersBound = true;
@@ -94,7 +114,17 @@ function bindListeners(): void {
   // somewhere else is not someone operating the instrument, and treating it as
   // interaction would mean the drift never starts on a desk with a live mouse.
   for (const ev of ["pointerdown", "wheel", "keydown", "input"]) {
-    document.addEventListener(ev, noteInteraction, { capture: true, passive: true });
+    document.addEventListener(ev, (e: Event) => {
+      // The rotation fader is exempt — and more than exempt, it arms the
+      // drift. See noteRotationIntent. Guarded because `target` on a captured
+      // document listener can be anything, including a node with no dataset.
+      const t = e.target as HTMLElement | null;
+      if (t && t.dataset && t.dataset.osc === "/parliament/rotation") {
+        noteRotationIntent();
+        return;
+      }
+      noteInteraction();
+    }, { capture: true, passive: true });
   }
 }
 

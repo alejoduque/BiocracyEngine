@@ -1102,9 +1102,16 @@ s.doWhenBooted({
         ~loadConfig.(msg[1].asString);
     }, "/preset/load");
 
+    // Asked once by the browser as its WebSocket opens. It is therefore the
+    // one moment a fresh client can be handed the ENGINE'S state rather than
+    // left showing the defaults compiled into parliament.html — which is what
+    // it showed until now, for the whole session, while the engine played the
+    // restored autosave. The list of configs was never the only thing a
+    // connecting client needed to know.
     OSCdef(\presetList, {
         ~lastBrowserOscTime = Main.elapsedTime;
         ~broadcastPresetList.value;
+        if(~broadcastAllParams.notNil) { ~broadcastAllParams.value };
     }, "/preset/list");
 
     // ── Tell the browser what presets exist, unprompted ─────────────────
@@ -1124,7 +1131,14 @@ s.doWhenBooted({
     // where the bridge itself is still coming up as this line runs — a
     // duplicate list costs nothing, the handler just rebuilds the same options.
     ~broadcastPresetList.value;
-    AppClock.sched(3.0, { ~broadcastPresetList.value; nil });
+    AppClock.sched(3.0, {
+        ~broadcastPresetList.value;
+        // Same reasoning as the list: a browser already connected when SC
+        // finishes booting never asks again, so SC has to volunteer. The 3 s
+        // delay puts this after 0_parameters has restored _autosave.
+        if(~broadcastAllParams.notNil) { ~broadcastAllParams.value };
+        nil
+    });
 
     "OSC Handlers initialized:".postln;
     "- Listening on port: %".format(NetAddr.langPort).postln;
