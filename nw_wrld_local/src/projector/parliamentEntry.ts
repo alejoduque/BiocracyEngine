@@ -23,7 +23,6 @@ let SPECIES_IUCN = ["VU", "NT", "EN", "CR", "CR"];
 // IUCN multipliers for BioToken formula (CR=5, EN=3, VU=2, LC=1)
 let IUCN_MULT = [2, 1, 3, 5, 5];
 const EDNA_IDS = ["CHO", "AMZ", "COR", "CAR", "ORI", "PAC", "MAG", "GUA"];
-const EDNA_ANGLES_DEG = Array.from({ length: 8 }, (_, i) => (i / 8) * 360);
 
 // ─── Cámara Fenológica params — live values shared with visual switches ─────
 // Same contract as __sonethParams below: keyed by the last segment of
@@ -768,17 +767,9 @@ function worldToCss(
 }
 
 // ─── Flat polar → CSS (for eDNA static labels) ───
-function radarToCss(
-  angleDeg: number, radius: number, canvas: HTMLElement,
-  fov = 50, camZ = 20
-): { x: number; y: number } {
-  const w = canvas.offsetWidth;
-  const h = canvas.offsetHeight;
-  const halfH = Math.tan((fov / 2) * Math.PI / 180) * camZ;
-  const scale = (h / 2) / halfH;
-  const rad = ((angleDeg - 90) * Math.PI) / 180;
-  return { x: w / 2 + Math.cos(rad) * radius * scale, y: h / 2 - Math.sin(rad) * radius * scale };
-}
+// radarToCss lived here. Its only caller placed the eight region corners on
+// the outer ring; the ring carries the four bancadas now, drawn in world
+// space inside the stage so they turn with it.
 
 // ─── Spectrogram canvas renderer (enriched: 256-bin, sonETH-reactive color) ───
 // Cadence readouts in NATIVE units, mirroring each spec in 0_parameters.scd.
@@ -1265,25 +1256,26 @@ async function init() {
   const overlay = document.getElementById("canvas-overlay");
   const canvasWrap = document.getElementById("canvas-wrap");
   const speciesLabelEls: HTMLElement[] = [];
+  let lastSeatRevision = -1;
 
   if (overlay && canvasWrap) {
     for (let i = 0; i < 5; i++) {
       const el = document.createElement("div");
       el.className = "species-label";
       el.id = `sp-label-${i}`;
+      // Seeded only. The text is rewritten from the stage's own seat register
+      // in updateLabels below, so a name here is the opening position and not
+      // the source of truth.
       el.textContent = SPECIES_NAMES[i].toUpperCase();
       overlay.appendChild(el);
       speciesLabelEls.push(el);
     }
-    EDNA_ANGLES_DEG.forEach((deg, i) => {
-      const pos = radarToCss(deg, 9.5, canvasWrap);
-      const el = document.createElement("div");
-      el.className = "edna-label";
-      el.style.left = pos.x + "px";
-      el.style.top = pos.y + "px";
-      el.textContent = EDNA_IDS[i];
-      overlay.appendChild(el);
-    });
+    // The eight region corners are GONE. CHO / AMZ / ORI / PAC and the rest
+    // named a national biome map on a stage that has only ever recorded one
+    // biome in one place, and the right rail dropped that same map long ago
+    // for the same reason. The outer ring carries the four bancadas now, drawn
+    // as world-space sprites inside the stage itself so they turn with it —
+    // which is what a calendar mark has to do and a screen-space div cannot.
   }
 
   // Label tracking loop — only active when slot 0 (Three.js parliament) is live
@@ -1295,6 +1287,33 @@ async function init() {
       return;
     }
     if (overlay) overlay.style.visibility = "visible";
+
+    // Who is sitting. The five bodies are SEATS now and the occupant changes,
+    // so the text is read from the stage rather than from the five names this
+    // file used to hold — which is what produced two disagreeing labels per
+    // body: the roster's name on the stage and this file's on top of it.
+    //
+    // Rewritten only when the register says something changed. seatRevision is
+    // bumped on a re-seat and on a change to the opacity floor, so this costs
+    // one integer compare per frame in the ordinary case.
+    const st = s as unknown as {
+      seatRevision?: number;
+      seatNameAlpha?: number[];
+      seatLabel?: (i: number) => { name: string; latin: string; veiled: boolean };
+    };
+    if (typeof st.seatLabel === "function" && st.seatRevision !== lastSeatRevision) {
+      lastSeatRevision = st.seatRevision ?? 0;
+      for (let i = 0; i < 5; i++) {
+        const lab = st.seatLabel(i);
+        const el = speciesLabelEls[i];
+        el.textContent = lab.name.toUpperCase();
+        el.title = lab.latin;
+        // Article 47 is legible as a state, not only as a dimming: a withheld
+        // seat says so rather than going quietly blank.
+        el.classList.toggle("veiled", lab.veiled);
+      }
+    }
+
     for (let i = 0; i < 5; i++) {
       const grp = s.speciesGroups[i];
       if (!grp) continue;
@@ -1302,6 +1321,8 @@ async function init() {
       const el = speciesLabelEls[i];
       el.style.left = pos.x + "px";
       el.style.top = (pos.y - 20) + "px";
+      const a = st.seatNameAlpha?.[i];
+      if (typeof a === "number") el.style.opacity = String(a);
     }
   }
   (function labelLoop() { updateLabels(); requestAnimationFrame(labelLoop); })();

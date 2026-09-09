@@ -445,8 +445,11 @@ class ParliamentStage extends BaseThreeJsModule {
     this.speciesHalos      = [];
     this.speciesMeshes     = [];
     this.speciesSolidMats  = [];
-    this.speciesLabels     = [];
     this.seatOccupant      = [];
+    // Bumped on every re-seat and on every veil change, so the overlay can
+    // tell whether it needs to rewrite its five divs without comparing strings
+    // sixty times a second.
+    this.seatRevision      = 0;
     // Per-seat gain. Every body used to take its brightness from the same two
     // numbers and no other, so five objects lit and dimmed as one — which is
     // most of why the stage read as uniformly, and too, bright.
@@ -506,16 +509,15 @@ class ParliamentStage extends BaseThreeJsModule {
       this.speciesHalos.push(halo);
       this.speciesSolidMats.push(solidMat);
 
-      // Who is in the seat. Sits beside the body rather than on it, and is
-      // redrawn in place when the seat changes hands — a new CanvasTexture per
-      // change would leak one per occupancy.
-      const occ = FALLBACK_SEATS[i];
-      const label = makeLabelSprite(occ.c, phos ? PHOSPHOR : AMBER, occ.s);
-      label.position.set(0, -1.15, 0);
-      label.scale.set(2.6, 0.65, 1);
-      group.add(label);
-      this.speciesLabels.push(label);
-      this.seatOccupant.push(occ);
+      // Who is in the seat. The NAME is drawn by the HTML overlay, not here —
+      // parliamentEntry already tracks these five groups to screen space and
+      // has done since before this module had any text at all. Putting a
+      // sprite here as well produced two labels per body, the overlay's and
+      // this one, saying different things: the stage sprite read from the
+      // Manakai roster while the overlay still read its own hardcoded five.
+      // The occupant lives here because this is where seats change hands; the
+      // overlay reads it.
+      this.seatOccupant.push(FALLBACK_SEATS[i]);
 
       const a = SPECIES_ANGLES[i];
       group.position.set(Math.cos(a) * SPECIES_R, Math.sin(a) * SPECIES_R, 0);
@@ -639,7 +641,7 @@ class ParliamentStage extends BaseThreeJsModule {
   // is withheld is which species it is. That is the same refusal the year ring
   // and the laser already make, and the reason it is a name and not a removal:
   // absence stays legible as absence.
-  _reseat(i, floorOp) {
+  _reseat(i) {
     if (i === PHOSPHOR_SPECIES) return;
     const taxon = SEAT_TAXA[i];
     const pool = (this._roster && this._roster[taxon]) || null;
@@ -647,25 +649,29 @@ class ParliamentStage extends BaseThreeJsModule {
       ? pool[Math.floor(Math.random() * pool.length)]
       : FALLBACK_SEATS[i];
     this.seatOccupant[i] = occ;
-    this._drawSeatLabel(i, floorOp);
+    this.seatRevision += 1;
   }
 
-  _drawSeatLabel(i, floorOp) {
-    const spr = this.speciesLabels[i];
-    if (!spr) return;
+  /**
+   * What the overlay should print for seat i: { name, latin, veiled }.
+   *
+   * The opacity clause applies to the NAME, not to the body. A veiled occupant
+   * still holds its seat, still orbits and still counts toward the chamber;
+   * what is withheld is which species it is. Deterministic per name, so a
+   * species is veiled consistently rather than flickering between named and
+   * withheld from one frame to the next.
+   */
+  seatLabel(i) {
     const occ = this.seatOccupant[i] || FALLBACK_SEATS[i];
-    const phos = i === PHOSPHOR_SPECIES;
-    // Deterministic per name, so a species is veiled consistently rather than
-    // flickering between named and withheld from one frame to the next.
+    if (i === PHOSPHOR_SPECIES) return { name: occ.c || occ.s, latin: occ.s, veiled: false };
+    const floorOp = this._phenoOpacityFloor ?? 0;
     let h = 0;
     const key = String(occ.s || "");
     for (let k = 0; k < key.length; k++) h = (h * 31 + key.charCodeAt(k)) % 997;
-    const veiled = !phos && (floorOp > 0.02) && ((h / 997) < floorOp);
-    if (veiled) {
-      drawLabelSprite(spr, "· · · · ·", AMBER_DIM, "reservado");
-    } else {
-      drawLabelSprite(spr, occ.c || occ.s, phos ? PHOSPHOR : AMBER, occ.s);
+    if (floorOp > 0.02 && (h / 997) < floorOp) {
+      return { name: "· · · · ·", latin: "reservado", veiled: true };
     }
+    return { name: occ.c || occ.s, latin: occ.s, veiled: false };
   }
 
   // ─── FFT RING ──────────────────────────────────────────────────────────────
@@ -777,15 +783,35 @@ class ParliamentStage extends BaseThreeJsModule {
     this._smoothCo2        = lerp(this._smoothCo2,        co2,            k * 0.5);
     this._smoothWarmth     = lerp(this._smoothWarmth,     targetWarmth,   k);
 
+    // ── Luminance consensus ────────────────────────────────────────────────
+    //
+    // Every light on this stage was driven by consensus at full scale, and at
+    // the default 0.5 the picture was already blown out: bloom strength 0.88
+    // against a threshold of 0.215, which is low enough that the wireframes,
+    // their cores, the halos and the connection lines ALL bloom at once and
+    // fuse into one white mass. Pushing consensus to 1.0 only made it worse,
+    // so the top half of that fader was unusable.
+    //
+    // consLum is consensus HALVED, and it drives every luminance term. So the
+    // brightest the chamber can now get — consensus at 1.0 — is what it used to
+    // look like at 0.5, and the whole travel of the fader is inside the range
+    // where the objects still read as objects.
+    //
+    // Deliberately NOT applied to the non-luminance uses of consensus below:
+    // the core's scale, the auto-rotate speed and the activity window are
+    // about how the chamber behaves, not how bright it is, and halving those
+    // would be a second, unasked-for change wearing the same name.
+    const consLum = this._smoothConsensus * 0.5;
+
     // ── 1. BLOOM: strength ∝ consensus ─────────────────────────────────────
-    //    Range: 0.25 (low consensus, dim) → 1.5 (high consensus, harmonic glow)
-    //    Also pulses gently with consensusWave
     const bloomPulse    = 0.5 + consensusW * 0.5;
-    this._bloom.strength = lerp(0.25, 1.5, this._smoothConsensus) * (0.85 + bloomPulse * 0.15);
+    this._bloom.strength = lerp(0.25, 1.5, consLum) * (0.85 + bloomPulse * 0.15);
     //    Radius tightens at high consensus (focused glow), loosens at low (diffuse haze)
-    this._bloom.radius   = lerp(0.65, 0.30, this._smoothConsensus);
-    //    Threshold drops with consensus: more elements glow when in agreement
-    this._bloom.threshold = lerp(0.35, 0.08, this._smoothConsensus);
+    this._bloom.radius   = lerp(0.65, 0.30, consLum);
+    //    Threshold drops with consensus: more elements glow when in agreement.
+    //    The floor comes up 0.08 -> 0.20: below that everything on the stage is
+    //    above threshold and bloom stops being selective at all.
+    this._bloom.threshold = lerp(0.35, 0.20, consLum);
 
     // ── 2. CHROMATIC ABERRATION: turbulence ──────────────────────────────
     //    Range: 0.0 (full consensus) → 0.010 (maximum dissent)
@@ -851,7 +877,7 @@ class ParliamentStage extends BaseThreeJsModule {
     }
     this._fftLines.geometry.attributes.position.needsUpdate = true;
     // FFT bar opacity modulated by consensus (brighter when in agreement)
-    this._fftLines.material.opacity = 0.4 + this._smoothConsensus * 0.5;
+    this._fftLines.material.opacity = 0.4 + consLum * 0.5;
 
     // ── Species objects ───────────────────────────────────────────────────
     for (let i = 0; i < 5; i++) {
@@ -911,7 +937,7 @@ class ParliamentStage extends BaseThreeJsModule {
 
       // Solid core. Same three factors, same lowered ceiling.
       sdm.emissiveIntensity = Math.min(1.5,
-        (sp.presence * 1.35 + this._smoothConsensus * 0.3) * gain * lvl);
+        (sp.presence * 1.35 + consLum * 0.3) * gain * lvl);
       sdm.opacity           = Math.min(0.5, (0.04 + sp.presence * 0.42) * gain * lvl);
 
       // ── Rhythm ──────────────────────────────────────────────────────────
@@ -949,20 +975,25 @@ class ParliamentStage extends BaseThreeJsModule {
       const floorOp = this._phenoOpacityFloor ?? 0;
       if (elapsed - (this._seatCheckAt ?? -9) > 1.0) {
         if (i === 4) this._seatCheckAt = elapsed;
-        if (sp.presence < SEAT_VACATE) this._reseat(i, floorOp);
-        else if (floorOp !== this._seatFloorWas) this._drawSeatLabel(i, floorOp);
+        if (sp.presence < SEAT_VACATE) this._reseat(i);
       }
+      if (floorOp !== this._seatFloorWas) { this.seatRevision += 1; }
       if (i === 4) this._seatFloorWas = floorOp;
-      // The name fades with its occupant, one step behind the body so it is
-      // never brighter than what it names.
-      if (this.speciesLabels[i]) {
-        this.speciesLabels[i].material.opacity =
-          Math.min(0.9, 0.12 + sp.presence * 0.75 * lvl);
-      }
+      // Published for the overlay: how bright this seat's own name should be,
+      // one step behind the body so a label is never brighter than what it
+      // names.
+      this.seatNameAlpha = this.seatNameAlpha || [];
+      this.seatNameAlpha[i] = Math.min(0.9, 0.12 + sp.presence * 0.75 * lvl);
 
       // Halo: full-range opacity and size from activity + presence
-      this.speciesHalos[i].material.opacity = sp.activity * 0.9 + this._smoothTurbulence * 0.15;
-      this.speciesHalos[i].material.size    = 0.02 + sp.presence * 0.12 + sp.activity * 0.08;
+      // The halo is 120 additive points per body, five bodies, all of it inside
+      // the bloom threshold — it was most of the white in the middle of the
+      // picture. Same treatment as everything else: the engine's own level
+      // scales it, the seat's gain separates it from its neighbours, and the
+      // ceiling comes down to roughly half.
+      this.speciesHalos[i].material.opacity =
+        Math.min(0.45, (sp.activity * 0.5 + this._smoothTurbulence * 0.08) * gain * lvl);
+      this.speciesHalos[i].material.size    = 0.02 + sp.presence * 0.08 + sp.activity * 0.05;
     }
 
     // ── Inter-species connection lines ─────────────────────────────────────
@@ -1068,11 +1099,11 @@ class ParliamentStage extends BaseThreeJsModule {
     this._consensusMesh.scale.setScalar(coreScale);
     this._consensusMesh.rotation.y += 0.005 + this._smoothConsensus * 0.01;
     this._consensusMesh.rotation.x += 0.003;
-    this._consensusMesh.material.opacity = 0.20 + this._smoothConsensus * 0.50;
+    this._consensusMesh.material.opacity = 0.20 + consLum * 0.50;
 
     this._consensusCore.scale.setScalar(0.5 + consensusW * 0.8);
     // Core emissive intensity from consensus — bloom then amplifies
-    this._consensusCore.material.emissiveIntensity = 0.6 + this._smoothConsensus * 1.2;
+    this._consensusCore.material.emissiveIntensity = 0.6 + consLum * 1.2;
 
     // ── Lissajous (AI + sonETH harmonicRich) ────────────────────────────
     const ai     = state ? state.ai : { consciousness: 0.5, optimization: 64 };
@@ -1121,8 +1152,8 @@ class ParliamentStage extends BaseThreeJsModule {
       });
 
       // Tick marks flash with ETH activity (co2-driven)
-      this._radarTicks.material.opacity = 0.18 + this._smoothConsensus * 0.25 + this._smoothCo2 * 0.20;
-      this._radarAxes.material.opacity  = 0.03 + this._smoothConsensus * 0.06;
+      this._radarTicks.material.opacity = 0.18 + consLum * 0.25 + this._smoothCo2 * 0.20;
+      this._radarAxes.material.opacity  = 0.03 + consLum * 0.06;
     }
 
     // ── Vote event: flash ────────────────────────────────────────────────
