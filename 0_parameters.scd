@@ -281,7 +281,13 @@
     // its LFOs at exactly 1.0 — and that is fixed independently. Raising the
     // pitch was treating the symptom, so the register returns to where the bed
     // belongs and 2.0 is available if the low end ever sits too heavy.
-    (name: \padPitch,   spec: ControlSpec(0.125, 1.0, \exp), default: 0.5,  path: "/cadence/padpitch",
+    // 0.125 -> 0.40. The bottom of the old range was dead: at 0.125 the root
+    // alone is 55 x 0.125 = 6.9 Hz, so every voice landed on the SynthDef's
+    // clip and the whole lower third of the fader produced one identical
+    // sound. Measured across the nine pad ratios, 14 of 45 combinations were
+    // pinned. From 0.40 the root is 22 Hz and nothing pins; the top is
+    // unchanged, since that is the register that was wanted.
+    (name: \padPitch,   spec: ControlSpec(0.40, 1.0, \exp), default: 0.6,  path: "/cadence/padpitch",
         beatParam: \padPitch,   cc: 53),
     (name: \padMotion,  spec: ControlSpec(0.1, 4.0, \exp),   default: 1.0,  path: "/cadence/padmotion",
         hasBus: false, beatParam: \padMotion,  cc: 54),

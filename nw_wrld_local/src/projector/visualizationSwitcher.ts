@@ -226,7 +226,10 @@ async function mountParliamentStage(): Promise<Viz> {
   console.log("[switcher] ParliamentStage mounted, wrapper size:", wrapper.offsetWidth, "×", wrapper.offsetHeight);
 
   return {
-    name: "Parliament of All Things",
+    // This string is what the ticker prints for slot 0. The page header is
+    // "BiocracyEngine" now — the instrument — and this is the module: the
+    // chamber the instrument convenes.
+    name: "Parliament of the Living",
     key: "0",
     destroy: () => {
       _activeThreeStage = null;
@@ -1167,7 +1170,10 @@ function mountPerlinBlob(): Viz {
   const zkLeft = document.createElement("div");
   zkLeft.style.cssText = [
     "flex:1;overflow:hidden;",
-    "font-family:monospace;font-size:7.5px;color:#eee;",
+    // +3pt. Both columns of this HUD were sized for a display standing on the
+    // desk; read off a projection at performance distance 7.5px is a texture,
+    // not text. The column widths below grow with them.
+    "font-family:monospace;font-size:10.5px;color:#eee;",
     "padding:0;margin:0;background:transparent;",
     "display:flex;flex-direction:column;",
   ].join("");
@@ -1176,8 +1182,8 @@ function mountPerlinBlob(): Viz {
   // Right column: ETH live values (slightly brighter, amber-white)
   const zkRight = document.createElement("div");
   zkRight.style.cssText = [
-    "width:180px;min-width:160px;overflow:hidden;",
-    "font-family:monospace;font-size:8px;",
+    "width:240px;min-width:215px;overflow:hidden;",
+    "font-family:monospace;font-size:11px;",
     "padding:4px 6px;margin:0;background:transparent;",
     "display:flex;flex-direction:column;gap:1px;",
   ].join("");

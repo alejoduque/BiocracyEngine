@@ -1071,7 +1071,11 @@ export function mountConstellationField(
         if (tickerX <= -w) tickerX += w;
         // A rule above it, and the text repeated until the width is covered so
         // the crawl is seamless rather than a block that slides past.
-        c.globalAlpha = 0.16;
+        // Brighter. The ticker carries the ring's own reading — the day, the
+        // clip count, the depth of a silence — and at 0.46 over a near-black
+        // field it was legible only if you already knew it was there. The rule
+        // comes up with it so the pair still reads as one object.
+        c.globalAlpha = 0.24;
         c.strokeStyle = ink;
         c.lineWidth = 1;
         c.setLineDash([]);
@@ -1079,7 +1083,7 @@ export function mountConstellationField(
         c.moveTo(0, ty - 7);
         c.lineTo(width, ty - 7);
         c.stroke();
-        c.globalAlpha = 0.46;
+        c.globalAlpha = 0.72;
         c.fillStyle = ink;
         c.textAlign = "left";
         c.textBaseline = "top";

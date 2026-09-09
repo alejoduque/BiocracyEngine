@@ -2,7 +2,7 @@
 <html>
 <head>
     <meta charset="UTF-8">
-    <title>Parliament of All Things — Telemetry</title>
+    <title>BiocracyEngine — Telemetry</title>
     <style>
         :root {
             --amber: #ff8800;
@@ -391,18 +391,24 @@
         }
 
         /* ─── CORPUS SITE + RING CURSOR (1-bit, cites the Cámara palette) ─── */
+        /* Folded into the Corpus section instead of sitting in a frame of its
+           own. Its border made it read as a second box stacked on the first,
+           which is two headers and two outlines for one subject — the corpus
+           and the place the corpus is from. It is a subtitle now: no border,
+           no vertical padding of its own, and small enough that the four
+           faders under it move up by about 30 px. */
         #corpus-site {
-            font-size: 12px;
-            color: #fff;
-            line-height: 1.45;
+            font-size: 10px;
+            color: rgba(255,255,255,0.72);
+            line-height: 1.3;
             letter-spacing: 0.3px;
-            padding: 5px 4px;
-            border: 1px solid rgba(255,255,255,0.18);
-            margin-bottom: 6px;
+            padding: 0 0 4px;
+            margin: -2px 0 4px;
+            border-bottom: 1px solid rgba(255,255,255,0.10);
         }
         #corpus-site .corpus-site-dim {
-            color: rgba(255,255,255,0.45);
-            font-size: 11px;
+            color: rgba(255,255,255,0.40);
+            font-size: 9px;
         }
         #corpus-cursor {
             font-size: 11px;
@@ -617,7 +623,10 @@
 
     <!-- ─── HEADER ─── -->
     <div id="header">
-        <span class="title">Parliament of All Things</span>
+        <!-- The page is the instrument, and the instrument is BiocracyEngine.
+             "Parliament of the Living" is what slot 0 IS — it survives on that
+             module's own ticker, where it names a thing rather than a program. -->
+        <span class="title">BiocracyEngine</span>
         <span class="sep">│</span>
         <span><span id="status-dot"></span><span id="status-txt" class="label">OFFLINE</span></span>
         <span class="sep">│</span>
@@ -1156,7 +1165,7 @@
                 <div id="canvas-overlay">
                     <!-- 3D-tracked species labels injected by JS -->
                     <div id="viz-hint">0–9 · P · F · B · E · R · A · switch viz</div>
-                    <div id="viz-hud">[0] Parliament of All Things</div>
+                    <div id="viz-hud">[0] Parliament of the Living</div>
                 </div>
             </div>
 
@@ -1291,9 +1300,13 @@
                     Cámara Fenológica · Corpus
                     <span class="pheno-art">CC 21–22 · AudioMoth</span>
                 </div>
+                <!-- SN and place kept, on one line. Which recorder and where
+                     it stands is the provenance of everything this section
+                     plays, so it belongs directly under the header rather than
+                     in a frame beside it. -->
                 <div id="corpus-site">
-                    Bosque seco tropical · Córdoba<br>
-                    <span class="corpus-site-dim">Cabecera Planeta Rica · cuenca del Sinú · SN-26</span>
+                    Bosque seco tropical · Córdoba
+                    <span class="corpus-site-dim">· Planeta Rica · Sinú · SN-26</span>
                 </div>
                 <div class="ctrl-row">
                     <label>Corpus Lvl</label>

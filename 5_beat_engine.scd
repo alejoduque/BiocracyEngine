@@ -623,7 +623,15 @@
                         // pace, and the +/-25% per voice means no two are ever
                         // synchronised, so the bed keeps drifting in and out of
                         // phase with itself for as long as it sounds.
-                        \tempo,  ((~beatParams.padMotion ? 1.0).clip(0.1, 4.0))
+                        // \motion, not \tempo. tempo divides this voice's
+                        // envelope, so sending padMotion there made the motion
+                        // knob also the fade knob — at 4.0 the 89 s swell
+                        // collapsed to 22 s. tempo stays at its 1.0 default and
+                        // owns the envelope; motion owns the LFOs and nothing
+                        // else. The rrand stays where it belongs: +/-25% per
+                        // voice so no two run in step and the bed keeps
+                        // drifting in and out of phase with itself.
+                        \motion, ((~beatParams.padMotion ? 1.0).clip(0.1, 4.0))
                             * rrand(0.78, 1.28),
                         // The envelope follows the rate knob. padEvery 34 s is
                         // unity; at 8 s the swell is ~0.24x (about 21 s) so

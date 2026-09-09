@@ -104,13 +104,72 @@ const PHOSPHOR_RING    = 3;
 
 // ─── Layout ──────────────────────────────────────────────────────────────────
 const SPECIES_R = 4.2;
-const EDNA_R    = 7.8;
 const RINGS     = [2, 4, 6, 8];
 
 const SPECIES_ANGLES = [0, 72, 144, 216, 288].map((d) => (d * Math.PI) / 180);
-const SPECIES_NAMES  = ["Ara macao", "Atlapetes", "Cecropia", "Alouatta", "Tinamus"];
-const EDNA_ANGLES    = Array.from({ length: 8 }, (_, i) => (i / 8) * Math.PI * 2);
-const EDNA_IDS       = ["CHO", "AMZ", "COR", "CAR", "ORI", "PAC", "MAG", "GUA"];
+
+// ─── The outer ring is the YEAR, not the country ─────────────────────────────
+//
+// It used to be eight eDNA regions — Chocó, Amazonia, Orinoquía, Pacífico and
+// the rest — a national biome map on a stage that has only ever recorded ONE
+// biome in one place. Seven of the eight named regions this instrument has
+// never been to, and the right panel had already dropped them for the same
+// reason.
+//
+// What belongs on the outer ring is the other clock. The four bancadas of the
+// Cámara Fenológica (Art. 43 §1) are the seasons of the bimodal year at Manakai,
+// and each sits at its OWN angular place on the ring of 365 — so the outer ring
+// stops being a legend and becomes a calendar you can read the cursor against.
+//
+// Day numbers are the same ones PhenologicalCalendar._seasonFirstDay holds.
+// Angles follow the calendar's own convention: day 1 at twelve o'clock, the
+// year running clockwise, so the two rings agree when both are on screen.
+const YEAR_R = 7.8;
+const SEASONS = [
+  { key: "seca",             label: "SECA",            d0: 335, d1: 90,  taxa: "reptiles · aves" },
+  { key: "primeras_lluvias", label: "1as LLUVIAS",     d0: 91,  d1: 151, taxa: "anfibios · aves" },
+  { key: "medio_seco",       label: "MEDIO SECO",      d0: 152, d1: 243, taxa: "mamíferos" },
+  { key: "segundas_lluvias", label: "2as LLUVIAS",     d0: 244, d1: 334, taxa: "flora" },
+];
+/** Day-of-year to ring angle. Day 1 at the top, clockwise, like the calendar. */
+function doyAngle(doy) {
+  return ((((doy - 1) % 365) + 365) % 365) / 365 * Math.PI * 2 - Math.PI / 2;
+}
+/** Mid-angle of a season, handling the one that wraps the new year. */
+function seasonMidAngle(sn) {
+  const span = sn.d1 >= sn.d0 ? (sn.d1 - sn.d0) : (365 - sn.d0 + sn.d1);
+  return doyAngle(sn.d0 + span / 2);
+}
+function inSeason(sn, doy) {
+  return sn.d1 >= sn.d0 ? (doy >= sn.d0 && doy <= sn.d1) : (doy >= sn.d0 || doy <= sn.d1);
+}
+
+// ─── Five seats, not five fixed names ────────────────────────────────────────
+//
+// The five orbiting bodies were hardcoded as Ara macao / Atlapetes / Cecropia /
+// Alouatta / Tinamus and the names were never even drawn — the array was dead.
+// They are SEATS now, and the occupant changes: a seat whose presence falls
+// away is vacated and taken by another species from the Manakai roster (572
+// species over five taxa, the same file the calendar reads).
+//
+// Seat 3 is reserved. Article 46 gives the howler the one alert protocol in the
+// statute, so its seat is never re-assigned and never amber — it is the species
+// the Corporation is obliged to keep listening for, and a seat that could be
+// vacated would not be that.
+const ROSTER_URL = "/ecosystems/default_ecosystem/assets/json/manakai_species.json";
+const SEAT_TAXA  = ["birds", "flora", "reptiles", "mammals", "amphibians"];
+/** Which voice of the engine each seat answers to, so no two share a rhythm. */
+const SEAT_VOICE = ["pad", "dust", "perc", "drone", "kick"];
+/** Below this presence a seat is vacated and re-occupied. */
+const SEAT_VACATE = 0.18;
+/** Fallback until the roster resolves; the howler is seat 3 either way. */
+const FALLBACK_SEATS = [
+  { s: "Ara macao",           c: "Guacamaya bandera" },
+  { s: "Cecropia peltata",    c: "Yarumo" },
+  { s: "Bothrops asper",      c: "Mapaná" },
+  { s: "Alouatta seniculus",  c: "Mono aullador" },
+  { s: "Engystomops pustulosus", c: "Rana túngara" },
+];
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 function makeCircle(radius, segments, color, opacity) {
@@ -122,6 +181,42 @@ function makeCircle(radius, segments, color, opacity) {
   const geo = new THREE.BufferGeometry().setFromPoints(pts);
   const mat = new THREE.LineBasicMaterial({ color, transparent: true, opacity });
   return new THREE.Line(geo, mat);
+}
+
+// ─── Text on the stage ───────────────────────────────────────────────────────
+// This module had no text at all: SPECIES_NAMES and EDNA_IDS were both declared
+// and never drawn, so nothing on the stage said what anything was. A canvas
+// sprite is the cheapest way to put a name beside a body that orbits, and the
+// texture can be redrawn in place when a seat changes hands.
+function makeLabelSprite(text, color, sub) {
+  const cv = document.createElement("canvas");
+  cv.width = 512; cv.height = 128;
+  const spr = new THREE.Sprite(new THREE.SpriteMaterial({
+    map: new THREE.CanvasTexture(cv),
+    transparent: true, depthWrite: false, depthTest: false, opacity: 0.85,
+  }));
+  spr.scale.set(3.2, 0.8, 1);
+  spr.userData.canvas = cv;
+  drawLabelSprite(spr, text, color, sub);
+  return spr;
+}
+function drawLabelSprite(spr, text, color, sub) {
+  const cv = spr.userData.canvas;
+  const g = cv.getContext("2d");
+  g.clearRect(0, 0, cv.width, cv.height);
+  const hex = "#" + new THREE.Color(color).getHexString();
+  g.textAlign = "center";
+  g.textBaseline = "middle";
+  g.fillStyle = hex;
+  g.font = "600 44px ui-monospace, 'SF Mono', Menlo, monospace";
+  g.fillText(String(text).toUpperCase(), cv.width / 2, sub ? 44 : 64);
+  if (sub) {
+    g.globalAlpha = 0.55;
+    g.font = "italic 32px ui-monospace, 'SF Mono', Menlo, monospace";
+    g.fillText(String(sub), cv.width / 2, 92);
+    g.globalAlpha = 1;
+  }
+  spr.material.map.needsUpdate = true;
 }
 
 function makeParticleHalo(count, radius, color) {
@@ -184,6 +279,13 @@ class ParliamentStage extends BaseThreeJsModule {
     this._fftBinsExternal = null;  // set by parliamentEntry.ts
 
     // sonETH instrument params — written by applySonethToViz(), read in updateStage()
+    // The three the seats read for their own brightness and their own veil.
+    // Written from parliamentEntry's applySonethToViz / applyPhenoControl; the
+    // defaults match the registry so a stage mounted before any echo arrives is
+    // lit the way the engine is actually set rather than at full.
+    this._sonethMasterAmp    = 0.7;  // masteramp   → per-seat brightness scale
+    this._sonethVolume       = 0.3;  // volume      → per-seat brightness scale
+    this._phenoOpacityFloor  = 0.0;  // Art. 47     → withholds a seat's NAME
     this._sonethPitchZ       = 0.5;  // pitchshift → species Z oscillation amplitude
     this._sonethTimeScale    = 0.3;  // timedilation → orbit speed multiplier (0=fast, 1=slow)
     this._sonethHarmonicLiss = 0.5;  // harmonicrich → lissajous curve complexity
@@ -343,7 +445,22 @@ class ParliamentStage extends BaseThreeJsModule {
     this.speciesHalos      = [];
     this.speciesMeshes     = [];
     this.speciesSolidMats  = [];
+    this.speciesLabels     = [];
+    this.seatOccupant      = [];
+    // Per-seat gain. Every body used to take its brightness from the same two
+    // numbers and no other, so five objects lit and dimmed as one — which is
+    // most of why the stage read as uniformly, and too, bright.
+    this.seatGain          = [0.82, 0.70, 0.95, 1.0, 0.62];
+    this.seatEnv           = [0, 0, 0, 0, 0];
     this.speciesOrbitAngle = SPECIES_ANGLES.slice();
+
+    // The roster, fetched once. 572 species across five taxa — the same file
+    // the Cámara Fenológica reads, so the two modules name the same forest.
+    this._roster = null;
+    fetch(ROSTER_URL, { cache: "force-cache" })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((j) => { if (j && !this.destroyed) this._roster = j; })
+      .catch(() => { /* the fallback seats stand */ });
 
     const geometries = [
       new THREE.IcosahedronGeometry(0.38, 1),               // Ara macao   CR
@@ -389,6 +506,17 @@ class ParliamentStage extends BaseThreeJsModule {
       this.speciesHalos.push(halo);
       this.speciesSolidMats.push(solidMat);
 
+      // Who is in the seat. Sits beside the body rather than on it, and is
+      // redrawn in place when the seat changes hands — a new CanvasTexture per
+      // change would leak one per occupancy.
+      const occ = FALLBACK_SEATS[i];
+      const label = makeLabelSprite(occ.c, phos ? PHOSPHOR : AMBER, occ.s);
+      label.position.set(0, -1.15, 0);
+      label.scale.set(2.6, 0.65, 1);
+      group.add(label);
+      this.speciesLabels.push(label);
+      this.seatOccupant.push(occ);
+
       const a = SPECIES_ANGLES[i];
       group.position.set(Math.cos(a) * SPECIES_R, Math.sin(a) * SPECIES_R, 0);
 
@@ -413,49 +541,130 @@ class ParliamentStage extends BaseThreeJsModule {
 
   // ─── 8 eDNA ORBITAL NODES ──────────────────────────────────────────────────
   buildEdnaNodes() {
-    this.ednaGroups     = [];
-    this.ednaMeshes     = [];
-    this.ednaOrbitAngle = EDNA_ANGLES.slice();
-    this.ednaOrbitSpeed = EDNA_ANGLES.map((_, i) => 0.003 + i * 0.0004);
+    // ── The four bancadas, at their own places on the year ──────────────
+    // Eight free-orbiting regions become four fixed calendar positions. They do
+    // NOT orbit: a season is somewhere on the ring, and a marker that wanders
+    // off its own month is not a calendar. What moves here is the cursor
+    // between them, and how each one lights when the year reaches it.
+    this.seasonGroups = [];
+    this.seasonMeshes = [];
+    this.seasonLabels = [];
+    this.seasonArcs   = [];
 
-    const ednaGeos = [
-      new THREE.BoxGeometry(0.35, 0.35, 0.35),
-      new THREE.CylinderGeometry(0, 0.28, 0.5, 5),
-      new THREE.CapsuleGeometry(0.12, 0.28, 4, 8),
-      new THREE.SphereGeometry(0.22, 8, 4),
-      new THREE.BoxGeometry(0.4, 0.2, 0.4),
-      new THREE.OctahedronGeometry(0.28, 0),
-      new THREE.CylinderGeometry(0.22, 0.22, 0.35, 6),
-      new THREE.TorusGeometry(0.2, 0.06, 6, 12),
+    const seasonGeos = [
+      new THREE.OctahedronGeometry(0.30, 0),                 // seca — hard, faceted
+      new THREE.CapsuleGeometry(0.13, 0.30, 4, 8),           // 1as lluvias — a drop
+      new THREE.BoxGeometry(0.36, 0.22, 0.36),               // medio seco — flat
+      new THREE.TorusGeometry(0.22, 0.07, 6, 14),            // 2as lluvias — a cycle
     ];
 
-    for (let i = 0; i < 8; i++) {
+    SEASONS.forEach((sn, i) => {
       const group = new THREE.Group();
-      const mat = new THREE.MeshBasicMaterial({ color: AMBER, wireframe: true, transparent: true, opacity: 0.55 });
-      const mesh = new THREE.Mesh(ednaGeos[i], mat);
+      const mat = new THREE.MeshBasicMaterial({
+        color: AMBER, wireframe: true, transparent: true, opacity: 0.35,
+      });
+      const mesh = new THREE.Mesh(seasonGeos[i], mat);
       group.add(mesh);
 
-      const chSize = 0.38;
-      const chPts = [
-        new THREE.Vector3(-chSize, 0, 0), new THREE.Vector3(chSize, 0, 0),
-        new THREE.Vector3(0, -chSize, 0), new THREE.Vector3(0, chSize, 0),
-        new THREE.Vector3(0, 0, -chSize), new THREE.Vector3(0, 0, chSize),
-      ];
+      const chSize = 0.34;
       group.add(new THREE.LineSegments(
-        new THREE.BufferGeometry().setFromPoints(chPts),
-        new THREE.LineBasicMaterial({ color: AMBER_DIM, transparent: true, opacity: 0.4 })
+        new THREE.BufferGeometry().setFromPoints([
+          new THREE.Vector3(-chSize, 0, 0), new THREE.Vector3(chSize, 0, 0),
+          new THREE.Vector3(0, -chSize, 0), new THREE.Vector3(0, chSize, 0),
+        ]),
+        new THREE.LineBasicMaterial({ color: AMBER_DIM, transparent: true, opacity: 0.30 })
       ));
 
-      const orbitRing = makeCircle(0.5, 32, AMBER_DIM, 0.15);
-      orbitRing.rotation.x = Math.PI / 2;
-      group.add(orbitRing);
+      const mid = seasonMidAngle(sn);
+      group.position.set(Math.cos(mid) * YEAR_R, Math.sin(mid) * YEAR_R, 0);
 
-      const a = EDNA_ANGLES[i];
-      group.position.set(Math.cos(a) * EDNA_R, Math.sin(a) * EDNA_R, 0);
+      // The season's own extent, drawn as an arc of the year ring. This is the
+      // information the eight region nodes could never carry: how LONG each
+      // bench sits. Seca is 121 days, medio seco 92 — and now you can see it.
+      const span = sn.d1 >= sn.d0 ? (sn.d1 - sn.d0) : (365 - sn.d0 + sn.d1);
+      const arcPts = [];
+      for (let k = 0; k <= 40; k++) {
+        const ang = doyAngle(sn.d0 + (span * k) / 40);
+        arcPts.push(new THREE.Vector3(
+          Math.cos(ang) * (YEAR_R + 0.75), Math.sin(ang) * (YEAR_R + 0.75), 0));
+      }
+      const arc = new THREE.Line(
+        new THREE.BufferGeometry().setFromPoints(arcPts),
+        new THREE.LineBasicMaterial({ color: AMBER_DIM, transparent: true, opacity: 0.22 })
+      );
+      this.scene.add(arc);
+      this.seasonArcs.push(arc);
+
+      // The bench's name and which taxa hold its escaños.
+      const label = makeLabelSprite(sn.label, AMBER_DIM, sn.taxa);
+      label.position.set(
+        Math.cos(mid) * (YEAR_R + 1.9), Math.sin(mid) * (YEAR_R + 1.9), 0);
+      this.scene.add(label);
+      this.seasonLabels.push(label);
 
       this.scene.add(group);
-      this.ednaGroups.push(group);
-      this.ednaMeshes.push(mesh);
+      this.seasonGroups.push(group);
+      this.seasonMeshes.push(mesh);
+    });
+
+    // The cursor: where the ring actually stands today. One mark, on the year
+    // ring itself, so the four benches are read against it rather than in the
+    // abstract.
+    const cur = new THREE.Line(
+      new THREE.BufferGeometry().setFromPoints([
+        new THREE.Vector3(0, 0, 0), new THREE.Vector3(0, 1.1, 0)]),
+      new THREE.LineBasicMaterial({ color: PHOSPHOR, transparent: true, opacity: 0.8 })
+    );
+    this._yearCursor = new THREE.Group();
+    this._yearCursor.add(cur);
+    this.scene.add(this._yearCursor);
+
+    // The fungi lines below still index this array; four entries now, and the
+    // connection builder wraps against its length rather than a hardcoded 8.
+    this.ednaGroups = this.seasonGroups;
+    this.ednaMeshes = this.seasonMeshes;
+  }
+
+  // ─── Seats change hands ────────────────────────────────────────────────────
+  //
+  // A seat whose presence has fallen away is VACATED and taken by another
+  // species of the same taxon. That is what makes these five bodies a chamber
+  // rather than five fixed logos: the roster is 572 long and the floor holds
+  // five, so who is sitting is a fact about today and not about the build.
+  //
+  // Seat 3 is never re-assigned — Article 46, the howler's alert protocol.
+  //
+  // The opacity clause applies to the NAME, not to the body. A veiled occupant
+  // still holds its seat, still orbits and still counts toward the chamber; what
+  // is withheld is which species it is. That is the same refusal the year ring
+  // and the laser already make, and the reason it is a name and not a removal:
+  // absence stays legible as absence.
+  _reseat(i, floorOp) {
+    if (i === PHOSPHOR_SPECIES) return;
+    const taxon = SEAT_TAXA[i];
+    const pool = (this._roster && this._roster[taxon]) || null;
+    const occ = pool && pool.length
+      ? pool[Math.floor(Math.random() * pool.length)]
+      : FALLBACK_SEATS[i];
+    this.seatOccupant[i] = occ;
+    this._drawSeatLabel(i, floorOp);
+  }
+
+  _drawSeatLabel(i, floorOp) {
+    const spr = this.speciesLabels[i];
+    if (!spr) return;
+    const occ = this.seatOccupant[i] || FALLBACK_SEATS[i];
+    const phos = i === PHOSPHOR_SPECIES;
+    // Deterministic per name, so a species is veiled consistently rather than
+    // flickering between named and withheld from one frame to the next.
+    let h = 0;
+    const key = String(occ.s || "");
+    for (let k = 0; k < key.length; k++) h = (h * 31 + key.charCodeAt(k)) % 997;
+    const veiled = !phos && (floorOp > 0.02) && ((h / 997) < floorOp);
+    if (veiled) {
+      drawLabelSprite(spr, "· · · · ·", AMBER_DIM, "reservado");
+    } else {
+      drawLabelSprite(spr, occ.c || occ.s, phos ? PHOSPHOR : AMBER, occ.s);
     }
   }
 
@@ -496,11 +705,14 @@ class ParliamentStage extends BaseThreeJsModule {
     this._fungiPositions = positions;
     this.scene.add(this._fungiLines);
 
+    // Each seat is tied to the two benches nearest it on the ring. The pool is
+    // the four seasons now rather than eight regions, so the index is taken
+    // from SEASONS' own angles and the two picks can no longer collide.
     this._fungiConnections = [];
     for (let si = 0; si < 5; si++) {
       const sa    = SPECIES_ANGLES[si];
-      const dists = EDNA_ANGLES.map((ea, ei) => ({
-        ei, dist: Math.abs(((ea - sa + Math.PI * 3) % (Math.PI * 2)) - Math.PI),
+      const dists = SEASONS.map((sn, ei) => ({
+        ei, dist: Math.abs(((seasonMidAngle(sn) - sa + Math.PI * 3) % (Math.PI * 2)) - Math.PI),
       }));
       dists.sort((a, b) => a.dist - b.dist);
       this._fungiConnections.push(dists[0].ei, dists[1].ei);
@@ -667,8 +879,22 @@ class ParliamentStage extends BaseThreeJsModule {
       grp.rotation.x += 0.005 + sp.activity * 0.115;
       grp.rotation.y += 0.007 + sp.activity * 0.08;
 
-      // Wireframe: fully transparent at presence=0, fully bright at presence=1
-      wfm.material.opacity = sp.presence;
+      // ── Brightness, per seat ────────────────────────────────────────────
+      //
+      // This was `wfm.material.opacity = sp.presence` and an emissive that ran
+      // to 3.0 — five bodies taking their light from one number each, at full
+      // scale, with nothing on the surface able to dim them. They read as five
+      // identical lamps.
+      //
+      // Three changes. It is scaled by the ENGINE's own level, so Master Amp
+      // and Master Vol reach the stage like they reach every other module; it
+      // carries the seat's own gain, so no two seats are the same brightness at
+      // the same presence; and the ceiling comes down — 0.78 rather than 1.0 on
+      // the wireframe, 1.5 rather than 3.0 on the core.
+      const lvl = (0.45 + (this._sonethMasterAmp ?? 0.7) * 0.75)
+                * (0.55 + (this._sonethVolume ?? 0.3) * 0.9);
+      const gain = this.seatGain[i];
+      wfm.material.opacity = Math.min(0.78, sp.presence * gain * lvl * 0.9);
       // Color: dim (dormant) → bright (active) with smooth blend. The howler
       // climbs the same three steps on its own phosphor ramp, so it reads as
       // the same state machine in a different substance — not as a node stuck
@@ -683,17 +909,56 @@ class ParliamentStage extends BaseThreeJsModule {
           : ramp[0];
       wfm.material.color.setHex(wireHex);
 
-      // Solid core: very visible glow at high presence
-      sdm.emissiveIntensity = sp.presence * 2.5 + this._smoothConsensus * 0.5;
-      sdm.opacity           = 0.05 + sp.presence * 0.60;
+      // Solid core. Same three factors, same lowered ceiling.
+      sdm.emissiveIntensity = Math.min(1.5,
+        (sp.presence * 1.35 + this._smoothConsensus * 0.3) * gain * lvl);
+      sdm.opacity           = Math.min(0.5, (0.04 + sp.presence * 0.42) * gain * lvl);
 
-      // Scale: dramatic range — presence 0 → 0.25 (tiny), presence 1 → 2.2 (large)
-      // Plus activity pulse that stretches the shape further
+      // ── Rhythm ──────────────────────────────────────────────────────────
+      //
+      // The pulse was a sine at a rate derived from the species' nominal
+      // frequency: five continuous breaths, none of them an event, and all five
+      // running whether or not the engine was making a sound.
+      //
+      // Each seat answers ONE VOICE of the engine now — pad, dust, perc, drone,
+      // kick, one each and no repeats — through the per-voice onsets SC
+      // broadcasts on /voice/*. So the chamber has five different rhythms
+      // because the engine has five different rhythms: the perc seat strikes,
+      // the drone seat swells, the kick seat thumps once a bar. The sine
+      // survives underneath at a fraction of its old depth, so a silent engine
+      // still breathes rather than freezing.
+      const va = (typeof window !== "undefined") ? window.__scAudio : null;
+      const vEnv = (va && va.voices && va.voices[SEAT_VOICE[i]])
+        ? (va.voices[SEAT_VOICE[i]].env || 0) : 0;
+      // Attack fast, release slow — an onset should arrive on the frame it
+      // happened and leave over half a second, which is what makes it read as
+      // a strike rather than as a level.
+      this.seatEnv[i] += (vEnv - this.seatEnv[i]) * (vEnv > this.seatEnv[i] ? 0.55 : 0.06);
       const freq      = sp.freq || 440;
       const pulseRate = 0.5 + ((freq - 220) / 660) * 2;
-      const pulse     = 0.5 + Math.sin(elapsed * pulseRate * Math.PI * 2) * 0.5;
-      const scale     = 0.25 + sp.presence * 1.95 + pulse * sp.activity * 0.5;
+      const breath    = 0.5 + Math.sin(elapsed * pulseRate * Math.PI * 2) * 0.5;
+      const scale     = 0.25 + sp.presence * 1.6
+                      + breath * sp.activity * 0.18
+                      + this.seatEnv[i] * (0.55 + sp.activity * 0.7);
       grp.scale.setScalar(scale);
+
+      // ── Who is sitting ──────────────────────────────────────────────────
+      // Checked once a second, not per frame: a seat changing hands is an event
+      // in the chamber and should be legible as one, and re-drawing a canvas
+      // texture 60 times a second to find out nothing changed is waste.
+      const floorOp = this._phenoOpacityFloor ?? 0;
+      if (elapsed - (this._seatCheckAt ?? -9) > 1.0) {
+        if (i === 4) this._seatCheckAt = elapsed;
+        if (sp.presence < SEAT_VACATE) this._reseat(i, floorOp);
+        else if (floorOp !== this._seatFloorWas) this._drawSeatLabel(i, floorOp);
+      }
+      if (i === 4) this._seatFloorWas = floorOp;
+      // The name fades with its occupant, one step behind the body so it is
+      // never brighter than what it names.
+      if (this.speciesLabels[i]) {
+        this.speciesLabels[i].material.opacity =
+          Math.min(0.9, 0.12 + sp.presence * 0.75 * lvl);
+      }
 
       // Halo: full-range opacity and size from activity + presence
       this.speciesHalos[i].material.opacity = sp.activity * 0.9 + this._smoothTurbulence * 0.15;
@@ -724,25 +989,60 @@ class ParliamentStage extends BaseThreeJsModule {
       this._speciesConnLines.material.opacity = Math.pow(maxPairActivity, 0.6) * 0.75;
     }
 
-    // ── eDNA nodes ────────────────────────────────────────────────────────
-    for (let i = 0; i < 8; i++) {
-      const ed  = state ? state.edna[i] : { biodiversity: 0.5, validation: 0.5 };
-      const grp = this.ednaGroups[i];
-      const msh = this.ednaMeshes[i];
+    // ── The four bancadas ─────────────────────────────────────────────────
+    // Read against the ring's own cursor. /pheno/cursor carries doy, temporada,
+    // clips, gap and quorum; parliamentEntry publishes it as __phenoCursor. A
+    // stale reading (SuperCollider not running) leaves the benches at rest
+    // rather than pinning them wherever the last frame happened to be.
+    const cursor = (typeof window !== "undefined") ? window.__phenoCursor : null;
+    const cursorLive = !!cursor && (performance.now() - (cursor.at || 0) < 20000);
+    const doy = cursorLive ? cursor.doy : -1;
+    const quorum = cursorLive ? (cursor.quorum || 0) : 0.5;
 
-      this.ednaOrbitAngle[i] += this.ednaOrbitSpeed[i] * (0.7 + ed.validation * 0.6);
-      const a  = this.ednaOrbitAngle[i];
-      const cz = Math.sin(elapsed * 0.25 + i * 0.7) * 1.8;
-      grp.position.set(Math.cos(a) * EDNA_R, Math.sin(a) * EDNA_R, cz);
+    if (this._yearCursor) {
+      // The mark rides the ring at today's angle. Hidden when nothing is
+      // driving it: a cursor frozen at day 1 would be a lie, not a default.
+      this._yearCursor.visible = cursorLive;
+      if (cursorLive) {
+        const ca = doyAngle(doy);
+        this._yearCursor.position.set(Math.cos(ca) * YEAR_R, Math.sin(ca) * YEAR_R, 0);
+        this._yearCursor.rotation.z = ca - Math.PI / 2;
+      }
+    }
 
-      grp.rotation.y += 0.008 + ed.biodiversity * 0.01;
-      grp.rotation.z += 0.005;
+    for (let i = 0; i < SEASONS.length; i++) {
+      const sn  = SEASONS[i];
+      const grp = this.seasonGroups[i];
+      const msh = this.seasonMeshes[i];
+      const sitting = cursorLive && inSeason(sn, doy);
 
-      // High biodiversity nodes are brighter and larger
-      msh.material.opacity = 0.20 + ed.biodiversity * 0.60;
-      msh.material.color.setHex(ed.validation > 0.6 ? AMBER_BRIGHT : AMBER);
-      const ednaScale = 0.8 + ed.biodiversity * 0.5;
-      grp.scale.setScalar(ednaScale);
+      // A bench in session leans forward out of the plane and turns; the other
+      // three hold still. Stillness is the information — three of the four are
+      // not sitting, and a ring where everything moves cannot say that.
+      const targetZ = sitting ? 1.4 : 0;
+      grp.position.z += (targetZ - grp.position.z) * 0.04;
+      grp.rotation.y += sitting ? 0.012 : 0.0015;
+      grp.rotation.z += sitting ? 0.008 : 0.0008;
+
+      // Brightness is occupancy, not decoration: the bench in session takes the
+      // quorum the ring is reporting, the rest sit at a floor that says they
+      // exist without claiming they are speaking.
+      const op = sitting ? (0.30 + quorum * 0.55) : 0.14;
+      msh.material.opacity += (op - msh.material.opacity) * 0.06;
+      msh.material.color.setHex(sitting ? AMBER_BRIGHT : AMBER_DIM);
+      const sc = sitting ? (0.95 + quorum * 0.55) : 0.7;
+      grp.scale.setScalar(grp.scale.x + (sc - grp.scale.x) * 0.05);
+
+      if (this.seasonArcs[i]) {
+        const ao = sitting ? 0.55 : 0.16;
+        this.seasonArcs[i].material.opacity += (ao - this.seasonArcs[i].material.opacity) * 0.06;
+        this.seasonArcs[i].material.color.setHex(sitting ? AMBER_BRIGHT : AMBER_DIM);
+      }
+      if (this.seasonLabels[i]) {
+        const lo = sitting ? 0.92 : 0.30;
+        this.seasonLabels[i].material.opacity +=
+          (lo - this.seasonLabels[i].material.opacity) * 0.06;
+      }
     }
 
     // ── Fungi lines ───────────────────────────────────────────────────────

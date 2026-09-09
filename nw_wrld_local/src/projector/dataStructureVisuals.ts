@@ -753,11 +753,69 @@ export function mountTimeTravel(stageEl: HTMLElement, getLatestState: () => Parl
     };
     window.addEventListener("resize", onResize);
 
+    // ── La rampa · slot 4 only ────────────────────────────────────────────
+    //
+    // This slot IS the drone, and a drone that holds one filter setting for as
+    // long as it is on screen has no interior. The bus that opens and closes
+    // it is already there and already reaches \opalDrone — nothing in the
+    // SynthDef is touched — so what is missing is only somebody moving it.
+    //
+    // A 74 s triangle, up and down, around wherever the performer has left the
+    // fader. Slow on purpose: it should never be heard to START, only to have
+    // been somewhere else a minute ago. The period is deliberately not a round
+    // number and does not divide any tide arc, so the sweep and the swell drift
+    // through each other instead of locking.
+    //
+    // BASE, not absolute. `base` is the performer's own setting and the ramp is
+    // a deviation around it, so Filt Tilt still means what it means: move it
+    // and the whole sweep moves with it. Re-centred on a real gesture only —
+    // our own echoes come back on the same path and would otherwise walk the
+    // centre up the range by feeding themselves.
+    const RAMP_PERIOD_S = 74;
+    const RAMP_DEPTH = 0.30;
+    let rampBase = (window as unknown as { __sonethParams?: Record<string, number> })
+        .__sonethParams?.filtercutoff ?? 0.6;
+    let lastSent = -1;
+    const onUserFilt = (e: Event) => {
+        const t = e.target as HTMLInputElement | null;
+        if (t?.dataset?.osc === "/soneth/filtercutoff") {
+            const v = parseFloat(t.value);
+            if (isFinite(v)) rampBase = v;
+        }
+    };
+    document.addEventListener("input", onUserFilt, true);
+
+    const rampT0 = performance.now();
+    const rampTimer = setInterval(() => {
+        if (destroyed) return;
+        const phase = ((performance.now() - rampT0) / 1000 / RAMP_PERIOD_S) % 1;
+        // Triangle, not a sine: a sine spends most of its time at the turns,
+        // which on a filter reads as two held settings with a rush between
+        // them. A triangle passes through the whole range at one rate.
+        const tri = phase < 0.5 ? phase * 2 : 2 - phase * 2;   // 0→1→0
+        const v = Math.max(0, Math.min(1, rampBase + (tri - 0.5) * 2 * RAMP_DEPTH));
+        // 1/500 is below the resolution of the fader and of the ear; skipping
+        // those saves two thirds of the traffic on a slow sweep.
+        if (Math.abs(v - lastSent) < 0.002) return;
+        lastSent = v;
+        const send = (window as unknown as { __sendOscToSC?: (a: string, v: number) => void })
+            .__sendOscToSC;
+        if (typeof send === "function") send("/soneth/filtercutoff", v);
+    }, 250);
+
     return {
         name: "Time Travel", key: "4",
         destroy: () => {
             destroyed = true;
             cancelAnimationFrame(rafId);
+            clearInterval(rampTimer);
+            document.removeEventListener("input", onUserFilt, true);
+            // Hand the filter back where the performer left it. Leaving the
+            // engine wherever the sweep happened to be when the slot changed
+            // would make switching modules a hidden edit to the sound.
+            const send = (window as unknown as { __sendOscToSC?: (a: string, v: number) => void })
+                .__sendOscToSC;
+            if (typeof send === "function") send("/soneth/filtercutoff", rampBase);
             try { controls.dispose(); } catch { /* ignore */ }
             window.removeEventListener("resize", onResize);
             composer.dispose();

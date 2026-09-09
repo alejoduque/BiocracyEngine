@@ -369,17 +369,100 @@ const ZONE_COUNT = {
 const SEED_WORDS_A = ["biocracia", "parlamento", "micorriza", "fenología", "blockchain", "manakai", "bosque", "estrato", "frecuencia", "consenso"];
 const SEED_WORDS_B = ["sin-centro", "que-escucha", "subterráneo", "distribuido", "que-brota", "mineral", "pelágico", "que-vota", "interespecie", "que-germina"];
 
+// ── El lexicón, extraído del dossier ──────────────────────────────────
+//
+// Las frases ya no son un vocabulario general de "biocracia". Salen del
+// dossier del Módulo P — «El tránsito de una voz» — y de la bibliografía que
+// esa pieza cita: cada línea es una proposición que alguna de sus cuatro
+// figuras sostiene, redactada en el registro del propio documento.
+//
+// El reparto por zona no es decorativo. La zona es una altura del estrato, y
+// cada altura recibe el tramo de la máquina que le corresponde:
+//
+//   sky        la señal entre presencias — biofotón, Narby; el aullido que convoca
+//   mountain   el reloj lento, la RV Validada y su reducción euclidiana — Ascott
+//   forest     lo Vegetal: el parlamento sin cúpula — Latour, Simondon, Alouatta
+//   shore      el overlap buffer: el borde entre detectar y adjudicar — Seaman
+//   sea        la desintermediación y el circuito que no vuelve — Callon, Gabrys
+//   abyss      la cláusula de opacidad y el resto no inscribible — Glissant
+//   tectonic   la inscripción: BioToken, cadena comunitaria, dIAP — Fals Borda
+//   desierto   la endofísica y el imperativo de abrir opciones — Rössler, Foerster
+//   pantano    el conocimiento situado y el plan como recurso — Haraway, Suchman
+//   hielo      el registro como don y veneno — Bowker, Cakici, Huyghe/Parreno
+//
+// Minúscula y sin punto final, como las que había: son proposiciones, no
+// títulos, y el estrato las lee de paso.
 const LEXICON = {
-    sky: ["el aire es territorio compartido", "cada especie vota con su vuelo", "la atmósfera no reconoce fronteras", "respirar es la primera asamblea"],
-    mountain: ["la roca guarda el tiempo del parlamento", "cada estrato es un turno de palabra", "la cordillera recuerda antes que nosotros"],
-    forest: ["el bosque es un parlamento sin cúpula", "la raíz negocia lo que la hoja promete", "micorriza: la red vota antes que la especie", "hacer parientes con lo que no habla"],
-    shore: ["la orilla es el borde donde se escucha al otro", "ni tierra ni mar: frontera que delibera"],
-    sea: ["el mar disuelve la propiedad del sonido", "cada ola es un voto que no se cuenta dos veces", "lo pelágico no tiene territorio, tiene ruta"],
-    abyss: ["en el abismo la luz es una decisión rara", "lo que no vemos también legisla"],
-    tectonic: ["el subsuelo firma con presión, no con tinta", "la falla geológica es la memoria del consenso", "un bloque puede ser una acta de asamblea", "la blockchain imita la paciencia de la roca"],
-    desierto: ["el desierto mide el consenso en siglos", "poca agua, mucha memoria"],
-    pantano: ["el pantano no distingue entre especies fundadoras", "la niebla vota por abstención"],
-    hielo: ["el hielo archiva lo que el fuego olvida", "cada cristal es una cláusula"],
+    sky: [
+        "la señal entre presencias viaja como luz",
+        "el aullido del amanecer es el primer acto político",
+        "no se le da voz a la especie: se inscribe su presencia",
+        "el aire no reconoce el punto de paso obligado",
+        "lo seco digital acostado con lo húmedo vivo",
+    ],
+    mountain: [
+        "la realidad autorizada fija la naturaleza como objetos",
+        "por eso las aristas se curvan apenas",
+        "el reloj lento condiciona lo que el rápido decide",
+        "estado: la materia, la polis y la máquina en una palabra",
+        "cada estrato es un turno de palabra",
+    ],
+    forest: [
+        "el bosque es un parlamento sin cúpula",
+        "el bosque mismo es ya técnico",
+        "el parlamento de las cosas, extendido a lo vivo",
+        "la micorriza vota antes que la especie",
+        "escuchar no es extraer su legibilidad",
+    ],
+    shore: [
+        "el parlamento no vive en el disparo, vive en la demora",
+        "simular la acción antes de ejecutarla",
+        "detectar y adjudicar no son el mismo gesto",
+        "una retención que abre, no un veredicto que cierra",
+        "el presente cede a los tres segundos",
+    ],
+    sea: [
+        "el informe viaja al norte y nunca regresa",
+        "la conservación como extracción encubierta",
+        "el circuito extractivo es una línea abierta",
+        "el biocrático es un lazo cerrado que vuelve",
+        "sensar no emancipa si se vuelve otra máquina de legibilidad",
+    ],
+    abyss: [
+        "negarse a inscribir es un acto de figuración",
+        "opaco es un estado terminal de pleno derecho",
+        "lo que no vemos también legisla",
+        "donde el diagrama calla, la biocracia no gobierna de más",
+        "el resto opaco es la garantía del registro",
+    ],
+    tectonic: [
+        "un bloque puede ser un acta de asamblea",
+        "la cadena imita la paciencia de la roca",
+        "elegir la plataforma es una decisión constitucional",
+        "ser registro de verdad pasa a la cadena, validar al parlamento",
+        "una cadena sin gobierno reproduce la extracción",
+    ],
+    desierto: [
+        "no hay vista desde afuera: quien lee está dentro",
+        "obrar de modo que aumente el número de opciones",
+        "el sistema se mide por lo que abre, no por lo que clausura",
+        "sin marco externo, ninguna medida desde ninguna parte",
+        "poca agua, mucha memoria",
+    ],
+    pantano: [
+        "todo conocimiento es parcial y encarnado",
+        "el truco de dios: una objetividad sin lugar",
+        "los planes son recursos para la acción, no su determinación",
+        "un sistema está mejor si el otro lo está",
+        "la niebla vota por abstención",
+    ],
+    hielo: [
+        "los datos son a la vez don y veneno",
+        "medir produce experiencia, y también gobierno",
+        "constituir un sujeto en lugar de describirlo",
+        "cada cristal es una cláusula",
+        "el bosque nunca se reduce a un número canjeable",
+    ],
 };
 
 // ── especies: cada una dibuja pixel-art en un canvas local pequeño ──────

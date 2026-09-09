@@ -484,6 +484,16 @@ function connectControlWS() {
 
         // 2. Apply to the calendar instance (no-op if slot P not mounted)
         applyPhenoControl(key, v);
+
+        // 3. Article 47 also reaches slot 0. Its five seats carry the names of
+        //    real species now, so the opacity floor has something on that stage
+        //    to withhold — the name, never the body: a veiled occupant still
+        //    holds its seat and still counts toward the chamber.
+        if (key === "opacityFloor") {
+          const st = getActiveThreeStage() as unknown as
+            { _phenoOpacityFloor?: number; destroyed?: boolean } | null;
+          if (st && !st.destroyed) st._phenoOpacityFloor = v;
+        }
       }
 
       // Cámara (slot C) echo. Same bidirectional triple as /pheno/: SC owns
@@ -796,7 +806,7 @@ function cadenceLabel(addr: string, n: number): string | null {
     case "/cadence/padvoices":  return `${Math.round(lin(1, 4))}`;
     // Both exponential, both multipliers on something the bed already has —
     // padPitch on the drone root, padMotion on every LFO in the voice.
-    case "/cadence/padpitch":   return `${exp(0.125, 1.0).toFixed(2)}x`;
+    case "/cadence/padpitch":   return `${exp(0.40, 1.0).toFixed(2)}x`;
     case "/cadence/padmotion":  return `${exp(0.1, 4.0).toFixed(2)}x`;
     // A FLOOR on the gap, not a period — ~strikeBell refuses anything closer
     // together than this, and the chain decides everything above it.
@@ -1445,6 +1455,7 @@ async function init() {
         case "volume":
           // Volume → point light intensity (scene brightness, 0.5→2.5)
           if (s._ptLight) s._ptLight.intensity = 0.5 + v * 2.0;
+          s._sonethVolume = v;
           break;
         case "pitchshift":
           // Pitch → species Z oscillation amplitude factor (stored, read in updateStage)
@@ -1490,6 +1501,10 @@ async function init() {
         case "masteramp":
           // Master amp → bloom strength (overall glow intensity)
           if (s._bloom) s._bloom.strength = Math.min(2.5, 0.2 + v * 1.5);
+          // …and the five seats' own brightness. They used to take their light
+          // from presence alone, at full scale, so nothing on either surface
+          // could dim the stage.
+          s._sonethMasterAmp = v;
           break;
         case "filtercutoff":
           // Filter cutoff → bloom radius (tight = sharp halo, wide = diffuse)

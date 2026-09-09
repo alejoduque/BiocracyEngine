@@ -1260,7 +1260,22 @@ s.doWhenBooted({
         // cycle until a voice finally freed itself ~89 s later. The knob set
         // the spacing but padMax was what actually gated the layer, so only
         // the level fader appeared to do anything.
-        arg out=0, gate=1, freq=110, amp=0.18, tempo=1.0, ratio=1.0, pan=0,
+        // motion, NOT tempo, for the LFOs.
+        //
+        // padMotion was passed as \tempo, and tempo DIVIDES this voice's
+        // envelope — [8,28,35,18] / tempo. So the knob labelled PAD MOTION was
+        // silently also the knob for the fades:
+        //
+        //   padMotion 0.5  ->  173 s envelope, 15.5 s attack
+        //   padMotion 1.0  ->   86 s            7.8 s   (what it was tuned to)
+        //   padMotion 4.0  ->   22 s            1.9 s   a bed pecking
+        //
+        // The spawn site's own comment says a bed must not track the beat and
+        // that its only time control is timeDilation — and then handed the
+        // envelope to a second knob anyway. They are two arguments now: tempo
+        // stays at 1.0 and owns the envelope, motion owns every LFO. The fades
+        // are exactly what they were at any motion setting.
+        arg out=0, gate=1, freq=110, amp=0.18, tempo=1.0, motion=1.0, ratio=1.0, pan=0,
             envScale=1.0,
             masterVolBus=(-1), pitchBus=(-1), timeBus=(-1), spectralBus=(-1),
             spatialBus=(-1), textureBus=(-1), atmosphereBus=(-1), memoryBus=(-1),
@@ -1294,12 +1309,25 @@ s.doWhenBooted({
         // thing in the layer, and the point of the control is where the pad
         // sits, not that it can be made to lurch.
         var padPitch = Lag.kr(
-            Select.kr(padPitchBus >= 0, [0.5, In.kr(padPitchBus, 1)]).clip(0.125, 1.0), 4.0);
-        // Floor 22 -> 18 Hz. At the bottom of the new padPitch range most
-        // voices were landing on the clip, so the control stopped doing
-        // anything across its lowest third — it was pinned, not quiet.
+            Select.kr(padPitchBus >= 0, [0.6, In.kr(padPitchBus, 1)]).clip(0.40, 1.0), 4.0);
+        // MEASURED, and the answer was the spec, not the floor.
+        //
+        // baseFreq is freq(55) x ratio x padPitch, and the ratio set spans
+        // 0.5..2.25. At padPitch 0.125 the root alone is 6.9 Hz, so EVERY voice
+        // landed on the clip and the entire bottom of the fader produced one
+        // identical sound. 14 of the 45 ratio/position combinations were pinned:
+        //
+        //   padPitch 0.125   every ratio pinned
+        //   padPitch 0.25    5 of 9 pinned
+        //   padPitch 0.50    1 of 9 pinned
+        //
+        // Lowering the floor further does not help — 7 Hz is not a quieter
+        // note, it is no note. The spec now starts at 0.40 (root 22 Hz, and
+        // 11 Hz on the lowest ratio, which fades into the sub rather than
+        // sitting on a clip) and the floor comes down to 14 to meet it. The
+        // whole travel of the fader now moves the sound.
         var baseFreq = (freq * ratio * padPitch
-            * (pShift.clip(-24, 24) / 12).midiratio).clip(18, 900);
+            * (pShift.clip(-24, 24) / 12).midiratio).clip(14, 900);
 
         // ── Long evolving envelope (8s atk / 28s sustain / 18s release)
         // tDil stretches all stages so the timeDilation knob makes this
@@ -1321,8 +1349,8 @@ s.doWhenBooted({
             gate, doneAction: 2);
 
         // Slow time reference for filter and formant drift
-        var time   = SinOsc.kr(0.018 * tempo);
-        var time2  = SinOsc.kr(0.007 * tempo + 0.31);
+        var time   = SinOsc.kr(0.018 * motion);
+        var time2  = SinOsc.kr(0.007 * motion + 0.31);
 
         // ── Warm analog oscillator body ──────────────────────────────────────
         // Four detuned Saws + two Pulses with slowly wandering pulse-width
@@ -1350,8 +1378,8 @@ s.doWhenBooted({
         // ── RLPF with dual slow-rate wobble LFOs ─────────────────────────────
         // cutoff fader sets the global tilt; wobble oscillates it so the
         // filter is always in gentle motion rather than clamped to a value.
-        var wobbleCut = SinOsc.kr([0.063, 0.041] * tempo).range(0.85, 1.18);
-        var wobbleRes = SinOsc.kr([0.037, 0.027] * tempo).range(0.30, 0.65);
+        var wobbleCut = SinOsc.kr([0.063, 0.041] * motion).range(0.85, 1.18);
+        var wobbleRes = SinOsc.kr([0.037, 0.027] * motion).range(0.30, 0.65);
         var fCutHz = (filt.clip(200, 3500)
             * Lag.kr(cutoff, dFade.clip(0.5, 6)).linexp(0, 1, 0.42, 2.0)
             + (time * 480)
@@ -1368,14 +1396,14 @@ s.doWhenBooted({
         // ── Dust crackle texture ──────────────────────────────────────────────
         // nLevel controls crackle density — near-zero at default, audible
         // as fine rice-paper surface texture when pushed.
-        var crackle = Dust.ar([0.4, 0.55] * tempo)
-            * Decay.ar(Dust.ar([0.8, 1.1] * tempo), 0.04)
+        var crackle = Dust.ar([0.4, 0.55] * motion)
+            * Decay.ar(Dust.ar([0.8, 1.1] * motion), 0.04)
             * nLevel.linlin(0, 0.5, 0.015, 0.06);
 
         // ── Slow stereo drift ─────────────────────────────────────────────────
         // Balance2 with a 0.03 Hz SinOsc slowly rotates the image rather than
         // placing the voice statically.  pan arg biases the centre position.
-        var panOsc = SinOsc.kr(0.031 * tempo) * 0.4 + pan.clip(-0.5, 0.5);
+        var panOsc = SinOsc.kr(0.031 * motion) * 0.4 + pan.clip(-0.5, 0.5);
         var sig = Balance2.ar(
             tapeSat + crackle[0],
             tapeSat + crackle[1],
