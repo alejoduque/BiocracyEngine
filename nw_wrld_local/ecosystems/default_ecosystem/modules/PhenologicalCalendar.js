@@ -775,7 +775,10 @@ class PhenologicalCalendar extends BaseThreeJsModule {
 
         // Pixel font: "Press Start 2P" if available, else fallback to monospace
         // We simulate 8-bit by drawing at integer pixel coords with wide tracking
-        ctx.font = "bold 52px 'Courier New', 'Lucida Console', monospace";
+        // 52 -> 64 on a 2048 canvas mapped to a 2.8-unit plane. The month
+        // names ring the calendar at its outer edge, which is the furthest
+        // text from a viewer and the first to go unreadable.
+        ctx.font = "bold 64px 'Courier New', 'Lucida Console', monospace";
         ctx.textAlign = "center";
         ctx.textBaseline = "middle";
         ctx.letterSpacing = "6px";
@@ -800,7 +803,7 @@ class PhenologicalCalendar extends BaseThreeJsModule {
         }
 
         // Cardinal day markers — smaller pixel font
-        ctx.font = "bold 30px 'Courier New', 'Lucida Console', monospace";
+        ctx.font = "bold 38px 'Courier New', 'Lucida Console', monospace";
         ctx.letterSpacing = "4px";
         ctx.fillStyle = "rgba(255,255,255,0.55)";
         const cardinals = [{ d: 1, r: 1110 }, { d: 91, r: 1110 }, { d: 182, r: 1110 }, { d: 274, r: 1110 }];
@@ -1093,9 +1096,14 @@ class PhenologicalCalendar extends BaseThreeJsModule {
        pieces of UI. Every rule below now derives from these four values,
        which makes "same typography in both columns" structural rather than
        a coincidence that drifts on the next edit. */
-    --ph-body:  calc(2px + 0.78vmin);   /* all running text, both columns */
-    --ph-label: calc(2px + 0.72vmin);   /* section captions, dimmed       */
-    --ph-emph:  calc(3px + 1.05vmin);   /* the few values that must lead  */
+    /* Up about a fifth across the whole scale. These are read at a distance,
+       off a projection, by someone standing at an instrument — not at desk
+       range. Raised together and only here, so the relative weights the
+       columns were designed with are untouched: the census still sits under
+       the running text and the lead values still lead. */
+    --ph-body:  calc(3px + 0.94vmin);   /* all running text, both columns */
+    --ph-label: calc(3px + 0.87vmin);   /* section captions, dimmed       */
+    --ph-emph:  calc(4px + 1.26vmin);   /* the few values that must lead  */
     --ph-lh: 1.15;
     position: absolute;
     top: 0; height: 100%;
@@ -1704,8 +1712,20 @@ class PhenologicalCalendar extends BaseThreeJsModule {
     // cursor, and the field thickens with the activity the calendar is
     // already computing. See _driveVortex.
     _buildVortex() {
-        const COUNT = 4200;   // reference uses 9500 over a whole page; this is
-                              // one panel among many and shares the frame.
+        // ── One dot is one seat ──────────────────────────────────────────
+        // 4200 points was a weather effect: too many to count, identical every
+        // day, and standing for nothing in particular. The field is a POOL now
+        // and only part of it is ever drawn — see _driveVortex, where the draw
+        // range comes from how many species are both past the quórum and
+        // sitting with the bancada in session.
+        //
+        // 1600 is the ceiling, not the count. DOTS_PER_SEAT is what one
+        // occupied seat is worth, so a bench of a dozen mammals reads as a
+        // couple of hundred points and the whole chamber as most of the pool.
+        // Sizing it this way means the number on screen is a QUANTITY the
+        // performer sets rather than a constant they can only fade.
+        const COUNT = 1600;
+        this._dotsPerSeat = 14;
         const pos    = new Float32Array(COUNT * 3);
         const radius = new Float32Array(COUNT);
         const angle  = new Float32Array(COUNT);
@@ -1736,7 +1756,14 @@ class PhenologicalCalendar extends BaseThreeJsModule {
             geo, mat, radius, angle, height, speed, count: COUNT,
             points: new THREE.Points(geo, mat),
             spin: 0,
+            // Eased, so calling a bench empties the chamber over a second or
+            // two instead of deleting two thirds of the image between frames.
+            drawn: COUNT * 0.5,
         };
+        // The pool is generated in random order, so a contiguous prefix is a
+        // uniform sample of the funnel — no sorting needed for setDrawRange to
+        // thin the field evenly rather than eating it from one side.
+        geo.setDrawRange(0, Math.round(this._vortex.drawn));
         // Scaled to sit inside the ring stack rather than around it — the
         // calendar is the subject and this is the air it turns in.
         this._vortex.points.scale.setScalar(1.15);
@@ -1772,47 +1799,88 @@ class PhenologicalCalendar extends BaseThreeJsModule {
         const v = this._vortex;
         if (!v) return;
 
-        // What the vortex is FOR: it reports the calendar's own state.
-        //   spin      follows the day cursor, so scrubbing the year turns it
-        //   density   the fraction of species active today — a busy day is a
-        //             thick field, a dormant one thins to almost nothing
-        //   pulse     the same strike the cursor head answers to
-        // _activeCounts is what the ring already computes each time the day
-        // changes: how many species of each taxon are past the activity
-        // threshold today. Summed and normalised against the roster, it is the
-        // calendar's own reading of how awake the year is right now.
-        const counts = this._activeCounts;
-        let active = 0.35;
-        if (counts) {
-            let n = 0;
-            for (const k in counts) n += counts[k];
-            const total = (this.species && this.species.length) || 60;
-            // Against the FULL roster, not half of it. Normalising to
-            // total*0.5 pinned the field at 1.0 on any ordinary day (99 of 99
-            // species active clamps immediately), which threw away the whole
-            // top of the range and made the vortex look identical in every
-            // season — the opposite of what binding it to phenology is for.
-            active = Math.max(0, Math.min(1, n / Math.max(1, total)));
-        }
-        const pulse  = this._pulseAmount ?? 0;
-        v.spin += dt * (0.22 + active * 0.5) * (1 + pulse * 1.5);
+        // ── What the vortex IS ───────────────────────────────────────────
+        //
+        // The chamber's floor, seen from inside. One dot is one occupied seat,
+        // so the two things a viewer can ask of it — how many, and how
+        // gathered — are answered by the two controls that decide exactly
+        // that:
+        //
+        //   BANCADA    who is sitting. "todas" seats the whole roster; call
+        //              one bench (Art. 43 §1) and only its taxa are in
+        //              session, so the field collapses to that bench's size.
+        //              This is the count.
+        //
+        //   CONSENSO   how gathered they are. High agreement draws the column
+        //              tight around the axis and slows its churn; low
+        //              agreement lets it fly wide and loose. Consensus also
+        //              widens the activity window upstream (setConsensus →
+        //              consensusWindow), so agreement raises the seat count as
+        //              well — a chamber that agrees is both fuller and more
+        //              coherent, which is the entire reading.
+        //
+        // Before this the count was a constant 4200 and only the opacity
+        // moved. It looked like weather because it was weather: nothing about
+        // it could be traced back to a decision anyone in the room had taken.
+        const seats = this._seatsInSession ?? 0;
+        const possible = Math.max(1, this._seatsPossible ?? 1);
+        const perSeat = this._dotsPerSeat ?? 14;
+        const wantDrawn = Math.max(0, Math.min(v.count, Math.round(seats * perSeat)));
+
+        // Eased toward the target rather than snapped: a bancada change is a
+        // motion of the chamber, not a cut.
+        v.drawn += (wantDrawn - v.drawn) * (1 - Math.pow(0.02, dt));
+        v.geo.setDrawRange(0, Math.max(0, Math.round(v.drawn)));
+
+        // Occupancy of the bench that is sitting — 1.0 when every species it
+        // could seat is past the quórum today. This is what used to be called
+        // `active`, but measured against the BENCH rather than the whole
+        // roster, so calling a small bancada no longer reads as a dead year.
+        const active = Math.max(0, Math.min(1, seats / possible));
+        const cons = Math.max(0, Math.min(1, this.consensus ?? 0.5));
+        const pulse = this._pulseAmount ?? 0;
+
+        // Agreement slows the churn as well as tightening it. A chamber that
+        // agrees turns as one body; a divided one shears against itself.
+        v.spin += dt * (0.22 + active * 0.5) * (1.35 - cons * 0.5) * (1 + pulse * 1.5);
+
+        // Cohesion: 0.45 of the funnel radius at full agreement, 1.25 at none.
+        // Applied to the stored radius rather than to the group scale so the
+        // funnel keeps its shape and only its spread changes — scaling the
+        // Points would shrink the dots too, and a seat should stay the same
+        // size whoever is in it.
+        const cohesion = 1.25 - cons * 0.80;
+        // Disagreement is also visible as jitter: at low consensus each point
+        // wanders off its own orbit, at high consensus they hold their lines.
+        const scatter = (1 - cons) * 0.22;
 
         const p = v.geo.attributes.position.array;
         const t = this._t;
-        for (let i = 0; i < v.count; i++) {
+        const n = Math.max(0, Math.round(v.drawn));
+        // Only the DRAWN prefix is integrated. The rest is not on screen, and
+        // moving 1600 points to show 200 was most of this function's cost.
+        for (let i = 0; i < n; i++) {
             const i3 = i * 3;
             const a = v.angle[i] + v.spin * v.speed[i] + v.height[i] * 0.5;
-            const r = v.radius[i] + Math.sin(t * 1.2 + i * 0.01) * 0.05
-                    + pulse * 0.18;
+            const r = (v.radius[i] + Math.sin(t * 1.2 + i * 0.01) * 0.05
+                    + pulse * 0.18) * cohesion
+                    + Math.sin(t * 0.9 + i * 0.37) * scatter;
             p[i3]     = Math.cos(a) * r;
-            p[i3 + 1] = v.height[i] + Math.sin(t + i * 0.02) * 0.03;
+            p[i3 + 1] = v.height[i] + Math.sin(t + i * 0.02) * 0.03
+                    + Math.cos(t * 0.7 + i * 0.21) * scatter * 0.5;
             p[i3 + 2] = Math.sin(a) * r;
         }
         v.geo.attributes.position.needsUpdate = true;
 
-        // The field thins with dormancy and brightens on a strike, so the
-        // calendar's quiet season is visibly quiet.
-        v.mat.opacity = (0.14 + active * 0.34) * (1 + pulse * 0.8);
+        // A seat is a discrete thing, so it holds its brightness rather than
+        // fading with the crowd — the QUANTITY is now the variable that
+        // carries dormancy, and dimming as well would say it twice. What is
+        // left here is the strike, and a small lift with agreement so a
+        // coherent chamber reads as lit rather than merely narrow.
+        v.mat.opacity = (0.34 + cons * 0.16) * (1 + pulse * 0.8);
+        // Small benches get slightly larger dots so a dozen seats still reads
+        // as a chamber and not as dust.
+        v.mat.size = 0.02 + (1 - Math.min(1, n / (v.count * 0.5))) * 0.014;
         if (this._spiralA) this._spiralA.line.rotation.y =  t * 0.15;
         if (this._spiralB) this._spiralB.line.rotation.y = -t * 0.12;
     }
@@ -1946,6 +2014,10 @@ class PhenologicalCalendar extends BaseThreeJsModule {
 
         // Bancada → set of taxon keys active for this season (Art. 43 §1)
         const bancadaTaxa = PhenologicalCalendar._bancadaTaxa(bancada);
+        // Occupied seats, and how many the bench could hold at all. The vortex
+        // is drawn from these two; see _driveVortex.
+        let seatsInSession = 0;
+        let seatsPossible = 0;
 
         for (const entry of this.speciesMeshes) {
             const inst = entry.mesh;
@@ -1956,6 +2028,8 @@ class PhenologicalCalendar extends BaseThreeJsModule {
             } else {
                 focused = (this.focusedTaxon === "all" || this.focusedTaxon === entry.taxon);
             }
+
+            if (focused) seatsPossible += entry.records.length;
 
             for (const r of entry.records) {
                 const s = r.rec;
@@ -2001,6 +2075,15 @@ class PhenologicalCalendar extends BaseThreeJsModule {
 
                 // Quórum sensible (Art. 45): respects the dynamic threshold
                 if (activity > threshold) activeCounts[entry.taxon]++;
+                // ── Escaños ocupados ─────────────────────────────────────
+                // activeCounts is the whole roster past the threshold. This is
+                // narrower and it is what the vortex is a picture of: a species
+                // that is BOTH past the quórum AND belongs to the bancada in
+                // session — i.e. a seat with somebody in it, right now. With
+                // "todas" that is the full chamber; call one bench and the
+                // count collapses to that bench, because the others are not
+                // sitting. `focused` already carries exactly that test.
+                if (focused && activity > threshold) seatsInSession++;
                 if (focused && activity > topActivity) {
                     topActivity = activity;
                     topRecord = s;
@@ -2014,6 +2097,8 @@ class PhenologicalCalendar extends BaseThreeJsModule {
             if (inst.instanceColor) inst.instanceColor.needsUpdate = true;
         }
         this._activeCounts = activeCounts;
+        this._seatsInSession = seatsInSession;
+        this._seatsPossible = seatsPossible;
         this._highlightSpecies = topRecord;
         this._activeSpeciesRec = topRecordAll;
         this._emitActiveSpecies();
@@ -2212,6 +2297,7 @@ ${focusBlock}
   <div class="ph-label">CENSO // CENSUS</div>
   <div class="ph-sub">${censusEntries.length} SPP</div>
 </div>
+<div class="ph-kv"><span class="ph-k">ESCAÑOS</span><span class="ph-v">${this._seatsInSession ?? 0} / ${this._seatsPossible ?? 0}</span></div>
 <div class="ph-census-body">${lines || '<div class="ph-quiet">-- NINGUNA ESPECIE --</div>'}</div>`;
         }
     }
