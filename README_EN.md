@@ -163,6 +163,8 @@ The audio engine natively supports 4-channel quadraphonic spatialization for a M
 
 All parameters are centrally registered in [0_parameters.scd](file:///Users/a/Documents/code/BiocracyEngine/0_parameters.scd#L31-L170). The table below details the unified control matrix binding MIDI CCs (Faderfox LC2), OSC routes, SuperCollider DSP ranges, and visual slot reactions.
 
+> **Cuaderno de Mandos** — interactive reference for all 62 controls: <https://claude.ai/code/artifact/785cc1af-01a5-48a5-b915-272e957e80e2>. Unlike the static table below, it gives **both** incidences of every control — which bus/SynthDef it moves in the sound, and which visual binding it touches, module by module — with search and family filtering. Regenerated from the registry on change; the table below is the snapshot checked into the repo.
+
 | Parameter | MIDI CC | OSC Address | SC DSP Range | Visual / Theoretical Function |
 | :--- | :---: | :--- | :--- | :--- |
 | **masterVolume** | `CC 0` | `/soneth/volume` | `0.01 .. 1.0` (lin) | Master output amplitude |

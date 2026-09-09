@@ -163,6 +163,8 @@ El motor soporta nativamente espacialización cuadrafónica de 4 canales para un
 
 Todos los parámetros están registrados de forma centralizada en [0_parameters.scd](file:///Users/a/Documents/code/BiocracyEngine/0_parameters.scd#L31-L170). La siguiente tabla detalla la matriz de control unificada que vincula MIDI CC (Faderfox LC2), rutas OSC, rangos DSP en SuperCollider y reacciones visuales.
 
+> **Cuaderno de Mandos** — referencia interactiva de los 62 controles: <https://claude.ai/code/artifact/785cc1af-01a5-48a5-b915-272e957e80e2>. A diferencia de la tabla estática de abajo, da las **dos** incidencias de cada mando — qué bus/SynthDef mueve en el sonido y qué liga visual toca, módulo por módulo — con búsqueda y filtro por familia. Se regenera del registro cuando cambia; la tabla siguiente es el snapshot que vive en el repositorio.
+
 | Parámetro | MIDI CC | Dirección OSC | Rango DSP SC | Función Visual / Teórica |
 | :--- | :---: | :--- | :--- | :--- |
 | **masterVolume** | `CC 0` | `/soneth/volume` | `0.01 .. 1.0` (lin) | Volumen master de salida |
