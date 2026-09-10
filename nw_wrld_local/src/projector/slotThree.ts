@@ -292,6 +292,16 @@ export type Picker = {
  */
 export function attachPicker(
     dom: HTMLElement, target: THREE.InstancedMesh,
+    /**
+     * The slot's OrbitControls, if it has them.
+     *
+     * Without this the picker and the controls both answer the same
+     * pointerdown on the same element: dragging a body orbits the camera AND
+     * moves the body, which feels like neither working. Handed in, the controls
+     * are switched off for the duration of a grab and back on when it ends, so
+     * a drag is a drag and a drag on empty space is still a look-around.
+     */
+    controls?: { enabled: boolean } | null,
 ): Picker {
     const ray = new THREE.Raycaster();
     // Instanced hit testing at this scale is cheap, but it is not free and it
@@ -311,9 +321,24 @@ export function attachPicker(
         ndc.y = -((e.clientY - r.top) / r.height) * 2 + 1;
         inside = true;
     };
-    const onLeave = () => { inside = false; hover = -1; grabbed = -1; };
-    const onDown = () => { if (hover >= 0) grabbed = hover; };
-    const onUp = () => { grabbed = -1; };
+    const onLeave = () => {
+        inside = false; hover = -1;
+        // Releasing the controls here too: a pointer that leaves the canvas
+        // mid-grab never fires pointerup on it, and the camera would stay
+        // locked for the rest of the session.
+        if (grabbed >= 0 && controls) controls.enabled = true;
+        grabbed = -1;
+    };
+    const onDown = () => {
+        if (hover >= 0) {
+            grabbed = hover;
+            if (controls) controls.enabled = false;
+        }
+    };
+    const onUp = () => {
+        if (grabbed >= 0 && controls) controls.enabled = true;
+        grabbed = -1;
+    };
 
     dom.addEventListener("pointermove", onMove);
     dom.addEventListener("pointerleave", onLeave);
@@ -340,6 +365,7 @@ export function attachPicker(
             ray.ray.intersectPlane(plane, point);
         },
         dispose() {
+            if (controls) controls.enabled = true;
             dom.removeEventListener("pointermove", onMove);
             dom.removeEventListener("pointerleave", onLeave);
             dom.removeEventListener("pointerdown", onDown);
@@ -564,6 +590,21 @@ export type Calm = {
      * it runs at the same speed on a 60 and a 144 Hz panel.
      */
     drift(i: number, axis: number): number;
+    /**
+     * The chain, read live. See ethLive.ts.
+     *
+     * Exposed through Calm rather than imported separately so a slot has ONE
+     * object to ask about the state of the world: what the bed is doing, what
+     * was struck, and what the chain just did. Three sources of motion, one
+     * handle.
+     */
+    readonly eth: {
+        value: number; priority: number; gas: number; calldata: number;
+        nonce: number; addr: number; index: number; entropy: number;
+        depth: number; parity: number; fullness: number; baseFee: number;
+        hash: number; period: number; pulse: number; blockPulse: number;
+        live: boolean;
+    };
     /** Advance. `slotKey` is the window mirror this slot reads, for bowl/china. */
     step(slotKey: string): void;
 };
@@ -581,13 +622,38 @@ export type Calm = {
  * `swell` is those two, heavily smoothed, and it is what continuous motion
  * scales with. Anything impulsive waits for `strike`.
  */
+/** What a slot reads before the chain has said anything, or if it never does. */
+const ETH_REST: Calm["eth"] = {
+    value: 0.4, priority: 0.5, gas: 0.4, calldata: 0.3, nonce: 0.5,
+    addr: 0.5, index: 0.2, entropy: 0.5, depth: 0.3,
+    parity: 0, fullness: 0.4, baseFee: 0.4, hash: 0.5, period: 0.35,
+    pulse: 0, blockPulse: 0, live: false,
+};
+
 export function makeCalm(): Calm {
     let drone = 0, pad = 0, strike = 0, halves = 1;
     let lastPercEnv = 0;
     let t = 0;
     let last = 0;
 
+    // Held so the getter costs nothing per read; ethLive mutates it in place.
+    const ethRef = (() => {
+        try {
+            return (window as unknown as { __ethLive?: Calm["eth"] }).__ethLive ?? ETH_REST;
+        } catch { return ETH_REST; }
+    })();
+
     return {
+        get eth() {
+            // Re-resolved lazily: the slot may mount before parliamentEntry has
+            // published, and a stale fallback would leave that slot reading a
+            // frozen chain for the rest of the session.
+            try {
+                const live = (window as unknown as { __ethLive?: Calm["eth"] }).__ethLive;
+                if (live) return live;
+            } catch { /* fall through */ }
+            return ethRef;
+        },
         get clock() { return t; },
         get drone() { return drone; },
         get pad() { return pad; },

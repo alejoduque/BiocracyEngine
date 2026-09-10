@@ -476,6 +476,27 @@ s.doWhenBooted({
         ~rhythmState[\blockBaseFee] = msg[4].asFloat;
         ~rhythmState[\blockAt]      = now;
         ~rhythmState[\txSinceBlock] = 0;
+
+        // ── A block is an EVENT, and the screens should know ─────────────
+        // The one thing on this chain that is periodic — roughly twelve
+        // seconds — and nothing in the browser has ever been able to see it.
+        // Sent as a discrete message so a module can mark the boundary rather
+        // than only watch a level, which is what makes a block a bar.
+        if(~visualsDest.notNil) {
+            ~visualsDest.sendMsg('/eth/block/live',
+                // 0 block parity — alternates 0/1, so a module can step
+                (~rhythmState[\blockNum] % 2).asFloat,
+                // 1 how full, 0..1 over 400 transactions
+                ((~rhythmState[\blockTxCount] / 400)).clip(0, 1),
+                // 2 base fee, log 0..1 over 0.1..500 gwei
+                ((~rhythmState[\blockBaseFee].max(0.01).log10 + 1) / 3.7).clip(0, 1),
+                // 3 the hash, folded to 0..1 — a stable per-block identity, the
+                //   same number for everyone who sees this block
+                ((hash.asString.asList.collect(_.digit ? 0).sum % 997) / 997).asFloat,
+                // 4 measured block period, 0..1 over 4..30 s
+                (((~rhythmState[\blockPeriod] ? 12) - 4) / 26).clip(0, 1)
+            );
+        };
         // Let the beat engine know a bar boundary just happened
     }, '/eth/block');
 
@@ -781,6 +802,46 @@ s.doWhenBooted({
             ~rhythmState[\entropy] = ~rhythmEntropy.value;
         };
         ~rhythmState[\lastTxAt] = now;
+
+        // ── The chain reaches the screen ─────────────────────────────────
+        //
+        // Everything above was already being measured and then kept: the
+        // browser only ever saw /bio/nutrient, /bio/density and /bio/consensus
+        // — three scalars derived from throughput — so the visual modules had
+        // no access to what any individual transaction actually WAS. That is
+        // why they invented their own numbers: five slots of Math.random()
+        // standing in for a chain that was right here.
+        //
+        // NORMALISED HERE, not in the browser. The ranges are a property of
+        // Ethereum, not of a visualisation, and putting the mapping in one
+        // place stops six modules each inventing their own idea of "a lot of
+        // gas". Value is log-compressed because it spans nine orders of
+        // magnitude; calldata likewise. addrSig stays raw — it is an identity,
+        // not a quantity, and its whole job is to be the SAME number for the
+        // same counterparty.
+        if(~visualsDest.notNil) {
+            ~visualsDest.sendMsg('/eth/live',
+                // 0 value, log 0..1 over 1e-6..100 ETH
+                ((value.max(1e-9).log10 + 6) / 8).clip(0, 1),
+                // 1 priority ratio over base fee, already 0..1
+                (~rhythmState[\priorityRatio] ? 0.5).clip(0, 1),
+                // 2 gas price, log 0..1 over 0.1..500 gwei
+                ((gasPrice.max(0.01).log10 + 1) / 3.7).clip(0, 1),
+                // 3 calldata length, log 0..1 over 0..64 kB
+                (((~rhythmState[\calldataLen] ? 0).max(1).log2) / 16).clip(0, 1),
+                // 4 nonce, wrapped — how many times this sender has acted, as
+                //   a phase rather than a magnitude, so it never saturates
+                (((~rhythmState[\nonce] ? 0) % 256) / 256).clip(0, 1),
+                // 5 addrSig 0..1 — a stable identity per counterparty
+                (((~rhythmState[\addrSig] ? 0) % 4096) / 4096).clip(0, 1),
+                // 6 position in the block, 0..1 over the first 64
+                (((~rhythmState[\txIndex] ? 0) / 64)).clip(0, 1),
+                // 7 entropy of recent inter-arrivals
+                (~rhythmState[\entropy] ? 0.5).clip(0, 1),
+                // 8 transactions so far in this block, 0..1 over 300
+                (((~rhythmState[\txSinceBlock] ? 0) / 300)).clip(0, 1)
+            );
+        };
     }, '/eth/tx_info');
 
     // Legacy handler for /tx [hash, value, gasPrice] — kept for backwards compat

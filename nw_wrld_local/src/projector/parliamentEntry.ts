@@ -14,6 +14,7 @@ import { initLaserTap } from "./laserTap";
 import { initPulsarPlot, pushRow, setPulsarSource, type PulsarSource } from "./pulsarPlot";
 import { startVizMotion } from "./vizMotion";
 import { publishScAudio, noteVoiceOnset, tickScAudio, type ScAudio } from "./scAudio";
+import { pushEthTx, pushEthBlock, tickEthLive, getEthLive } from "./ethLive";
 import { fetchSpeciesRoster, computeIUCNMults } from "./speciesFetcher";
 import * as THREE from "three";
 
@@ -307,6 +308,21 @@ function connectControlWS() {
       // to its synthetic fallback and no slot could reach the real sound at
       // all. Hooked up here, and published as a global so the six instrument
       // slots can each read their own register.
+      // ── The chain, per transaction and per block ────────────────────
+      // SuperCollider has measured all of this since ~rhythmState existed and
+      // never forwarded it: the browser saw three throughput scalars and the
+      // visual modules invented the rest with Math.random(). Normalised at the
+      // source — see 6_osc_handlers.scd — so nothing here has to know what a
+      // lot of gas is.
+      if (address === "/eth/live") {
+        pushEthTx(args as number[]);
+        return;
+      }
+      if (address === "/eth/block/live") {
+        pushEthBlock(args as number[]);
+        return;
+      }
+
       if (address === "/spectrum") {
         const bands = args.filter((a: unknown) => typeof a === "number") as number[];
         if (bands.length >= 8) {
@@ -1131,6 +1147,11 @@ async function init() {
   // Slots 4-9 are the six voices of the engine, one each, so this carries both
   // the continuous picture (bands, and three coarse registers) and the
   // discrete one (when each voice last fired, and how hard).
+
+  // The chain, for whoever wants it. Same contract as __scAudio and
+  // __vizMotion: one object, mutated in place, held by reference.
+  try { (window as unknown as { __ethLive?: unknown }).__ethLive = getEthLive(); }
+  catch { /* ignore */ }
 
   // Idle-driven auto-rotation + the shared vote-flash reader. Publishes
   // window.__vizMotion, which every slot reads for its own drift.
@@ -2394,6 +2415,9 @@ async function init() {
     // One place decays the voice envelopes; six slots reading their own would
     // drift apart from each other and from the sound.
     tickScAudio(0.016);
+    // The chain's own pulses decay here for the same reason: one place, so six
+    // modules cannot disagree about how long ago a transaction was.
+    tickEthLive();
     // Source priority: real engine output > microphone > synthetic fallback.
     // Same bin count as buildFftBins' default, so the renderer sees one shape.
     const bins = scBins(256) ?? micBins(256) ?? buildFftBins(currentState, elapsed);

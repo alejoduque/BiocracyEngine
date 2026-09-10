@@ -957,8 +957,12 @@ export function mountDynamicGraphs(stageEl: HTMLElement, getLatestState: () => P
 
     // Already perspective, but bolted at (0,0,500) with nothing to orbit and
     // no depth in the scene. Same treatment as the other five.
-    const camera = make3D(stageEl, 620);
-    const controls = attachOrbit(camera, renderer.domElement, 620);
+    // Sized from the stage like the other five, not a bare 620. The nodes
+    // spawn inside ±0.55·W and ±0.55·H, so a fixed distance frames the graph
+    // correctly at exactly one window size and crops or strands it at every
+    // other — which is what "off centred" looked like on a wide display.
+    const camera = make3D(stageEl, Math.max(W, H) * 0.95);
+    const controls = attachOrbit(camera, renderer.domElement, Math.max(W, H) * 0.95);
     // Instrumental identity. Six slots, six voices of the engine, no
     // repeats — this one is mountDynamicGraphs. The name was drawn into the scene as
     // a sprite; it is gone. The binding it announced is the real one and
@@ -995,12 +999,22 @@ export function mountDynamicGraphs(stageEl: HTMLElement, getLatestState: () => P
     // with a decorative z written on top afterwards.
     const NODE_R = 9;
     const nodes: { p: THREE.Vector3; v: THREE.Vector3 }[] = [];
-    activeRoster.forEach(() => {
+    // A golden-angle shell, not eight random points. Random placement gives a
+    // different — and sometimes clumped, sometimes lopsided — opening frame on
+    // every mount, which is most of why the graph could look off-centre before
+    // the springs had settled it. The spiral is even by construction, centred
+    // by construction, and the same every time, so what you see when the slot
+    // opens is the structure rather than the seed.
+    const PHI5 = Math.PI * (3 - Math.sqrt(5));
+    activeRoster.forEach((_sp, i) => {
+        const t = (i + 0.5) / activeRoster.length;
+        const r = Math.sqrt(t);
+        const a = i * PHI5;
         nodes.push({
             p: new THREE.Vector3(
-                (Math.random() - 0.5) * W * 0.55,
-                (Math.random() - 0.5) * H * 0.55,
-                (Math.random() - 0.5) * 260),
+                Math.cos(a) * r * W * 0.26,
+                Math.sin(a) * r * H * 0.26,
+                (t - 0.5) * 220),
             v: new THREE.Vector3(),
         });
     });
@@ -1023,7 +1037,7 @@ export function mountDynamicGraphs(stageEl: HTMLElement, getLatestState: () => P
     floor5.grid.position.y = -H * 0.42;
     // Touch. None of these five had a Raycaster, a pointerdown or a hover of
     // any kind: orbiting was the whole vocabulary, and orbiting is looking.
-    const pick5 = attachPicker(renderer.domElement, bodies5.mesh);
+    const pick5 = attachPicker(renderer.domElement, bodies5.mesh, controls);
     // The air. Not the species field — that names things and is restricted to
     // two slots for exactly that reason; this is the volume made visible so
     // depth has something to be measured against.
@@ -1164,7 +1178,29 @@ export function mountDynamicGraphs(stageEl: HTMLElement, getLatestState: () => P
         const gy = (pitchSh - 0.5) * H * 0.4;
         const gz = (droneSpace - 0.5) * 260;
 
+        // ── The camera follows the assembly ──────────────────────────────
+        // controls.target was nailed to the origin while the gravity centre
+        // moves with PITCH SHIFT and DRONE SPACE — up to ±0.2·H and ±130 away
+        // from it. So raising Pitch Shift lifted the whole graph out of frame
+        // and there was nothing to look at where the camera was pointing.
+        //
+        // Eased, not snapped: the target is what the orbit pivots around, and
+        // jumping it would swing the whole view. Only while the performer is
+        // not holding a body — mid-drag the frame must stay put or the thing
+        // being dragged moves under the pointer.
+        if (pick5.grabbed < 0) {
+            controls.target.lerp(_tmpB.set(gx, gy, gz), 0.035);
+        }
+
         calm5.step("__slot5Soneth");
+        // ── The chain shapes this slot ────────────────────────────────────
+        // Three readings, three different things, none of them invented:
+        //   calldata  how COMPLEX the last act was  → how far the bodies swell
+        //   gas       what it cost                  → how bright they burn
+        //   parity    which block we are in         → which way the graph turns
+        // A quiet chain leaves all three at rest; a busy one is visible before
+        // you look at any number.
+        const e5 = calm5.eth;
         // ── Touch ────────────────────────────────────────────────────────
         // Hover swells a body; a grab PULLS it and lets the springs carry the
         // disturbance to its neighbours, which is the whole point of holding a
@@ -1291,7 +1327,12 @@ export function mountDynamicGraphs(stageEl: HTMLElement, getLatestState: () => P
             _tmpB.normalize().multiplyScalar(rz5 * 150 * au5.amp);
 
             // Node size: textureDepth + presence; spatialSpread widens it.
-            const rad = 5 + pres * 12 + texDep * 8;
+            // SHAPE from the chain. calldataLen is how much data the act
+            // carried — a bare transfer is 0 bytes, a contract call is
+            // thousands — so a body swells with the complexity of what the
+            // chain is actually doing. A block of plain transfers leaves the
+            // graph small and tight; a block of contract work inflates it.
+            const rad = 5 + pres * 12 + texDep * 8 + e5.calldata * 14;
             const spreadR = rad * (0.6 + spatSp * 0.8);
             const hovered = (i === pick5.hover);
             const grabbed = (i === pick5.grabbed);
@@ -1307,7 +1348,11 @@ export function mountDynamicGraphs(stageEl: HTMLElement, getLatestState: () => P
                 (spreadR / NODE_R) * (1.8 + resBody * 1.5) * 0.55 * touch);
             shells5.tint(i, hovered || grabbed ? 1 : nr, hovered || grabbed ? 1 : ng, nb);
         });
-        bodies5.mesh.material.opacity = (0.22 + vol * 0.38) * masterA;
+        // BRIGHTNESS from the gas price. What the chain costs right now is
+        // the one number every participant is watching, and it is the honest
+        // thing for the picture to burn with.
+        bodies5.mesh.material.opacity =
+            (0.22 + vol * 0.38) * masterA * (0.72 + e5.gas * 0.55);
         shells5.mesh.material.opacity =
             resBody * 0.22 * (0.5 + (st?.species?.[0]?.activity ?? 0.5) * 0.5) * masterA;
         bodies5.commit();
@@ -1326,7 +1371,13 @@ export function mountDynamicGraphs(stageEl: HTMLElement, getLatestState: () => P
         // reaching OrbitControls.autoRotate and a few per-node spins, so at any
         // setting the structure itself sat still while the viewer moved around
         // it — which is the one thing a rotation control should not do.
-        root5.rotation.y = vm5.angle * 0.55;
+        //
+        // The CHAIN decides which way. Blocks alternate parity, so the graph
+        // reverses its turn at every block boundary — a twelve-second period
+        // that belongs to Ethereum and to nothing in this renderer. Between
+        // boundaries the rate leans with how full the block is.
+        const spin5 = (e5.parity > 0.5 ? 1 : -1) * (0.55 + e5.fullness * 0.5);
+        root5.rotation.y = vm5.angle * spin5;
         root5.rotation.x = Math.sin(vm5.angle * 0.31) * 0.10 * (0.3 + spatSp);
 
         // Captions ride above their bodies and fade with the layer's own level.
@@ -1496,7 +1547,7 @@ export function mountDynamicOptimality(stageEl: HTMLElement, getLatestState: () 
     // the struck voice do to the sound.
     const branches6 = makeTubeLinks(root6, nodeData.length * 2, 0xffaa00, 0.5);
     const floor6 = makeDepthGrid(root6, Math.max(W, H) * 1.5, 18, 0x663300);
-    const pick6 = attachPicker(renderer.domElement, boxes6.mesh);
+    const pick6 = attachPicker(renderer.domElement, boxes6.mesh, controls);
     const MAX_EDGES = activeRoster.length * 2;
     // Scratch, hoisted: an InstancedMesh write is a compose() per node per
     // frame and allocating the operands inside the loop would churn four
@@ -1651,6 +1702,7 @@ export function mountDynamicOptimality(stageEl: HTMLElement, getLatestState: () 
         const layerSpacing = 50 + pitchSh * 120;
         const treeWidth = lerp(0.4, 0.95, spatSp);
         calm6.step("__slot6Soneth");
+        const e6 = calm6.eth;
         pick6.update(camera);
         floor6.grid.position.y = -H * 0.45;
         floor6.material.opacity = (0.04 + texDep * 0.09) * masterA;
@@ -1706,7 +1758,8 @@ export function mountDynamicOptimality(stageEl: HTMLElement, getLatestState: () 
             }
 
             const act = st?.species?.[i % (st?.species?.length || 1)]?.activity ?? 0;
-            const glW = 10 + resBody * 25 + act * 15;
+            // The node's size is the act's complexity, as on slot 5.
+            const glW = 10 + resBody * 25 + act * 15 + e6.calldata * 16;
 
             // PERCUSIÓN. The tree had layers in Y and nothing in Z; each layer
             // now stands at its own depth, so the hierarchy is a solid rather
@@ -1762,7 +1815,8 @@ export function mountDynamicOptimality(stageEl: HTMLElement, getLatestState: () 
             cores6.set(i, _t6b, ((glW * innerPulse) / 10) * (NODE6_R * 0.5 / 10) * 0.9, _q6);
             cores6.tint(i, 1, lerp(1.0, 0.67, harmR), 0);
         });
-        boxes6.mesh.material.opacity = (0.18 + vol * 0.40) * masterA;
+        boxes6.mesh.material.opacity =
+            (0.18 + vol * 0.40) * masterA * (0.72 + e6.gas * 0.55);
         cores6.mesh.material.opacity = (0.12 + vol * 0.32) * masterA;
         boxes6.commit();
         cores6.commit();
@@ -1772,7 +1826,10 @@ export function mountDynamicOptimality(stageEl: HTMLElement, getLatestState: () 
             (pitchSh - 0.5) * 22);
         motes6.material.opacity = (0.08 + texDep * 0.26) * masterA;
         motes6.material.size = Math.max(W, H) * (0.0014 + resBody * 0.0038);
-        root6.rotation.y = vm6.angle * 0.42;
+        // Reverses at every block boundary, like slot 5 — one clock for the
+        // whole right-hand half of the instrument, and it is the chain's.
+        root6.rotation.y = vm6.angle * (e6.parity > 0.5 ? 1 : -1)
+            * (0.42 + e6.fullness * 0.35);
         ticker6.draw((0.35 + vol * 0.65) * masterA);
 
         // RAÍZ names the node the tree is splayed around; the rest carry their
@@ -1994,9 +2051,11 @@ export function mountGeometry(stageEl: HTMLElement, getLatestState: () => Parlia
     composer.addPass(chromatic);
 
     // Ray lines — one per species (2 verts each)
-    const rays: { y: number; angle: number }[] = activeRoster.map(() => ({
-        y: (Math.random() - 0.5) * H * 0.7,
-        angle: (Math.random() - 0.5) * Math.PI / 4,
+    // Evenly spaced, not scattered: a sweep whose rays start bunched reads as
+    // a broken sweep for the first few seconds of every mount.
+    const rays: { y: number; angle: number }[] = activeRoster.map((_sp, i) => ({
+        y: ((i + 0.5) / activeRoster.length - 0.5) * H * 0.7,
+        angle: ((i % 3) - 1) * (Math.PI / 12),
     }));
 
     const MAX_RAYS = 10;
@@ -2012,7 +2071,7 @@ export function mountGeometry(stageEl: HTMLElement, getLatestState: () => Parlia
     // the sweep is the machine's business, but a target is a claim about the
     // world and should answer being pointed at.
     const marks7 = makeNodeField(root7, 64, 9, 0, { opacity: 0.85 });
-    const pick7 = attachPicker(renderer.domElement, marks7.mesh);
+    const pick7 = attachPicker(renderer.domElement, marks7.mesh, controls);
     const floor7 = makeDepthGrid(root7, Math.max(W, H) * 1.7, 20, 0x336633);
     const _t7a = new THREE.Vector3();
     const _t7b = new THREE.Vector3();
@@ -2237,6 +2296,7 @@ export function mountGeometry(stageEl: HTMLElement, getLatestState: () => Parlia
         // empty roster the loop body never runs, and end() without begin()
         // would leave the previous frame's draw range standing.
         calm7.step("__slot7Soneth");
+        const e7b = calm7.eth;
         pick7.update(camera);
         rays7.begin();
         for (let i = 0; i < Math.min(rays.length, rayCount); i++) {
@@ -2288,8 +2348,12 @@ export function mountGeometry(stageEl: HTMLElement, getLatestState: () => Parlia
             // A pressure front has a width, and the width is the hit. RES BODY
             // sets the resting thickness, the kick's own envelope swells it —
             // which is the modulation a 1 px line could never carry.
+            // The beam's WIDTH is what the chain is charging. A sub voice and
+            // a base fee are both pressure; this is the one slot where saying
+            // so with thickness rather than colour is the obvious reading.
             rays7.add(_t7a, _t7b,
-                (0.6 + resBody * 1.5) * (1 + au7.env * au7.amp * 1.8));
+                (0.6 + resBody * 1.5) * (1 + au7.env * au7.amp * 1.8)
+                * (0.7 + e7b.baseFee * 0.75));
             rIdx++;
         }
         rays7.end();
@@ -2342,7 +2406,8 @@ export function mountGeometry(stageEl: HTMLElement, getLatestState: () => Parlia
             });
         }
         marks7.count = tcIdx;
-        marks7.mesh.material.opacity = (0.30 + vol * 0.30) * masterA;
+        marks7.mesh.material.opacity =
+            (0.30 + vol * 0.30) * masterA * (0.72 + e7b.gas * 0.55);
         marks7.commit();
         floor7.grid.position.y = yMin - 20;
         floor7.material.opacity = (0.035 + texDep * 0.08) * masterA;
@@ -2357,7 +2422,8 @@ export function mountGeometry(stageEl: HTMLElement, getLatestState: () => Parlia
             (droneSpace - 0.5) * 18);
         motes7.material.opacity = (0.09 + texDep * 0.24) * masterA;
         motes7.material.size = Math.max(W, H) * (0.0013 + resBody * 0.0034);
-        root7.rotation.y = vm7.angle * 0.5;
+        root7.rotation.y = vm7.angle * (e7b.parity > 0.5 ? 1 : -1)
+            * (0.5 + e7b.fullness * 0.35);
         ticker7.draw((0.35 + vol * 0.65) * masterA);
         // ── BOMBO speaks ──────────────────────────────────────────────────
         // A target acquisition — a ray crossing a sweep — is this slot's
@@ -2369,13 +2435,22 @@ export function mountGeometry(stageEl: HTMLElement, getLatestState: () => Parlia
         // Glitch rects from txInfluence
         let grIdx = 0;
         for (let ri = 0; ri < rays.length && grIdx < 20; ri++) {
-            // Tears on a strike, not on a coin flip each frame.
-            if (txInf > 0.25 && calm7.strike > 0.02 && Math.random() < txInf * 0.35) {
+            // Tears on a chain event, not on a coin flip. A tear IS a
+            // transaction arriving: eth.pulse is 1 the instant one lands and
+            // decays over half a second, so a burst of activity tears the
+            // sweep and a quiet chain leaves it clean. Which ray tears is the
+            // counterparty's own signature — the same address marks the same
+            // ray every time it acts.
+            const e7 = calm7.eth;
+            if (txInf > 0.25 && e7.pulse > 0.05
+                && Math.abs(e7.addr - (ri + 0.5) / Math.max(1, rays.length)) < 0.2) {
                 const gx = calm7.drift(ri * 5, 0) * W * 0.5;
                 const gy = rays[ri].y + calm7.drift(ri * 5, 1) * 40;
                 const gr = glitchRects[grIdx];
                 gr.visible = true;
-                gr.scale.set(calm7.strike * 90 * txInf + 20, 1, 1);
+                // Length is what the transaction MOVED; a large transfer
+                // tears further than a small one.
+                gr.scale.set(e7.value * 140 * txInf + 20, 1, 1);
                 gr.position.set(gx, gy, 2);
                 (gr.material as THREE.MeshBasicMaterial).opacity = 0.4 * txInf;
                 grIdx++;
@@ -2532,7 +2607,7 @@ export function mountMemoryHierarchy(stageEl: HTMLElement, getLatestState: () =>
     const blocks8 = makeNodeField(root8, BLOCK_CAP, 0.5, 2,
         { wireframe: true, opacity: 0.85 });
     blocks8.count = BLOCK_CAP;
-    const pick8 = attachPicker(renderer.domElement, blocks8.mesh);
+    const pick8 = attachPicker(renderer.domElement, blocks8.mesh, controls);
 
     // Drops carry the layer's own depth now. They were written at a constant
     // z = 2 while the levels they fall between travel to -j*90*(...) — so an
@@ -2569,7 +2644,14 @@ export function mountMemoryHierarchy(stageEl: HTMLElement, getLatestState: () =>
 
     // Hex noise data
     let hexData: string[] = [];
-    for (let i = 0; i < 120; i++) hexData.push(Math.floor(Math.random() * 65535).toString(16).padStart(4, "0").toUpperCase());
+    // Seeded once, deterministically, then overwritten cell by cell with live
+    // chain values as they arrive (see the refresh below). A fixed seed rather
+    // than 120 random words so the backdrop is the same on every mount until
+    // the chain says otherwise — the field is data, and data that differs every
+    // time you open the slot is not data.
+    for (let i = 0; i < 120; i++)
+        hexData.push((((i * 2654435761) >>> 16) & 0xffff)
+            .toString(16).padStart(4, "0").toUpperCase());
 
     let rafId: number;
     let frame = 0;
@@ -2643,12 +2725,28 @@ export function mountMemoryHierarchy(stageEl: HTMLElement, getLatestState: () =>
         chromatic.uniforms["amount"].value = txInf * 0.006;
         bloom.strength = lerp(0.10, 0.38, resBody * masterA);
 
+        // Stepped and read HERE: the hex backdrop below is the chain's own
+        // data now, so the frame needs the reading before it draws anything.
+        calm8.step("__slot8Soneth");
+        const e8b = calm8.eth;
+
         // Hex noise — beatTempo speeds churn (stored in sp8.beatTempo if present, else tDil proxy)
         const beatT = sp8.beatTempo ?? 0.5;
         const hexRefresh = Math.max(1, Math.floor(8 - tDil * 4 - beatT * 5));
         if (frame % hexRefresh === 0) {
-            const idx = Math.floor(Math.random() * hexData.length);
-            hexData[idx] = Math.floor(Math.random() * 65535).toString(16).padStart(4, "0").toUpperCase();
+            // ── The hex is the CHAIN's hex ────────────────────────────────
+            // 120 random 16-bit words standing in for data, on a slot whose
+            // backdrop is meant to be the machine's own memory. These are the
+            // live values instead — the counterparty signature, the block hash,
+            // the nonce, what moved — rendered as the hex they actually are.
+            // Which cell turns over walks with the block, so the field churns
+            // when the chain does and holds when it does not.
+            const idx = Math.floor(
+                ((e8b.hash * 4093 + e8b.nonce * 131 + frame * 0.017) % 1) * hexData.length);
+            const word = [e8b.addr, e8b.hash, e8b.value, e8b.calldata][
+                Math.floor(e8b.index * 4) % 4];
+            hexData[idx] = Math.floor(word * 65535).toString(16)
+                .padStart(4, "0").toUpperCase();
         }
         // Redraw hex canvas
         hexCtx.clearRect(0, 0, 512, 512);
@@ -2693,7 +2791,7 @@ export function mountMemoryHierarchy(stageEl: HTMLElement, getLatestState: () =>
 
         // Drop lines between layers
         let dIdx = 0;
-        calm8.step("__slot8Soneth");
+
         drops8.begin();
         pick8.update(camera);
         const dropCount = Math.floor(3 + noiseF * 5);
@@ -2716,9 +2814,14 @@ export function mountMemoryHierarchy(stageEl: HTMLElement, getLatestState: () =>
 
             // Glitch displacement — txInfluence + noiseLevel
             const glitchProb = 0.1 + txInf * 0.2;
-            if (aiOpt < 50 && calm8.strike > 0.02) {
-                bx += calm8.drift(j * 3, 0) * calm8.strike
-                    * 55 * noiseL * (1 - aiOpt100) * (1 + txInf);
+            // The level slips when the chain is under pressure. priority is
+            // how far over base fee the last actor bid — urgency — and it is a
+            // far better reading of "the system is straining" than a random
+            // number was.
+            const e8 = calm8.eth;
+            if (aiOpt < 50 && e8.priority > 0.35) {
+                bx += calm8.drift(j * 3, 0) * (e8.priority - 0.35) * 1.5
+                    * 70 * noiseL * (1 - aiOpt100) * (1 + txInf);
             }
 
             // Layer border
@@ -2777,7 +2880,9 @@ export function mountMemoryHierarchy(stageEl: HTMLElement, getLatestState: () =>
                 // Depth is OCCUPANCY. A hierarchy is about how much fits at
                 // each level, so a block holding more is a thicker block —
                 // the one dimension the old rectangles could not express.
-                const bd = 12 + pres * 70 + act * 26;
+                // Depth is occupancy, and how full the BLOCK is says how much
+                // the hierarchy is holding. A full block is a deep level.
+                const bd = 12 + pres * 70 + act * 26 + e8b.fullness * 40;
                 _e8.set(0, 0, act * calm8.drift(i + j * 10, 2) * 0.09 * txInf);
                 _q8.setFromEuler(_e8);
                 _t8a.set(blockCX + cw / 2, cy + baseH / 2, border.position.z + bd * 0.35);
@@ -2828,7 +2933,8 @@ export function mountMemoryHierarchy(stageEl: HTMLElement, getLatestState: () =>
         emitSpill8(overflow8, 0.3 + Math.min(1, overflow8 / LAYERS) * 0.55,
             Math.min(1, overflow8 / LAYERS));
         drops8.end();
-        blocks8.mesh.material.opacity = (0.18 + vol * 0.40) * masterA;
+        blocks8.mesh.material.opacity =
+            (0.18 + vol * 0.40) * masterA * (0.72 + e8b.gas * 0.55);
         blocks8.commit();
 
         // The air falls with the spill: POLVO is a granular voice and its
@@ -2838,7 +2944,8 @@ export function mountMemoryHierarchy(stageEl: HTMLElement, getLatestState: () =>
             -(6 + memFeed * 34));
         motes8.material.opacity = (0.08 + texDep * 0.26) * masterA;
         motes8.material.size = Math.max(W, H) * (0.0012 + resBody * 0.0030);
-        root8.rotation.y = vm8.angle * 0.38;
+        root8.rotation.y = vm8.angle * (e8b.parity > 0.5 ? 1 : -1)
+            * (0.38 + e8b.fullness * 0.3);
         ticker8.draw((0.35 + vol * 0.65) * masterA);
         const dmR = lerp(0.78, 1.0, droneMix); const dmG = lerp(1.0, 0.67, droneMix);
         dropMat.color.setRGB(dmR, dmG, 0);
@@ -2971,7 +3078,7 @@ export function mountHashing(stageEl: HTMLElement, getLatestState: () => Parliam
     // so it is the thing that should answer being pointed at.
     const keys9 = makeNodeField(root9, NUM_KEYS, 10, 2, { wireframe: true, opacity: 0.9 });
     keys9.count = NUM_KEYS;
-    const pick9 = attachPicker(renderer.domElement, keys9.mesh);
+    const pick9 = attachPicker(renderer.domElement, keys9.mesh, controls);
     const buckets9 = makeNodeField(root9, NUM_BUCKETS, 15, 2, { wireframe: true, opacity: 0.9 });
     buckets9.count = NUM_BUCKETS;
     // The old per-mesh transforms, kept as plain state: an instance has no
@@ -3133,7 +3240,14 @@ export function mountHashing(stageEl: HTMLElement, getLatestState: () => Parliam
         const spacingB = H / (NUM_BUCKETS + 1);
         const bucketYOff = (pShift - 0.5) * 100 + (droneSpace - 0.5) * 60;
 
-        // Compute hashes — beatTempo drives mutation speed
+        // Stepped and read HERE, before the hash loop below uses it. The step
+        // used to sit further down, next to the tube pools — which was fine
+        // while nothing above it needed the chain, and is not now that the
+        // mapping itself does.
+        calm9.step("__slot9Soneth");
+        const e9 = calm9.eth;
+
+        // Compute hashes — the CHAIN drives the mapping now, not a noise walk
         const bucketHits = new Array(NUM_BUCKETS).fill(0);
         const mapTargets: number[] = [];
         for (let i = 0; i < NUM_KEYS; i++) {
@@ -3144,9 +3258,17 @@ export function mountHashing(stageEl: HTMLElement, getLatestState: () => Parliam
             // — it rehashes on an event. This is the same noise walk, but its
             // rate is now the bed's, so the mapping HOLDS long enough to be
             // read and changes when the engine does.
-            const hash = Math.floor(snoise(i,
-                calm9.clock * 0.09 * (1.1 - consensus) * (1 + tDil + beatT * 2)
-            ) * NUM_BUCKETS);
+            // ── The hash is a hash now ────────────────────────────────────
+            // This was a noise walk standing in for a hash function, on a slot
+            // whose entire subject is hashing. The chain supplies a real one:
+            // eth.hash is the block hash folded to 0-1 and eth.addr is the
+            // counterparty's signature, so the mapping is a genuine function of
+            // key and block — it holds for the whole block, and every key
+            // re-maps together when a new one arrives, which is exactly what a
+            // rehash is.
+            const hash = Math.floor(
+                (((e9.hash * 997 + e9.addr * 613 + i * 31) % 1) * NUM_BUCKETS)
+            );
             const mapped = Math.max(0, Math.min(NUM_BUCKETS - 1, hash));
             mapTargets.push(mapped);
             bucketHits[mapped]++;
@@ -3172,7 +3294,6 @@ export function mountHashing(stageEl: HTMLElement, getLatestState: () => Parliam
         let trIdx = 0;
         // Which bucket the held key maps to, so the lookup lights its target.
         let heldBucket = -1;
-        calm9.step("__slot9Soneth");
         paths9.begin();
         colls9.begin();
         pick9.update(camera);
@@ -3185,7 +3306,7 @@ export function mountHashing(stageEl: HTMLElement, getLatestState: () => Parliam
 
             // Key box position + rotation (droneDepth controls spin speed)
             const kbSize = 20 * (1 + noiseL * calm9.drift(i, 0) * 0.7
-                * (0.4 + calm9.swell * 1.2));
+                * (0.4 + calm9.swell * 1.2)) * (0.85 + e9.calldata * 0.5);
             keyBoxes[i].position.set(colA_X, yA, 0);
             keyBoxes[i].scale.setScalar(kbSize / 20);
             // Idle drift added to the key-box spin, and a vote forces a
@@ -3286,16 +3407,18 @@ export function mountHashing(stageEl: HTMLElement, getLatestState: () => Parliam
             // Tear rects from txInfluence + dronemix
             const tearCount = Math.floor(droneMix * 3 + 1);
             for (let k = 0; k < tearCount && trIdx < 16; k++) {
-                // On a strike, not on a coin flip each frame. A tear that
-                // reappears somewhere new 60 times a second is static, not a
-                // glitch — the glitch is that it happens when the chain moves.
-                if (txInf > 0.3 && calm9.strike > 0.02 && Math.random() < txInf * 0.5) {
-                    const tearX = lerp(colA_X, colB_X, calm9.drift(i * 3, 0) * 0.5 + 0.5);
-                    const tearY = lerp(yA, yB, calm9.drift(i * 3, 1) * 0.5 + 0.5);
+                // A tear IS a transaction. It happens when one arrives, it
+                // falls where that transaction's own counterparty signature
+                // puts it, and it is as long as the value that moved. Nothing
+                // here is invented any more.
+                if (txInf > 0.3 && e9.pulse > 0.05
+                    && Math.abs(e9.addr - (i + 0.5) / NUM_KEYS) < 0.14) {
+                    const tearX = lerp(colA_X, colB_X, e9.index);
+                    const tearY = lerp(yA, yB, e9.nonce);
                     const tr = tearRects[trIdx];
                     tr.visible = true;
-                    tr.scale.set(calm9.strike * 90 * txInf + 20,
-                        1 + calm9.strike * 3, 1);
+                    tr.scale.set(e9.value * 140 * txInf + 20,
+                        1 + e9.calldata * 4, 1);
                     tr.position.set(tearX, tearY, 2);
                     (tr.material as THREE.MeshBasicMaterial).opacity = 0.5 * txInf * masterA;
                     trIdx++;
@@ -3348,8 +3471,10 @@ export function mountHashing(stageEl: HTMLElement, getLatestState: () => Parliam
             (pShift - 0.5) * 24);
         motes9.material.opacity = (0.08 + texDep * 0.24) * masterA;
         motes9.material.size = Math.max(W, H) * (0.0012 + resBody * 0.0032);
-        root9.rotation.y = vm9.angle * 0.45;
-        keys9.mesh.material.opacity = (0.32 + vol * 0.26) * masterA;
+        root9.rotation.y = vm9.angle * (e9.parity > 0.5 ? 1 : -1)
+            * (0.45 + e9.fullness * 0.35);
+        keys9.mesh.material.opacity =
+            (0.32 + vol * 0.26) * masterA * (0.72 + e9.gas * 0.55);
         keys9.commit();
 
         // Scanlines — textureDepth controls density, filtercutoff brightness
