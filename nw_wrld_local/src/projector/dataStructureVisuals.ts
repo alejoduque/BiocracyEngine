@@ -28,6 +28,7 @@ import {
     makeDepthGrid,
     makeParticles,
     makeLabelField,
+    makeCalm,
     attachPicker,
 } from "./slotThree";
 
@@ -1022,6 +1023,9 @@ export function mountDynamicGraphs(stageEl: HTMLElement, getLatestState: () => P
     const motes5 = makeParticles(root5, 900, Math.max(W, H) * 1.5, 0xffaa00);
     // What the bodies ARE. N0..N7, the parties to a connection.
     const tags5 = makeLabelField(root5, nodes.length, 0xffcc88, 14);
+    // What this slot's motion follows. See makeCalm: the drone and the pad,
+    // heavily smoothed, instead of a fresh random number every frame.
+    const calm5 = makeCalm();
     nodes.forEach((_n, i) => tags5.text(i, SLOT_NOUNS.s5.one(i)));
 
     function makeCircle(radius: number, segs: number, color: number, opacity: number): THREE.Line {
@@ -1128,7 +1132,14 @@ export function mountDynamicGraphs(stageEl: HTMLElement, getLatestState: () => P
 
         afterimage.uniforms["damp"].value = lerp(0.76, 0.94, delayFb * 0.7 + memFeed * 0.3);
         chromatic.uniforms["amount"].value = txInf * 0.007;
-        bloom.strength = lerp(0.3, 1.0, consensus * masterA);
+        // ── Level ─────────────────────────────────────────────────────────
+        // Every one of these ran to full: opacity floors of 0.3-0.8 with the
+        // fader adding on top, so a body was near-opaque before anything was
+        // turned up, and five slots of that inside an additive bloom fused into
+        // one bright mass. Floors down, spans kept, so the faders travel the
+        // same distance from a darker starting point and the geometry reads as
+        // geometry rather than as light.
+        bloom.strength = lerp(0.14, 0.52, consensus * masterA);
         // Idle: the whole graph precesses slowly. A vote is an EDGE CASCADE —
         // the bloom surges and every edge is briefly forced, so the network
         // flashes fully connected and settles back.
@@ -1146,6 +1157,7 @@ export function mountDynamicGraphs(stageEl: HTMLElement, getLatestState: () => P
         const gy = (pitchSh - 0.5) * H * 0.4;
         const gz = (droneSpace - 0.5) * 260;
 
+        calm5.step("__slot5Soneth");
         // ── Touch ────────────────────────────────────────────────────────
         // Hover swells a body; a grab PULLS it and lets the springs carry the
         // disturbance to its neighbours, which is the whole point of holding a
@@ -1172,15 +1184,24 @@ export function mountDynamicGraphs(stageEl: HTMLElement, getLatestState: () => P
                 const dist = _tmpA.length() || 0.001;
 
                 if (dist < restLength * 2) {
-                    const noise = snoise(i * 17 + j, frame * 0.05 * (1 + tDil));
+                    // Was frame-based: a link crossed the consensus threshold
+                    // and back many times a second, so the graph strobed
+                    // between connected and not. On the bed's clock it forms
+                    // and dissolves at a rate a viewer can follow.
+                    const noise = snoise(i * 17 + j, calm5.clock * 0.55 * (1 + tDil));
                     if (noise < consensus + (vf5 ? vf5.flash * 0.9 : 0)) {
                         _tmpB.copy(nodes[j].p);
-                        // txInfluence glitch — now displaces in space, so a
-                        // jolted link visibly leaves the plane of its own graph.
-                        if (Math.random() < txInf * 0.5) {
-                            _tmpB.x += (Math.random() - 0.5) * 80 * specS;
-                            _tmpB.y += (Math.random() - 0.5) * 80 * specS;
-                            _tmpB.z += (Math.random() - 0.5) * 80 * specS;
+                        // The txInfluence glitch fired on Math.random() every
+                        // frame, so a link flickered between displaced and not
+                        // at 60 Hz — noise, not a jolt. It happens ON A STRIKE
+                        // now, scaled by how hard, and the displacement is
+                        // deterministic per link so the whole graph leans one
+                        // way together and recovers.
+                        if (calm5.strike > 0.01) {
+                            const k5 = calm5.strike * txInf * 55 * specS;
+                            _tmpB.x += calm5.drift(i * 31 + j, 0) * k5;
+                            _tmpB.y += calm5.drift(i * 31 + j, 1) * k5;
+                            _tmpB.z += calm5.drift(i * 31 + j, 2) * k5;
                         }
                         // A link touching the held node thickens, so the reach
                         // of a grab is visible rather than merely felt.
@@ -1202,7 +1223,7 @@ export function mountDynamicGraphs(stageEl: HTMLElement, getLatestState: () => P
         // the graph already is chooses the pitch.
         emitEdge5(edgeCount, 0.35 + Math.min(1, edgeCount / 24) * 0.5,
             Math.min(1, edgeCount / 32));
-        links5.material.opacity = (0.3 + vol * 0.5) * masterA;
+        links5.material.opacity = (0.12 + vol * 0.34) * masterA;
 
         // droneFade edge color warmth
         const edgeR = Math.floor(lerp(200, 255, dronFd));
@@ -1225,17 +1246,27 @@ export function mountDynamicGraphs(stageEl: HTMLElement, getLatestState: () => P
             const act  = st?.species?.[i % (st?.species?.length || 1)]?.activity ?? 0.5;
             const pres = st?.species?.[i % (st?.species?.length || 1)]?.presence ?? 0.5;
 
-            // Noise jitter — noiseLevel controls amplitude, and it is spatial
-            // now, so the cloud has thickness instead of being a jittering sheet.
-            n.v.x += (snoise(i, frame * 0.02) - 0.5) * noiseL * 4;
-            n.v.y += (snoise(i + 100, frame * 0.02) - 0.5) * noiseL * 4;
-            n.v.z += (snoise(i + 200, frame * 0.02) - 0.5) * noiseL * 3;
+            // ── Drift, not jitter ─────────────────────────────────────────
+            // This was snoise against the FRAME COUNT at 0.02 per frame — fast,
+            // and faster still on a faster display — plus a per-frame random
+            // kick. Both are uncorrelated between frames, which does not read
+            // as movement; it reads as the node vibrating in place.
+            //
+            // The drift is a function of time and it SWELLS WITH THE DRONE AND
+            // THE PAD: at rest the graph is nearly still, and it opens up as
+            // the bed comes in. That is the slow body of the engine, which is
+            // what these structures should be following.
+            const wob5 = noiseL * (0.35 + calm5.swell * 1.5);
+            n.v.x += calm5.drift(i, 0) * wob5;
+            n.v.y += calm5.drift(i, 1) * wob5;
+            n.v.z += calm5.drift(i, 2) * wob5 * 0.7;
 
-            // txInfluence aggressive jitter
-            if (Math.random() < act * 0.2) {
-                n.v.x += (Math.random() - 0.5) * 8 * txInf;
-                n.v.y += (Math.random() - 0.5) * 8 * txInf;
-                n.v.z += (Math.random() - 0.5) * 6 * txInf;
+            // The hard kick waits for a strike, and for a half to strike with.
+            if (calm5.strike > 0.01) {
+                const kk = calm5.strike * txInf * act * 9;
+                n.v.x += calm5.drift(i + 7, 0) * kk;
+                n.v.y += calm5.drift(i + 7, 1) * kk;
+                n.v.z += calm5.drift(i + 7, 2) * kk * 0.7;
             }
 
             n.p.addScaledVector(n.v, 1 + tDil);
@@ -1269,9 +1300,9 @@ export function mountDynamicGraphs(stageEl: HTMLElement, getLatestState: () => P
                 (spreadR / NODE_R) * (1.8 + resBody * 1.5) * 0.55 * touch);
             shells5.tint(i, hovered || grabbed ? 1 : nr, hovered || grabbed ? 1 : ng, nb);
         });
-        bodies5.mesh.material.opacity = (0.5 + vol * 0.5) * masterA;
+        bodies5.mesh.material.opacity = (0.22 + vol * 0.38) * masterA;
         shells5.mesh.material.opacity =
-            resBody * 0.4 * (0.5 + (st?.species?.[0]?.activity ?? 0.5) * 0.5) * masterA;
+            resBody * 0.22 * (0.5 + (st?.species?.[0]?.activity ?? 0.5) * 0.5) * masterA;
         bodies5.commit();
         shells5.commit();
         floor5.material.opacity = (0.04 + texDep * 0.10) * masterA;
@@ -1475,6 +1506,7 @@ export function mountDynamicOptimality(stageEl: HTMLElement, getLatestState: () 
     const spin6 = new Float32Array(nodeData.length);
     const motes6 = makeParticles(root6, 800, Math.max(W, H) * 1.4, 0xc8ffe6);
     const tags6 = makeLabelField(root6, nodeData.length, 0xc8ffe6, 13);
+    const calm6 = makeCalm();
 
     // Scan column lines
     const MAX_SCAN = 14;
@@ -1559,7 +1591,7 @@ export function mountDynamicOptimality(stageEl: HTMLElement, getLatestState: () 
 
         afterimage.uniforms["damp"].value =
             lerp(0.73, 0.93, delayFb * 0.5 + memFeed * 0.25 + dronFd * 0.25);
-        bloom.strength = lerp(0.2, 0.7, harmR * masterA);
+        bloom.strength = lerp(0.10, 0.38, harmR * masterA);
         renderer.setClearColor(0x000804, lerp(0.5, 0.95, 1 - atmMix));
 
         // Scrolling horizontal grid
@@ -1604,6 +1636,7 @@ export function mountDynamicOptimality(stageEl: HTMLElement, getLatestState: () 
         const rootY = H / 2 - 80 - pitchSh * 80 - droneSpace * H * 0.18;
         const layerSpacing = 50 + pitchSh * 120;
         const treeWidth = lerp(0.4, 0.95, spatSp);
+        calm6.step("__slot6Soneth");
         pick6.update(camera);
         floor6.grid.position.y = -H * 0.45;
         floor6.material.opacity = (0.04 + texDep * 0.09) * masterA;
@@ -1630,7 +1663,10 @@ export function mountDynamicOptimality(stageEl: HTMLElement, getLatestState: () 
                 const posInLayer = (childIdx + 2) - countInLayer;
                 const breathe = Math.sin(frame * 0.05 * (1 + tDil) + layer) * (30 + specS * 50) * (1.1 - consensus);
                 const lx = lerp(-W / 2 * treeWidth, W / 2 * treeWidth, (posInLayer + 0.5) / countInLayer) + breathe;
-                const ly = rootY - layer * layerSpacing + (snoise(i, frame * (0.02 + specS * 0.05)) - 0.5) * 40 * noiseL * 3;
+                // Was snoise against the frame count; a slow drift with the
+                // bed instead, so a layer breathes rather than buzzes.
+                const ly = rootY - layer * layerSpacing
+                    + calm6.drift(i + 40, 1) * 26 * noiseL * (0.4 + calm6.swell * 1.3);
                 n.tx = lx; n.ty = ly;
                 childIdx++;
             }
@@ -1643,9 +1679,16 @@ export function mountDynamicOptimality(stageEl: HTMLElement, getLatestState: () 
             n.x = lerp(n.x, n.tx, snap);
             n.y = lerp(n.y, n.ty, snap);
             if (Math.abs(n.x - n.tx) < 1.2 && Math.abs(n.y - n.ty) < 1.2) arrived6++;
+            // Disagreement used to be written into the POSITION as a fresh
+            // random offset every frame — the single worst source of shake in
+            // these five, because a node never settled anywhere for even one
+            // frame. It is a slow lean now: a divided chamber drifts off its
+            // own layout and holds there, which is what disagreement looks
+            // like, and it moves with the bed rather than at video rate.
             if (consensus < 0.8) {
-                n.x += (Math.random() - 0.5) * 10 * (1 - consensus);
-                n.y += (Math.random() - 0.5) * 10 * (1 - consensus);
+                const d6 = (1 - consensus) * 9 * (0.4 + calm6.swell * 1.2);
+                n.x += calm6.drift(i, 0) * d6;
+                n.y += calm6.drift(i, 1) * d6;
             }
 
             const act = st?.species?.[i % (st?.species?.length || 1)]?.activity ?? 0;
@@ -1705,8 +1748,8 @@ export function mountDynamicOptimality(stageEl: HTMLElement, getLatestState: () 
             cores6.set(i, _t6b, ((glW * innerPulse) / 10) * (NODE6_R * 0.5 / 10) * 0.9, _q6);
             cores6.tint(i, 1, lerp(1.0, 0.67, harmR), 0);
         });
-        boxes6.mesh.material.opacity = (0.4 + vol * 0.6) * masterA;
-        cores6.mesh.material.opacity = (0.3 + vol * 0.5) * masterA;
+        boxes6.mesh.material.opacity = (0.18 + vol * 0.40) * masterA;
+        cores6.mesh.material.opacity = (0.12 + vol * 0.32) * masterA;
         boxes6.commit();
         cores6.commit();
 
@@ -1762,10 +1805,14 @@ export function mountDynamicOptimality(stageEl: HTMLElement, getLatestState: () 
         nodeData.forEach((n, i) => {
             if (i === maxIdx || eIdx >= MAX_EDGES) return;
             _t6a.set(n.x, n.y, n.z);
-            if (Math.random() < txInf * 0.6) {
-                _t6a.x += (Math.random() - 0.5) * 60 * specS;
-                _t6a.y += (Math.random() - 0.5) * 60 * specS;
-                _t6a.z += (Math.random() - 0.5) * 40 * specS;
+            // On a strike, and only while a half is up to strike with — this
+            // is the perc slot, so a branch leaving its node is the one thing
+            // here that should be an EVENT rather than a texture.
+            if (calm6.strike > 0.01) {
+                const k6 = calm6.strike * txInf * 42 * specS;
+                _t6a.x += calm6.drift(i * 13, 0) * k6;
+                _t6a.y += calm6.drift(i * 13, 1) * k6;
+                _t6a.z += calm6.drift(i * 13, 2) * k6 * 0.7;
             }
             _t6b.set(rootNode.x, rootNode.y, rootNode.z);
             // The bowl's overshoot: the branch runs PAST the root by up to a
@@ -1781,7 +1828,7 @@ export function mountDynamicOptimality(stageEl: HTMLElement, getLatestState: () 
         });
         branches6.end();
         branches6.material.opacity =
-            (0.4 + vol * 0.6) * masterA * (1 + china6 * 0.18);
+            (0.16 + vol * 0.36) * masterA * (1 + china6 * 0.18);
 
         // droneFade used to write a "background warmth" here:
         //     setClearColor((Math.floor(dronFd * 6) << 8) | 0x000804, 1)
@@ -1950,6 +1997,7 @@ export function mountGeometry(stageEl: HTMLElement, getLatestState: () => Parlia
     const motes7 = makeParticles(root7, 1000, Math.max(W, H) * 1.6, 0xc8ffe6);
     const tags7 = makeLabelField(root7, 64, 0xffcc88, 12);
     for (let i = 0; i < 64; i++) tags7.text(i, SLOT_NOUNS.s7.one(i));
+    const calm7 = makeCalm();
 
     // Sweep vertical lines (max 4 eco values)
     const sweepPositions = new Float32Array(4 * 2 * 3);
@@ -2089,7 +2137,7 @@ export function mountGeometry(stageEl: HTMLElement, getLatestState: () => Parlia
 
         afterimage.uniforms["damp"].value = lerp(0.77, 0.94, delayFb * 0.7 + memFeed * 0.3);
         chromatic.uniforms["amount"].value = txInf * 0.006;
-        bloom.strength = lerp(0.2, 0.8, (resBody + harmR * 0.3) * masterA);
+        bloom.strength = lerp(0.10, 0.42, (resBody + harmR * 0.3) * masterA);
         renderer.setClearColor(0x000804, lerp(0.5, 0.95, 1 - atmMix));
 
         // Rebuild grid when noiseLevel changes significantly
@@ -2163,6 +2211,8 @@ export function mountGeometry(stageEl: HTMLElement, getLatestState: () => Parlia
         // Outside the loop, not on the first iteration: at droneDepth 0 with an
         // empty roster the loop body never runs, and end() without begin()
         // would leave the previous frame's draw range standing.
+        calm7.step("__slot7Soneth");
+        pick7.update(camera);
         rays7.begin();
         for (let i = 0; i < Math.min(rays.length, rayCount); i++) {
             const r = rays[i];
@@ -2173,7 +2223,11 @@ export function mountGeometry(stageEl: HTMLElement, getLatestState: () => Parlia
             if (r.y < yMin) r.y = yMax; if (r.y > yMax) r.y = yMin;
 
             const angleRange = Math.PI / 4 * (0.3 + pitchSh * 1.4);
-            r.angle += (snoise(i, frame * (0.005 + tDil * 0.015)) - 0.5) * (0.06 + (1 - consensus) * 0.04);
+            // A sweep that jitters is a broken sweep. Slow drift with the
+            // bed, so the cone wanders as the drone moves rather than at
+            // whatever rate the display happens to run at.
+            r.angle += calm7.drift(i, 0) * (0.012 + (1 - consensus) * 0.010)
+                * (0.3 + calm7.swell * 1.2);
             r.angle = Math.max(-angleRange, Math.min(angleRange, r.angle));
 
             const endY = r.y + Math.tan(r.angle) * W;
@@ -2216,7 +2270,7 @@ export function mountGeometry(stageEl: HTMLElement, getLatestState: () => Parlia
         rays7.end();
         // average presence across active species modulates ray brightness
         const avgPresence = rays.reduce((s, _, i) => s + (st?.species?.[i]?.presence ?? 0.5), 0) / Math.max(rays.length, 1);
-        rayMat.opacity = (0.3 + avgPresence * 0.3 + vol * 0.4) * masterA;
+        rayMat.opacity = (0.12 + avgPresence * 0.18 + vol * 0.26) * masterA;
 
         // ── Targets are bodies, and they can be pointed at ────────────────
         //
@@ -2231,7 +2285,6 @@ export function mountGeometry(stageEl: HTMLElement, getLatestState: () => Parlia
         // a target is a claim about the world, so it is the thing on this stage
         // that should respond to being looked at closely — hover swells it and
         // holding it pins it bright.
-        pick7.update(camera);
         let tcIdx = 0;
         for (let ri = 0; ri < Math.min(rays.length, rayCount); ri++) {
             const r = rays[ri];
@@ -2264,7 +2317,7 @@ export function mountGeometry(stageEl: HTMLElement, getLatestState: () => Parlia
             });
         }
         marks7.count = tcIdx;
-        marks7.mesh.material.opacity = (0.7 + vol * 0.3) * masterA;
+        marks7.mesh.material.opacity = (0.30 + vol * 0.30) * masterA;
         marks7.commit();
         floor7.grid.position.y = yMin - 20;
         floor7.material.opacity = (0.035 + texDep * 0.08) * masterA;
@@ -2290,12 +2343,13 @@ export function mountGeometry(stageEl: HTMLElement, getLatestState: () => Parlia
         // Glitch rects from txInfluence
         let grIdx = 0;
         for (let ri = 0; ri < rays.length && grIdx < 20; ri++) {
-            if (txInf > 0.25 && Math.random() < txInf * 0.15) {
-                const gx = (Math.random() - 0.5) * W;
-                const gy = rays[ri].y + (Math.random() - 0.5) * 40;
+            // Tears on a strike, not on a coin flip each frame.
+            if (txInf > 0.25 && calm7.strike > 0.02 && Math.random() < txInf * 0.35) {
+                const gx = calm7.drift(ri * 5, 0) * W * 0.5;
+                const gy = rays[ri].y + calm7.drift(ri * 5, 1) * 40;
                 const gr = glitchRects[grIdx];
                 gr.visible = true;
-                gr.scale.set(Math.random() * 80 * txInf + 20, 1, 1);
+                gr.scale.set(calm7.strike * 90 * txInf + 20, 1, 1);
                 gr.position.set(gx, gy, 2);
                 (gr.material as THREE.MeshBasicMaterial).opacity = 0.4 * txInf;
                 grIdx++;
@@ -2463,6 +2517,7 @@ export function mountMemoryHierarchy(stageEl: HTMLElement, getLatestState: () =>
     // level you reached, and nothing on screen said.
     const tags8 = makeLabelField(root8, LAYERS, 0xffcc88, 14);
     for (let j = 0; j < LAYERS; j++) tags8.text(j, SLOT_NOUNS.s8.one(j));
+    const calm8 = makeCalm();
 
     // Hex noise background — canvas texture updated per frame
     const hexCanvas = document.createElement("canvas");
@@ -2550,7 +2605,7 @@ export function mountMemoryHierarchy(stageEl: HTMLElement, getLatestState: () =>
 
         afterimage.uniforms["damp"].value = lerp(0.82, 0.97, delayFb);
         chromatic.uniforms["amount"].value = txInf * 0.006;
-        bloom.strength = lerp(0.2, 0.7, resBody * masterA);
+        bloom.strength = lerp(0.10, 0.38, resBody * masterA);
 
         // Hex noise — beatTempo speeds churn (stored in sp8.beatTempo if present, else tDil proxy)
         const beatT = sp8.beatTempo ?? 0.5;
@@ -2566,8 +2621,15 @@ export function mountMemoryHierarchy(stageEl: HTMLElement, getLatestState: () =>
         hexCtx.fillStyle = `rgba(${wR},${wG},0,${0.3 + texDep * 0.4 + filtC * 0.2})`;
         hexCtx.font = `${7 + Math.floor(texDep * 4)}px monospace`;
         const hexCount = Math.floor(20 + texDep * 50);
+        // Fixed positions, changing CONTENT. Every word was being redrawn at a
+        // fresh random point each frame, so the backdrop was a snowstorm rather
+        // than a field of data — and the whole 512x512 texture was re-uploaded
+        // to the GPU sixty times a second to achieve it. A hash-derived grid
+        // holds still; hexData mutating one cell per refresh is what moves.
         for (let i = 0; i < hexCount; i++) {
-            hexCtx.fillText(hexData[i % hexData.length], Math.random() * 512, Math.random() * 512);
+            const hx = ((i * 97) % 23) / 23 * 496 + 4;
+            const hy = ((i * 61) % 29) / 29 * 496 + 4;
+            hexCtx.fillText(hexData[i % hexData.length], hx, hy);
         }
         hexTexture.needsUpdate = true;
         (hexPlane.material as THREE.MeshBasicMaterial).opacity = (0.15 + texDep * 0.2 + filtC * 0.1) * masterA;
@@ -2595,6 +2657,7 @@ export function mountMemoryHierarchy(stageEl: HTMLElement, getLatestState: () =>
 
         // Drop lines between layers
         let dIdx = 0;
+        calm8.step("__slot8Soneth");
         drops8.begin();
         pick8.update(camera);
         const dropCount = Math.floor(3 + noiseF * 5);
@@ -2611,13 +2674,15 @@ export function mountMemoryHierarchy(stageEl: HTMLElement, getLatestState: () =>
 
         for (let j = 0; j < LAYERS; j++) {
             const wRatio = lerp(0.95 * (0.8 + spatSp * 0.2), 0.25 + spatSp * 0.15, j / Math.max(LAYERS - 1, 1));
-            let bw = W * wRatio * (0.8 + (snoise(j, frame * (0.005 + tDil * 0.01)) - 0.5) * 0.4);
+            let bw = W * wRatio * (0.8 + calm8.drift(j + 11, 0) * 0.16
+                * (0.4 + calm8.swell * 1.2));
             let bx = -bw / 2;
 
             // Glitch displacement — txInfluence + noiseLevel
             const glitchProb = 0.1 + txInf * 0.2;
-            if (aiOpt < 50 && Math.random() < glitchProb) {
-                bx += (Math.random() - 0.5) * 80 * noiseL * (1 - aiOpt100) * (1 + txInf);
+            if (aiOpt < 50 && calm8.strike > 0.02) {
+                bx += calm8.drift(j * 3, 0) * calm8.strike
+                    * 55 * noiseL * (1 - aiOpt100) * (1 + txInf);
             }
 
             // Layer border
@@ -2668,7 +2733,8 @@ export function mountMemoryHierarchy(stageEl: HTMLElement, getLatestState: () =>
             for (let i = 0; i < activeRoster.length; i++) {
                 const pres = st?.species?.[i]?.presence ?? 0.5;
                 const act  = st?.species?.[i]?.activity ?? 0.5;
-                const cw = (bw - 20) * (pres / LAYERS) * (0.5 + (snoise(i, j + frame * (0.005 + tDil * 0.01)) - 0.5) * 0.5);
+                const cw = (bw - 20) * (pres / LAYERS)
+                    * (0.5 + calm8.drift(i * 7 + j, 0) * 0.22 * (0.4 + calm8.swell * 1.1));
                 const bi = j * activeRoster.length + i;
                 const hov8 = (bi === pick8.hover);
                 const grb8 = (bi === pick8.grabbed);
@@ -2676,7 +2742,7 @@ export function mountMemoryHierarchy(stageEl: HTMLElement, getLatestState: () =>
                 // each level, so a block holding more is a thicker block —
                 // the one dimension the old rectangles could not express.
                 const bd = 12 + pres * 70 + act * 26;
-                _e8.set(0, 0, act * (snoise(i + j * 10, frame * 0.01) - 0.5) * 0.15 * txInf);
+                _e8.set(0, 0, act * calm8.drift(i + j * 10, 2) * 0.09 * txInf);
                 _q8.setFromEuler(_e8);
                 _t8a.set(blockCX + cw / 2, cy + baseH / 2, border.position.z + bd * 0.35);
                 // BoxGeometry in makeNodeField is built at radius*1.5 per side,
@@ -2698,9 +2764,13 @@ export function mountMemoryHierarchy(stageEl: HTMLElement, getLatestState: () =>
             // Drop lines to next layer
             if (j < LAYERS - 1) {
                 for (let k = 0; k < dropCount && dIdx < MAX_DROPS; k++) {
-                    const dropX = bx + Math.random() * bw;
-                    const gx1 = (Math.random() - 0.5) * 30 * txInf;
-                    const gx2 = (Math.random() - 0.5) * 30 * txInf;
+                    // Deterministic per drop, so a spill is a path between two
+                    // levels that stays put long enough to be read. A fresh
+                    // random x every frame made twenty-four lines that shared
+                    // nothing from one frame to the next.
+                    const dropX = bx + (calm8.drift(j * 31 + k, 0) * 0.5 + 0.5) * bw;
+                    const gx1 = calm8.drift(j * 31 + k, 1) * 22 * txInf;
+                    const gx2 = calm8.drift(j * 31 + k, 2) * 22 * txInf;
                     // A spill falls between two levels that stand at different
                     // depths, so it runs between those depths. Constant z = 2
                     // drew every eviction in front of the whole hierarchy.
@@ -2722,7 +2792,7 @@ export function mountMemoryHierarchy(stageEl: HTMLElement, getLatestState: () =>
         emitSpill8(overflow8, 0.3 + Math.min(1, overflow8 / LAYERS) * 0.55,
             Math.min(1, overflow8 / LAYERS));
         drops8.end();
-        blocks8.mesh.material.opacity = (0.4 + vol * 0.6) * masterA;
+        blocks8.mesh.material.opacity = (0.18 + vol * 0.40) * masterA;
         blocks8.commit();
 
         // The air falls with the spill: POLVO is a granular voice and its
@@ -2735,7 +2805,7 @@ export function mountMemoryHierarchy(stageEl: HTMLElement, getLatestState: () =>
         root8.rotation.y = vm8.angle * 0.38;
         const dmR = lerp(0.78, 1.0, droneMix); const dmG = lerp(1.0, 0.67, droneMix);
         dropMat.color.setRGB(dmR, dmG, 0);
-        dropMat.opacity = (0.5 + memFeed * 0.5) * (0.4 + vol * 0.6) * masterA;
+        dropMat.opacity = (0.22 + memFeed * 0.30) * (0.4 + vol * 0.6) * masterA;
 
         // Idle drift + damping. These six had no controls at all before, so
         // this is also where ROTATION SPD reaches them.
@@ -2896,6 +2966,7 @@ export function mountHashing(stageEl: HTMLElement, getLatestState: () => Parliam
     // second full-length caption beside them would be two things shouting.
     const tags9 = makeLabelField(root9, NUM_KEYS, 0xffcc88, 12);
     for (let i = 0; i < NUM_KEYS; i++) tags9.text(i, SLOT_NOUNS.s9.one(i));
+    const calm9 = makeCalm();
 
     // Arrowhead triangles
     const arrowMeshes: THREE.Mesh[] = [];
@@ -3009,7 +3080,7 @@ export function mountHashing(stageEl: HTMLElement, getLatestState: () => Parliam
 
         afterimage.uniforms["damp"].value = lerp(0.80, 0.95, delayFb);
         chromatic.uniforms["amount"].value = txInf * 0.007;
-        bloom.strength = lerp(0.3, 1.0, masterA);
+        bloom.strength = lerp(0.14, 0.52, masterA);
 
         // Column positions — spatialSpread controls separation
         const colA_X = -W / 2 + W * lerp(0.3, 0.12, spatSp);
@@ -3022,7 +3093,16 @@ export function mountHashing(stageEl: HTMLElement, getLatestState: () => Parliam
         const bucketHits = new Array(NUM_BUCKETS).fill(0);
         const mapTargets: number[] = [];
         for (let i = 0; i < NUM_KEYS; i++) {
-            const hash = Math.floor(snoise(i, frame * 0.005 * (1.1 - consensus) * (1 + tDil * 2 + beatT * 3)) * NUM_BUCKETS);
+            // The single worst remaining shake in these five, and it was not
+            // a position: every key's BUCKET was recomputed each frame, so at
+            // 60 Hz the eight paths re-aimed sixty times a second and the whole
+            // right-hand side boiled. A hash table does not rehash continuously
+            // — it rehashes on an event. This is the same noise walk, but its
+            // rate is now the bed's, so the mapping HOLDS long enough to be
+            // read and changes when the engine does.
+            const hash = Math.floor(snoise(i,
+                calm9.clock * 0.09 * (1.1 - consensus) * (1 + tDil + beatT * 2)
+            ) * NUM_BUCKETS);
             const mapped = Math.max(0, Math.min(NUM_BUCKETS - 1, hash));
             mapTargets.push(mapped);
             bucketHits[mapped]++;
@@ -3048,6 +3128,7 @@ export function mountHashing(stageEl: HTMLElement, getLatestState: () => Parliam
         let trIdx = 0;
         // Which bucket the held key maps to, so the lookup lights its target.
         let heldBucket = -1;
+        calm9.step("__slot9Soneth");
         paths9.begin();
         colls9.begin();
         pick9.update(camera);
@@ -3059,7 +3140,8 @@ export function mountHashing(stageEl: HTMLElement, getLatestState: () => Parliam
             const spAct = st?.species?.[i % (st?.species?.length || 1)]?.activity ?? 0.5;
 
             // Key box position + rotation (droneDepth controls spin speed)
-            const kbSize = 20 * (1 + noiseL * (snoise(i, frame * 0.01) - 0.3));
+            const kbSize = 20 * (1 + noiseL * calm9.drift(i, 0) * 0.7
+                * (0.4 + calm9.swell * 1.2));
             keyBoxes[i].position.set(colA_X, yA, 0);
             keyBoxes[i].scale.setScalar(kbSize / 20);
             // Idle drift added to the key-box spin, and a vote forces a
@@ -3117,7 +3199,12 @@ export function mountHashing(stageEl: HTMLElement, getLatestState: () => Parliam
             const zBucket = 0;
             for (let s = 0; s <= PATH_SEGS; s++) {
                 const t = s / PATH_SEGS;
-                const gj = (snoise(i + s, frame * 0.03) - 0.5) * jitterRange * (isCollision ? (1 - consensus) * (1 + specS * 3 + txInf * 2) : 0);
+                // A collision path wanders slowly off its own curve rather
+                // than buzzing along it. Same idea throughout these five: the
+                // deviation is what disagreement looks like, and looking like
+                // something requires holding still long enough to be seen.
+                const gj = calm9.drift(i * 17 + s, 1) * jitterRange * 0.55
+                    * (isCollision ? (1 - consensus) * (1 + specS * 2 + txInf) : 0);
                 // Quadratic bezier: P = (1-t)²·A + 2(1-t)t·M + t²·B
                 const tt = t * t; const mt = 1 - t; const mt2 = mt * mt;
                 const px = mt2 * cx0 + 2 * mt * t * midX + tt * cx1;
@@ -3155,12 +3242,16 @@ export function mountHashing(stageEl: HTMLElement, getLatestState: () => Parliam
             // Tear rects from txInfluence + dronemix
             const tearCount = Math.floor(droneMix * 3 + 1);
             for (let k = 0; k < tearCount && trIdx < 16; k++) {
-                if (txInf > 0.3 && Math.random() < txInf * 0.25) {
-                    const tearX = lerp(colA_X, colB_X, Math.random());
-                    const tearY = lerp(yA, yB, Math.random());
+                // On a strike, not on a coin flip each frame. A tear that
+                // reappears somewhere new 60 times a second is static, not a
+                // glitch — the glitch is that it happens when the chain moves.
+                if (txInf > 0.3 && calm9.strike > 0.02 && Math.random() < txInf * 0.5) {
+                    const tearX = lerp(colA_X, colB_X, calm9.drift(i * 3, 0) * 0.5 + 0.5);
+                    const tearY = lerp(yA, yB, calm9.drift(i * 3, 1) * 0.5 + 0.5);
                     const tr = tearRects[trIdx];
                     tr.visible = true;
-                    tr.scale.set(Math.random() * 80 * txInf + 20, 1 + Math.random() * 3, 1);
+                    tr.scale.set(calm9.strike * 90 * txInf + 20,
+                        1 + calm9.strike * 3, 1);
                     tr.position.set(tearX, tearY, 2);
                     (tr.material as THREE.MeshBasicMaterial).opacity = 0.5 * txInf * masterA;
                     trIdx++;
@@ -3170,10 +3261,10 @@ export function mountHashing(stageEl: HTMLElement, getLatestState: () => Parliam
         for (let i = trIdx; i < 16; i++) tearRects[i].visible = false;
 
         paths9.end();
-        pathMat.opacity = (0.5 + vol * 0.5) * masterA;
+        pathMat.opacity = (0.20 + vol * 0.34) * masterA;
 
         colls9.end();
-        collMat.opacity = (0.6 + vol * 0.4) * masterA;
+        collMat.opacity = (0.26 + vol * 0.30) * masterA;
         // HARMONICS used to set collMat.linewidth here, which ANGLE clamps to
         // 1 px — the control was inert. It is the tube RADIUS now, above.
 
@@ -3183,8 +3274,8 @@ export function mountHashing(stageEl: HTMLElement, getLatestState: () => Parliam
             const isCollision = bucketHits[j] > 1;
             let bx = colB_X, by = yB;
             if (isCollision) {
-                bx += (snoise(j * 3, frame * 0.05) - 0.5) * 10 * (1 - consensus) * (1 + specS);
-                by += (snoise(j * 7, frame * 0.05) - 0.5) * 10 * (1 - consensus);
+                bx += calm9.drift(j * 3, 0) * 7 * (1 - consensus) * (1 + specS * 0.6);
+                by += calm9.drift(j * 7, 1) * 7 * (1 - consensus);
             }
             // A bucket holding more is DEEPER. That is the one thing the flat
             // squares could not say, and it is the whole subject of a hash
@@ -3204,7 +3295,7 @@ export function mountHashing(stageEl: HTMLElement, getLatestState: () => Parliam
                 isCollision ? 0.67 : lit9 ? 1.0 : dG,
                 lit9 ? 0.6 : 0);
         }
-        buckets9.mesh.material.opacity = (0.4 + vol * 0.6) * masterA * 0.75;
+        buckets9.mesh.material.opacity = (0.18 + vol * 0.40) * masterA * 0.75;
         buckets9.commit();
 
         // The air runs along the ring the keys sit on. DRONE MIX sets the
@@ -3214,13 +3305,16 @@ export function mountHashing(stageEl: HTMLElement, getLatestState: () => Parliam
         motes9.material.opacity = (0.08 + texDep * 0.24) * masterA;
         motes9.material.size = Math.max(W, H) * (0.0012 + resBody * 0.0032);
         root9.rotation.y = vm9.angle * 0.45;
-        keys9.mesh.material.opacity = (0.8 + vol * 0.2) * masterA;
+        keys9.mesh.material.opacity = (0.32 + vol * 0.26) * masterA;
         keys9.commit();
 
         // Scanlines — textureDepth controls density, filtercutoff brightness
         const scanStep = Math.floor(lerp(10, 3, texDep));
         let scIdx = 0;
-        for (let y = -H / 2; y < H / 2 && scIdx < MAX_SCAN_LINES; y += scanStep + Math.floor(Math.random() * 7)) {
+        // Deterministic spacing: a new random gap every frame made the scan
+        // lines jump rather than scroll.
+        for (let y = -H / 2; y < H / 2 && scIdx < MAX_SCAN_LINES;
+             y += scanStep + 3 + calm9.drift(scIdx, 0) * 3) {
             scanPositions[scIdx * 6]     = -W / 2; scanPositions[scIdx * 6 + 1] = y; scanPositions[scIdx * 6 + 2] = -2;
             scanPositions[scIdx * 6 + 3] =  W / 2; scanPositions[scIdx * 6 + 4] = y; scanPositions[scIdx * 6 + 5] = -2;
             scIdx++;

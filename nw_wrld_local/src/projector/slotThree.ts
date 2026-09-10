@@ -524,3 +524,125 @@ export function makeLabelField(
         },
     };
 }
+
+// ─── Calm ────────────────────────────────────────────────────────────────────
+
+export type Calm = {
+    /** Smoothed drone level, 0-1. Seconds of smoothing, not frames. */
+    readonly drone: number;
+    /** Smoothed pad level, 0-1. */
+    readonly pad: number;
+    /** The slow swell the two make together — what movement should follow. */
+    readonly swell: number;
+    /**
+     * 0→1 on a struck-voice onset, decaying over about a second.
+     *
+     * Zero unless BOWL or CHINA is actually up: the displacement that used to
+     * happen every frame at random now happens when the instrument is struck,
+     * and only if the half that strikes it exists.
+     */
+    readonly strike: number;
+    /** Whichever of the two halves is louder, 0-1. Scales how far a strike throws. */
+    readonly halves: number;
+    /**
+     * Seconds since mount.
+     *
+     * For the places that were walking a noise function against the FRAME
+     * COUNT — which runs at whatever rate the display does, and at 60 Hz turns
+     * a slow walk into a boil. Anything sampled over time should sample over
+     * this.
+     */
+    readonly clock: number;
+    /**
+     * Deterministic slow drift in [-1, 1], per body and per axis.
+     *
+     * This is the replacement for `(Math.random() - 0.5)` written into a
+     * POSITION every frame. That is uncorrelated frame to frame, so it does not
+     * read as motion at all — it reads as the thing vibrating in place, which
+     * is precisely the shake. Three sines at incommensurable rates give a path
+     * a body can actually be followed along, and it is a function of TIME, so
+     * it runs at the same speed on a 60 and a 144 Hz panel.
+     */
+    drift(i: number, axis: number): number;
+    /** Advance. `slotKey` is the window mirror this slot reads, for bowl/china. */
+    step(slotKey: string): void;
+};
+
+/**
+ * The slow body of the engine, for slots that should move with it.
+ *
+ * Slots 5-9 took their motion from per-frame randomness and from `snoise(i,
+ * frame * k)` — frame counts, not seconds. Two consequences: the movement was
+ * uncorrelated between frames (shake rather than travel) and it ran faster on
+ * a faster display.
+ *
+ * What these structures should follow is the part of the engine that is
+ * actually slow: the drone and the pad, which sustain for tens of seconds. So
+ * `swell` is those two, heavily smoothed, and it is what continuous motion
+ * scales with. Anything impulsive waits for `strike`.
+ */
+export function makeCalm(): Calm {
+    let drone = 0, pad = 0, strike = 0, halves = 1;
+    let lastPercEnv = 0;
+    let t = 0;
+    let last = 0;
+
+    return {
+        get clock() { return t; },
+        get drone() { return drone; },
+        get pad() { return pad; },
+        get swell() { return Math.min(1, drone * 0.65 + pad * 0.55); },
+        get strike() { return strike; },
+        get halves() { return halves; },
+        drift(i, axis) {
+            // Incommensurable rates, so a body never returns to the same offset
+            // on a short cycle and the field as a whole never pulses together.
+            const p = i * 1.7 + axis * 2.39;
+            return (Math.sin(t * 0.11 + p) * 0.55
+                  + Math.sin(t * 0.187 + p * 1.7) * 0.30
+                  + Math.sin(t * 0.041 + p * 0.6) * 0.15);
+        },
+        step(slotKey) {
+            const now = (typeof performance !== "undefined" ? performance.now() : Date.now()) / 1000;
+            const dt = last === 0 ? 1 / 60 : Math.min(0.1, now - last);
+            last = now;
+            t += dt;
+
+            let a: { voices?: Record<string, { env?: number; amp?: number }> } | undefined;
+            try {
+                a = (window as unknown as { __scAudio?: typeof a }).__scAudio;
+            } catch { a = undefined; }
+            const dEnv = a?.voices?.drone?.env ?? 0;
+            const pEnv = a?.voices?.pad?.env ?? 0;
+            const percEnv = a?.voices?.perc?.env ?? 0;
+
+            // Slow on the way up as well as down. A drone that snapped to its
+            // level would be as abrupt as the randomness it replaces.
+            const k = 1 - Math.exp(-dt / 1.8);
+            drone += (dEnv - drone) * k;
+            pad   += (pEnv - pad) * k;
+
+            // BOWL and CHINA, from this slot's own mirror. Both down and the
+            // struck voice has no halves, so nothing here can throw anything.
+            let bowl = 1, china = 1;
+            try {
+                const sp = (window as unknown as Record<string, Record<string, number>>)[slotKey];
+                if (sp) {
+                    bowl = sp["voice:bowl"] ?? 1;
+                    china = sp["voice:china"] ?? 1;
+                }
+            } catch { /* the defaults stand */ }
+            halves = Math.max(bowl, china);
+
+            // Rising edge on the struck voice, gated by whether either half is
+            // up. Decay ~1.2 s, so a hit is a push the structure recovers from
+            // rather than a permanent displacement.
+            if (percEnv > lastPercEnv + 0.06 && halves > 0.02) {
+                strike = Math.max(strike, Math.min(1, percEnv * 0.9) * halves);
+            }
+            lastPercEnv = percEnv;
+            strike *= Math.exp(-dt / 0.42);
+            if (strike < 0.001) strike = 0;
+        },
+    };
+}
