@@ -96,6 +96,7 @@ export function pushEthTx(a: number[]): void {
     lastTxAt = now();
     eth.pulse = 1;
     eth.live = true;
+    noteEthTx();
 }
 
 /** From the /eth/block/live handler. */
@@ -110,6 +111,7 @@ export function pushEthBlock(a: number[]): void {
     lastBlockAt = now();
     eth.blockPulse = 1;
     eth.live = true;
+    noteEthBlock();
 }
 
 function now(): number {
@@ -136,3 +138,168 @@ export function tickEthLive(): void {
     // to tell those apart.
     eth.live = eth.age < 120;
 }
+
+// ─── Scales ──────────────────────────────────────────────────────────────────
+//
+// The raw fields above are STEPS. eth_sonify.py sleeps 0.05 s between
+// transactions, so `gas`, `calldata` and the rest change twenty times a second,
+// and a value that steps twenty times a second is shake whatever it means. Fed
+// straight to a shape or a brightness it is exactly the jitter the whole
+// previous pass was spent removing — just sourced from Ethereum instead of from
+// Math.random().
+//
+// What a visual needs from a data stream is not the sample. It is:
+//
+//   a FOLLOWER  with a time constant of its own, so a market condition moves
+//               like a market condition and an event moves like an event;
+//   an ENVELOPE with an attack, so an arrival swells rather than snapping —
+//               a step has no shape and cannot be watched;
+//   a PHASE     that runs continuously across the twelve seconds of a block,
+//               so the one genuinely periodic thing on this chain can drive
+//               something that turns instead of something that flips;
+//   a SCALE     that adapts, because a field sitting at 0.42 ± 0.02 all session
+//               is information the picture never sees at a fixed gain.
+//
+// All four live here, in one place, so six modules cannot disagree about how
+// fast gas moves.
+
+export type EthScaled = {
+    /** Slow followers, 0-1. Market conditions: seconds, not frames. */
+    gas: number;
+    baseFee: number;
+    /** Medium followers. What the chain is doing. */
+    value: number;
+    calldata: number;
+    priority: number;
+    fullness: number;
+    entropy: number;
+
+    /**
+     * Autoscaled versions of the same, stretched to the range actually seen.
+     *
+     * A chain that sits between 0.40 and 0.46 all evening gives a picture no
+     * movement at fixed gain. These track a slow running min and max and map
+     * the follower across it, so the visual uses its whole range whatever the
+     * conditions happen to be — and the mapping widens rather than narrows on
+     * an outlier, so a single spike cannot permanently flatten everything.
+     */
+    gasN: number;
+    valueN: number;
+    calldataN: number;
+
+    /** 0-1 across the current block, from the measured period. Wraps. */
+    blockPhase: number;
+    /**
+     * Direction, ramped rather than flipped.
+     *
+     * Block parity alternates, which is the right SOURCE for a reversing turn
+     * and the wrong shape for one: a hard ±1 reverses an assembly between two
+     * frames. This eases across about two seconds, so the structure slows,
+     * stops and comes back the other way — which is what a body with mass does.
+     */
+    turn: number;
+
+    /** Attack-release envelope on a transaction. Attack 60 ms, release 900 ms. */
+    txEnv: number;
+    /** Attack-release on a block. Attack 250 ms, release 3.5 s. */
+    blockEnv: number;
+    /**
+     * Iteration count: transactions since mount, and blocks since mount.
+     * For anything that should advance rather than oscillate.
+     */
+    txCount: number;
+    blockCount: number;
+};
+
+const sc: EthScaled = {
+    gas: 0.4, baseFee: 0.4, value: 0.4, calldata: 0.3, priority: 0.5,
+    fullness: 0.4, entropy: 0.5,
+    gasN: 0.5, valueN: 0.5, calldataN: 0.5,
+    blockPhase: 0, turn: 1, txEnv: 0, blockEnv: 0,
+    txCount: 0, blockCount: 0,
+};
+
+/** Running window per autoscaled field: [lo, hi]. */
+const span: Record<string, [number, number]> = {
+    gas: [0.35, 0.55], value: [0.3, 0.6], calldata: [0.2, 0.5],
+};
+
+let txSeen = 0, blockSeen = 0;
+let envTx = 0, envBlk = 0;
+let phase = 0;
+let turnTarget = 1;
+let lastTick = 0;
+
+/**
+ * Map a follower across its own running range.
+ *
+ * The window WIDENS immediately on a new extreme and contracts slowly, so an
+ * outlier opens the scale at once and a quiet stretch closes it over minutes.
+ * The other way round — contracting fast — would make one spike flatten the
+ * picture for as long as it took to decay out.
+ */
+function autoscale(key: string, v: number, dt: number): number {
+    const w = span[key];
+    if (v < w[0]) w[0] = v; else w[0] += (v - w[0]) * (1 - Math.exp(-dt / 90)) * 0.15;
+    if (v > w[1]) w[1] = v; else w[1] += (v - w[1]) * (1 - Math.exp(-dt / 90)) * 0.15;
+    // A floor on the width: below it the mapping amplifies noise into motion,
+    // which is the very thing this layer exists to prevent.
+    const range = Math.max(0.04, w[1] - w[0]);
+    return Math.max(0, Math.min(1, (v - w[0]) / range));
+}
+
+export function getEthScaled(): EthScaled {
+    return sc;
+}
+
+/** Call once per frame, after tickEthLive. */
+export function tickEthScaled(): void {
+    const t = now();
+    const dt = lastTick === 0 ? 1 / 60 : Math.min(0.25, t - lastTick);
+    lastTick = t;
+
+    // Followers. Each field gets the time constant its MEANING deserves: gas
+    // and base fee are market conditions and should drift over seconds; value
+    // and calldata describe the act in front of you and may move faster.
+    const k = (tau: number) => 1 - Math.exp(-dt / tau);
+    sc.gas      += (eth.gas - sc.gas) * k(5.0);
+    sc.baseFee  += (eth.baseFee - sc.baseFee) * k(6.0);
+    sc.value    += (eth.value - sc.value) * k(2.0);
+    sc.calldata += (eth.calldata - sc.calldata) * k(2.5);
+    sc.priority += (eth.priority - sc.priority) * k(3.0);
+    sc.fullness += (eth.fullness - sc.fullness) * k(4.0);
+    sc.entropy  += (eth.entropy - sc.entropy) * k(4.0);
+
+    sc.gasN = autoscale("gas", sc.gas, dt);
+    sc.valueN = autoscale("value", sc.value, dt);
+    sc.calldataN = autoscale("calldata", sc.calldata, dt);
+
+    // Envelopes. Attack is what a step does not have, and it is the whole
+    // difference between an event you can watch and a value that jumped.
+    const atk = (cur: number, target: number, tau: number) =>
+        cur + (target - cur) * (1 - Math.exp(-dt / tau));
+    envTx = eth.pulse > envTx ? atk(envTx, eth.pulse, 0.06) : atk(envTx, 0, 0.9);
+    envBlk = eth.blockPulse > envBlk ? atk(envBlk, eth.blockPulse, 0.25) : atk(envBlk, 0, 3.5);
+    sc.txEnv = envTx;
+    sc.blockEnv = envBlk;
+
+    // Block phase: continuous across the measured period, so the twelve-second
+    // clock drives something that TURNS. Reset on a block rather than free-run,
+    // so it stays in step with the chain instead of drifting off it.
+    const periodS = 4 + sc.fullness * 0 + (eth.period * 26);
+    if (eth.blockAge < 0.1) phase = 0;
+    phase += dt / Math.max(4, periodS);
+    if (phase > 1) phase -= 1;
+    sc.blockPhase = phase;
+
+    // Direction, ramped. Parity is the source; this is the shape.
+    turnTarget = eth.parity > 0.5 ? 1 : -1;
+    sc.turn += (turnTarget - sc.turn) * k(2.0);
+
+    sc.txCount = txSeen;
+    sc.blockCount = blockSeen;
+}
+
+/** Counters, bumped from the ingest above. */
+export function noteEthTx(): void { txSeen++; }
+export function noteEthBlock(): void { blockSeen++; }

@@ -605,6 +605,24 @@ export type Calm = {
         hash: number; period: number; pulse: number; blockPulse: number;
         live: boolean;
     };
+    /**
+     * The chain SMOOTHED — followers, envelopes, block phase, autoscale.
+     *
+     * This is what a shape, a brightness or a rotation should read. `eth` above
+     * is the raw stream and it STEPS twenty times a second, because that is how
+     * often eth_sonify.py sends; anything continuous driven from it directly is
+     * jitter with a blockchain for a seed. Use `eth` for discrete tests — did a
+     * transaction just land, is this the counterparty — and `chain` for
+     * everything that moves.
+     */
+    readonly chain: {
+        gas: number; baseFee: number; value: number; calldata: number;
+        priority: number; fullness: number; entropy: number;
+        gasN: number; valueN: number; calldataN: number;
+        blockPhase: number; turn: number;
+        txEnv: number; blockEnv: number;
+        txCount: number; blockCount: number;
+    };
     /** Advance. `slotKey` is the window mirror this slot reads, for bowl/china. */
     step(slotKey: string): void;
 };
@@ -622,6 +640,14 @@ export type Calm = {
  * `swell` is those two, heavily smoothed, and it is what continuous motion
  * scales with. Anything impulsive waits for `strike`.
  */
+/** The smoothed layer's rest state, for a slot that mounts before the feed. */
+const CHAIN_REST: Calm["chain"] = {
+    gas: 0.4, baseFee: 0.4, value: 0.4, calldata: 0.3, priority: 0.5,
+    fullness: 0.4, entropy: 0.5,
+    gasN: 0.5, valueN: 0.5, calldataN: 0.5,
+    blockPhase: 0, turn: 1, txEnv: 0, blockEnv: 0, txCount: 0, blockCount: 0,
+};
+
 /** What a slot reads before the chain has said anything, or if it never does. */
 const ETH_REST: Calm["eth"] = {
     value: 0.4, priority: 0.5, gas: 0.4, calldata: 0.3, nonce: 0.5,
@@ -644,6 +670,13 @@ export function makeCalm(): Calm {
     })();
 
     return {
+        get chain() {
+            try {
+                const live = (window as unknown as { __ethScaled?: Calm["chain"] }).__ethScaled;
+                if (live) return live;
+            } catch { /* fall through */ }
+            return CHAIN_REST;
+        },
         get eth() {
             // Re-resolved lazily: the slot may mount before parliamentEntry has
             // published, and a stale fallback would leave that slot reading a

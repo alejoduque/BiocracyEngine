@@ -14,7 +14,10 @@ import { initLaserTap } from "./laserTap";
 import { initPulsarPlot, pushRow, setPulsarSource, type PulsarSource } from "./pulsarPlot";
 import { startVizMotion } from "./vizMotion";
 import { publishScAudio, noteVoiceOnset, tickScAudio, type ScAudio } from "./scAudio";
-import { pushEthTx, pushEthBlock, tickEthLive, getEthLive } from "./ethLive";
+import {
+  pushEthTx, pushEthBlock, tickEthLive, getEthLive,
+  tickEthScaled, getEthScaled,
+} from "./ethLive";
 import { fetchSpeciesRoster, computeIUCNMults } from "./speciesFetcher";
 import * as THREE from "three";
 
@@ -1150,8 +1153,13 @@ async function init() {
 
   // The chain, for whoever wants it. Same contract as __scAudio and
   // __vizMotion: one object, mutated in place, held by reference.
-  try { (window as unknown as { __ethLive?: unknown }).__ethLive = getEthLive(); }
-  catch { /* ignore */ }
+  try {
+    const w = window as unknown as { __ethLive?: unknown; __ethScaled?: unknown };
+    w.__ethLive = getEthLive();
+    // The SMOOTHED layer is what the modules should read. __ethLive is the raw
+    // stream, kept published for anything that genuinely wants the step.
+    w.__ethScaled = getEthScaled();
+  } catch { /* ignore */ }
 
   // Idle-driven auto-rotation + the shared vote-flash reader. Publishes
   // window.__vizMotion, which every slot reads for its own drift.
@@ -2416,8 +2424,11 @@ async function init() {
     // drift apart from each other and from the sound.
     tickScAudio(0.016);
     // The chain's own pulses decay here for the same reason: one place, so six
-    // modules cannot disagree about how long ago a transaction was.
+    // modules cannot disagree about how long ago a transaction was — and the
+    // followers, envelopes and block phase advance on the same tick, so the
+    // smoothing is shared rather than six slots each smoothing differently.
     tickEthLive();
+    tickEthScaled();
     // Source priority: real engine output > microphone > synthetic fallback.
     // Same bin count as buildFftBins' default, so the renderer sees one shape.
     const bins = scBins(256) ?? micBins(256) ?? buildFftBins(currentState, elapsed);
