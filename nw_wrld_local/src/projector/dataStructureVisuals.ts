@@ -1786,11 +1786,11 @@ export function mountGeometry(stageEl: HTMLElement, getLatestState: () => Parlia
     // and driven by its band. See mountSlotField.
     // ── No constellation on this slot ─────────────────────────────────────
     // The animal field ran on all five of 5-9, which made it the wallpaper of
-    // the whole right-hand half of the instrument rather than a thing that
-    // means something where it appears. It is kept where it reads as a
-    // statement: slot 5, the one field that still answers the sound, and
-    // slot 6, the struck voice, where BOWL and CHINA are drawn as the reach
-    // and the sharpness of the links. Here the depth belongs to the structure.
+    // the right-hand half of the instrument rather than something that means
+    // anything where it appears. It is kept on two: slot 5, the one field that
+    // still answers the sound, and slot 9, where the animal whose clip is
+    // playing is the animal that lights. Here the depth belongs to the
+    // structure.
     //
     // The onset edge stays — that is the voice, not the sky. See makeOnsetEdge.
     const onsetOf7 = makeOnsetEdge(inst7);
@@ -1817,12 +1817,22 @@ export function mountGeometry(stageEl: HTMLElement, getLatestState: () => Parlia
     }));
 
     const MAX_RAYS = 10;
-    const rayPositions = new Float32Array(MAX_RAYS * 2 * 3);
-    const rayGeo = new THREE.BufferGeometry();
-    rayGeo.setAttribute("position", new THREE.BufferAttribute(rayPositions, 3));
-    rayGeo.setDrawRange(0, 0);
-    const rayMat = new THREE.LineBasicMaterial({ color: 0xc8ffe6, transparent: true });
-    root7.add(new THREE.LineSegments(rayGeo, rayMat));
+    // ── The rays have a body ─────────────────────────────────────────────
+    // These already ran from z = +W*0.10 to z = -W*0.55, so unlike the other
+    // four this slot's rays genuinely crossed the volume — and were then drawn
+    // as 1 px lines, which is the one thing that cannot express a beam. Tubes,
+    // so a ray occludes what is behind it and the depth it already had can be
+    // seen. Their radius answers RES BODY and the kick's own strike.
+    const rays7 = makeTubeLinks(root7, MAX_RAYS, 0xc8ffe6, 0.6);
+    const rayMat = rays7.material;
+    // The targets a ray acquires are bodies, and they are what you can touch:
+    // the sweep is the machine's business, but a target is a claim about the
+    // world and should answer being pointed at.
+    const marks7 = makeNodeField(root7, 64, 9, 0, { opacity: 0.85 });
+    const pick7 = attachPicker(renderer.domElement, marks7.mesh);
+    const floor7 = makeDepthGrid(root7, Math.max(W, H) * 1.7, 20, 0x336633);
+    const _t7a = new THREE.Vector3();
+    const _t7b = new THREE.Vector3();
 
     // Sweep vertical lines (max 4 eco values)
     const sweepPositions = new Float32Array(4 * 2 * 3);
@@ -1833,8 +1843,6 @@ export function mountGeometry(stageEl: HTMLElement, getLatestState: () => Parlia
     root7.add(new THREE.LineSegments(sweepGeo, sweepMat));
 
     // Target circles pool (ray × sweep)
-    const targetGroup = new THREE.Group();
-    root7.add(targetGroup);
 
     // Warped grid — rebuilt occasionally
     const gridGroup = new THREE.Group();
@@ -1857,19 +1865,10 @@ export function mountGeometry(stageEl: HTMLElement, getLatestState: () => Parlia
         return new THREE.Line(g, new THREE.LineBasicMaterial({ color: col, transparent: true, opacity: op }));
     }
 
-    function makeTargetCircle(r: number): THREE.Line {
-        return makeRetCircle(r, 32, 0xffaa00, 0.6);
-    }
-
-    // Pre-allocate target circles
+    // Targets are instanced octahedra now — see marks7 above. The pool of 32
+    // flat Line loops that used to live here faced the camera at a fixed z and
+    // could not sit on the cone they were supposed to mark.
     const maxTargets = MAX_RAYS * 4;
-    const targetCircles: THREE.Line[] = [];
-    for (let i = 0; i < maxTargets; i++) {
-        const tc = makeTargetCircle(12);
-        tc.visible = false;
-        targetGroup.add(tc);
-        targetCircles.push(tc);
-    }
 
     // Glitch rects pool
     const glitchRects: THREE.Mesh[] = [];
@@ -2044,6 +2043,10 @@ export function mountGeometry(stageEl: HTMLElement, getLatestState: () => Parlia
         // Update rays — droneDepth adds bonus rays (clamped to MAX_RAYS)
         const rayCount = Math.min(rays.length + Math.floor(droneD * 2), MAX_RAYS);
         let rIdx = 0;
+        // Outside the loop, not on the first iteration: at droneDepth 0 with an
+        // empty roster the loop body never runs, and end() without begin()
+        // would leave the previous frame's draw range standing.
+        rays7.begin();
         for (let i = 0; i < Math.min(rays.length, rayCount); i++) {
             const r = rays[i];
             const presence = st?.species?.[i]?.presence ?? 0.5;
@@ -2080,43 +2083,71 @@ export function mountGeometry(stageEl: HTMLElement, getLatestState: () => Parlia
             const dirA = (i / Math.max(1, rayCount)) * Math.PI * 2 + r.angle * 2 + radarAngle;
             const rNear = W * 0.03;
             const rFar  = W * 0.62 * front7;
-            rayPositions[rIdx * 6]     = Math.cos(dirA) * rNear;
-            rayPositions[rIdx * 6 + 1] = Math.sin(dirA) * rNear + r.y * 0.06;
-            rayPositions[rIdx * 6 + 2] = W * 0.10;
-            rayPositions[rIdx * 6 + 3] = Math.cos(dirA) * rFar;
-            rayPositions[rIdx * 6 + 4] = Math.sin(dirA) * rFar + r.y * 0.30;
-            rayPositions[rIdx * 6 + 5] = -W * 0.55 * front7;
+            _t7a.set(Math.cos(dirA) * rNear,
+                     Math.sin(dirA) * rNear + r.y * 0.06,
+                     W * 0.10);
+            _t7b.set(Math.cos(dirA) * rFar,
+                     Math.sin(dirA) * rFar + r.y * 0.30,
+                     -W * 0.55 * front7);
+            // A pressure front has a width, and the width is the hit. RES BODY
+            // sets the resting thickness, the kick's own envelope swells it —
+            // which is the modulation a 1 px line could never carry.
+            rays7.add(_t7a, _t7b,
+                (1.4 + resBody * 3.4) * (1 + au7.env * au7.amp * 1.8));
             rIdx++;
         }
-        rayGeo.setDrawRange(0, rIdx * 2);
-        rayGeo.attributes.position.needsUpdate = true;
+        rays7.end();
         // average presence across active species modulates ray brightness
         const avgPresence = rays.reduce((s, _, i) => s + (st?.species?.[i]?.presence ?? 0.5), 0) / Math.max(rays.length, 1);
         rayMat.opacity = (0.3 + avgPresence * 0.3 + vol * 0.4) * masterA;
 
-        // Target circles at ray × sweep intersections
+        // ── Targets are bodies, and they can be pointed at ────────────────
+        //
+        // These were flat Line loops pinned at z = 1 — circles facing the
+        // camera on a stage whose rays run through 0.65 W of depth, so an
+        // "acquisition" appeared to float in front of the cone rather than on
+        // it. Each target now sits at the intersection's OWN depth along its
+        // ray, as an octahedron: visible from every angle, and solid enough to
+        // occlude the beam it sits on.
+        //
+        // And they answer the pointer. The sweep is the machine's business, but
+        // a target is a claim about the world, so it is the thing on this stage
+        // that should respond to being looked at closely — hover swells it and
+        // holding it pins it bright.
+        pick7.update(camera);
         let tcIdx = 0;
         for (let ri = 0; ri < Math.min(rays.length, rayCount); ri++) {
             const r = rays[ri];
             const act = st?.species?.[ri]?.activity ?? 0.5;
             ecoVals.slice(0, maxSweeps).forEach(v => {
-                if (tcIdx >= maxTargets) return;
+                if (tcIdx >= maxTargets || tcIdx >= 64) return;
                 const sx = (v % 1.0) * W - W / 2;
                 const iy = r.y + Math.tan(r.angle) * (sx + W / 2);
                 if (iy > yMin && iy < yMax) {
-                    const tc = targetCircles[tcIdx];
-                    tc.visible = true;
-                    tc.position.set(sx, iy, 1);
+                    // Where along its own ray this crossing falls, so the
+                    // target inherits the ray's depth instead of hovering at
+                    // a constant z in front of everything.
+                    const tAlong = Math.min(1, Math.max(0, (sx + W / 2) / Math.max(1, W)));
+                    const tz = lerp(W * 0.10, -W * 0.55 * 0.9, tAlong);
+                    const hov7 = (tcIdx === pick7.hover);
+                    const grb7 = (tcIdx === pick7.grabbed);
                     const targetSize = 10 + act * 20 + resBody * 12;
-                    tc.scale.setScalar(targetSize / 12);
-                    (tc.material as THREE.LineBasicMaterial).color.setRGB(swR, swG, swB);
-                    (tc.material as THREE.LineBasicMaterial).opacity = (0.7 + vol * 0.3) * masterA;
+                    _t7a.set(sx, iy, tz);
+                    marks7.set(tcIdx, _t7a,
+                        (targetSize / 9) * (grb7 ? 1.9 : hov7 ? 1.4 : 1));
+                    marks7.tint(tcIdx,
+                        hov7 || grb7 ? 1 : swR,
+                        hov7 || grb7 ? 1 : swG,
+                        hov7 || grb7 ? 1 : swB);
                     tcIdx++;
                 }
             });
         }
-        // Hide unused target circles
-        for (let i = tcIdx; i < maxTargets; i++) targetCircles[i].visible = false;
+        marks7.count = tcIdx;
+        marks7.mesh.material.opacity = (0.7 + vol * 0.3) * masterA;
+        marks7.commit();
+        floor7.grid.position.y = yMin - 20;
+        floor7.material.opacity = (0.035 + texDep * 0.08) * masterA;
         // ── BOMBO speaks ──────────────────────────────────────────────────
         // A target acquisition — a ray crossing a sweep — is this slot's
         // discrete event, and the sub is the register that can carry it. The
@@ -2161,6 +2192,8 @@ export function mountGeometry(stageEl: HTMLElement, getLatestState: () => Parlia
         name: "Geometry", key: "7",
         destroy: () => {
             destroyed = true; cancelAnimationFrame(rafId);
+            pick7.dispose();
+            rays7.dispose(); marks7.dispose(); floor7.dispose();
             try { controls.dispose(); } catch { /* ignore */ }
             window.removeEventListener("resize", onResize);
             composer.dispose(); renderer.dispose(); renderer.domElement.remove();
@@ -2226,11 +2259,11 @@ export function mountMemoryHierarchy(stageEl: HTMLElement, getLatestState: () =>
     // and driven by its band. See mountSlotField.
     // ── No constellation on this slot ─────────────────────────────────────
     // The animal field ran on all five of 5-9, which made it the wallpaper of
-    // the whole right-hand half of the instrument rather than a thing that
-    // means something where it appears. It is kept where it reads as a
-    // statement: slot 5, the one field that still answers the sound, and
-    // slot 6, the struck voice, where BOWL and CHINA are drawn as the reach
-    // and the sharpness of the links. Here the depth belongs to the structure.
+    // the right-hand half of the instrument rather than something that means
+    // anything where it appears. It is kept on two: slot 5, the one field that
+    // still answers the sound, and slot 9, where the animal whose clip is
+    // playing is the animal that lights. Here the depth belongs to the
+    // structure.
     //
     // The onset edge stays — that is the voice, not the sky. See makeOnsetEdge.
     const onsetOf8 = makeOnsetEdge(inst8);
@@ -2265,27 +2298,33 @@ export function mountMemoryHierarchy(stageEl: HTMLElement, getLatestState: () =>
         layerBorders.push(loop);
     }
 
-    // Block wireframe meshes — activeRoster × LAYERS
-    const blockMeshes: THREE.Mesh[][] = [];
-    for (let j = 0; j < LAYERS; j++) {
-        const row: THREE.Mesh[] = [];
-        for (let i = 0; i < activeRoster.length; i++) {
-            const g = new THREE.BoxGeometry(1, 1, 1);
-            const m = new THREE.Mesh(g, new THREE.MeshBasicMaterial({ color: 0xc8ffe6, wireframe: true, transparent: true }));
-            root8.add(m);
-            row.push(m);
-        }
-        blockMeshes.push(row);
-    }
+    // ── Blocks are blocks ────────────────────────────────────────────────
+    //
+    // These were BoxGeometry(1,1,1) scaled to (cw, baseH-20, 1): a box with a
+    // depth of one unit against a width of two hundred, which is a rectangle
+    // with rounding error. And each was its own Mesh with its own material —
+    // LAYERS x roster of them, every one a separate draw call.
+    //
+    // One InstancedMesh with real depth per block. A memory hierarchy is the
+    // one structure here that is genuinely about VOLUME — how much fits at
+    // each level — so a level that is full should look full.
+    const BLOCK_CAP = LAYERS * Math.max(1, activeRoster.length);
+    const blocks8 = makeNodeField(root8, BLOCK_CAP, 0.5, 2,
+        { wireframe: true, opacity: 0.85 });
+    blocks8.count = BLOCK_CAP;
+    const pick8 = attachPicker(renderer.domElement, blocks8.mesh);
 
-    // Drop lines between layers
+    // Drops carry the layer's own depth now. They were written at a constant
+    // z = 2 while the levels they fall between travel to -j*90*(...) — so an
+    // eviction was drawn in front of the hierarchy rather than inside it.
     const MAX_DROPS = 24;
-    const dropPositions = new Float32Array(MAX_DROPS * 2 * 3);
-    const dropGeo = new THREE.BufferGeometry();
-    dropGeo.setAttribute("position", new THREE.BufferAttribute(dropPositions, 3));
-    dropGeo.setDrawRange(0, 0);
-    const dropMat = new THREE.LineBasicMaterial({ color: 0xc8ffe6, transparent: true });
-    root8.add(new THREE.LineSegments(dropGeo, dropMat));
+    const drops8 = makeTubeLinks(root8, MAX_DROPS, 0xc8ffe6, 0.5);
+    const dropMat = drops8.material;
+    const _t8a = new THREE.Vector3();
+    const _t8b = new THREE.Vector3();
+    const _q8  = new THREE.Quaternion();
+    const _e8  = new THREE.Euler();
+    const _s8  = new THREE.Vector3();
 
     // Hex noise background — canvas texture updated per frame
     const hexCanvas = document.createElement("canvas");
@@ -2418,6 +2457,8 @@ export function mountMemoryHierarchy(stageEl: HTMLElement, getLatestState: () =>
 
         // Drop lines between layers
         let dIdx = 0;
+        drops8.begin();
+        pick8.update(camera);
         const dropCount = Math.floor(3 + noiseF * 5);
         // What POLVO actually listens for. dIdx was the obvious candidate and
         // it is worthless: dropCount depends only on the noiseFilt fader and
@@ -2478,20 +2519,36 @@ export function mountMemoryHierarchy(stageEl: HTMLElement, getLatestState: () =>
             border.position.x = rz8 * 14;
             border.rotation.z = Math.sin(vm8.angle * 0.5) * 0.035 + rz8 * 0.06;
 
-            // Species blocks inside layer
+            // Species blocks inside layer, as solids at the layer's own depth.
+            // They used to sit at a constant z = 1 with a depth of one unit
+            // while the border they belong to travelled to -j*90 — the blocks
+            // were on a different plane from their own level.
             let blockCX = bx + 10;
             for (let i = 0; i < activeRoster.length; i++) {
                 const pres = st?.species?.[i]?.presence ?? 0.5;
                 const act  = st?.species?.[i]?.activity ?? 0.5;
                 const cw = (bw - 20) * (pres / LAYERS) * (0.5 + (snoise(i, j + frame * (0.005 + tDil * 0.01)) - 0.5) * 0.5);
-                const bm = blockMeshes[j][i];
-                bm.scale.set(Math.max(cw, 5), baseH - 20, 1);
-                bm.position.set(blockCX + cw / 2, cy + baseH / 2, 1);
-                (bm.material as THREE.MeshBasicMaterial).color.setRGB(
-                    lerp(0.78, 1.0, harmR), lerp(1.0, 0.67, harmR), lerp(0.9, 0.0, harmR)
-                );
-                (bm.material as THREE.MeshBasicMaterial).opacity = (0.4 + vol * 0.6) * masterA;
-                bm.rotation.z = act * (snoise(i + j * 10, frame * 0.01) - 0.5) * 0.15 * txInf;
+                const bi = j * activeRoster.length + i;
+                const hov8 = (bi === pick8.hover);
+                const grb8 = (bi === pick8.grabbed);
+                // Depth is OCCUPANCY. A hierarchy is about how much fits at
+                // each level, so a block holding more is a thicker block —
+                // the one dimension the old rectangles could not express.
+                const bd = 12 + pres * 70 + act * 26;
+                _e8.set(0, 0, act * (snoise(i + j * 10, frame * 0.01) - 0.5) * 0.15 * txInf);
+                _q8.setFromEuler(_e8);
+                _t8a.set(blockCX + cw / 2, cy + baseH / 2, border.position.z + bd * 0.35);
+                // BoxGeometry in makeNodeField is built at radius*1.5 per side,
+                // so the divisor turns a world extent into a scale factor.
+                blocks8.setBox(bi, _t8a,
+                    Math.max(cw, 5) / 0.75,
+                    (baseH - 20) / 0.75,
+                    bd / 0.75 * (grb8 ? 1.5 : hov8 ? 1.2 : 1),
+                    _q8);
+                blocks8.tint(bi,
+                    hov8 || grb8 ? 1 : lerp(0.78, 1.0, harmR),
+                    hov8 || grb8 ? 1 : lerp(1.0, 0.67, harmR),
+                    lerp(0.9, 0.0, harmR));
                 blockCX += cw + 5;
             }
             // Past the right edge of its own level: this layer has spilled.
@@ -2503,8 +2560,14 @@ export function mountMemoryHierarchy(stageEl: HTMLElement, getLatestState: () =>
                     const dropX = bx + Math.random() * bw;
                     const gx1 = (Math.random() - 0.5) * 30 * txInf;
                     const gx2 = (Math.random() - 0.5) * 30 * txInf;
-                    dropPositions[dIdx * 6]     = dropX + gx1; dropPositions[dIdx * 6 + 1] = cy + baseH;        dropPositions[dIdx * 6 + 2] = 2;
-                    dropPositions[dIdx * 6 + 3] = dropX + gx2; dropPositions[dIdx * 6 + 4] = cy + baseH + layerGap - 2; dropPositions[dIdx * 6 + 5] = 2;
+                    // A spill falls between two levels that stand at different
+                    // depths, so it runs between those depths. Constant z = 2
+                    // drew every eviction in front of the whole hierarchy.
+                    const zA = border.position.z;
+                    const zB = zA - 90 * (0.3 + au8.level * 1.8);
+                    _t8a.set(dropX + gx1, cy + baseH, zA);
+                    _t8b.set(dropX + gx2, cy + baseH + layerGap - 2, zB);
+                    drops8.add(_t8a, _t8b, 1.1 + memFeed * 2.4);
                     dIdx++;
                 }
             }
@@ -2517,8 +2580,9 @@ export function mountMemoryHierarchy(stageEl: HTMLElement, getLatestState: () =>
         // spill is a grain, and a hierarchy under pressure swarms.
         emitSpill8(overflow8, 0.3 + Math.min(1, overflow8 / LAYERS) * 0.55,
             Math.min(1, overflow8 / LAYERS));
-        dropGeo.setDrawRange(0, dIdx * 2);
-        dropGeo.attributes.position.needsUpdate = true;
+        drops8.end();
+        blocks8.mesh.material.opacity = (0.4 + vol * 0.6) * masterA;
+        blocks8.commit();
         const dmR = lerp(0.78, 1.0, droneMix); const dmG = lerp(1.0, 0.67, droneMix);
         dropMat.color.setRGB(dmR, dmG, 0);
         dropMat.opacity = (0.5 + memFeed * 0.5) * (0.4 + vol * 0.6) * masterA;
@@ -2544,6 +2608,8 @@ export function mountMemoryHierarchy(stageEl: HTMLElement, getLatestState: () =>
         name: "Memory Hierarchy", key: "8",
         destroy: () => {
             destroyed = true; cancelAnimationFrame(rafId);
+            pick8.dispose();
+            blocks8.dispose(); drops8.dispose();
             try { controls.dispose(); } catch { /* ignore */ }
             window.removeEventListener("resize", onResize);
             hexTexture.dispose();
@@ -2633,40 +2699,46 @@ export function mountHashing(stageEl: HTMLElement, getLatestState: () => Parliam
 
     const NUM_KEYS = 8, NUM_BUCKETS = 6;
 
-    // Key boxes (left column)
-    const keyBoxes: THREE.Mesh[] = [];
-    for (let i = 0; i < NUM_KEYS; i++) {
-        const g = new THREE.BoxGeometry(20, 20, 1);
-        const m = new THREE.Mesh(g, new THREE.MeshBasicMaterial({ color: 0xc8ffe6, wireframe: true, transparent: true }));
-        root9.add(m);
-        keyBoxes.push(m);
-    }
+    // ── Keys and buckets are cubes ───────────────────────────────────────
+    // BoxGeometry(20,20,1) and (30,30,1): squares with a nominal thickness,
+    // and one Mesh and material each. Real cubes in one instanced field, and
+    // the keys are what the pointer can reach — a key is the thing you look up,
+    // so it is the thing that should answer being pointed at.
+    const keys9 = makeNodeField(root9, NUM_KEYS, 10, 2, { wireframe: true, opacity: 0.9 });
+    keys9.count = NUM_KEYS;
+    const pick9 = attachPicker(renderer.domElement, keys9.mesh);
+    const buckets9 = makeNodeField(root9, NUM_BUCKETS, 15, 2, { wireframe: true, opacity: 0.9 });
+    buckets9.count = NUM_BUCKETS;
+    // The old per-mesh transforms, kept as plain state: an instance has no
+    // object to hold its own position and spin between frames.
+    const keyBoxes = Array.from({ length: NUM_KEYS }, () => ({
+        position: new THREE.Vector3(), scale: new THREE.Vector3(1, 1, 1), spin: 0,
+    }));
 
-    // Bucket boxes (right column)
-    const bucketBoxes: THREE.Mesh[] = [];
-    for (let j = 0; j < NUM_BUCKETS; j++) {
-        const g = new THREE.BoxGeometry(30, 30, 1);
-        const m = new THREE.Mesh(g, new THREE.MeshBasicMaterial({ color: 0xc8ffe6, wireframe: true, transparent: true }));
-        root9.add(m);
-        bucketBoxes.push(m);
-    }
-
-    // Path lines — bezier sampled at 12 points per path
+    // ── The paths follow the keys into depth ──────────────────────────────
+    //
+    // The key boxes already sit on a RING that runs through z — that was the
+    // point of the ring — and the bezier that maps a key to its bucket was
+    // sampled with z hardcoded to 0 on every one of its twelve points. So the
+    // one line whose whole job is to say "this key goes to that bucket" was
+    // drawn on a plane neither the key nor the bucket was on.
+    //
+    // Both pools are tube chains now: twelve segments per path, with the z
+    // interpolated from the key's own ring position to the bucket wall.
+    // Collisions keep their separate pool so they can be thicker and hotter.
     const PATH_SEGS = 12;
-    const pathPositions = new Float32Array(NUM_KEYS * PATH_SEGS * 3);
-    const pathGeo = new THREE.BufferGeometry();
-    pathGeo.setAttribute("position", new THREE.BufferAttribute(pathPositions, 3));
-    pathGeo.setDrawRange(0, 0);
-    const pathMat = new THREE.LineBasicMaterial({ color: 0xc8ffe6, transparent: true, vertexColors: false });
-    root9.add(new THREE.Line(pathGeo, pathMat));
-
-    // Collision path highlight (drawn over normal paths)
-    const collPositions = new Float32Array(NUM_KEYS * PATH_SEGS * 3);
-    const collGeo = new THREE.BufferGeometry();
-    collGeo.setAttribute("position", new THREE.BufferAttribute(collPositions, 3));
-    collGeo.setDrawRange(0, 0);
-    const collMat = new THREE.LineBasicMaterial({ color: 0xffaa00, transparent: true });
-    root9.add(new THREE.Line(collGeo, collMat));
+    const paths9 = makeTubeLinks(root9, NUM_KEYS * PATH_SEGS, 0xc8ffe6, 0.55);
+    const pathMat = paths9.material;
+    const colls9 = makeTubeLinks(root9, NUM_KEYS * PATH_SEGS, 0xffaa00, 0.75);
+    const collMat = colls9.material;
+    const _t9a = new THREE.Vector3();
+    const _t9b = new THREE.Vector3();
+    // Each key's depth on the ring, written as the ring is laid out and read
+    // by the path that leaves it.
+    const keyZ = new Float32Array(NUM_KEYS);
+    const _q9 = new THREE.Quaternion();
+    const _e9 = new THREE.Euler();
+    const _t9c = new THREE.Vector3();
 
     // Arrowhead triangles
     const arrowMeshes: THREE.Mesh[] = [];
@@ -2753,7 +2825,7 @@ export function mountHashing(stageEl: HTMLElement, getLatestState: () => Parliam
         // read them back (a canvas without preserveDrawingBuffer returns blank
         // through drawImage). Publishing one representative scalar is the only
         // way "is this slot actually moving?" can be answered from outside.
-        try { (window as any).__vizProbe = () => (keyBoxes[0] ? keyBoxes[0].rotation.z : 0); } catch { /* ignore */ }
+        try { (window as any).__vizProbe = () => (keyBoxes[0] ? keyBoxes[0].spin : 0); } catch { /* ignore */ }
 
         const vol     = sp9.volume        ?? 0.5;
         const pShift  = sp9.pitchshift    ?? 0.5;
@@ -2817,6 +2889,11 @@ export function mountHashing(stageEl: HTMLElement, getLatestState: () => Parliam
         // Update key boxes
         let pathIdx = 0, collIdx = 0;
         let trIdx = 0;
+        // Which bucket the held key maps to, so the lookup lights its target.
+        let heldBucket = -1;
+        paths9.begin();
+        colls9.begin();
+        pick9.update(camera);
         for (let i = 0; i < NUM_KEYS; i++) {
             const yA = -H / 2 + (i + 1) * spacingA;
             const mapped = mapTargets[i];
@@ -2844,19 +2921,40 @@ export function mountHashing(stageEl: HTMLElement, getLatestState: () => Parliam
                 // is what reading a buffer looks like from outside.
                 const rz9 = ring9.value(i);
                 keyBoxes[i].position.z = Math.cos(ang9) * rad9 + rz9 * 200 * au9.amp;
+                // Kept so the path leaving this key can start where the key
+                // actually is. Without it the bezier below had to assume z = 0.
+                keyZ[i] = keyBoxes[i].position.z;
                 keyBoxes[i].position.y += rz9 * 18;
                 const sc9 = 1 + Math.abs(rz9) * 0.6;
                 keyBoxes[i].scale.set(sc9, sc9, 1 + rz9 * 0.3);
             }
-            keyBoxes[i].rotation.z += 0.005 + droneD * 0.02 + vm9.speed * 0.02
+            keyBoxes[i].spin += 0.005 + droneD * 0.02 + vm9.speed * 0.02
               + (vf9 ? vf9.flash * 0.14 * (isAlarm(vf9.type) ? -1 : 1) : 0);
-            (keyBoxes[i].material as THREE.MeshBasicMaterial).color.setRGB(0.78, 1.0, 0.9);
-            (keyBoxes[i].material as THREE.MeshBasicMaterial).opacity = (0.8 + vol * 0.2) * masterA;
+            // Touch. Hovering a key swells it and lights its path; holding one
+            // pins it, which on a hash table is the honest gesture — a key is
+            // looked UP, it is not dragged somewhere else. The bucket it maps
+            // to brightens with it below.
+            const hov9 = (i === pick9.hover);
+            const grb9 = (i === pick9.grabbed);
+            heldBucket = grb9 ? mapped : heldBucket;
+            const t9 = grb9 ? 1.8 : hov9 ? 1.35 : 1;
+            _e9.set(keyBoxes[i].spin * 0.5, keyBoxes[i].spin * 0.8, keyBoxes[i].spin);
+            _q9.setFromEuler(_e9);
+            keys9.setBox(i, keyBoxes[i].position,
+                keyBoxes[i].scale.x * t9 * (20 / 15),
+                keyBoxes[i].scale.y * t9 * (20 / 15),
+                keyBoxes[i].scale.z * t9 * (20 / 15), _q9);
+            keys9.tint(i, hov9 || grb9 ? 1 : 0.78, 1.0, hov9 || grb9 ? 0.4 : 0.9);
 
             // Path line (bezier sampled)
             const cx0 = colA_X + 20, cx1 = colB_X - 20;
             const midX = (cx0 + cx1) / 2;
             const jitterRange = noiseF * 40;
+            // The key's z, from its place on the ring, and the bucket wall's.
+            // The path now runs BETWEEN two depths instead of across one plane
+            // that neither endpoint was on.
+            const zKey = keyZ[i];
+            const zBucket = 0;
             for (let s = 0; s <= PATH_SEGS; s++) {
                 const t = s / PATH_SEGS;
                 const gj = (snoise(i + s, frame * 0.03) - 0.5) * jitterRange * (isCollision ? (1 - consensus) * (1 + specS * 3 + txInf * 2) : 0);
@@ -2864,17 +2962,23 @@ export function mountHashing(stageEl: HTMLElement, getLatestState: () => Parliam
                 const tt = t * t; const mt = 1 - t; const mt2 = mt * mt;
                 const px = mt2 * cx0 + 2 * mt * t * midX + tt * cx1;
                 const py = mt2 * yA  + 2 * mt * t * lerp(yA, yB, 0.5) + tt * yB + gj;
-                if (isCollision) {
-                    collPositions[collIdx * 3]     = px;
-                    collPositions[collIdx * 3 + 1] = py;
-                    collPositions[collIdx * 3 + 2] = 0;
-                    collIdx++;
-                } else {
-                    pathPositions[pathIdx * 3]     = px;
-                    pathPositions[pathIdx * 3 + 1] = py;
-                    pathPositions[pathIdx * 3 + 2] = 0;
-                    pathIdx++;
+                // The curve bows OUT of the plane at its midpoint as well as
+                // across it, so a lookup is an arc through the volume rather
+                // than a slumped wire — which is also what keeps eight of them
+                // legible instead of overlapping into one band.
+                const pz = mt2 * zKey + 2 * mt * t * (lerp(zKey, zBucket, 0.5) + 90 * Math.sin(Math.PI * t))
+                    + tt * zBucket;
+                _t9b.set(px, py, pz);
+                if (s > 0) {
+                    if (isCollision) {
+                        colls9.add(_t9a, _t9b, 1.6 + harmR * 2.4);
+                        collIdx++;
+                    } else {
+                        paths9.add(_t9a, _t9b, 0.9 + harmR * 1.5);
+                        pathIdx++;
+                    }
                 }
+                _t9a.copy(_t9b);
             }
 
             // Arrowhead
@@ -2905,35 +3009,45 @@ export function mountHashing(stageEl: HTMLElement, getLatestState: () => Parliam
         }
         for (let i = trIdx; i < 16; i++) tearRects[i].visible = false;
 
-        pathGeo.setDrawRange(0, pathIdx);
-        pathGeo.attributes.position.needsUpdate = true;
+        paths9.end();
         pathMat.opacity = (0.5 + vol * 0.5) * masterA;
 
-        collGeo.setDrawRange(0, collIdx);
-        collGeo.attributes.position.needsUpdate = true;
+        colls9.end();
         collMat.opacity = (0.6 + vol * 0.4) * masterA;
-        collMat.linewidth = 1 + harmR * 1.5;
+        // HARMONICS used to set collMat.linewidth here, which ANGLE clamps to
+        // 1 px — the control was inert. It is the tube RADIUS now, above.
 
         // Bucket boxes
         for (let j = 0; j < NUM_BUCKETS; j++) {
             const yB = -H / 2 + (j + 1) * spacingB + bucketYOff;
             const isCollision = bucketHits[j] > 1;
-            const bm = bucketBoxes[j];
             let bx = colB_X, by = yB;
             if (isCollision) {
                 bx += (snoise(j * 3, frame * 0.05) - 0.5) * 10 * (1 - consensus) * (1 + specS);
                 by += (snoise(j * 7, frame * 0.05) - 0.5) * 10 * (1 - consensus);
             }
-            bm.position.set(bx, by, 0);
-            bm.scale.setScalar(1 + resBody * 0.5);
+            // A bucket holding more is DEEPER. That is the one thing the flat
+            // squares could not say, and it is the whole subject of a hash
+            // table: how many keys landed here.
+            const fill = Math.min(1, bucketHits[j] / 3);
+            const lit9 = (j === heldBucket);
+            _t9c.set(bx, by, -fill * 40);
+            buckets9.setBox(j,
+                _t9c,
+                (1 + resBody * 0.5) * (lit9 ? 1.3 : 1),
+                (1 + resBody * 0.5) * (lit9 ? 1.3 : 1),
+                (1 + resBody * 0.5) * (1 + fill * 2.4),
+                undefined);
             const dR = lerp(0.78, 1.0, dronFd); const dG = lerp(1.0, 0.67, dronFd);
-            (bm.material as THREE.MeshBasicMaterial).color.setRGB(
-                isCollision ? 1.0 : dR,
-                isCollision ? 0.67 : dG,
-                0
-            );
-            (bm.material as THREE.MeshBasicMaterial).opacity = (isCollision ? 0.9 : 0.5) * (0.4 + vol * 0.6) * masterA;
+            buckets9.tint(j,
+                isCollision || lit9 ? 1.0 : dR,
+                isCollision ? 0.67 : lit9 ? 1.0 : dG,
+                lit9 ? 0.6 : 0);
         }
+        buckets9.mesh.material.opacity = (0.4 + vol * 0.6) * masterA * 0.75;
+        buckets9.commit();
+        keys9.mesh.material.opacity = (0.8 + vol * 0.2) * masterA;
+        keys9.commit();
 
         // Scanlines — textureDepth controls density, filtercutoff brightness
         const scanStep = Math.floor(lerp(10, 3, texDep));
@@ -2969,6 +3083,9 @@ export function mountHashing(stageEl: HTMLElement, getLatestState: () => Parliam
         destroy: () => {
             cfield.destroy();
             destroyed = true; cancelAnimationFrame(rafId);
+            pick9.dispose();
+            keys9.dispose(); buckets9.dispose();
+            paths9.dispose(); colls9.dispose();
             try { controls.dispose(); } catch { /* ignore */ }
             window.removeEventListener("resize", onResize);
             composer.dispose(); renderer.dispose(); renderer.domElement.remove();

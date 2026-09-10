@@ -37,8 +37,17 @@ export type NodeField = {
     mesh: THREE.InstancedMesh;
     /** Live count actually drawn. Set it; the rest of the pool stays idle. */
     count: number;
-    /** Place one body. Scale is uniform unless `sz` is a Vector3. */
+    /** Place one body at a uniform scale. */
     set(i: number, pos: THREE.Vector3, scale: number, quat?: THREE.Quaternion): void;
+    /**
+     * Place one body with a scale per axis.
+     *
+     * For the structures that are genuinely about extent rather than presence —
+     * a block in a memory hierarchy is as wide as what it holds — where a
+     * uniform scale would have to lie about two of the three dimensions.
+     */
+    setBox(i: number, pos: THREE.Vector3, sx: number, sy: number, sz: number,
+           quat?: THREE.Quaternion): void;
     /** Per-instance colour, 0-1 linear. */
     tint(i: number, r: number, g: number, b: number): void;
     /** Push both buffers. Once per frame, after every set/tint. */
@@ -96,6 +105,12 @@ export function makeNodeField(
         set(i, pos, scale, quat) {
             if (i < 0 || i >= capacity) return;
             _s.setScalar(scale);
+            _m.compose(pos, quat ?? _q.identity(), _s);
+            mesh.setMatrixAt(i, _m);
+        },
+        setBox(i, pos, sx, sy, sz, quat) {
+            if (i < 0 || i >= capacity) return;
+            _s.set(sx, sy, sz);
             _m.compose(pos, quat ?? _q.identity(), _s);
             mesh.setMatrixAt(i, _m);
         },
