@@ -22,6 +22,12 @@ import {
     showStage,
     SPECIES_ROSTER,
 } from "./visualizationSwitcher";
+import {
+    makeNodeField,
+    makeTubeLinks,
+    makeDepthGrid,
+    attachPicker,
+} from "./slotThree";
 
 // ─── Shared chromatic-aberration shader (reused across slots) ────────────────
 const ChromaticAberrationShader = {
@@ -293,6 +299,27 @@ function mountSlotField(
             window.removeEventListener("resize", onResize);
             field.destroy();
         },
+    };
+}
+
+/**
+ * The onset edge on its own, with no constellation attached.
+ *
+ * The five slots all reached their voice's attack through cfield.drive, which
+ * is fine while every slot carries a field and wrong the moment one does not:
+ * the sky is a backdrop, and needing it in order to know that a note started
+ * makes the backdrop load-bearing. Slots 7, 8 and 9 use this instead.
+ *
+ * Same rising-edge test and the same 0.06 threshold mountSlotField uses, so a
+ * slot with a field and a slot without one flash on exactly the same frame.
+ */
+function makeOnsetEdge(inst: Instrument): (st: ParliamentState | null) => number {
+    let lastEnv = 0;
+    return function drive(_st: ParliamentState | null) {
+        const r = readInstrument(inst);
+        const onset = r.env > lastEnv + 0.06 ? Math.min(1, r.env * 0.9) : 0;
+        lastEnv = r.env;
+        return onset;
     };
 }
 
@@ -896,23 +923,47 @@ export function mountDynamicGraphs(stageEl: HTMLElement, getLatestState: () => P
     const chromatic = new ShaderPass(ChromaticAberrationShader);
     composer.addPass(chromatic);
 
-    // Nodes
-    const nodes: { x: number; y: number; z: number; vx: number; vy: number; vz: number; mesh: THREE.Mesh }[] = [];
-    activeRoster.forEach(_sp => {
-        const geo = new THREE.SphereGeometry(8, 8, 8);
-        const mat = new THREE.MeshBasicMaterial({ color: 0xffaa00, wireframe: true, transparent: true });
-        const mesh = new THREE.Mesh(geo, mat);
-        mesh.position.set((Math.random() - 0.5) * W * 0.6, (Math.random() - 0.5) * H * 0.6, (Math.random() - 0.5) * 100);
-        root5.add(mesh);
-        nodes.push({ x: mesh.position.x, y: mesh.position.y, z: mesh.position.z, vx: 0, vy: 0, vz: 0, mesh });
+    // ── The graph is a graph in space now ────────────────────────────────
+    //
+    // It was eight wireframe spheres and a LineSegments buffer whose vertices
+    // were written with z hardcoded to 0 — every edge lay flat on one plane
+    // while the nodes it joined had been given depth, so the links visibly
+    // detached from their own endpoints the moment the camera moved off axis.
+    //
+    // One InstancedMesh of icosahedra, one tube mesh for the links. The z axis
+    // is a real axis: the physics runs in three dimensions rather than two
+    // with a decorative z written on top afterwards.
+    const NODE_R = 9;
+    const nodes: { p: THREE.Vector3; v: THREE.Vector3 }[] = [];
+    activeRoster.forEach(() => {
+        nodes.push({
+            p: new THREE.Vector3(
+                (Math.random() - 0.5) * W * 0.55,
+                (Math.random() - 0.5) * H * 0.55,
+                (Math.random() - 0.5) * 260),
+            v: new THREE.Vector3(),
+        });
     });
-
-    // Glow rings (one per node)
-    const glowRings = nodes.map(() => {
-        const ring = makeCircle(18, 32, 0xffaa00, 0.2);
-        root5.add(ring);
-        return ring;
-    });
+    const bodies5 = makeNodeField(root5, nodes.length, NODE_R, 1, { opacity: 0.95 });
+    bodies5.count = nodes.length;
+    // A second, larger, wireframe shell per node — the "glow ring" was a flat
+    // circle of line segments that always faced z and vanished edge-on. A shell
+    // is visible from every angle, which is what the halo was trying to be.
+    const shells5 = makeNodeField(root5, nodes.length, NODE_R, 1,
+        { wireframe: true, opacity: 0.28 });
+    shells5.count = nodes.length;
+    // Links with actual thickness. NOISE FILT drove `linewidth` here every
+    // frame and ANGLE has always clamped that to 1 px, so the control was
+    // inert; it sets a radius in world units now and can be seen.
+    const links5 = makeTubeLinks(root5, (nodes.length * (nodes.length - 1)) / 2,
+        0xffaa00, 0.45);
+    // Somewhere to stand. Without a floor the depth of a body is unreadable —
+    // a node far away and a node small look identical.
+    const floor5 = makeDepthGrid(root5, Math.max(W, H) * 1.6, 22, 0x663300);
+    floor5.grid.position.y = -H * 0.42;
+    // Touch. None of these five had a Raycaster, a pointerdown or a hover of
+    // any kind: orbiting was the whole vocabulary, and orbiting is looking.
+    const pick5 = attachPicker(renderer.domElement, bodies5.mesh);
 
     function makeCircle(radius: number, segs: number, color: number, opacity: number): THREE.Line {
         const pts: number[] = [];
@@ -925,29 +976,25 @@ export function mountDynamicGraphs(stageEl: HTMLElement, getLatestState: () => P
         return new THREE.Line(g, new THREE.LineBasicMaterial({ color, transparent: true, opacity }));
     }
 
-    // Radar arc background
+    // Radar arcs, lifted off the plane. They were six concentric circles all
+    // at z = 0 — invisible edge-on, which from an orbiting camera is most of
+    // the time. Each shell now sits at its own depth AND is tilted, so the
+    // stack reads as a set of nested surfaces the graph hangs inside.
     const radarGroup = new THREE.Group();
     root5.add(radarGroup);
     const radarArcs: THREE.Line[] = [];
     for (let i = 0; i < 6; i++) {
         const arc = makeCircle(80 + i * 60, 64, 0x663300, 0.08 + i * 0.01);
+        arc.position.z = (i - 2.5) * 46;
+        arc.rotation.x = (i % 2 ? 1 : -1) * 0.13;
         radarGroup.add(arc);
         radarArcs.push(arc);
     }
 
-    // Edge geometry (max edges = N*(N-1)/2)
-    const N = nodes.length;
-    const maxEdges = N * (N - 1) / 2;
-    const edgePositions = new Float32Array(maxEdges * 2 * 3);
-    const edgeGeo = new THREE.BufferGeometry();
-    edgeGeo.setAttribute("position", new THREE.BufferAttribute(edgePositions, 3));
-    edgeGeo.setDrawRange(0, 0);
-    const edgeMat = new THREE.LineBasicMaterial({ color: 0xffaa00, transparent: true, opacity: 0.4 });
-    const edgeLines = new THREE.LineSegments(edgeGeo, edgeMat);
-    root5.add(edgeLines);
-
     let rafId: number;
     let frame = 0;
+    const _tmpA = new THREE.Vector3();
+    const _tmpB = new THREE.Vector3();
 
     function animate() {
         if (destroyed) return;
@@ -1033,122 +1080,138 @@ export function mountDynamicGraphs(stageEl: HTMLElement, getLatestState: () => P
         // Connection distance controlled by filtercutoff
         const restLength = 80 + filtC * 250 + (st?.eco?.mycoPulse ?? 0) * 80;
 
-        // Gravity center
-        const cx = 0, cy = (pitchSh - 0.5) * H * 0.4;
+        // Gravity centre, now a point in space rather than a point on a plane.
+        // DRONE SPACE lifts the whole assembly off the floor instead of writing
+        // a decorative z onto each node after the physics had finished.
+        const gx = 0;
+        const gy = (pitchSh - 0.5) * H * 0.4;
+        const gz = (droneSpace - 0.5) * 260;
 
-        // Physics
-        const edgePos = edgeGeo.attributes.position.array as Float32Array;
+        // ── Touch ────────────────────────────────────────────────────────
+        // Hover swells a body; a grab PULLS it and lets the springs carry the
+        // disturbance to its neighbours, which is the whole point of holding a
+        // node in a force graph rather than moving a sprite.
+        pick5.update(camera);
+        if (pick5.grabbed >= 0 && nodes[pick5.grabbed]) {
+            const g = nodes[pick5.grabbed];
+            g.v.addScaledVector(_tmpA.subVectors(pick5.point, g.p), 0.22);
+            g.v.multiplyScalar(0.55);
+        }
+
+        // ── Physics, in three dimensions ──────────────────────────────────
+        links5.begin();
         let edgeCount = 0;
+        const linkR = 0.7 + noiseF * 2.6;   // a REAL radius; linewidth was inert
 
         for (let i = 0; i < nodes.length; i++) {
             for (let j = i + 1; j < nodes.length; j++) {
-                const dx = nodes[j].x - nodes[i].x;
-                const dy = nodes[j].y - nodes[i].y;
-                const dist = Math.sqrt(dx * dx + dy * dy) || 0.001;
+                _tmpA.subVectors(nodes[j].p, nodes[i].p);
+                const dist = _tmpA.length() || 0.001;
 
                 if (dist < restLength * 2) {
-                    // Connection noise probability
                     const noise = snoise(i * 17 + j, frame * 0.05 * (1 + tDil));
                     if (noise < consensus + (vf5 ? vf5.flash * 0.9 : 0)) {
-                        const baseIdx = edgeCount * 6;
-                        let ax = nodes[i].x, ay = nodes[i].y;
-                        let bx = nodes[j].x, by = nodes[j].y;
-                        // txInfluence glitch
+                        _tmpB.copy(nodes[j].p);
+                        // txInfluence glitch — now displaces in space, so a
+                        // jolted link visibly leaves the plane of its own graph.
                         if (Math.random() < txInf * 0.5) {
-                            bx += (Math.random() - 0.5) * 80 * specS;
-                            by += (Math.random() - 0.5) * 80 * specS;
+                            _tmpB.x += (Math.random() - 0.5) * 80 * specS;
+                            _tmpB.y += (Math.random() - 0.5) * 80 * specS;
+                            _tmpB.z += (Math.random() - 0.5) * 80 * specS;
                         }
-                        edgePos[baseIdx]     = ax; edgePos[baseIdx + 1] = ay; edgePos[baseIdx + 2] = 0;
-                        edgePos[baseIdx + 3] = bx; edgePos[baseIdx + 4] = by; edgePos[baseIdx + 5] = 0;
+                        // A link touching the held node thickens, so the reach
+                        // of a grab is visible rather than merely felt.
+                        const held = (i === pick5.grabbed || j === pick5.grabbed);
+                        links5.add(nodes[i].p, _tmpB, linkR * (held ? 2.4 : 1));
                         edgeCount++;
                     }
                     const force = (dist - restLength) * (0.004 + txInf * 0.015) * (0.5 + specS);
-                    nodes[i].vx += (dx / dist) * force;
-                    nodes[i].vy += (dy / dist) * force;
-                    nodes[j].vx -= (dx / dist) * force;
-                    nodes[j].vy -= (dy / dist) * force;
+                    _tmpA.divideScalar(dist).multiplyScalar(force);
+                    nodes[i].v.add(_tmpA);
+                    nodes[j].v.sub(_tmpA);
                 }
             }
         }
-        edgeGeo.setDrawRange(0, edgeCount * 2);
+        links5.end();
         // ── CAMPANAS speak ────────────────────────────────────────────────
         // An edge forming is the graph's own event: two nodes that were not
         // connected now are. The bell rings for the connection, and how full
         // the graph already is chooses the pitch.
         emitEdge5(edgeCount, 0.35 + Math.min(1, edgeCount / 24) * 0.5,
             Math.min(1, edgeCount / 32));
-        edgeGeo.attributes.position.needsUpdate = true;
-        edgeMat.opacity = (0.3 + vol * 0.5) * masterA;
-        edgeMat.linewidth = 0.5 + noiseF * 1.5;
+        links5.material.opacity = (0.3 + vol * 0.5) * masterA;
 
         // droneFade edge color warmth
         const edgeR = Math.floor(lerp(200, 255, dronFd));
         const edgeG = Math.floor(lerp(170, 200, dronFd));
-        edgeMat.color.setRGB(edgeR / 255, edgeG / 255, 0);
+        links5.material.color.setRGB(edgeR / 255, edgeG / 255, 0);
+
+        // harmonicRich: node colour white→amber. Hoisted out of the loop — it
+        // is the same three numbers for every body and was being recomputed
+        // once per node per frame.
+        const nr = lerp(0.78, 1.0, harmR);
+        const ng = lerp(1.0, 0.67, harmR);
+        const nb = lerp(0.9, 0.0, harmR);
 
         nodes.forEach((n, i) => {
-            // Center gravity
-            n.vx += (cx - n.x) * (0.001 + specS * 0.005);
-            n.vy += (cy - n.y) * (0.001 + specS * 0.005);
+            // Centre gravity, on all three axes
+            _tmpA.set(gx - n.p.x, gy - n.p.y, gz - n.p.z)
+                .multiplyScalar(0.001 + specS * 0.005);
+            n.v.add(_tmpA);
 
             const act  = st?.species?.[i % (st?.species?.length || 1)]?.activity ?? 0.5;
             const pres = st?.species?.[i % (st?.species?.length || 1)]?.presence ?? 0.5;
 
-            // Noise jitter — noiseLevel controls amplitude
-            n.vx += (snoise(i, frame * 0.02) - 0.5) * noiseL * 4;
-            n.vy += (snoise(i + 100, frame * 0.02) - 0.5) * noiseL * 4;
+            // Noise jitter — noiseLevel controls amplitude, and it is spatial
+            // now, so the cloud has thickness instead of being a jittering sheet.
+            n.v.x += (snoise(i, frame * 0.02) - 0.5) * noiseL * 4;
+            n.v.y += (snoise(i + 100, frame * 0.02) - 0.5) * noiseL * 4;
+            n.v.z += (snoise(i + 200, frame * 0.02) - 0.5) * noiseL * 3;
 
             // txInfluence aggressive jitter
-            if (Math.random() < act * 0.2) { n.vx += (Math.random() - 0.5) * 8 * txInf; n.vy += (Math.random() - 0.5) * 8 * txInf; }
+            if (Math.random() < act * 0.2) {
+                n.v.x += (Math.random() - 0.5) * 8 * txInf;
+                n.v.y += (Math.random() - 0.5) * 8 * txInf;
+                n.v.z += (Math.random() - 0.5) * 6 * txInf;
+            }
 
-            n.x += n.vx * (1 + tDil); n.y += n.vy * (1 + tDil);
-            // droneSpace adds Z spread
-            n.z = (snoise(i * 3, frame * 0.003) - 0.5) * droneSpace * 80;
-            n.vx *= 0.88; n.vy *= 0.88;
+            n.p.addScaledVector(n.v, 1 + tDil);
+            n.v.multiplyScalar(0.88);
 
-            // Node size: textureDepth + presence; droneDepth adds segments (handled by scale)
+            // ── CAMPANAS — sympathetic resonance, not a push ──────────────
+            // Each node is one mode of the bank, so the shape goes on changing
+            // after the strike rather than returning along the path it came.
+            // The mode now displaces along the node's own outward direction
+            // instead of along z: a bell swells across its body, and on a
+            // lattice that has real depth "across" is not one fixed axis.
+            const rz5 = ring5.value(i);
+            _tmpB.copy(n.p).sub(_tmpA.set(gx, gy, gz));
+            if (_tmpB.lengthSq() < 1e-6) _tmpB.set(0, 0, 1);
+            _tmpB.normalize().multiplyScalar(rz5 * 150 * au5.amp);
+
+            // Node size: textureDepth + presence; spatialSpread widens it.
             const rad = 5 + pres * 12 + texDep * 8;
             const spreadR = rad * (0.6 + spatSp * 0.8);
-            n.mesh.scale.setScalar(spreadR / 8);
-            n.mesh.position.set(n.x, n.y, n.z);
+            const hovered = (i === pick5.hover);
+            const grabbed = (i === pick5.grabbed);
+            const touch = grabbed ? 1.75 : hovered ? 1.35 : 1.0;
+            const sw5 = (1 + rz5 * 0.55) * touch;
 
-            // harmonicRich: node color white→amber
-            const nr = lerp(0.78, 1.0, harmR);
-            const ng = lerp(1.0, 0.67, harmR);
-            const nb = lerp(0.9, 0.0, harmR);
-            (n.mesh.material as THREE.MeshBasicMaterial).color.setRGB(nr, ng, nb);
-            (n.mesh.material as THREE.MeshBasicMaterial).opacity = (0.5 + vol * 0.5) * masterA;
-
-            // dronedepth: detail level via geometry segments (proxy: wireframe density via scale noise)
-            n.mesh.rotation.z += 0.005 + droneD * 0.02 + vm5.speed * 0.02;
-            // CAMPANAS — sympathetic resonance, not a push.
-            //
-            // This was position.z from env and a matching scale: every node
-            // moved together, once, and settled. A bell does not do that. Its
-            // body carries many modes at once and each one dies at its own
-            // rate, so the shape goes on changing after the strike rather than
-            // returning along the path it came.
-            //
-            // Each node is now one mode of the bank. Struck at au5.tone, so a
-            // high bell moves the far side of the lattice and a low one the
-            // near side — the note chooses WHERE the structure moves, which is
-            // the whole reason `tone` is on the wire.
-            const rz5 = ring5.value(i);
-            n.mesh.position.z = Math.sin(i * 1.7) * 120 * (0.25 + au5.level * 1.6)
-                + rz5 * 150 * au5.amp;
-            // Anisotropic: a ringing plate swells across its face rather than
-            // scaling as a ball, so x and y take the mode and z takes its
-            // inverse. That reads as breathing instead of as zooming.
-            const sw5 = 1 + rz5 * 0.55;
-            n.mesh.scale.set(sw5, sw5, 1 - rz5 * 0.22);
-            n.mesh.rotation.x = rz5 * 0.5;
-
-            // Glow ring
-            const gr = glowRings[i];
-            gr.position.set(n.x, n.y, n.z - 0.1);
-            gr.scale.setScalar(spreadR * (1.8 + resBody * 1.5) / 18);
-            (gr.material as THREE.LineBasicMaterial).opacity = resBody * 0.4 * (0.5 + act * 0.5) * masterA;
+            _tmpA.copy(n.p).add(_tmpB);
+            bodies5.set(i, _tmpA, (spreadR / NODE_R) * sw5);
+            bodies5.tint(i, nr, ng, nb);
+            // The shell answers RES BODY, as the flat ring used to, and lights
+            // up under the pointer so the body being touched says so.
+            shells5.set(i, _tmpA,
+                (spreadR / NODE_R) * (1.8 + resBody * 1.5) * 0.55 * touch);
+            shells5.tint(i, hovered || grabbed ? 1 : nr, hovered || grabbed ? 1 : ng, nb);
         });
+        bodies5.mesh.material.opacity = (0.5 + vol * 0.5) * masterA;
+        shells5.mesh.material.opacity =
+            resBody * 0.4 * (0.5 + (st?.species?.[0]?.activity ?? 0.5) * 0.5) * masterA;
+        bodies5.commit();
+        shells5.commit();
+        floor5.material.opacity = (0.04 + texDep * 0.10) * masterA;
 
         // Radar arc rotation — dronemix controls visible arc count
         const arcCount = Math.max(1, Math.floor(droneMix * 6));
@@ -1183,6 +1246,8 @@ export function mountDynamicGraphs(stageEl: HTMLElement, getLatestState: () => P
         destroy: () => {
             cfield.destroy();
             destroyed = true; cancelAnimationFrame(rafId);
+            pick5.dispose();
+            bodies5.dispose(); shells5.dispose(); links5.dispose(); floor5.dispose();
             try { controls.dispose(); } catch { /* ignore */ }
             window.removeEventListener("resize", onResize);
             composer.dispose(); renderer.dispose(); renderer.domElement.remove();
@@ -1245,7 +1310,20 @@ export function mountDynamicOptimality(stageEl: HTMLElement, getLatestState: () 
     const inst6 = INSTRUMENTS.s6;
     // The constellation backdrop for this slot, coloured by inst6's hue
     // and driven by its band. See mountSlotField.
-    const cfield = mountSlotField(stageEl, inst6, "__slot6Soneth", {}, false);
+    // ── No constellation on this slot ─────────────────────────────────────
+    // The animal field ran on all five of 5-9, which made it the wallpaper of
+    // the right-hand half of the instrument rather than something that means
+    // anything where it appears. It is kept on two: slot 5, the one field that
+    // still answers the sound, and slot 9, where the animal whose clip is
+    // playing is the animal that lights.
+    //
+    // BOWL and CHINA were read through the field here — its reach and its
+    // stroke width. They are read by this slot's OWN geometry now, which is
+    // where the struck voice belongs: see the branch tubes below. Better for
+    // it, too, since a backdrop cannot be occluded and a branch can.
+    //
+    // The onset edge stays — that is the voice, not the sky. See makeOnsetEdge.
+    const onsetOf6 = makeOnsetEdge(inst6);
     // PERCUSIÓN. damp 0.93 ≈ a third of a second — struck, not rung. The tight
     // mallet (spread 0.18) is the point of difference from slot 5: perc excites
     // a SMALL part of the body, so a hit moves one region of the tree and the
@@ -1266,31 +1344,46 @@ export function mountDynamicOptimality(stageEl: HTMLElement, getLatestState: () 
     const afterimage = new AfterimagePass(0.82);
     composer.addPass(afterimage);
 
-    // Node meshes (wireframe boxes)
-    const nodeData: { x: number; y: number; tx: number; ty: number; mesh: THREE.Mesh; innerMesh: THREE.Mesh }[] = [];
-    activeRoster.forEach((_sp, _i) => {
-        const outerGeo = new THREE.BoxGeometry(20, 20, 1);
-        const outerMat = new THREE.MeshBasicMaterial({ color: 0xc8ffe6, wireframe: true, transparent: true });
-        const outer = new THREE.Mesh(outerGeo, outerMat);
-        root6.add(outer);
-
-        const innerGeo = new THREE.BoxGeometry(10, 10, 1);
-        const innerMat = new THREE.MeshBasicMaterial({ color: 0xffaa00, wireframe: true, transparent: true });
-        const inner = new THREE.Mesh(innerGeo, innerMat);
-        root6.add(inner);
-
-        nodeData.push({ x: 0, y: 0, tx: 0, ty: 0, mesh: outer, innerMesh: inner });
+    // ── The tree is a solid ──────────────────────────────────────────────
+    //
+    // It was two Meshes per node — a 20x20x1 box and a 10x10x1 box, which is a
+    // SQUARE with a nominal thickness, not a body — plus a LineSegments edge
+    // pool whose vertices were written with z hardcoded to 0. The nodes already
+    // carried layer depth, so every branch visibly detached from the node it
+    // joined the moment the camera left the axis. The branches were drawn on a
+    // plane the tree had stopped living on.
+    //
+    // Boxes become instanced cubes with real thickness, branches become tubes
+    // that carry the node's own z, and the whole hierarchy can be orbited.
+    const NODE6_R = 10;
+    const nodeData: { x: number; y: number; z: number; tx: number; ty: number; layer: number }[] = [];
+    activeRoster.forEach(() => {
+        nodeData.push({ x: 0, y: 0, z: 0, tx: 0, ty: 0, layer: 0 });
     });
-
-    // Edge line pool
+    const boxes6 = makeNodeField(root6, nodeData.length, NODE6_R, 2,
+        { wireframe: true, opacity: 0.9 });
+    boxes6.count = nodeData.length;
+    const cores6 = makeNodeField(root6, nodeData.length, NODE6_R * 0.5, 2,
+        { wireframe: true, opacity: 0.6 });
+    cores6.count = nodeData.length;
+    // Branches with a radius rather than a linewidth. BOWL and CHINA are read
+    // here now — see the animate loop: the bowl lengthens the reach of a branch
+    // and the china sharpens it and adds light, which is what the two halves of
+    // the struck voice do to the sound.
+    const branches6 = makeTubeLinks(root6, nodeData.length * 2, 0xffaa00, 0.5);
+    const floor6 = makeDepthGrid(root6, Math.max(W, H) * 1.5, 18, 0x663300);
+    const pick6 = attachPicker(renderer.domElement, boxes6.mesh);
     const MAX_EDGES = activeRoster.length * 2;
-    const edgePosArr = new Float32Array(MAX_EDGES * 2 * 3);
-    const edgeGeo = new THREE.BufferGeometry();
-    edgeGeo.setAttribute("position", new THREE.BufferAttribute(edgePosArr, 3));
-    edgeGeo.setDrawRange(0, 0);
-    const edgeMat = new THREE.LineBasicMaterial({ color: 0xffaa00, transparent: true });
-    const edgeLines = new THREE.LineSegments(edgeGeo, edgeMat);
-    root6.add(edgeLines);
+    // Scratch, hoisted: an InstancedMesh write is a compose() per node per
+    // frame and allocating the operands inside the loop would churn four
+    // objects per node per frame for nothing.
+    const _t6a = new THREE.Vector3();
+    const _t6b = new THREE.Vector3();
+    const _q6  = new THREE.Quaternion();
+    const _e6  = new THREE.Euler();
+    // Accumulated spin per node. The Mesh used to hold this in its own
+    // rotation; an instance has no such state, so the slot keeps it.
+    const spin6 = new Float32Array(nodeData.length);
 
     // Scan column lines
     const MAX_SCAN = 14;
@@ -1319,7 +1412,7 @@ export function mountDynamicOptimality(stageEl: HTMLElement, getLatestState: () 
         frame++;
 
         const st = getLatestState();
-        const onset6 = cfield.drive(st);
+        const onset6 = onsetOf6(st);
         const sp6 = (window as any).__slot6Soneth ?? {};
 
         // Shared idle drift + vote flash. These six slots had NO vote channel
@@ -1339,10 +1432,6 @@ export function mountDynamicOptimality(stageEl: HTMLElement, getLatestState: () 
         ring6.step();
         if (onset6 > 0) {
             ring6.strike(onset6, au6.tone);
-            cfield.field.strike(
-                stageEl.clientWidth * (0.15 + au6.tone * 0.7),
-                stageEl.clientHeight * (0.3 + au6.tone * 0.3),
-                onset6);
         }
         // Which instrument is on screen, published like __antifoniaStand.
         // A label baked into a canvas sprite cannot be read back, so
@@ -1353,7 +1442,7 @@ export function mountDynamicOptimality(stageEl: HTMLElement, getLatestState: () 
         // read them back (a canvas without preserveDrawingBuffer returns blank
         // through drawImage). Publishing one representative scalar is the only
         // way "is this slot actually moving?" can be answered from outside.
-        try { (window as any).__vizProbe = () => (nodeData[0] ? nodeData[0].mesh.rotation.z : 0); } catch { /* ignore */ }
+        try { (window as any).__vizProbe = () => (nodeData[0] ? nodeData[0].z : 0); } catch { /* ignore */ }
 
         const vol       = sp6.volume        ?? 0.5;
         const pitchSh   = sp6.pitchshift    ?? 0.5;
@@ -1424,6 +1513,9 @@ export function mountDynamicOptimality(stageEl: HTMLElement, getLatestState: () 
         const rootY = H / 2 - 80 - pitchSh * 80 - droneSpace * H * 0.18;
         const layerSpacing = 50 + pitchSh * 120;
         const treeWidth = lerp(0.4, 0.95, spatSp);
+        pick6.update(camera);
+        floor6.grid.position.y = -H * 0.45;
+        floor6.material.opacity = (0.04 + texDep * 0.09) * masterA;
 
         let childIdx = 0;
         // ── PERCUSIÓN speaks ──────────────────────────────────────────────
@@ -1439,8 +1531,10 @@ export function mountDynamicOptimality(stageEl: HTMLElement, getLatestState: () 
                 const layer = Math.floor(Math.log2(childIdx + 2));
                 // Kept on the node: the depth pass below needs it, and
                 // recomputing a log every frame per node to get it back would
-                // be silly.
-                (n as any).layer = layer;
+                // be silly. A declared field now rather than an `as any` graft
+                // — the node no longer carries a Mesh, so its shape is small
+                // enough to say what it holds.
+                n.layer = layer;
                 const countInLayer = Math.pow(2, layer);
                 const posInLayer = (childIdx + 2) - countInLayer;
                 const breathe = Math.sin(frame * 0.05 * (1 + tDil) + layer) * (30 + specS * 50) * (1.1 - consensus);
@@ -1463,70 +1557,118 @@ export function mountDynamicOptimality(stageEl: HTMLElement, getLatestState: () 
                 n.y += (Math.random() - 0.5) * 10 * (1 - consensus);
             }
 
-            const act = st?.species?.[n.mesh ? i : i % (st?.species?.length || 1)]?.activity ?? 0;
+            const act = st?.species?.[i % (st?.species?.length || 1)]?.activity ?? 0;
             const glW = 10 + resBody * 25 + act * 15;
 
-            // Outer box
             // PERCUSIÓN. The tree had layers in Y and nothing in Z; each layer
             // now stands at its own depth, so the hierarchy is a solid rather
             // than a diagram. A strike drives that layer forward, and tone —
             // the pitch SC sends with the onset — decides which depth it hits.
-            // Written INSIDE the position.set that used to hard-zero z.
-            const lay6 = (n as any).layer ?? 0;
+            const lay6 = n.layer;
             // A strike does not arrive everywhere at once. It enters at the
             // root and travels, so each layer reads the bank a few modes LATER
             // than the one above it — the delay is the depth. What was a single
             // synchronised push is now a wave you can watch move down the tree,
             // which is also the honest picture of a rebalance propagating.
             const rz6 = ring6.value(i + lay6 * 5);
-            const z6 = lay6 * -70 * (0.4 + au6.level * 1.6) + rz6 * 190 * au6.amp;
-            n.mesh.position.set(
+            n.z = lay6 * -70 * (0.4 + au6.level * 1.6) + rz6 * 190 * au6.amp;
+
+            // Touch: hovering a node swells it, holding one DRAGS the subtree
+            // toward the pointer — the branch is a spring and the children
+            // follow, which is the tree's own behaviour rather than a
+            // free-floating sprite being moved.
+            const hov6 = (i === pick6.hover);
+            const grb6 = (i === pick6.grabbed);
+            if (grb6) {
+                n.x = lerp(n.x, pick6.point.x, 0.35);
+                n.y = lerp(n.y, pick6.point.y, 0.35);
+            }
+            const touch6 = grb6 ? 1.7 : hov6 ? 1.3 : 1.0;
+
+            _t6a.set(
                 n.x + rz6 * 26 * Math.cos(i * 2.1),
                 n.y + rz6 * 26 * Math.sin(i * 2.1),
-                z6);
+                n.z);
             // Deflect, then settle. A struck body leans off its axis; it does
-            // not merely translate.
-            n.mesh.rotation.z = rz6 * 0.85;
-            const sc6 = 1 + Math.abs(rz6) * 0.5;
-            n.mesh.scale.set(sc6, sc6, 1);
-            n.mesh.scale.setScalar(glW / 20);
-            // Drift folded in, and the vote's rebalance shows in the boxes
-            // as well as in the snap rate above.
-            n.mesh.rotation.z += 0.005 + texDep * 0.04 * (1 + act * 8) + vm6.speed * 0.02
+            // not merely translate. Drift folded in, and the vote's rebalance
+            // shows in the boxes as well as in the snap rate above.
+            spin6[i] += 0.005 + texDep * 0.04 * (1 + act * 8) + vm6.speed * 0.02
               + (vf6 ? vf6.flash * 0.10 * (isAlarm(vf6.type) ? -1 : 1) : 0);
-            (n.mesh.material as THREE.MeshBasicMaterial).color.setRGB(
-                lerp(0.78, 1.0, harmR), lerp(1.0, 0.67, harmR), lerp(0.9, 0.0, harmR)
-            );
-            (n.mesh.material as THREE.MeshBasicMaterial).opacity = (0.4 + vol * 0.6) * masterA;
+            // Tilted on two axes, not one. A cube spun only about z from a
+            // camera on the z axis is a rotating square; this is what makes it
+            // read as a solid turning in space.
+            _q6.setFromEuler(_e6.set(rz6 * 0.6, spin6[i] * 0.7, spin6[i] + rz6 * 0.85));
 
-            // Inner box — droneDepth pulses inner scale
+            const sc6 = (1 + Math.abs(rz6) * 0.5) * touch6;
+            boxes6.set(i, _t6a, (glW / 20) * sc6 * (NODE6_R / 10) * 0.9, _q6);
+            boxes6.tint(i,
+                hov6 || grb6 ? 1 : lerp(0.78, 1.0, harmR),
+                hov6 || grb6 ? 1 : lerp(1.0, 0.67, harmR),
+                lerp(0.9, 0.0, harmR));
+
+            // Inner core — droneDepth pulses its scale. It sits at the node's
+            // OWN depth now; it used to be pinned at z = 0.1 while its shell
+            // travelled with the layer, so the two came apart on every strike.
             const innerPulse = 0.5 + 0.5 * Math.sin(frame * 0.1 * (1 + tDil) + i) * droneD;
-            n.innerMesh.position.set(n.x, n.y, 0.1);
-            n.innerMesh.scale.setScalar((glW * innerPulse) / 10);
-            (n.innerMesh.material as THREE.MeshBasicMaterial).opacity = (0.3 + vol * 0.5) * masterA;
+            _t6b.set(n.x, n.y, n.z + 0.1);
+            cores6.set(i, _t6b, ((glW * innerPulse) / 10) * (NODE6_R * 0.5 / 10) * 0.9, _q6);
+            cores6.tint(i, 1, lerp(1.0, 0.67, harmR), 0);
         });
+        boxes6.mesh.material.opacity = (0.4 + vol * 0.6) * masterA;
+        cores6.mesh.material.opacity = (0.3 + vol * 0.5) * masterA;
+        boxes6.commit();
+        cores6.commit();
+
         // How high in the tree the arrival happened chooses the register: a
         // rebalance near the leaves is a lighter hit than one at the root.
         emitArrive6(arrived6, 0.3 + Math.min(1, arrived6 / 10) * 0.55,
             1 - Math.min(1, arrived6 / 14));
 
-        // Edges from all non-root nodes to root
+        // ── Branches, with BOWL and CHINA in them ─────────────────────────
+        //
+        // These were flat: both endpoints written with z = 0 while the nodes
+        // they joined had layer depth, so every branch left its own node behind
+        // the moment the camera moved. They carry the node's z now.
+        //
+        // And they are where the struck voice's two halves are read. Slot 6 is
+        // PERC, and until now bowl and china reached only the constellation
+        // backdrop — a sky that cannot be occluded and does not belong to this
+        // slot's structure. Here:
+        //
+        //   BOWL   lengthens the REACH. A bowl rings long and fills the room,
+        //          so a branch overshoots its node and keeps going — the tree
+        //          associates further than it strictly connects.
+        //   CHINA  sharpens and lights. A china is all attack, so the branch
+        //          thins to a filament and brightens. Both up is the fusion the
+        //          voice actually is; both down leaves plain branches.
+        const bowl6  = sp6["voice:bowl"] ?? 1;
+        const china6 = sp6["voice:china"] ?? 1;
         const rootNode = nodeData[maxIdx];
+        branches6.begin();
         let eIdx = 0;
         nodeData.forEach((n, i) => {
             if (i === maxIdx || eIdx >= MAX_EDGES) return;
-            let ex = n.x, ey = n.y, rx = rootNode.x, ry = rootNode.y;
+            _t6a.set(n.x, n.y, n.z);
             if (Math.random() < txInf * 0.6) {
-                ex += (Math.random() - 0.5) * 60 * specS;
-                ey += (Math.random() - 0.5) * 60 * specS;
+                _t6a.x += (Math.random() - 0.5) * 60 * specS;
+                _t6a.y += (Math.random() - 0.5) * 60 * specS;
+                _t6a.z += (Math.random() - 0.5) * 40 * specS;
             }
-            edgePosArr[eIdx * 6]     = ex;  edgePosArr[eIdx * 6 + 1] = ey;  edgePosArr[eIdx * 6 + 2] = 0;
-            edgePosArr[eIdx * 6 + 3] = rx;  edgePosArr[eIdx * 6 + 4] = ry;  edgePosArr[eIdx * 6 + 5] = 0;
+            _t6b.set(rootNode.x, rootNode.y, rootNode.z);
+            // The bowl's overshoot: the branch runs PAST the root by up to a
+            // fifth of its own length, so the reach is visibly longer than the
+            // connection. Same 0.22 the field used for `length`.
+            if (bowl6 > 0.01) _t6b.lerp(_t6a, -bowl6 * 0.22);
+            // The china's filament: 0.28 off the radius, the same figure the
+            // field used for `strokeWidth`.
+            const held6 = (i === pick6.grabbed || maxIdx === pick6.grabbed);
+            branches6.add(_t6a, _t6b,
+                (1.1 + resBody * 2.2) * (1 - china6 * 0.28) * (held6 ? 2.6 : 1));
             eIdx++;
         });
-        edgeGeo.setDrawRange(0, eIdx * 2);
-        edgeGeo.attributes.position.needsUpdate = true;
-        edgeMat.opacity = (0.4 + vol * 0.6) * masterA;
+        branches6.end();
+        branches6.material.opacity =
+            (0.4 + vol * 0.6) * masterA * (1 + china6 * 0.18);
 
         // droneFade used to write a "background warmth" here:
         //     setClearColor((Math.floor(dronFd * 6) << 8) | 0x000804, 1)
@@ -1577,8 +1719,9 @@ export function mountDynamicOptimality(stageEl: HTMLElement, getLatestState: () 
     return {
         name: "Dynamic Optimality", key: "6",
         destroy: () => {
-            cfield.destroy();
             destroyed = true; cancelAnimationFrame(rafId);
+            pick6.dispose();
+            boxes6.dispose(); cores6.dispose(); branches6.dispose(); floor6.dispose();
             try { controls.dispose(); } catch { /* ignore */ }
             window.removeEventListener("resize", onResize);
             composer.dispose(); renderer.dispose(); renderer.domElement.remove();
@@ -1641,7 +1784,16 @@ export function mountGeometry(stageEl: HTMLElement, getLatestState: () => Parlia
     const inst7 = INSTRUMENTS.s7;
     // The constellation backdrop for this slot, coloured by inst7's hue
     // and driven by its band. See mountSlotField.
-    const cfield = mountSlotField(stageEl, inst7, "__slot7Soneth", {}, false);
+    // ── No constellation on this slot ─────────────────────────────────────
+    // The animal field ran on all five of 5-9, which made it the wallpaper of
+    // the whole right-hand half of the instrument rather than a thing that
+    // means something where it appears. It is kept where it reads as a
+    // statement: slot 5, the one field that still answers the sound, and
+    // slot 6, the struck voice, where BOWL and CHINA are drawn as the reach
+    // and the sharpness of the links. Here the depth belongs to the structure.
+    //
+    // The onset edge stays — that is the voice, not the sky. See makeOnsetEdge.
+    const onsetOf7 = makeOnsetEdge(inst7);
     // BOMBO. Few modes, very low, and damp 0.90 so it is still again almost at
     // once — a kick is one displacement of air, not a texture. The wide mallet
     // (spread 0.9) moves the WHOLE field together, which is exactly how a low
@@ -1762,7 +1914,7 @@ export function mountGeometry(stageEl: HTMLElement, getLatestState: () => Parlia
         frame++;
 
         const st = getLatestState();
-        const onset7 = cfield.drive(st);
+        const onset7 = onsetOf7(st);
         const sp7 = (window as any).__slot7Soneth ?? {};
 
         // Shared idle drift + vote flash. These six slots had NO vote channel
@@ -1785,8 +1937,6 @@ export function mountGeometry(stageEl: HTMLElement, getLatestState: () => Parlia
             // From the centre, always. The kick has no place in the stereo
             // field and it should have none here either — the wave leaves the
             // middle and reaches every figure at once.
-            cfield.field.strike(
-                stageEl.clientWidth * 0.5, stageEl.clientHeight * 0.5, onset7);
         }
         // Which instrument is on screen, published like __antifoniaStand.
         // A label baked into a canvas sprite cannot be read back, so
@@ -2010,7 +2160,6 @@ export function mountGeometry(stageEl: HTMLElement, getLatestState: () => Parlia
     return {
         name: "Geometry", key: "7",
         destroy: () => {
-            cfield.destroy();
             destroyed = true; cancelAnimationFrame(rafId);
             try { controls.dispose(); } catch { /* ignore */ }
             window.removeEventListener("resize", onResize);
@@ -2075,7 +2224,16 @@ export function mountMemoryHierarchy(stageEl: HTMLElement, getLatestState: () =>
     const inst8 = INSTRUMENTS.s8;
     // The constellation backdrop for this slot, coloured by inst8's hue
     // and driven by its band. See mountSlotField.
-    const cfield = mountSlotField(stageEl, inst8, "__slot8Soneth", {}, false);
+    // ── No constellation on this slot ─────────────────────────────────────
+    // The animal field ran on all five of 5-9, which made it the wallpaper of
+    // the whole right-hand half of the instrument rather than a thing that
+    // means something where it appears. It is kept where it reads as a
+    // statement: slot 5, the one field that still answers the sound, and
+    // slot 6, the struck voice, where BOWL and CHINA are drawn as the reach
+    // and the sharpness of the links. Here the depth belongs to the structure.
+    //
+    // The onset edge stays — that is the voice, not the sky. See makeOnsetEdge.
+    const onsetOf8 = makeOnsetEdge(inst8);
     // POLVO. Many modes, high and fast-dying: not one gesture but a cloud of
     // small independent ones, which is what granular synthesis is. damp 0.86
     // is the shortest of the five — each grain is over before the next lands.
@@ -2154,7 +2312,7 @@ export function mountMemoryHierarchy(stageEl: HTMLElement, getLatestState: () =>
         frame++;
 
         const st = getLatestState();
-        const onset8 = cfield.drive(st);
+        const onset8 = onsetOf8(st);
         const sp8 = (window as any).__slot8Soneth ?? {};
 
         // Shared idle drift + vote flash. These six slots had NO vote channel
@@ -2176,10 +2334,6 @@ export function mountMemoryHierarchy(stageEl: HTMLElement, getLatestState: () =>
             ring8.strike(onset8, au8.tone);
             // Dust does not arrive from a point. Scattered origin per grain, so
             // the sky is stirred rather than struck.
-            cfield.field.strike(
-                stageEl.clientWidth * (0.1 + Math.random() * 0.8),
-                stageEl.clientHeight * (0.1 + Math.random() * 0.8),
-                onset8 * 0.45);
         }
         // Which instrument is on screen, published like __antifoniaStand.
         // A label baked into a canvas sprite cannot be read back, so
@@ -2389,7 +2543,6 @@ export function mountMemoryHierarchy(stageEl: HTMLElement, getLatestState: () =>
     return {
         name: "Memory Hierarchy", key: "8",
         destroy: () => {
-            cfield.destroy();
             destroyed = true; cancelAnimationFrame(rafId);
             try { controls.dispose(); } catch { /* ignore */ }
             window.removeEventListener("resize", onResize);
@@ -2456,6 +2609,12 @@ export function mountHashing(stageEl: HTMLElement, getLatestState: () => Parliam
     const inst9 = INSTRUMENTS.s9;
     // The constellation backdrop for this slot, coloured by inst9's hue
     // and driven by its band. See mountSlotField.
+    // ── The constellation stays HERE ──────────────────────────────────────
+    // Of the five, this is where the field is not decoration. Slot 9 is the
+    // sample voice, the recordings are from the bosque seco, and the roster in
+    // animals.ts is the fauna of that same forest — so the figure of an animal
+    // lights while its own clip runs (see the spotlight below). Nothing else
+    // in the instrument can say that.
     const cfield = mountSlotField(stageEl, inst9, "__slot9Soneth", {}, false);
     // MUESTRAS. A recording is not struck — it is READ. Slow, nearly
     // undamped (0.995), so the motion here is a long traverse rather than a
