@@ -22,6 +22,7 @@ import {
     showStage,
     SPECIES_ROSTER,
 } from "./visualizationSwitcher";
+import { mountSlotTicker } from "./slotTicker";
 import {
     makeNodeField,
     makeTubeLinks,
@@ -827,7 +828,13 @@ export function mountTimeTravel(stageEl: HTMLElement, getLatestState: () => Parl
         const w = stageEl.offsetWidth; const h = stageEl.offsetHeight;
         renderer.setSize(w, h);
         composer.setSize(w, h);
-        camera.left = -w / 2; camera.right = w / 2; camera.top = h / 2; camera.bottom = -h / 2;
+        // aspect, not left/right/top/bottom. These five were still setting
+        // ORTHOGRAPHIC bounds — left over from when the cameras were ortho —
+        // on a PerspectiveCamera, which has no such properties: the four writes
+        // landed on nothing and `aspect` was never updated at all. So resizing
+        // the window stretched the scene by whatever the shape had changed by,
+        // and it stayed stretched. Slot 5 was the only one doing it correctly.
+        camera.aspect = w / h;
         camera.updateProjectionMatrix();
     };
     window.addEventListener("resize", onResize);
@@ -1507,6 +1514,13 @@ export function mountDynamicOptimality(stageEl: HTMLElement, getLatestState: () 
     const motes6 = makeParticles(root6, 800, Math.max(W, H) * 1.4, 0xc8ffe6);
     const tags6 = makeLabelField(root6, nodeData.length, 0xc8ffe6, 13);
     const calm6 = makeCalm();
+    // The ticker came off this slot with the constellation field it was living
+    // inside — and it was never about the constellation. It reports where the
+    // phenological ring stands, which is true of the whole instrument. Its own
+    // canvas now; see slotTicker.ts. The tail states what THIS module is.
+    const ticker6 = mountSlotTicker(stageEl,
+        "PERCUSIÓN · opalPerc · ÁRBOL SPLAY  ·  BOWL + CHINA EN LAS RAMAS",
+        "rgba(200,255,230,");
 
     // Scan column lines
     const MAX_SCAN = 14;
@@ -1759,6 +1773,7 @@ export function mountDynamicOptimality(stageEl: HTMLElement, getLatestState: () 
         motes6.material.opacity = (0.08 + texDep * 0.26) * masterA;
         motes6.material.size = Math.max(W, H) * (0.0014 + resBody * 0.0038);
         root6.rotation.y = vm6.angle * 0.42;
+        ticker6.draw((0.35 + vol * 0.65) * masterA);
 
         // RAÍZ names the node the tree is splayed around; the rest carry their
         // depth. Which node is the root CHANGES as the tree rebalances, so the
@@ -1871,8 +1886,15 @@ export function mountDynamicOptimality(stageEl: HTMLElement, getLatestState: () 
         if (destroyed) return;
         const w = stageEl.offsetWidth; const h = stageEl.offsetHeight;
         renderer.setSize(w, h); composer.setSize(w, h);
-        camera.left = -w / 2; camera.right = w / 2; camera.top = h / 2; camera.bottom = -h / 2;
+        // aspect, not left/right/top/bottom. These five were still setting
+        // ORTHOGRAPHIC bounds — left over from when the cameras were ortho —
+        // on a PerspectiveCamera, which has no such properties: the four writes
+        // landed on nothing and `aspect` was never updated at all. So resizing
+        // the window stretched the scene by whatever the shape had changed by,
+        // and it stayed stretched. Slot 5 was the only one doing it correctly.
+        camera.aspect = w / h;
         camera.updateProjectionMatrix();
+        ticker6.resize();
     };
     window.addEventListener("resize", onResize);
 
@@ -1882,7 +1904,7 @@ export function mountDynamicOptimality(stageEl: HTMLElement, getLatestState: () 
             destroyed = true; cancelAnimationFrame(rafId);
             pick6.dispose();
             boxes6.dispose(); cores6.dispose(); branches6.dispose(); floor6.dispose();
-            motes6.dispose(); tags6.dispose();
+            motes6.dispose(); tags6.dispose(); ticker6.destroy();
             try { controls.dispose(); } catch { /* ignore */ }
             window.removeEventListener("resize", onResize);
             composer.dispose(); renderer.dispose(); renderer.domElement.remove();
@@ -1998,6 +2020,9 @@ export function mountGeometry(stageEl: HTMLElement, getLatestState: () => Parlia
     const tags7 = makeLabelField(root7, 64, 0xffcc88, 12);
     for (let i = 0; i < 64; i++) tags7.text(i, SLOT_NOUNS.s7.one(i));
     const calm7 = makeCalm();
+    const ticker7 = mountSlotTicker(stageEl,
+        "BOMBO · opalKick · FRENTE DE PRESIÓN  ·  BLANCOS ADQUIRIDOS",
+        "rgba(200,255,230,");
 
     // Sweep vertical lines (max 4 eco values)
     const sweepPositions = new Float32Array(4 * 2 * 3);
@@ -2333,6 +2358,7 @@ export function mountGeometry(stageEl: HTMLElement, getLatestState: () => Parlia
         motes7.material.opacity = (0.09 + texDep * 0.24) * masterA;
         motes7.material.size = Math.max(W, H) * (0.0013 + resBody * 0.0034);
         root7.rotation.y = vm7.angle * 0.5;
+        ticker7.draw((0.35 + vol * 0.65) * masterA);
         // ── BOMBO speaks ──────────────────────────────────────────────────
         // A target acquisition — a ray crossing a sweep — is this slot's
         // discrete event, and the sub is the register that can carry it. The
@@ -2369,8 +2395,15 @@ export function mountGeometry(stageEl: HTMLElement, getLatestState: () => Parlia
         if (destroyed) return;
         const w = stageEl.offsetWidth; const h = stageEl.offsetHeight;
         renderer.setSize(w, h); composer.setSize(w, h);
-        camera.left = -w / 2; camera.right = w / 2; camera.top = h / 2; camera.bottom = -h / 2;
+        // aspect, not left/right/top/bottom. These five were still setting
+        // ORTHOGRAPHIC bounds — left over from when the cameras were ortho —
+        // on a PerspectiveCamera, which has no such properties: the four writes
+        // landed on nothing and `aspect` was never updated at all. So resizing
+        // the window stretched the scene by whatever the shape had changed by,
+        // and it stayed stretched. Slot 5 was the only one doing it correctly.
+        camera.aspect = w / h;
         camera.updateProjectionMatrix();
+        ticker7.resize();
     };
     window.addEventListener("resize", onResize);
 
@@ -2380,7 +2413,7 @@ export function mountGeometry(stageEl: HTMLElement, getLatestState: () => Parlia
             destroyed = true; cancelAnimationFrame(rafId);
             pick7.dispose();
             rays7.dispose(); marks7.dispose(); floor7.dispose();
-            motes7.dispose(); tags7.dispose();
+            motes7.dispose(); tags7.dispose(); ticker7.destroy();
             try { controls.dispose(); } catch { /* ignore */ }
             window.removeEventListener("resize", onResize);
             composer.dispose(); renderer.dispose(); renderer.domElement.remove();
@@ -2518,6 +2551,9 @@ export function mountMemoryHierarchy(stageEl: HTMLElement, getLatestState: () =>
     const tags8 = makeLabelField(root8, LAYERS, 0xffcc88, 14);
     for (let j = 0; j < LAYERS; j++) tags8.text(j, SLOT_NOUNS.s8.one(j));
     const calm8 = makeCalm();
+    const ticker8 = mountSlotTicker(stageEl,
+        "POLVO · opalDust · JERARQUÍA DE NIVELES  ·  LA PROFUNDIDAD ES OCUPACIÓN",
+        "rgba(200,255,230,");
 
     // Hex noise background — canvas texture updated per frame
     const hexCanvas = document.createElement("canvas");
@@ -2803,6 +2839,7 @@ export function mountMemoryHierarchy(stageEl: HTMLElement, getLatestState: () =>
         motes8.material.opacity = (0.08 + texDep * 0.26) * masterA;
         motes8.material.size = Math.max(W, H) * (0.0012 + resBody * 0.0030);
         root8.rotation.y = vm8.angle * 0.38;
+        ticker8.draw((0.35 + vol * 0.65) * masterA);
         const dmR = lerp(0.78, 1.0, droneMix); const dmG = lerp(1.0, 0.67, droneMix);
         dropMat.color.setRGB(dmR, dmG, 0);
         dropMat.opacity = (0.22 + memFeed * 0.30) * (0.4 + vol * 0.6) * masterA;
@@ -2819,8 +2856,15 @@ export function mountMemoryHierarchy(stageEl: HTMLElement, getLatestState: () =>
         if (destroyed) return;
         const w = stageEl.offsetWidth; const h = stageEl.offsetHeight;
         renderer.setSize(w, h); composer.setSize(w, h);
-        camera.left = -w / 2; camera.right = w / 2; camera.top = h / 2; camera.bottom = -h / 2;
+        // aspect, not left/right/top/bottom. These five were still setting
+        // ORTHOGRAPHIC bounds — left over from when the cameras were ortho —
+        // on a PerspectiveCamera, which has no such properties: the four writes
+        // landed on nothing and `aspect` was never updated at all. So resizing
+        // the window stretched the scene by whatever the shape had changed by,
+        // and it stayed stretched. Slot 5 was the only one doing it correctly.
+        camera.aspect = w / h;
         camera.updateProjectionMatrix();
+        ticker8.resize();
     };
     window.addEventListener("resize", onResize);
 
@@ -2830,7 +2874,7 @@ export function mountMemoryHierarchy(stageEl: HTMLElement, getLatestState: () =>
             destroyed = true; cancelAnimationFrame(rafId);
             pick8.dispose();
             blocks8.dispose(); drops8.dispose();
-            motes8.dispose(); tags8.dispose();
+            motes8.dispose(); tags8.dispose(); ticker8.destroy();
             try { controls.dispose(); } catch { /* ignore */ }
             window.removeEventListener("resize", onResize);
             hexTexture.dispose();
@@ -3335,7 +3379,13 @@ export function mountHashing(stageEl: HTMLElement, getLatestState: () => Parliam
         if (destroyed) return;
         const w = stageEl.offsetWidth; const h = stageEl.offsetHeight;
         renderer.setSize(w, h); composer.setSize(w, h);
-        camera.left = -w / 2; camera.right = w / 2; camera.top = h / 2; camera.bottom = -h / 2;
+        // aspect, not left/right/top/bottom. These five were still setting
+        // ORTHOGRAPHIC bounds — left over from when the cameras were ortho —
+        // on a PerspectiveCamera, which has no such properties: the four writes
+        // landed on nothing and `aspect` was never updated at all. So resizing
+        // the window stretched the scene by whatever the shape had changed by,
+        // and it stayed stretched. Slot 5 was the only one doing it correctly.
+        camera.aspect = w / h;
         camera.updateProjectionMatrix();
     };
     window.addEventListener("resize", onResize);
