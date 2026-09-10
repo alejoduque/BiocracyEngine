@@ -347,3 +347,180 @@ export function attachPicker(
         },
     };
 }
+
+// ─── Particles ───────────────────────────────────────────────────────────────
+
+export type ParticleField = {
+    points: THREE.Points;
+    material: THREE.PointsMaterial;
+    /**
+     * Advance the drift. `flow` biases the motion along +z (the direction the
+     * structure recedes), `swirl` turns it about the y axis, `lift` is the
+     * per-second rise. All three come off the panel — see each slot.
+     */
+    step(dt: number, flow: number, swirl: number, lift: number): void;
+    dispose(): void;
+};
+
+/**
+ * Ambient motes filling the volume the structures sit in.
+ *
+ * Slots 6, 7 and 8 lost their visible atmosphere when the constellation field
+ * came off them — the field was doing two jobs at once, naming species AND
+ * being the air in the room, and only the first of those is worth restricting
+ * to two slots. This is the second job on its own: no species, no figures, no
+ * meaning to read, just the volume made visible so depth has something to be
+ * measured against.
+ *
+ * A real THREE.Points cloud rather than a canvas overlay, so the motes are IN
+ * the scene: they pass behind the geometry, catch the bloom, and move when the
+ * camera moves. A screen-space layer can do none of that.
+ */
+export function makeParticles(
+    parent: THREE.Object3D, count: number, extent: number, color = 0xffaa00,
+): ParticleField {
+    const pos = new Float32Array(count * 3);
+    const seed = new Float32Array(count);
+    for (let i = 0; i < count; i++) {
+        pos[i * 3]     = (Math.random() - 0.5) * extent;
+        pos[i * 3 + 1] = (Math.random() - 0.5) * extent * 0.7;
+        pos[i * 3 + 2] = (Math.random() - 0.5) * extent;
+        seed[i] = Math.random() * Math.PI * 2;
+    }
+    const geo = new THREE.BufferGeometry();
+    geo.setAttribute("position", new THREE.BufferAttribute(pos, 3));
+
+    const material = new THREE.PointsMaterial({
+        color, size: extent * 0.0035, transparent: true, opacity: 0.35,
+        blending: THREE.AdditiveBlending, depthWrite: false, sizeAttenuation: true,
+    });
+    const points = new THREE.Points(geo, material);
+    points.frustumCulled = false;
+    parent.add(points);
+
+    let t = 0;
+    const half = extent / 2;
+
+    return {
+        points, material,
+        step(dt, flow, swirl, lift) {
+            // dt-based, not per-frame: the drift must cross the volume at the
+            // same rate on a 60 and a 120 Hz panel. Clamped, so a stall resumes
+            // rather than teleporting the whole cloud.
+            const d = Math.min(0.1, dt);
+            t += d;
+            const a = geo.attributes.position.array as Float32Array;
+            const cs = Math.cos(swirl * d), sn = Math.sin(swirl * d);
+            for (let i = 0; i < count; i++) {
+                const i3 = i * 3;
+                // Swirl about y, so the cloud turns with the structure rather
+                // than sliding across it.
+                const x = a[i3], z = a[i3 + 2];
+                a[i3]     = x * cs - z * sn;
+                a[i3 + 2] = x * sn + z * cs;
+                a[i3 + 1] += lift * d + Math.sin(t * 0.7 + seed[i]) * d * extent * 0.006;
+                a[i3 + 2] += flow * d;
+                // Wrap rather than respawn: a mote that vanishes and reappears
+                // elsewhere reads as a glitch, one that wraps reads as more of
+                // the same air.
+                if (a[i3 + 1] >  half * 0.7) a[i3 + 1] = -half * 0.7;
+                if (a[i3 + 1] < -half * 0.7) a[i3 + 1] =  half * 0.7;
+                if (a[i3 + 2] >  half) a[i3 + 2] = -half;
+                if (a[i3 + 2] < -half) a[i3 + 2] =  half;
+            }
+            geo.attributes.position.needsUpdate = true;
+        },
+        dispose() {
+            parent.remove(points);
+            geo.dispose();
+            material.dispose();
+        },
+    };
+}
+
+// ─── Labels ──────────────────────────────────────────────────────────────────
+
+export type LabelField = {
+    /** Move label i to a world position and set how bright it is. */
+    set(i: number, pos: THREE.Vector3, alpha: number): void;
+    /** Rewrite the text of label i. Redraws its canvas, so call it on change. */
+    text(i: number, s: string): void;
+    /** Hide the tail of the pool from `n` on. */
+    count(n: number): void;
+    dispose(): void;
+};
+
+/**
+ * Small sprite captions for the bodies in a slot.
+ *
+ * These six drew no text at all — the structures were legible only to someone
+ * who had read the source, so a "bucket" and a "layer" and a "target" were all
+ * just boxes. A label says which is which in the module's OWN vocabulary.
+ *
+ * Sprites rather than DOM: they belong to the scene, so they sit at the body's
+ * depth, go behind what is in front of them, and need no per-frame projection
+ * to screen space. `sizeAttenuation` off keeps them the same size at any
+ * distance, which is what a caption wants — it is being read, not being drawn
+ * in perspective.
+ */
+export function makeLabelField(
+    parent: THREE.Object3D, capacity: number, color = 0xffcc88, px = 15,
+): LabelField {
+    const sprites: THREE.Sprite[] = [];
+    const canvases: HTMLCanvasElement[] = [];
+    const hex = "#" + new THREE.Color(color).getHexString();
+
+    for (let i = 0; i < capacity; i++) {
+        const cv = document.createElement("canvas");
+        cv.width = 256; cv.height = 64;
+        const spr = new THREE.Sprite(new THREE.SpriteMaterial({
+            map: new THREE.CanvasTexture(cv),
+            transparent: true, depthWrite: false, depthTest: true,
+            sizeAttenuation: false, opacity: 0,
+        }));
+        // In screen units, since attenuation is off. Roughly px tall.
+        spr.scale.set(px * 0.016, px * 0.004, 1);
+        spr.visible = false;
+        parent.add(spr);
+        sprites.push(spr);
+        canvases.push(cv);
+    }
+
+    function draw(i: number, s: string) {
+        const cv = canvases[i];
+        const g = cv.getContext("2d");
+        if (!g) return;
+        g.clearRect(0, 0, cv.width, cv.height);
+        g.font = "600 34px ui-monospace, 'SF Mono', Menlo, monospace";
+        g.textAlign = "center";
+        g.textBaseline = "middle";
+        // A dark pad under the glyphs. Additive scenes wash out thin type, and
+        // an outline costs nothing next to a texture upload.
+        g.lineWidth = 6;
+        g.strokeStyle = "rgba(0,0,0,0.85)";
+        g.strokeText(s, cv.width / 2, cv.height / 2);
+        g.fillStyle = hex;
+        g.fillText(s, cv.width / 2, cv.height / 2);
+        (sprites[i].material as THREE.SpriteMaterial).map!.needsUpdate = true;
+    }
+
+    return {
+        set(i, pos, alpha) {
+            if (i < 0 || i >= capacity) return;
+            const spr = sprites[i];
+            spr.position.copy(pos);
+            spr.visible = alpha > 0.01;
+            (spr.material as THREE.SpriteMaterial).opacity = Math.min(1, Math.max(0, alpha));
+        },
+        text(i, s) { if (i >= 0 && i < capacity) draw(i, s); },
+        count(n) { for (let i = n; i < capacity; i++) sprites[i].visible = false; },
+        dispose() {
+            for (const spr of sprites) {
+                parent.remove(spr);
+                const m = spr.material as THREE.SpriteMaterial;
+                m.map?.dispose();
+                m.dispose();
+            }
+        },
+    };
+}

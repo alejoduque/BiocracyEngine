@@ -26,8 +26,35 @@ import {
     makeNodeField,
     makeTubeLinks,
     makeDepthGrid,
+    makeParticles,
+    makeLabelField,
     attachPicker,
 } from "./slotThree";
+
+// ─── What each slot's bodies ARE ─────────────────────────────────────────────
+//
+// The six structures were legible only to someone who had read the source: a
+// bucket, a layer, a cache level and a radar target were all just boxes, and
+// nothing on screen said which. These are the captions, in each module's own
+// vocabulary rather than in a shared abstract one — the point of six different
+// structures is that they are six different things.
+//
+// Kept SHORT on purpose. A caption on a moving body is read in passing, and
+// three or four characters can be; a sentence cannot.
+const SLOT_NOUNS: Record<string, { one: (i: number) => string; what: string }> = {
+    // Time Travel · DRONE — each trace is one agent's history through the run.
+    s4: { what: "traza", one: (i) => `T${i}` },
+    // Dynamic Graphs · CAMPANAS — the bodies are the parties to a connection.
+    s5: { what: "nodo",  one: (i) => `N${i}` },
+    // Dynamic Optimality · PERCUSIÓN — a splay tree: one root, the rest depth.
+    s6: { what: "rama",  one: (i) => (i === 0 ? "RAÍZ" : `R${i}`) },
+    // Geometry · BOMBO — what the sweep has acquired.
+    s7: { what: "blanco", one: (i) => `B${i}` },
+    // Memory Hierarchy · POLVO — cache levels, nearest first.
+    s8: { what: "nivel", one: (i) => `L${i + 1}` },
+    // Hashing · MUESTRAS — keys on the left, buckets on the right.
+    s9: { what: "clave", one: (i) => `K${i}` },
+};
 
 // ─── Shared chromatic-aberration shader (reused across slots) ────────────────
 const ChromaticAberrationShader = {
@@ -477,18 +504,26 @@ export function mountTimeTravel(stageEl: HTMLElement, getLatestState: () => Parl
         traces.push({ y: lerp(-H * 0.3, H * 0.3, yFrac), history: positions, count: 0, line, geo });
     });
 
-    // ── Marker quads (one per species) ───────────────────────────────────────
-    const markerMeshes = activeRoster.map(() => {
-        const g = new THREE.BufferGeometry();
-        const verts = new Float32Array([
-            0, 8, 0,   8, 0, 0,   0, -8, 0,   -8, 0, 0,
-        ]);
-        g.setAttribute("position", new THREE.BufferAttribute(verts, 3));
-        g.setIndex([0, 1, 2, 2, 3, 0]);
-        const m = new THREE.Mesh(g, new THREE.MeshBasicMaterial({ color: 0xffaa00, transparent: true }));
-        root4.add(m);
-        return m;
-    });
+    // ── Markers, as bodies ───────────────────────────────────────────────
+    // These were flat diamond quads facing z — invisible edge-on from an
+    // orbiting camera, which is most of the time. Octahedra: the same diamond
+    // silhouette from the front, and still a diamond from every other angle.
+    //
+    // In their OWN group, not root4. The depth pass below runs
+    // root4.children.forEach and writes position.z by child index, so anything
+    // added to root4 has its depth overwritten by where it happens to sit in
+    // the child list — which is why the air and the captions live in air4.
+    const marks4 = makeNodeField(root4, activeRoster.length, 8, 0, { opacity: 0.9 });
+    marks4.count = activeRoster.length;
+
+    // The air, and what the traces are. Siblings of root4 rather than children,
+    // for the reason above; they take root4's turn explicitly instead.
+    const air4 = new THREE.Group();
+    scene.add(air4);
+    const motes4 = makeParticles(air4, 1100, Math.max(W, H) * 1.6, 0xffaa00);
+    const tags4 = makeLabelField(air4, activeRoster.length, 0xffcc88, 13);
+    activeRoster.forEach((_sp, i) => tags4.text(i, SLOT_NOUNS.s4.one(i)));
+    const _t4a = new THREE.Vector3();
 
     // ── Reticule rings ────────────────────────────────────────────────────────
     const reticuleGroup = new THREE.Group();
@@ -691,12 +726,15 @@ export function mountTimeTravel(stageEl: HTMLElement, getLatestState: () => Parl
             br.geo.attributes.position.needsUpdate = true;
             br.geo.attributes.color.needsUpdate = true;
 
-            // Marker at right edge
+            // Marker at right edge, at its trace's own depth.
             const glow = 3 + activity * 8 + resBody * 12;
-            const mk = markerMeshes[i];
-            mk.position.set(W / 2 - 10, br.y, 1);
-            mk.scale.setScalar(glow / 8);
-            (mk.material as THREE.MeshBasicMaterial).opacity = vol * masterA;
+            const mz = -i * 26 * (0.35 + au4.level * 2.2);
+            _t4a.set(W / 2 - 10, br.y, mz);
+            marks4.set(i, _t4a, glow / 8);
+            marks4.tint(i, 1, 0.67, 0);
+            // T0..T4 — one trace per agent, named at the head of its own line.
+            _t4a.set(W / 2 + 22, br.y, mz);
+            tags4.set(i, _t4a, (0.22 + vol * 0.5) * masterA);
 
             // Harmonic echo trace (offset ghost) — driven by harmonicRich + dronemix
             if (harmR > 0.2) {
@@ -752,7 +790,20 @@ export function mountTimeTravel(stageEl: HTMLElement, getLatestState: () => Parl
         root4.children.forEach((c: any, i: number) => {
             c.position.z = -i * 26 * (0.35 + au4.level * 2.2);
         });
+        marks4.mesh.material.opacity = vol * masterA;
+        marks4.commit();
         root4.rotation.x = -0.06 + au4.level * 0.05;
+        // ROTATION SPD turns the assembly, not only the camera around it.
+        root4.rotation.y = vm4.angle * 0.30;
+        // The air is a sibling of root4 (see the note at marks4), so it takes
+        // the same turn explicitly rather than inheriting it.
+        air4.rotation.copy(root4.rotation);
+        // TIME DILAT pushes the air along the axis the traces recede on — the
+        // drone's own direction of travel. DRONE SPACE lifts it.
+        motes4.step(1 / 60, (timeDil - 0.5) * 80, vm4.rotation * 0.05,
+            (droneSpace - 0.5) * 20);
+        motes4.material.opacity = (0.09 + texDep * 0.28) * masterA;
+        motes4.material.size = Math.max(W, H) * (0.0015 + resBody * 0.0040);
 
         // dronemix + noisefilt: secondary diagonal grid brightness (reuse grid opacity)
         // dronemix + noisefilt modulate grid brightness
@@ -835,6 +886,7 @@ export function mountTimeTravel(stageEl: HTMLElement, getLatestState: () => Parl
         destroy: () => {
             destroyed = true;
             cancelAnimationFrame(rafId);
+            marks4.dispose(); motes4.dispose(); tags4.dispose();
             clearInterval(rampTimer);
             document.removeEventListener("input", onUserFilt, true);
             // Hand the filter back where the performer left it. Leaving the
@@ -964,6 +1016,13 @@ export function mountDynamicGraphs(stageEl: HTMLElement, getLatestState: () => P
     // Touch. None of these five had a Raycaster, a pointerdown or a hover of
     // any kind: orbiting was the whole vocabulary, and orbiting is looking.
     const pick5 = attachPicker(renderer.domElement, bodies5.mesh);
+    // The air. Not the species field — that names things and is restricted to
+    // two slots for exactly that reason; this is the volume made visible so
+    // depth has something to be measured against.
+    const motes5 = makeParticles(root5, 900, Math.max(W, H) * 1.5, 0xffaa00);
+    // What the bodies ARE. N0..N7, the parties to a connection.
+    const tags5 = makeLabelField(root5, nodes.length, 0xffcc88, 14);
+    nodes.forEach((_n, i) => tags5.text(i, SLOT_NOUNS.s5.one(i)));
 
     function makeCircle(radius: number, segs: number, color: number, opacity: number): THREE.Line {
         const pts: number[] = [];
@@ -1101,7 +1160,11 @@ export function mountDynamicGraphs(stageEl: HTMLElement, getLatestState: () => P
         // ── Physics, in three dimensions ──────────────────────────────────
         links5.begin();
         let edgeCount = 0;
-        const linkR = 0.7 + noiseF * 2.6;   // a REAL radius; linewidth was inert
+        // Halved. The first pass at real geometry over-corrected: coming from
+        // 1 px lines, anything with a body looked like a change, and 0.7-3.3
+        // world units against a node radius of 9 made the graph read as pipes
+        // rather than as connections. NOISE FILT still owns the range.
+        const linkR = 0.34 + noiseF * 1.15;   // a REAL radius; linewidth was inert
 
         for (let i = 0; i < nodes.length; i++) {
             for (let j = i + 1; j < nodes.length; j++) {
@@ -1213,6 +1276,28 @@ export function mountDynamicGraphs(stageEl: HTMLElement, getLatestState: () => P
         shells5.commit();
         floor5.material.opacity = (0.04 + texDep * 0.10) * masterA;
 
+        // ── The panel drives the air and the turn ─────────────────────────
+        // SPATIAL SPRD pushes the motes through depth, GIRO AUTO turns them
+        // with the structure, DRONE SPACE lifts them. Three left-column faders
+        // with a visible consequence they did not have.
+        motes5.step(1 / 60, (spatSp - 0.5) * 90, vm5.rotation * 0.09,
+            (droneSpace - 0.5) * 26);
+        motes5.material.opacity = (0.10 + texDep * 0.30) * masterA;
+        motes5.material.size = Math.max(W, H) * (0.0016 + resBody * 0.0042);
+        // ROTATION SPD turns the WHOLE assembly, not only the camera. It was
+        // reaching OrbitControls.autoRotate and a few per-node spins, so at any
+        // setting the structure itself sat still while the viewer moved around
+        // it — which is the one thing a rotation control should not do.
+        root5.rotation.y = vm5.angle * 0.55;
+        root5.rotation.x = Math.sin(vm5.angle * 0.31) * 0.10 * (0.3 + spatSp);
+
+        // Captions ride above their bodies and fade with the layer's own level.
+        nodes.forEach((n, i) => {
+            _tmpB.set(n.p.x, n.p.y + 26, n.p.z);
+            tags5.set(i, _tmpB, (0.20 + vol * 0.55) * masterA
+                * (i === pick5.hover || i === pick5.grabbed ? 1.6 : 1));
+        });
+
         // Radar arc rotation — dronemix controls visible arc count
         const arcCount = Math.max(1, Math.floor(droneMix * 6));
         radarArcs.forEach((arc, i) => {
@@ -1248,6 +1333,7 @@ export function mountDynamicGraphs(stageEl: HTMLElement, getLatestState: () => P
             destroyed = true; cancelAnimationFrame(rafId);
             pick5.dispose();
             bodies5.dispose(); shells5.dispose(); links5.dispose(); floor5.dispose();
+            motes5.dispose(); tags5.dispose();
             try { controls.dispose(); } catch { /* ignore */ }
             window.removeEventListener("resize", onResize);
             composer.dispose(); renderer.dispose(); renderer.domElement.remove();
@@ -1381,9 +1467,14 @@ export function mountDynamicOptimality(stageEl: HTMLElement, getLatestState: () 
     const _t6b = new THREE.Vector3();
     const _q6  = new THREE.Quaternion();
     const _e6  = new THREE.Euler();
+    // Which node was the root last frame, so the captions are only redrawn
+    // when the tree actually rebalances rather than 60 times a second.
+    let lastRoot6 = -1;
     // Accumulated spin per node. The Mesh used to hold this in its own
     // rotation; an instance has no such state, so the slot keeps it.
     const spin6 = new Float32Array(nodeData.length);
+    const motes6 = makeParticles(root6, 800, Math.max(W, H) * 1.4, 0xc8ffe6);
+    const tags6 = makeLabelField(root6, nodeData.length, 0xc8ffe6, 13);
 
     // Scan column lines
     const MAX_SCAN = 14;
@@ -1619,6 +1710,28 @@ export function mountDynamicOptimality(stageEl: HTMLElement, getLatestState: () 
         boxes6.commit();
         cores6.commit();
 
+        // TIME DILAT carries the air through the tree, GIRO AUTO turns it.
+        motes6.step(1 / 60, (tDil - 0.5) * 70, vm6.rotation * 0.07,
+            (pitchSh - 0.5) * 22);
+        motes6.material.opacity = (0.08 + texDep * 0.26) * masterA;
+        motes6.material.size = Math.max(W, H) * (0.0014 + resBody * 0.0038);
+        root6.rotation.y = vm6.angle * 0.42;
+
+        // RAÍZ names the node the tree is splayed around; the rest carry their
+        // depth. Which node is the root CHANGES as the tree rebalances, so the
+        // caption is rewritten when it moves rather than baked at mount.
+        if (maxIdx !== lastRoot6) {
+            nodeData.forEach((_n, i) =>
+                tags6.text(i, i === maxIdx ? "RAÍZ" : SLOT_NOUNS.s6.one(i)));
+            lastRoot6 = maxIdx;
+        }
+        nodeData.forEach((n, i) => {
+            _t6b.set(n.x, n.y + 24, n.z);
+            tags6.set(i, _t6b, (0.18 + vol * 0.5) * masterA
+                * (i === maxIdx ? 1.7 : 1)
+                * (i === pick6.hover || i === pick6.grabbed ? 1.6 : 1));
+        });
+
         // How high in the tree the arrival happened chooses the register: a
         // rebalance near the leaves is a lighter hit than one at the root.
         emitArrive6(arrived6, 0.3 + Math.min(1, arrived6 / 10) * 0.55,
@@ -1663,7 +1776,7 @@ export function mountDynamicOptimality(stageEl: HTMLElement, getLatestState: () 
             // field used for `strokeWidth`.
             const held6 = (i === pick6.grabbed || maxIdx === pick6.grabbed);
             branches6.add(_t6a, _t6b,
-                (1.1 + resBody * 2.2) * (1 - china6 * 0.28) * (held6 ? 2.6 : 1));
+                (0.5 + resBody * 1.0) * (1 - china6 * 0.28) * (held6 ? 2.6 : 1));
             eIdx++;
         });
         branches6.end();
@@ -1722,6 +1835,7 @@ export function mountDynamicOptimality(stageEl: HTMLElement, getLatestState: () 
             destroyed = true; cancelAnimationFrame(rafId);
             pick6.dispose();
             boxes6.dispose(); cores6.dispose(); branches6.dispose(); floor6.dispose();
+            motes6.dispose(); tags6.dispose();
             try { controls.dispose(); } catch { /* ignore */ }
             window.removeEventListener("resize", onResize);
             composer.dispose(); renderer.dispose(); renderer.domElement.remove();
@@ -1833,6 +1947,9 @@ export function mountGeometry(stageEl: HTMLElement, getLatestState: () => Parlia
     const floor7 = makeDepthGrid(root7, Math.max(W, H) * 1.7, 20, 0x336633);
     const _t7a = new THREE.Vector3();
     const _t7b = new THREE.Vector3();
+    const motes7 = makeParticles(root7, 1000, Math.max(W, H) * 1.6, 0xc8ffe6);
+    const tags7 = makeLabelField(root7, 64, 0xffcc88, 12);
+    for (let i = 0; i < 64; i++) tags7.text(i, SLOT_NOUNS.s7.one(i));
 
     // Sweep vertical lines (max 4 eco values)
     const sweepPositions = new Float32Array(4 * 2 * 3);
@@ -2093,7 +2210,7 @@ export function mountGeometry(stageEl: HTMLElement, getLatestState: () => Parlia
             // sets the resting thickness, the kick's own envelope swells it —
             // which is the modulation a 1 px line could never carry.
             rays7.add(_t7a, _t7b,
-                (1.4 + resBody * 3.4) * (1 + au7.env * au7.amp * 1.8));
+                (0.6 + resBody * 1.5) * (1 + au7.env * au7.amp * 1.8));
             rIdx++;
         }
         rays7.end();
@@ -2139,6 +2256,9 @@ export function mountGeometry(stageEl: HTMLElement, getLatestState: () => Parlia
                         hov7 || grb7 ? 1 : swR,
                         hov7 || grb7 ? 1 : swG,
                         hov7 || grb7 ? 1 : swB);
+                    _t7b.set(_t7a.x, _t7a.y + 22, _t7a.z);
+                    tags7.set(tcIdx, _t7b, (0.22 + vol * 0.5) * masterA
+                        * (hov7 || grb7 ? 1.7 : 1));
                     tcIdx++;
                 }
             });
@@ -2148,6 +2268,18 @@ export function mountGeometry(stageEl: HTMLElement, getLatestState: () => Parlia
         marks7.commit();
         floor7.grid.position.y = yMin - 20;
         floor7.material.opacity = (0.035 + texDep * 0.08) * masterA;
+        // Only the acquired targets are named, and only while acquired — a
+        // caption on a body that is not there is worse than none.
+        tags7.count(tcIdx);
+
+        // The air moves OUTWARD here, the same direction the cone opens, so
+        // the motes read as the medium the pressure front is travelling
+        // through. SPATIAL SPRD sets how fast, GIRO AUTO turns the field.
+        motes7.step(1 / 60, -(0.2 + spatSp) * 110, vm7.rotation * 0.06,
+            (droneSpace - 0.5) * 18);
+        motes7.material.opacity = (0.09 + texDep * 0.24) * masterA;
+        motes7.material.size = Math.max(W, H) * (0.0013 + resBody * 0.0034);
+        root7.rotation.y = vm7.angle * 0.5;
         // ── BOMBO speaks ──────────────────────────────────────────────────
         // A target acquisition — a ray crossing a sweep — is this slot's
         // discrete event, and the sub is the register that can carry it. The
@@ -2194,6 +2326,7 @@ export function mountGeometry(stageEl: HTMLElement, getLatestState: () => Parlia
             destroyed = true; cancelAnimationFrame(rafId);
             pick7.dispose();
             rays7.dispose(); marks7.dispose(); floor7.dispose();
+            motes7.dispose(); tags7.dispose();
             try { controls.dispose(); } catch { /* ignore */ }
             window.removeEventListener("resize", onResize);
             composer.dispose(); renderer.dispose(); renderer.domElement.remove();
@@ -2325,6 +2458,11 @@ export function mountMemoryHierarchy(stageEl: HTMLElement, getLatestState: () =>
     const _q8  = new THREE.Quaternion();
     const _e8  = new THREE.Euler();
     const _s8  = new THREE.Vector3();
+    const motes8 = makeParticles(root8, 900, Math.max(W, H) * 1.5, 0xc8ffe6);
+    // L1..Ln, nearest level first. A cache hierarchy's whole subject is WHICH
+    // level you reached, and nothing on screen said.
+    const tags8 = makeLabelField(root8, LAYERS, 0xffcc88, 14);
+    for (let j = 0; j < LAYERS; j++) tags8.text(j, SLOT_NOUNS.s8.one(j));
 
     // Hex noise background — canvas texture updated per frame
     const hexCanvas = document.createElement("canvas");
@@ -2518,6 +2656,9 @@ export function mountMemoryHierarchy(stageEl: HTMLElement, getLatestState: () =>
             border.position.z = -j * 90 * (0.3 + au8.level * 1.8) + rz8 * 90 * au8.amp;
             border.position.x = rz8 * 14;
             border.rotation.z = Math.sin(vm8.angle * 0.5) * 0.035 + rz8 * 0.06;
+            // L1 sits at the left edge of its own level, at that level's depth.
+            _t8b.set(bx - 26, cy + baseH / 2, border.position.z);
+            tags8.set(j, _t8b, (0.25 + vol * 0.5) * masterA);
 
             // Species blocks inside layer, as solids at the layer's own depth.
             // They used to sit at a constant z = 1 with a depth of one unit
@@ -2567,7 +2708,7 @@ export function mountMemoryHierarchy(stageEl: HTMLElement, getLatestState: () =>
                     const zB = zA - 90 * (0.3 + au8.level * 1.8);
                     _t8a.set(dropX + gx1, cy + baseH, zA);
                     _t8b.set(dropX + gx2, cy + baseH + layerGap - 2, zB);
-                    drops8.add(_t8a, _t8b, 1.1 + memFeed * 2.4);
+                    drops8.add(_t8a, _t8b, 0.5 + memFeed * 1.1);
                     dIdx++;
                 }
             }
@@ -2583,6 +2724,15 @@ export function mountMemoryHierarchy(stageEl: HTMLElement, getLatestState: () =>
         drops8.end();
         blocks8.mesh.material.opacity = (0.4 + vol * 0.6) * masterA;
         blocks8.commit();
+
+        // The air falls with the spill: POLVO is a granular voice and its
+        // structure evicts downward, so the drift is downward too. MEMORY FEED
+        // sets how fast it settles, GIRO AUTO turns the stack.
+        motes8.step(1 / 60, (droneMix - 0.5) * 50, vm8.rotation * 0.05,
+            -(6 + memFeed * 34));
+        motes8.material.opacity = (0.08 + texDep * 0.26) * masterA;
+        motes8.material.size = Math.max(W, H) * (0.0012 + resBody * 0.0030);
+        root8.rotation.y = vm8.angle * 0.38;
         const dmR = lerp(0.78, 1.0, droneMix); const dmG = lerp(1.0, 0.67, droneMix);
         dropMat.color.setRGB(dmR, dmG, 0);
         dropMat.opacity = (0.5 + memFeed * 0.5) * (0.4 + vol * 0.6) * masterA;
@@ -2610,6 +2760,7 @@ export function mountMemoryHierarchy(stageEl: HTMLElement, getLatestState: () =>
             destroyed = true; cancelAnimationFrame(rafId);
             pick8.dispose();
             blocks8.dispose(); drops8.dispose();
+            motes8.dispose(); tags8.dispose();
             try { controls.dispose(); } catch { /* ignore */ }
             window.removeEventListener("resize", onResize);
             hexTexture.dispose();
@@ -2739,6 +2890,12 @@ export function mountHashing(stageEl: HTMLElement, getLatestState: () => Parliam
     const _q9 = new THREE.Quaternion();
     const _e9 = new THREE.Euler();
     const _t9c = new THREE.Vector3();
+    const motes9 = makeParticles(root9, 850, Math.max(W, H) * 1.5, 0xc8ffe6);
+    // K0..K7 on the keys. Slot 9 keeps the species field as well, so these are
+    // deliberately terse — the animal names are the text on this stage, and a
+    // second full-length caption beside them would be two things shouting.
+    const tags9 = makeLabelField(root9, NUM_KEYS, 0xffcc88, 12);
+    for (let i = 0; i < NUM_KEYS; i++) tags9.text(i, SLOT_NOUNS.s9.one(i));
 
     // Arrowhead triangles
     const arrowMeshes: THREE.Mesh[] = [];
@@ -2945,6 +3102,9 @@ export function mountHashing(stageEl: HTMLElement, getLatestState: () => Parliam
                 keyBoxes[i].scale.y * t9 * (20 / 15),
                 keyBoxes[i].scale.z * t9 * (20 / 15), _q9);
             keys9.tint(i, hov9 || grb9 ? 1 : 0.78, 1.0, hov9 || grb9 ? 0.4 : 0.9);
+            _t9c.set(keyBoxes[i].position.x - 30, keyBoxes[i].position.y,
+                     keyBoxes[i].position.z);
+            tags9.set(i, _t9c, (0.20 + vol * 0.5) * masterA * (hov9 || grb9 ? 1.8 : 1));
 
             // Path line (bezier sampled)
             const cx0 = colA_X + 20, cx1 = colB_X - 20;
@@ -2971,10 +3131,10 @@ export function mountHashing(stageEl: HTMLElement, getLatestState: () => Parliam
                 _t9b.set(px, py, pz);
                 if (s > 0) {
                     if (isCollision) {
-                        colls9.add(_t9a, _t9b, 1.6 + harmR * 2.4);
+                        colls9.add(_t9a, _t9b, 0.7 + harmR * 1.1);
                         collIdx++;
                     } else {
-                        paths9.add(_t9a, _t9b, 0.9 + harmR * 1.5);
+                        paths9.add(_t9a, _t9b, 0.4 + harmR * 0.7);
                         pathIdx++;
                     }
                 }
@@ -3046,6 +3206,14 @@ export function mountHashing(stageEl: HTMLElement, getLatestState: () => Parliam
         }
         buckets9.mesh.material.opacity = (0.4 + vol * 0.6) * masterA * 0.75;
         buckets9.commit();
+
+        // The air runs along the ring the keys sit on. DRONE MIX sets the
+        // flow, GIRO AUTO the swirl, PITCH SHIFT the lift.
+        motes9.step(1 / 60, (droneMix - 0.5) * 60, vm9.rotation * 0.08,
+            (pShift - 0.5) * 24);
+        motes9.material.opacity = (0.08 + texDep * 0.24) * masterA;
+        motes9.material.size = Math.max(W, H) * (0.0012 + resBody * 0.0032);
+        root9.rotation.y = vm9.angle * 0.45;
         keys9.mesh.material.opacity = (0.8 + vol * 0.2) * masterA;
         keys9.commit();
 
@@ -3086,6 +3254,7 @@ export function mountHashing(stageEl: HTMLElement, getLatestState: () => Parliam
             pick9.dispose();
             keys9.dispose(); buckets9.dispose();
             paths9.dispose(); colls9.dispose();
+            motes9.dispose(); tags9.dispose();
             try { controls.dispose(); } catch { /* ignore */ }
             window.removeEventListener("resize", onResize);
             composer.dispose(); renderer.dispose(); renderer.domElement.remove();
