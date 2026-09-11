@@ -29,6 +29,8 @@ import {
     makeDepthGrid,
     makeParticles,
     makeLabelField,
+    makeSpectrumRings,
+    makeSpectrumBars,
     makeCalm,
     attachPicker,
 } from "./slotThree";
@@ -1817,7 +1819,10 @@ export function mountDynamicOptimality(stageEl: HTMLElement, getLatestState: () 
         nodeData.forEach((n, i) => {
             if (i === maxIdx) {
                 n.tx = rootX;
-                n.ty = rootY - Math.sin(frame * 0.05 * (1 + tDil)) * 20;
+                // Was Math.sin(frame * 0.05 …) — three radians a second at
+                // 60 Hz and faster still on a 144 Hz panel. On the bed's clock
+                // and a quarter the rate, so the root settles rather than bobs.
+                n.ty = rootY - Math.sin(calm6.clock * 0.7 * (1 + tDil)) * 16;
             } else {
                 const layer = Math.floor(Math.log2(childIdx + 2));
                 // Kept on the node: the depth pass below needs it, and
@@ -1828,7 +1833,16 @@ export function mountDynamicOptimality(stageEl: HTMLElement, getLatestState: () 
                 n.layer = layer;
                 const countInLayer = Math.pow(2, layer);
                 const posInLayer = (childIdx + 2) - countInLayer;
-                const breathe = Math.sin(frame * 0.05 * (1 + tDil) + layer) * (30 + specS * 50) * (1.1 - consensus);
+                // THE TREMBLE. Two compounding mistakes: the oscillator ran on
+                // the FRAME COUNT — 3 rad/s at 60 fps, and display-dependent —
+                // and its amplitude reached 80 px at low consensus. The node
+                // below then chased this moving target at a lerp of up to 0.58
+                // per frame, so every body was sprinting after a point that had
+                // already left. That is not a rebalance, it is a vibration.
+                //
+                // Quarter the rate, on the bed's clock, and a third the throw.
+                const breathe = Math.sin(calm6.clock * 0.8 * (1 + tDil) + layer)
+                    * (11 + specS * 17) * (1.1 - consensus);
                 const lx = lerp(-W / 2 * treeWidth, W / 2 * treeWidth, (posInLayer + 0.5) / countInLayer) + breathe;
                 // Was snoise against the frame count; a slow drift with the
                 // bed instead, so a layer breathes rather than buzzes.
@@ -1838,26 +1852,38 @@ export function mountDynamicOptimality(stageEl: HTMLElement, getLatestState: () 
                 childIdx++;
             }
 
+            // Disagreement as a slow lean, applied to the TARGET and applied
+            // BEFORE the lerp. It used to be added to the POSITION after it,
+            // which meant the node was pulled toward one point and then shoved
+            // off it every frame — so `arrived6` below was measuring a distance
+            // to somewhere the node was never allowed to be, and the pulse it
+            // drives fired on noise. A divided chamber now drifts off its own
+            // layout and HOLDS there, which is what disagreement looks like.
+            if (consensus < 0.8) {
+                const d6 = (1 - consensus) * 4.5 * (0.4 + calm6.swell * 1.2);
+                n.tx += calm6.drift(i, 0) * d6;
+                n.ty += calm6.drift(i, 1) * d6;
+            }
+
             // A vote forces a REBALANCE, which is this slot's own vocabulary:
             // the tree reorganises itself under pressure. snap is how hard it
             // pulls toward the new layout, so a vote is a hard reorganisation.
+            // Capped far lower. A lerp of 0.58 per frame reaches its target in
+            // about three frames, which against a target that is itself moving
+            // every frame means the node is always arriving and never arrived.
+            // 0.16 settles over roughly a fifth of a second — still a snap
+            // against an 89-second envelope, and slow enough to look like the
+            // tree deciding rather than twitching.
+            //
+            // The VOTE keeps its hard pull: a rebalance should be abrupt. That
+            // is an event, and events are allowed to be sudden; what was wrong
+            // was the resting state being sudden too.
             const snap = Math.min(
-                0.05 + (1 - consensus) * 0.35 * (0.5 + tDil) + (vf6 ? vf6.flash * 0.55 : 0), 1);
+                0.035 + (1 - consensus) * 0.10 * (0.5 + tDil)
+                + (vf6 ? vf6.flash * 0.45 : 0), 1);
             n.x = lerp(n.x, n.tx, snap);
             n.y = lerp(n.y, n.ty, snap);
             if (Math.abs(n.x - n.tx) < 1.2 && Math.abs(n.y - n.ty) < 1.2) arrived6++;
-            // Disagreement used to be written into the POSITION as a fresh
-            // random offset every frame — the single worst source of shake in
-            // these five, because a node never settled anywhere for even one
-            // frame. It is a slow lean now: a divided chamber drifts off its
-            // own layout and holds there, which is what disagreement looks
-            // like, and it moves with the bed rather than at video rate.
-            if (consensus < 0.8) {
-                const d6 = (1 - consensus) * 9 * (0.4 + calm6.swell * 1.2);
-                n.x += calm6.drift(i, 0) * d6;
-                n.y += calm6.drift(i, 1) * d6;
-            }
-
             const act = st?.species?.[i % (st?.species?.length || 1)]?.activity ?? 0;
             // The node's size is the act's complexity, as on slot 5.
             const glW = 10 + resBody * 25 + act * 15
@@ -2016,7 +2042,7 @@ export function mountDynamicOptimality(stageEl: HTMLElement, getLatestState: () 
             // field used for `strokeWidth`.
             const held6 = (i === pick6.grabbed || maxIdx === pick6.grabbed);
             branches6.add(_t6a, _t6b,
-                (0.5 + resBody * 1.0) * (1 - china6 * 0.28) * (held6 ? 2.6 : 1));
+                (0.25 + resBody * 0.5) * (1 - china6 * 0.28) * (held6 ? 2.6 : 1));
             eIdx++;
         });
         branches6.end();
@@ -2724,6 +2750,49 @@ export function mountMemoryHierarchy(stageEl: HTMLElement, getLatestState: () =>
     composer.addPass(afterimage);
     const chromatic = new ShaderPass(ChromaticAberrationShader);
     composer.addPass(chromatic);
+    // ── Glitch, and only on this slot ────────────────────────────────────
+    // Horizontal block displacement plus an RGB tear. POLVO is the granular
+    // voice — many small uncorrelated events — and a hierarchy under pressure
+    // EVICTS, so a torn scanline is the one place in the six where this reads
+    // as the subject rather than as an effect.
+    //
+    // Driven, not random: `amount` comes from spectral flux and the chain's
+    // priority-over-base-fee, so the picture tears when the sound moves
+    // suddenly or the chain is straining. `seed` steps on a timer rather than
+    // per frame, so a tear HOLDS long enough to be seen — a displacement that
+    // relocates every frame at 60 Hz is static, not a glitch.
+    const glitch8 = new ShaderPass({
+        uniforms: {
+            tDiffuse: { value: null },
+            amount: { value: 0.0 },
+            seed: { value: 0.0 },
+        },
+        vertexShader: `varying vec2 vUv; void main(){ vUv=uv;
+            gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.0); }`,
+        fragmentShader: `
+            uniform sampler2D tDiffuse; uniform float amount; uniform float seed;
+            varying vec2 vUv;
+            float h11(float p){ return fract(sin(p * 127.1 + seed * 43.7) * 43758.5453); }
+            void main(){
+                vec2 uv = vUv;
+                // Bands of the image slide sideways. Quantised to 28 rows so
+                // the tear is blocky — a per-pixel offset is noise, a per-row
+                // offset is damage.
+                float row = floor(uv.y * 28.0);
+                float r = h11(row);
+                float on = step(1.0 - amount * 0.55, r);
+                uv.x += (r - 0.5) * 0.09 * amount * on;
+                // And the channels separate across the displaced band.
+                float sp = 0.006 * amount * on;
+                float cr = texture2D(tDiffuse, uv + vec2(sp, 0.0)).r;
+                vec4  cg = texture2D(tDiffuse, uv);
+                float cb = texture2D(tDiffuse, uv - vec2(sp, 0.0)).b;
+                gl_FragColor = vec4(cr, cg.g, cb, cg.a);
+            }`,
+    });
+    composer.addPass(glitch8);
+    /** Seed steps on a timer, so a tear holds rather than boiling. */
+    let glitchSeedAt = 0;
 
     const LAYERS = 3;
 
@@ -2783,6 +2852,26 @@ export function mountMemoryHierarchy(stageEl: HTMLElement, getLatestState: () =>
         plate: true,
     });
     const sala8Was = new Float32Array(LAYERS).fill(-1);
+
+    // ── An audio visualiser for the master bus ───────────────────────────
+    //
+    // This slot is POLVO, the granular voice, and its hierarchy is the machine
+    // looking at its own memory — which makes it the right one of the six to
+    // also look at the machine's own SOUND. \masterScope analyses the master
+    // bus AFTER the limiter and sends sixteen log-spaced bands at 20 Hz; that
+    // is the real output of the instrument, not a file and not a microphone.
+    //
+    // Three concentric rings, each deformed by its own third of the spectrum,
+    // plus one bar per band standing off a circle. Both in world space rather
+    // than on a canvas overlay: a 2-D layer cannot be orbited, cannot be
+    // occluded by the levels in front of it, and does not catch the bloom —
+    // which is the whole reason these slots have depth at all.
+    const spectrum8 = makeSpectrumRings(root8, Math.min(W, H) * 0.30, 3, 96, 0xffaa00);
+    const bars8 = makeSpectrumBars(root8, 16, 0xc8ffe6);
+    // Smoothed per band. The scope sends 20 frames a second and the display
+    // draws 60, so the raw array steps three frames out of four — the same
+    // mistake the chain data made, and the same fix.
+    const band8 = new Float32Array(16).fill(0);
     const calm8 = makeCalm();
     const ticker8 = mountSlotTicker(stageEl,
         "POLVO · opalDust · JERARQUÍA DE NIVELES  ·  LA PROFUNDIDAD ES OCUPACIÓN",
@@ -2888,6 +2977,23 @@ export function mountMemoryHierarchy(stageEl: HTMLElement, getLatestState: () =>
         calm8.step("__slot8Soneth");
         const e8b = calm8.eth;
         const c8 = calm8.chain;
+        {
+            // Flux is a transient in the SOUND; priority is the chain under
+            // pressure. Either tears the picture, and the ceiling keeps it a
+            // disturbance rather than a state.
+            const a8g = getScAudio();
+            const gAmt = Math.min(0.9,
+                a8g.flux * 2.2 + Math.max(0, c8.priority - 0.45) * 1.3
+                + c8.blockEnv * 0.35);
+            glitch8.uniforms["amount"].value = gAmt;
+            // ~8 Hz, and only while something is actually tearing. A seed that
+            // changed every frame would make the displacement a texture.
+            const nowG = performance.now();
+            if (gAmt > 0.04 && nowG - glitchSeedAt > 120) {
+                glitchSeedAt = nowG;
+                glitch8.uniforms["seed"].value = ((c8.blockPhase + e8b.hash) % 1) * 100;
+            }
+        }
 
         // Hex noise — beatTempo speeds churn (stored in sp8.beatTempo if present, else tDil proxy)
         const beatT = sp8.beatTempo ?? 0.5;
@@ -3124,6 +3230,37 @@ export function mountMemoryHierarchy(stageEl: HTMLElement, getLatestState: () =>
         drops8.end();
         blocks8.mesh.material.opacity = (0.18 + vol * 0.40) * masterA
             * (0.72 + c8.gasN * 0.45 + c8.blockEnv * 0.22);
+
+        // ── The master bus, seen ──────────────────────────────────────────
+        {
+            const a8 = getScAudio();
+            const raw8 = a8.bands;
+            // One-pole per band toward the incoming frame. 20 Hz in, 60 Hz out:
+            // without this the rings step three frames out of four.
+            const kb = 1 - Math.exp(-(1 / 60) / 0.09);
+            for (let i = 0; i < band8.length; i++) {
+                band8[i] += ((raw8[i] ?? 0) - band8[i]) * kb;
+            }
+            const bArr = Array.from(band8);
+            // The rings sit behind the hierarchy and turn against it, so the
+            // sound is the room the structure stands in rather than a panel
+            // bolted to the front of it.
+            spectrum8.group.position.z = -LAYERS * 45;
+            spectrum8.group.rotation.z = -vm8.angle * 0.22;
+            spectrum8.update(bArr, 0.55 + resBody * 0.7, 0.22 + spatSp * 0.5);
+            spectrum8.setOpacity((0.10 + vol * 0.30) * masterA
+                * (0.6 + a8.rms * 1.6));
+
+            bars8.mesh.position.z = -LAYERS * 45;
+            bars8.mesh.rotation.z = vm8.angle * 0.35;
+            bars8.update(bArr, Math.min(W, H) * 0.19, 14 + texDep * 46);
+            bars8.setOpacity((0.12 + vol * 0.34) * masterA
+                * (0.55 + a8.high * 1.4));
+            // Flux is how fast the picture is changing — an onset without an
+            // onset detector. It belongs on the bloom, where a transient in the
+            // sound reads as the whole slot flaring rather than as one object.
+            bloom.strength += a8.flux * 0.55;
+        }
         blocks8.commit();
 
         // The air falls with the spill: POLVO is a granular voice and its
@@ -3172,6 +3309,7 @@ export function mountMemoryHierarchy(stageEl: HTMLElement, getLatestState: () =>
             pick8.dispose();
             blocks8.dispose(); drops8.dispose();
             motes8.dispose(); tags8.dispose(); ticker8.destroy();
+            spectrum8.dispose(); bars8.dispose(); glitch8.dispose();
             try { controls.dispose(); } catch { /* ignore */ }
             window.removeEventListener("resize", onResize);
             hexTexture.dispose();

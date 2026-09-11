@@ -843,3 +843,162 @@ export function makeCalm(): Calm {
         },
     };
 }
+
+// ─── Spectrum rings ──────────────────────────────────────────────────────────
+
+export type SpectrumRings = {
+    group: THREE.Group;
+    /**
+     * Redraw from a band array.
+     *
+     * `bands` is whatever the master-bus analyser gives — sixteen log-spaced
+     * amplitudes here. Each ring reads a different slice of it, so the stack
+     * separates the register the engine is working in rather than showing one
+     * loudness three times.
+     */
+    update(bands: number[], gain: number, tilt: number): void;
+    setOpacity(a: number): void;
+    dispose(): void;
+};
+
+/**
+ * Concentric closed curves deformed by the spectrum — the figure from the
+ * reference sketch, in world space rather than on a 2-D canvas.
+ *
+ * The reference draws three rings into a CanvasRenderingContext2D from a
+ * WebAudio AnalyserNode on an uploaded file. Neither half transfers: this
+ * instrument has no file to upload and no AnalyserNode, it has SuperCollider's
+ * own \masterScope sending sixteen bands over OSC — the real output, after the
+ * limiter. And a canvas overlay cannot be orbited, occluded or bloomed, which
+ * is the whole point of these slots having depth.
+ *
+ * So: the same figure as TubeGeometry rings in the scene, each at its own
+ * depth, each reading its own slice of the spectrum.
+ */
+export function makeSpectrumRings(
+    parent: THREE.Object3D, radius: number, rings = 3, points = 96,
+    color = 0xffaa00,
+): SpectrumRings {
+    const group = new THREE.Group();
+    parent.add(group);
+
+    const lines: THREE.Line[] = [];
+    const mats: THREE.LineBasicMaterial[] = [];
+    const geos: THREE.BufferGeometry[] = [];
+
+    for (let r = 0; r < rings; r++) {
+        const pos = new Float32Array((points + 1) * 3);
+        const geo = new THREE.BufferGeometry();
+        geo.setAttribute("position", new THREE.BufferAttribute(pos, 3));
+        const mat = new THREE.LineBasicMaterial({
+            color, transparent: true, opacity: 0.5 - r * 0.1, depthWrite: false,
+        });
+        const line = new THREE.Line(geo, mat);
+        line.frustumCulled = false;
+        group.add(line);
+        lines.push(line); mats.push(mat); geos.push(geo);
+    }
+
+    return {
+        group,
+        update(bands, gain, tilt) {
+            const n = bands.length || 1;
+            for (let r = 0; r < rings; r++) {
+                const geo = geos[r];
+                const a = geo.attributes.position.array as Float32Array;
+                const ringR = radius * (0.62 + r * 0.19);
+                // Each ring takes its own third of the spectrum: the inner one
+                // the low register, the outer the high. Reading the same mean
+                // three times would be one ring drawn three sizes.
+                const lo = Math.floor((r * n) / rings);
+                const hi = Math.max(lo + 1, Math.floor(((r + 1) * n) / rings));
+                for (let i = 0; i <= points; i++) {
+                    const t = i / points;
+                    // Wrap the slice around the ring, so the whole band range
+                    // is laid out around the circle rather than averaged away.
+                    const bi = lo + Math.floor(t * (hi - lo)) % Math.max(1, hi - lo);
+                    const v = Math.max(0, Math.min(1, bands[bi] ?? 0));
+                    const rr = ringR * (1 + v * gain);
+                    const ang = t * Math.PI * 2;
+                    a[i * 3]     = Math.cos(ang) * rr;
+                    // Tilted out of the plane so the three rings are read as a
+                    // stack from any angle and not as one flat target.
+                    a[i * 3 + 1] = Math.sin(ang) * rr * Math.cos(tilt);
+                    a[i * 3 + 2] = Math.sin(ang) * rr * Math.sin(tilt)
+                        + (r - (rings - 1) / 2) * radius * 0.18;
+                }
+                geo.attributes.position.needsUpdate = true;
+            }
+        },
+        setOpacity(alpha) {
+            for (let r = 0; r < rings; r++) mats[r].opacity = alpha * (1 - r * 0.22);
+        },
+        dispose() {
+            parent.remove(group);
+            for (const g of geos) g.dispose();
+            for (const m of mats) m.dispose();
+        },
+    };
+}
+
+// ─── Radial bars ─────────────────────────────────────────────────────────────
+
+export type SpectrumBars = {
+    mesh: THREE.InstancedMesh;
+    /** One bar per band, standing off a circle. */
+    update(bands: number[], radius: number, gain: number): void;
+    setOpacity(a: number): void;
+    dispose(): void;
+};
+
+/**
+ * The spectrum analyser as standing bars, arranged radially.
+ *
+ * The reference's drawSpectrumAnalyzer fills 256 rectangles along the bottom of
+ * a canvas. Here they are boxes in the round, because this slot is a hierarchy
+ * seen in depth and a row of bars across the foot of it would be a second,
+ * unrelated picture pasted over the first.
+ */
+export function makeSpectrumBars(
+    parent: THREE.Object3D, count: number, color = 0xc8ffe6,
+): SpectrumBars {
+    const geo = new THREE.BoxGeometry(1, 1, 1);
+    const mat = new THREE.MeshBasicMaterial({
+        color, transparent: true, opacity: 0.45, depthWrite: false,
+    });
+    const mesh = new THREE.InstancedMesh(geo, mat, count);
+    mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+    mesh.frustumCulled = false;
+    parent.add(mesh);
+
+    const _m = new THREE.Matrix4();
+    const _p = new THREE.Vector3();
+    const _q = new THREE.Quaternion();
+    const _s = new THREE.Vector3();
+    const _e = new THREE.Euler();
+
+    return {
+        mesh,
+        update(bands, radius, gain) {
+            const n = Math.min(count, bands.length);
+            mesh.count = n;
+            for (let i = 0; i < n; i++) {
+                const v = Math.max(0, Math.min(1, bands[i] ?? 0));
+                const ang = (i / n) * Math.PI * 2;
+                const h = 6 + v * gain;
+                // Each bar stands OUT from the circle, its midpoint pushed half
+                // its own height so it grows outward rather than through itself.
+                const rr = radius + h * 0.5;
+                _p.set(Math.cos(ang) * rr, Math.sin(ang) * rr, 0);
+                _e.set(0, 0, ang);
+                _q.setFromEuler(_e);
+                _s.set(h, radius * 0.045, radius * 0.045);
+                _m.compose(_p, _q, _s);
+                mesh.setMatrixAt(i, _m);
+            }
+            mesh.instanceMatrix.needsUpdate = true;
+        },
+        setOpacity(a) { mat.opacity = a; },
+        dispose() { parent.remove(mesh); geo.dispose(); mat.dispose(); },
+    };
+}
