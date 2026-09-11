@@ -511,6 +511,18 @@ export type LabelStyle = {
     plate?: boolean;
     /** Per-frame RGB split, in px. Slot 8 uses it; nothing else should. */
     glitch?: number;
+    /**
+     * Lay the text out from a FIXED left edge instead of centring it on its
+     * own measured width.
+     *
+     * For a caption that carries a live number this is the difference between
+     * a readout and a flicker: centred, "0.85" becoming "1.00" moves every
+     * glyph in the string sideways, and a value turning over several times a
+     * second reads as the type resizing. Anchored, the digits change in place.
+     * Set it for anything whose text changes while it is on screen; leave it
+     * off for a static caption, where centring looks better.
+     */
+    anchorLeft?: boolean;
 };
 
 export function makeLabelField(
@@ -539,6 +551,8 @@ export function makeLabelField(
 
     const FONT = style.font ?? "600 34px ui-monospace, 'SF Mono', Menlo, monospace";
     const TRACK = style.tracking ?? 0;
+    /** Left margin for anchored labels, in canvas px. */
+    const ANCHOR_X = 12;
 
     /** Width of `s` including the extra tracking, so everything stays centred. */
     function widthOf(g: CanvasRenderingContext2D, s: string): number {
@@ -569,8 +583,12 @@ export function makeLabelField(
         g.font = FONT;
         g.textAlign = "center";
         g.textBaseline = "middle";
-        const cx = cv.width / 2, cy = cv.height / 2;
+        const cy = cv.height / 2;
         const w = widthOf(g, s);
+        // Anchored labels lay out from a fixed left margin, so a value that
+        // changes width leaves the rest of the string exactly where it was.
+        // Centred ones sit on the middle of the canvas as before.
+        const cx = style.anchorLeft ? ANCHOR_X + w / 2 : cv.width / 2;
 
         if (style.plate) {
             g.fillStyle = "rgba(0,0,0,0.55)";
@@ -678,6 +696,16 @@ export type Calm = {
      */
     readonly clock: number;
     /**
+     * Seconds since the previous step, clamped to 0.1.
+     *
+     * Anything that INTEGRATES — a spring, a velocity, a follower — must use
+     * this rather than a per-frame constant, or the same patch behaves
+     * differently on a 60 and a 144 Hz panel and can leave its stable region
+     * entirely. Clamped so that a stall (an occluded window, a long GC) makes
+     * the motion pause rather than teleport.
+     */
+    readonly dt: number;
+    /**
      * Deterministic slow drift in [-1, 1], per body and per axis.
      *
      * This is the replacement for `(Math.random() - 0.5)` written into a
@@ -759,6 +787,7 @@ export function makeCalm(): Calm {
     let lastPercEnv = 0;
     let t = 0;
     let last = 0;
+    let lastDt = 1 / 60;
 
     // Held so the getter costs nothing per read; ethLive mutates it in place.
     const ethRef = (() => {
@@ -786,6 +815,7 @@ export function makeCalm(): Calm {
             return ethRef;
         },
         get clock() { return t; },
+        get dt() { return lastDt; },
         get drone() { return drone; },
         get pad() { return pad; },
         get swell() { return Math.min(1, drone * 0.65 + pad * 0.55); },
@@ -803,6 +833,7 @@ export function makeCalm(): Calm {
             const now = (typeof performance !== "undefined" ? performance.now() : Date.now()) / 1000;
             const dt = last === 0 ? 1 / 60 : Math.min(0.1, now - last);
             last = now;
+            lastDt = dt;
             t += dt;
 
             let a: { voices?: Record<string, { env?: number; amp?: number }> } | undefined;
@@ -1000,5 +1031,258 @@ export function makeSpectrumBars(
         },
         setOpacity(a) { mat.opacity = a; },
         dispose() { parent.remove(mesh); geo.dispose(); mat.dispose(); },
+    };
+}
+
+// ─── Waveform ribbon ─────────────────────────────────────────────────────────
+
+export type WaveRibbon = {
+    mesh: THREE.Mesh;
+    /**
+     * Push one new sample onto the scroll and redraw.
+     *
+     * `amp` is the current level, `bright` the high-register share. The ribbon
+     * keeps a history, so unlike everything else on the slot it shows what the
+     * sound DID and not only what it is doing — which is what makes a passage
+     * legible as a passage.
+     */
+    push(amp: number, bright: number): void;
+    setOpacity(a: number): void;
+    dispose(): void;
+};
+
+/**
+ * A scrolling waveform, as a ribbon in world space.
+ *
+ * The reference sketch draws `drawWaveform` into a 2-D canvas from an
+ * AnalyserNode's time-domain buffer. There is no time-domain buffer here —
+ * \masterScope sends sixteen band MAGNITUDES at 20 Hz, not samples — so a
+ * literal waveform is not available and pretending otherwise would be drawing
+ * a shape with no referent.
+ *
+ * What IS available, and is honest, is the level history: one value per frame,
+ * scrolled. That is an envelope rather than a waveform, and it reads the way a
+ * DAW's overview track reads — which is the useful picture at this timescale
+ * anyway. A real waveform at 20 Hz would be four samples per visible cycle of
+ * anything audible: noise dressed as a signal.
+ *
+ * Built as a triangle strip mirrored about its own axis, so it has a body and
+ * catches the bloom, where a Line would be clamped to one pixel (see the
+ * linewidth note on makeTubeLinks).
+ */
+export function makeWaveRibbon(
+    parent: THREE.Object3D, samples = 128, length = 600, height = 90,
+    color = 0xffaa00,
+): WaveRibbon {
+    const hist = new Float32Array(samples);
+    const bri = new Float32Array(samples);
+    let head = 0;
+
+    // Two vertices per sample, mirrored — the ribbon's top and bottom edge.
+    const pos = new Float32Array(samples * 2 * 3);
+    const col = new Float32Array(samples * 2 * 3);
+    const idx: number[] = [];
+    for (let i = 0; i < samples - 1; i++) {
+        const a = i * 2, b = a + 1, c = a + 2, d = a + 3;
+        idx.push(a, b, c, b, d, c);
+    }
+    const geo = new THREE.BufferGeometry();
+    geo.setAttribute("position", new THREE.BufferAttribute(pos, 3));
+    geo.setAttribute("color", new THREE.BufferAttribute(col, 3));
+    geo.setIndex(idx);
+    const base = new THREE.Color(color);
+    const mat = new THREE.MeshBasicMaterial({
+        vertexColors: true, transparent: true, opacity: 0.5,
+        side: THREE.DoubleSide, depthWrite: false,
+    });
+    const mesh = new THREE.Mesh(geo, mat);
+    mesh.frustumCulled = false;
+    parent.add(mesh);
+
+    return {
+        mesh,
+        push(amp, bright) {
+            hist[head] = Math.max(0, Math.min(1, amp));
+            bri[head] = Math.max(0, Math.min(1, bright));
+            head = (head + 1) % samples;
+
+            for (let i = 0; i < samples; i++) {
+                // Read from the head so the newest sample is always at the
+                // right-hand end: a ring buffer drawn in storage order would
+                // make the whole picture jump once per lap.
+                const k = (head + i) % samples;
+                const x = (i / (samples - 1) - 0.5) * length;
+                const y = hist[k] * height;
+                pos[i * 6]     = x; pos[i * 6 + 1] =  y; pos[i * 6 + 2] = 0;
+                pos[i * 6 + 3] = x; pos[i * 6 + 4] = -y; pos[i * 6 + 5] = 0;
+                // Brightness is carried per sample, so the ribbon remembers
+                // WHERE in the spectrum the energy was — a passage of high
+                // content stays visibly pale after it has gone by.
+                const t = bri[k];
+                const r = base.r + (1 - base.r) * t;
+                const g = base.g + (1 - base.g) * t;
+                const b = base.b + (1 - base.b) * t;
+                col[i * 6] = r; col[i * 6 + 1] = g; col[i * 6 + 2] = b;
+                col[i * 6 + 3] = r; col[i * 6 + 4] = g; col[i * 6 + 5] = b;
+            }
+            geo.attributes.position.needsUpdate = true;
+            geo.attributes.color.needsUpdate = true;
+        },
+        setOpacity(a) { mat.opacity = a; },
+        dispose() { parent.remove(mesh); geo.dispose(); mat.dispose(); },
+    };
+}
+
+// ─── Peak hold ───────────────────────────────────────────────────────────────
+
+export type PeakCaps = {
+    mesh: THREE.InstancedMesh;
+    /** One cap per band, riding the peak of that band and falling slowly. */
+    update(bands: number[], radius: number, gain: number, dt: number): void;
+    setOpacity(a: number): void;
+    dispose(): void;
+};
+
+/**
+ * The floating peak markers every hardware analyser has.
+ *
+ * These are the single most legible thing on a spectrum display and they cost
+ * one float per band: the cap jumps instantly to a new maximum and then falls
+ * at a fixed rate, so a transient leaves a mark that is still visible half a
+ * second after the bar under it has collapsed. Without them a fast passage is
+ * a blur of bars; with them you can see what the peaks WERE.
+ *
+ * Sized and placed to sit on top of makeSpectrumBars, in the same ring.
+ */
+export function makePeakCaps(
+    parent: THREE.Object3D, count: number, color = 0xffffff,
+): PeakCaps {
+    const geo = new THREE.BoxGeometry(1, 1, 1);
+    const mat = new THREE.MeshBasicMaterial({
+        color, transparent: true, opacity: 0.8, depthWrite: false,
+    });
+    const mesh = new THREE.InstancedMesh(geo, mat, count);
+    mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+    mesh.frustumCulled = false;
+    parent.add(mesh);
+
+    const peak = new Float32Array(count);
+    const _m = new THREE.Matrix4();
+    const _p = new THREE.Vector3();
+    const _q = new THREE.Quaternion();
+    const _s = new THREE.Vector3();
+    const _e = new THREE.Euler();
+
+    return {
+        mesh,
+        update(bands, radius, gain, dt) {
+            const n = Math.min(count, bands.length);
+            mesh.count = n;
+            for (let i = 0; i < n; i++) {
+                const v = Math.max(0, Math.min(1, bands[i] ?? 0));
+                // Instant attack, constant-rate release. Not exponential: a
+                // peak meter must fall at a RATE the eye can time, which is
+                // what makes two transients comparable. dB/s, in effect.
+                if (v > peak[i]) peak[i] = v;
+                else peak[i] = Math.max(0, peak[i] - dt * 0.42);
+
+                const ang = (i / n) * Math.PI * 2;
+                const rr = radius + 6 + peak[i] * gain;
+                _p.set(Math.cos(ang) * rr, Math.sin(ang) * rr, 0);
+                _e.set(0, 0, ang);
+                _q.setFromEuler(_e);
+                _s.set(radius * 0.018, radius * 0.070, radius * 0.070);
+                _m.compose(_p, _q, _s);
+                mesh.setMatrixAt(i, _m);
+            }
+            mesh.instanceMatrix.needsUpdate = true;
+        },
+        setOpacity(a) { mat.opacity = a; },
+        dispose() { parent.remove(mesh); geo.dispose(); mat.dispose(); },
+    };
+}
+
+// ─── Level rail ──────────────────────────────────────────────────────────────
+
+export type LevelRail = {
+    group: THREE.Group;
+    /**
+     * `rms` fills the rail, `peak` places the marker, `clip` lights the tail.
+     * All three 0-1.
+     */
+    update(rms: number, peak: number, clip: number): void;
+    setOpacity(a: number): void;
+    dispose(): void;
+};
+
+/**
+ * A master level rail: a track, a fill, a peak marker and a clip tail.
+ *
+ * Every other reading on this slot is relative — a band against the other
+ * bands, a shape against its own history. This is the one absolute: how close
+ * the master bus is to the ceiling. \masterScope analyses AFTER the limiter,
+ * so a rail pinned at the top is the limiter working, which is a thing a
+ * performer needs to be able to see without turning round to look at
+ * SuperCollider.
+ */
+export function makeLevelRail(
+    parent: THREE.Object3D, width = 420, thickness = 9,
+    color = 0xc8ffe6, hot = 0xff4e42,
+): LevelRail {
+    const group = new THREE.Group();
+    parent.add(group);
+
+    const mk = (c: number, o: number) => {
+        const m = new THREE.Mesh(
+            new THREE.PlaneGeometry(1, 1),
+            new THREE.MeshBasicMaterial({
+                color: c, transparent: true, opacity: o, depthWrite: false,
+            }));
+        m.frustumCulled = false;
+        group.add(m);
+        return m;
+    };
+    // The track is drawn at full width and never moves, so the fill is read
+    // against a scale rather than floating in space.
+    const track = mk(color, 0.12);
+    track.scale.set(width, thickness, 1);
+    const fill = mk(color, 0.55);
+    const marker = mk(0xffffff, 0.9);
+    const tail = mk(hot, 0.0);
+    tail.scale.set(width * 0.12, thickness * 1.7, 1);
+    tail.position.set(width * 0.5 - width * 0.06, 0, 0.2);
+
+    const mats = [track, fill, marker, tail].map(
+        (m) => m.material as THREE.MeshBasicMaterial);
+    let alpha = 1;
+
+    return {
+        group,
+        update(rms, peak, clip) {
+            const r = Math.max(0, Math.min(1, rms));
+            const p = Math.max(0, Math.min(1, peak));
+            const fw = Math.max(0.001, r * width);
+            fill.scale.set(fw, thickness * 0.72, 1);
+            // Left-anchored: the fill grows from the quiet end, so its right
+            // edge IS the reading. Centring it would make the same level look
+            // like two different ones depending on width.
+            fill.position.set(-width / 2 + fw / 2, 0, 0.1);
+            marker.scale.set(3, thickness * 1.5, 1);
+            marker.position.set(-width / 2 + p * width, 0, 0.3);
+            mats[3].opacity = Math.max(0, Math.min(1, clip)) * alpha;
+        },
+        setOpacity(a) {
+            alpha = a;
+            mats[0].opacity = 0.12 * a;
+            mats[1].opacity = 0.55 * a;
+            mats[2].opacity = 0.90 * a;
+        },
+        dispose() {
+            parent.remove(group);
+            for (const m of [track, fill, marker, tail]) {
+                m.geometry.dispose();
+                (m.material as THREE.Material).dispose();
+            }
+        },
     };
 }

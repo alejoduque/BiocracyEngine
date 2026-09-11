@@ -31,6 +31,9 @@ import {
     makeLabelField,
     makeSpectrumRings,
     makeSpectrumBars,
+    makeWaveRibbon,
+    makePeakCaps,
+    makeLevelRail,
     makeCalm,
     attachPicker,
 } from "./slotThree";
@@ -430,6 +433,20 @@ function driveOrbit(c: OrbitControls | null) {
 
 // ─── lerp helper ─────────────────────────────────────────────────────────────
 function lerp(a: number, b: number, t: number): number { return a + (b - a) * t; }
+
+/**
+ * Two decimals, clamped so the printed field can never grow.
+ *
+ * A caption carrying a live value must not change WIDTH — see `anchorLeft` in
+ * LabelStyle for why. Clamping to two digits plus two decimals bounds the
+ * string, and NaN (which prints as "NaN" and is three characters wide) is
+ * caught here rather than becoming a caption that flickers between widths
+ * whenever a divisor happens to be zero.
+ */
+function fixed2(v: number): string {
+    const x = Number.isFinite(v) ? v : 0;
+    return Math.max(-99.99, Math.min(99.99, x)).toFixed(2);
+}
 
 // ─── Deterministic noise (simplex-like via sin hash) ─────────────────────────
 function snoise(x: number, y: number): number {
@@ -1080,10 +1097,16 @@ export function mountDynamicGraphs(stageEl: HTMLElement, getLatestState: () => P
         tracking: 3.5,
         brackets: true,
         plate: true,
+        // These carry live values, so they lay out from a fixed left edge.
+        anchorLeft: true,
     });
     /** Live value per factor, so the readout is a readout. */
     const bt5 = new Float32Array(nodes.length);
     const bt5Was = new Float32Array(nodes.length).fill(-1);
+    /** When each caption was last rasterised, so it cannot step faster than 6 Hz. */
+    const bt5At = new Float64Array(nodes.length);
+    /** Where each body was last DRAWN — the caption follows this, not n.p. */
+    const bodyAt5 = nodes.map(() => new THREE.Vector3());
     // What this slot's motion follows. See makeCalm: the drone and the pad,
     // heavily smoothed, instead of a fresh random number every frame.
     const calm5 = makeCalm();
@@ -1120,6 +1143,8 @@ export function mountDynamicGraphs(stageEl: HTMLElement, getLatestState: () => P
     let frame = 0;
     const _tmpA = new THREE.Vector3();
     const _tmpB = new THREE.Vector3();
+    /** The slow resting-offset of a body. See the drift note in animate(). */
+    const _drift5 = new THREE.Vector3();
 
     function animate() {
         if (destroyed) return;
@@ -1147,7 +1172,11 @@ export function mountDynamicGraphs(stageEl: HTMLElement, getLatestState: () => P
         // Advance the bell body every frame, then strike it on an attack. The
         // step comes FIRST so a strike lands on a clean phase rather than
         // being immediately decayed by the same frame's step.
-        ring5.step();
+        // Stepped in TIME, not in frames. The bank's freqs are cycles per
+        // frame, so an unscaled step runs the whole body 2.4x fast on a
+        // 144 Hz panel — the same patch shaking on one display and
+        // swinging on another. `speed` normalises against 60 Hz.
+        ring5.step(calm5.dt * 60);
         if (onset5 > 0) {
             ring5.strike(onset5, au5.tone);
             // The same event crosses the sky. Tone places the source along the
@@ -1345,10 +1374,17 @@ export function mountDynamicGraphs(stageEl: HTMLElement, getLatestState: () => P
             // THE PAD: at rest the graph is nearly still, and it opens up as
             // the bed comes in. That is the slow body of the engine, which is
             // what these structures should be following.
-            const wob5 = noiseL * (0.35 + calm5.swell * 1.5);
-            n.v.x += calm5.drift(i, 0) * wob5;
-            n.v.y += calm5.drift(i, 1) * wob5;
-            n.v.z += calm5.drift(i, 2) * wob5 * 0.7;
+            // Drift is an OFFSET, not a force. Adding a slow 0.11 Hz signal to
+            // VELOCITY sixty times a second integrates it into a large, ever-
+            // growing excursion that only the damping holds down — a spring
+            // permanently being pushed, which is exactly the twitch. As a
+            // displacement added to the resting position it is what it says it
+            // is: the body sitting a little off-centre and moving slowly.
+            const wob5 = noiseL * (14 + calm5.swell * 26);
+            _drift5.set(
+                calm5.drift(i, 0) * wob5,
+                calm5.drift(i, 1) * wob5,
+                calm5.drift(i, 2) * wob5 * 0.7);
 
             // The hard kick waits for a strike, and for a half to strike with.
             if (calm5.strike > 0.01) {
@@ -1358,8 +1394,16 @@ export function mountDynamicGraphs(stageEl: HTMLElement, getLatestState: () => P
                 n.v.z += calm5.drift(i + 7, 2) * kk * 0.7;
             }
 
-            n.p.addScaledVector(n.v, 1 + tDil);
-            n.v.multiplyScalar(0.88);
+            // dt-based, and CLAMPED. `n.p.addScaledVector(n.v, 1 + tDil)` with
+            // a per-frame 0.88 damping is explicit Euler with a step that TIME
+            // DILATION could double: at the top of its range the spring left
+            // its stable region and rang, which is the shake. Now the step is
+            // seconds and the damping is a time constant, so the same patch
+            // settles identically at 60 and at 144 Hz, and tDil slows the
+            // motion down instead of destabilising it.
+            const dt5 = calm5.dt;
+            n.p.addScaledVector(n.v, dt5 * 60 / (1 + tDil * 1.6));
+            n.v.multiplyScalar(Math.exp(-dt5 / 0.16));
 
             // ── CAMPANAS — sympathetic resonance, not a push ──────────────
             // Each node is one mode of the bank, so the shape goes on changing
@@ -1390,7 +1434,11 @@ export function mountDynamicGraphs(stageEl: HTMLElement, getLatestState: () => P
             const touch = grabbed ? 1.75 : hovered ? 1.35 : 1.0;
             const sw5 = (1 + rz5 * 0.55) * touch;
 
-            _tmpA.copy(n.p).add(_tmpB);
+            _tmpA.copy(n.p).add(_tmpB).add(_drift5);
+            // Where the body ACTUALLY ended up, kept for the caption below:
+            // n.p is only the integrator's state and the drawn position is
+            // that plus the resonance and the drift.
+            bodyAt5[i].copy(_tmpA);
             bodies5.set(i, _tmpA, (spreadR / NODE_R) * sw5);
             bodies5.tint(i, nr, ng, nb);
             // The shell answers RES BODY, as the flat ring used to, and lights
@@ -1468,15 +1516,32 @@ export function mountDynamicGraphs(stageEl: HTMLElement, getLatestState: () => P
             if (bt5.length > 7) bt5[7] = c5.gasN;
         }
         nodes.forEach((n, i) => {
-            // Redrawn only when the printed value actually changes — a canvas
-            // upload per node per frame to show the same two decimals would be
-            // eight texture uploads a frame for nothing.
-            const q = Math.round(bt5[i] * 100) / 100;
-            if (q !== bt5Was[i]) {
+            // ── A readout that holds still ────────────────────────────────
+            // Two separate faults made these unreadable.
+            //
+            // First, the redraw fired whenever the value crossed a 0.01
+            // boundary. Against chain data arriving twenty times a second that
+            // is several re-rasterisations per second per node, and each one
+            // re-centres the string by its measured width — so "0.85" becoming
+            // "0.9" relaid the whole caption sideways. A HUD value is read by
+            // its digits, not by its edges: the number is padded to a fixed
+            // width so the layout is identical for every value it can take,
+            // and a deadband plus a minimum interval stops it stepping faster
+            // than an eye can follow. Two decimals at 6 Hz is still a live
+            // readout; it is simply one you can actually read.
+            //
+            // Second, the caption was pinned to n.p — the raw integrator
+            // state — while the BODY is drawn at n.p plus the resonance and
+            // the drift. Label and body were on different points, and the
+            // label was on the noisier one.
+            const now5 = performance.now();
+            const q = bt5[i];
+            if (Math.abs(q - bt5Was[i]) > 0.008 && now5 - bt5At[i] > 160) {
                 bt5Was[i] = q;
-                tags5.text(i, `${SLOT_NOUNS.s5.one(i)} ${q.toFixed(2)}`);
+                bt5At[i] = now5;
+                tags5.text(i, `${SLOT_NOUNS.s5.one(i)} ${fixed2(q)}`);
             }
-            _tmpB.set(n.p.x, n.p.y + 26, n.p.z);
+            _tmpB.copy(bodyAt5[i]).y += 26;
             tags5.set(i, _tmpB, (0.20 + vol * 0.55) * masterA
                 * (i === pick5.hover || i === pick5.grabbed ? 1.6 : 1));
         });
@@ -1719,7 +1784,11 @@ export function mountDynamicOptimality(stageEl: HTMLElement, getLatestState: () 
         // (which is all these six ever did) makes it react to the intention
         // rather than to the sound.
         const au6 = readInstrument(inst6);
-        ring6.step();
+        // Stepped in TIME, not in frames. The bank's freqs are cycles per
+        // frame, so an unscaled step runs the whole body 2.4x fast on a
+        // 144 Hz panel — the same patch shaking on one display and
+        // swinging on another. `speed` normalises against 60 Hz.
+        ring6.step(calm6.dt * 60);
         if (onset6 > 0) {
             ring6.strike(onset6, au6.tone);
         }
@@ -2332,7 +2401,11 @@ export function mountGeometry(stageEl: HTMLElement, getLatestState: () => Parlia
         // (which is all these six ever did) makes it react to the intention
         // rather than to the sound.
         const au7 = readInstrument(inst7);
-        ring7.step();
+        // Stepped in TIME, not in frames. The bank's freqs are cycles per
+        // frame, so an unscaled step runs the whole body 2.4x fast on a
+        // 144 Hz panel — the same patch shaking on one display and
+        // swinging on another. `speed` normalises against 60 Hz.
+        ring7.step(calm7.dt * 60);
         if (onset7 > 0) {
             ring7.strike(onset7, au7.tone);
             // From the centre, always. The kick has no place in the stereo
@@ -2750,49 +2823,22 @@ export function mountMemoryHierarchy(stageEl: HTMLElement, getLatestState: () =>
     composer.addPass(afterimage);
     const chromatic = new ShaderPass(ChromaticAberrationShader);
     composer.addPass(chromatic);
-    // ── Glitch, and only on this slot ────────────────────────────────────
-    // Horizontal block displacement plus an RGB tear. POLVO is the granular
-    // voice — many small uncorrelated events — and a hierarchy under pressure
-    // EVICTS, so a torn scanline is the one place in the six where this reads
-    // as the subject rather than as an effect.
+    // ── No glitch pass on this slot ──────────────────────────────────────
     //
-    // Driven, not random: `amount` comes from spectral flux and the chain's
-    // priority-over-base-fee, so the picture tears when the sound moves
-    // suddenly or the chain is straining. `seed` steps on a timer rather than
-    // per frame, so a tear HOLDS long enough to be seen — a displacement that
-    // relocates every frame at 60 Hz is static, not a glitch.
-    const glitch8 = new ShaderPass({
-        uniforms: {
-            tDiffuse: { value: null },
-            amount: { value: 0.0 },
-            seed: { value: 0.0 },
-        },
-        vertexShader: `varying vec2 vUv; void main(){ vUv=uv;
-            gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.0); }`,
-        fragmentShader: `
-            uniform sampler2D tDiffuse; uniform float amount; uniform float seed;
-            varying vec2 vUv;
-            float h11(float p){ return fract(sin(p * 127.1 + seed * 43.7) * 43758.5453); }
-            void main(){
-                vec2 uv = vUv;
-                // Bands of the image slide sideways. Quantised to 28 rows so
-                // the tear is blocky — a per-pixel offset is noise, a per-row
-                // offset is damage.
-                float row = floor(uv.y * 28.0);
-                float r = h11(row);
-                float on = step(1.0 - amount * 0.55, r);
-                uv.x += (r - 0.5) * 0.09 * amount * on;
-                // And the channels separate across the displaced band.
-                float sp = 0.006 * amount * on;
-                float cr = texture2D(tDiffuse, uv + vec2(sp, 0.0)).r;
-                vec4  cg = texture2D(tDiffuse, uv);
-                float cb = texture2D(tDiffuse, uv - vec2(sp, 0.0)).b;
-                gl_FragColor = vec4(cr, cg.g, cb, cg.a);
-            }`,
-    });
-    composer.addPass(glitch8);
-    /** Seed steps on a timer, so a tear holds rather than boiling. */
-    let glitchSeedAt = 0;
+    // There was one: block displacement plus an RGB tear, driven by spectral
+    // flux and chain priority. It went, and the reason is worth keeping.
+    //
+    // A full-screen displacement destroys the one thing this slot exists to
+    // show. The rings and the bars ARE the spectrum — their shape is the
+    // reading — and a pass that slides rows of the finished image sideways
+    // makes that shape unreliable at exactly the moments it carries the most
+    // information, since the pass fired on flux, which is to say on every
+    // transient. It also tore the captions, which have numbers in them.
+    //
+    // What the tear was reaching for — this slot should look like a machine
+    // under load — is now in the geometry instead, where it can be read: the
+    // waveform ribbon, the peak-hold caps and the level rail below all move
+    // with the sound and none of them makes the rest of the picture illegible.
 
     const LAYERS = 3;
 
@@ -2848,10 +2894,15 @@ export function mountMemoryHierarchy(stageEl: HTMLElement, getLatestState: () =>
     const tags8 = makeLabelField(root8, LAYERS, 0xc8ffe6, 13, {
         font: "700 26px ui-monospace, 'SF Mono', Menlo, monospace",
         tracking: 2.5,
-        glitch: 3.5,
         plate: true,
+        // Live values here too — anchored so the digits turn over in place.
+        anchorLeft: true,
     });
     const sala8Was = new Float32Array(LAYERS).fill(-1);
+    /** Smoothed magnitude of each level's mode. See the note in animate(). */
+    const ringS8 = new Float32Array(LAYERS);
+    /** When each caption was last rasterised, so it cannot step faster than 6 Hz. */
+    const sala8At = new Float64Array(LAYERS);
 
     // ── An audio visualiser for the master bus ───────────────────────────
     //
@@ -2868,6 +2919,19 @@ export function mountMemoryHierarchy(stageEl: HTMLElement, getLatestState: () =>
     // which is the whole reason these slots have depth at all.
     const spectrum8 = makeSpectrumRings(root8, Math.min(W, H) * 0.30, 3, 96, 0xffaa00);
     const bars8 = makeSpectrumBars(root8, 16, 0xc8ffe6);
+    // Peak holds on the bars. One float per band, and the single most legible
+    // addition a spectrum display can have: a transient leaves a mark that
+    // outlives the bar under it, so a fast passage stops being a blur.
+    const caps8 = makePeakCaps(root8, 16, 0xffffff);
+    // The level HISTORY, which nothing else on the slot shows. Everything here
+    // reports the present instant; the ribbon is the only thing that says what
+    // the last few seconds sounded like.
+    const wave8 = makeWaveRibbon(root8, 160, Math.min(W, H) * 1.15,
+        Math.min(W, H) * 0.085, 0xffaa00);
+    // And the one absolute reading: how close the master bus is to the
+    // ceiling. \masterScope analyses after the limiter, so a pinned rail is
+    // the limiter working — visible without turning round to look at SC.
+    const rail8 = makeLevelRail(root8, Math.min(W, H) * 0.62, 7);
     // Smoothed per band. The scope sends 20 frames a second and the display
     // draws 60, so the raw array steps three frames out of four — the same
     // mistake the chain data made, and the same fix.
@@ -2926,7 +2990,11 @@ export function mountMemoryHierarchy(stageEl: HTMLElement, getLatestState: () =>
         // (which is all these six ever did) makes it react to the intention
         // rather than to the sound.
         const au8 = readInstrument(inst8);
-        ring8.step();
+        // Stepped in TIME, not in frames. The bank's freqs are cycles per
+        // frame, so an unscaled step runs the whole body 2.4x fast on a
+        // 144 Hz panel — the same patch shaking on one display and
+        // swinging on another. `speed` normalises against 60 Hz.
+        ring8.step(calm8.dt * 60);
         if (onset8 > 0) {
             ring8.strike(onset8, au8.tone);
             // Dust does not arrive from a point. Scattered origin per grain, so
@@ -2977,24 +3045,6 @@ export function mountMemoryHierarchy(stageEl: HTMLElement, getLatestState: () =>
         calm8.step("__slot8Soneth");
         const e8b = calm8.eth;
         const c8 = calm8.chain;
-        {
-            // Flux is a transient in the SOUND; priority is the chain under
-            // pressure. Either tears the picture, and the ceiling keeps it a
-            // disturbance rather than a state.
-            const a8g = getScAudio();
-            const gAmt = Math.min(0.9,
-                a8g.flux * 2.2 + Math.max(0, c8.priority - 0.45) * 1.3
-                + c8.blockEnv * 0.35);
-            glitch8.uniforms["amount"].value = gAmt;
-            // ~8 Hz, and only while something is actually tearing. A seed that
-            // changed every frame would make the displacement a texture.
-            const nowG = performance.now();
-            if (gAmt > 0.04 && nowG - glitchSeedAt > 120) {
-                glitchSeedAt = nowG;
-                glitch8.uniforms["seed"].value = ((c8.blockPhase + e8b.hash) % 1) * 100;
-            }
-        }
-
         // Hex noise — beatTempo speeds churn (stored in sp8.beatTempo if present, else tDil proxy)
         const beatT = sp8.beatTempo ?? 0.5;
         const hexRefresh = Math.max(1, Math.floor(8 - tDil * 4 - beatT * 5));
@@ -3077,13 +3127,12 @@ export function mountMemoryHierarchy(stageEl: HTMLElement, getLatestState: () =>
                 * (0.4 + calm8.swell * 1.2));
             let bx = -bw / 2;
 
-            // Glitch displacement — txInfluence + noiseLevel
-            const glitchProb = 0.1 + txInf * 0.2;
             // The level slips when the chain is under pressure. priority is
             // how far over base fee the last actor bid — urgency — and it is a
             // far better reading of "the system is straining" than a random
-            // number was.
-            const e8 = calm8.eth;
+            // number was. (`glitchProb` and a raw `calm8.eth` read sat here
+            // too, both left over from the version that displaced on
+            // Math.random(); neither was used by anything.)
             if (aiOpt < 50 && c8.priority > 0.35) {
                 bx += calm8.drift(j * 3, 0) * (c8.priority - 0.35) * 1.5
                     * 70 * noiseL * (1 - aiOpt100) * (1 + txInf);
@@ -3121,10 +3170,28 @@ export function mountMemoryHierarchy(stageEl: HTMLElement, getLatestState: () =>
             // one another instead of pumping together. Granular density is many
             // uncorrelated small events; one shared envelope is precisely the
             // wrong shape for it.
-            const rz8 = ring8.value(j * 7);
-            border.position.z = -j * 90 * (0.3 + au8.level * 1.8) + rz8 * 90 * au8.amp;
-            border.position.x = rz8 * 14;
-            border.rotation.z = Math.sin(vm8.angle * 0.5) * 0.035 + rz8 * 0.06;
+            // ── The level moves at a rate you can watch ──────────────────
+            // `ring8.value(j * 7)` reached modes 0, 7 and 14 of a bank whose
+            // ratio is 1.11 per mode from a base of 0.031 cycles per FRAME.
+            // Mode 14 therefore runs at 0.031 * 1.11^14 = 0.135 cycles/frame —
+            // about EIGHT HERTZ on a 60 Hz display, and faster on a faster
+            // one. That is not a level settling, it is a level buzzing, and it
+            // carried the blocks and the captions with it.
+            //
+            // Two changes. The modes read are adjacent (0, 1, 2) rather than
+            // seven apart, which keeps the three levels distinguishable
+            // without reaching the top of the bank; and the displacement goes
+            // through a follower, so the level shows the ENVELOPE of its mode
+            // rather than the mode's own oscillation. The bank still rings at
+            // its own rate — that is what makes POLVO's dust the right voice
+            // for this slot — and the geometry now reads its magnitude.
+            const rz8 = ring8.value(j);
+            const kR8 = 1 - Math.exp(-calm8.dt / 0.14);
+            ringS8[j] += (Math.abs(rz8) - ringS8[j]) * kR8;
+            const rs8 = ringS8[j];
+            border.position.z = -j * 90 * (0.3 + au8.level * 1.8) + rs8 * 70 * au8.amp;
+            border.position.x = rs8 * 10;
+            border.rotation.z = Math.sin(vm8.angle * 0.5) * 0.035 + rs8 * 0.05;
             // The room, level by level. SALA MIX and SALA RT60 are the shared
             // chamber every voice is heard through; the deeper levels print
             // what that room is doing — its occupancy from the quorum, and the
@@ -3149,10 +3216,16 @@ export function mountMemoryHierarchy(stageEl: HTMLElement, getLatestState: () =>
                     chSize8 * (0.4 + chMix8 * 0.6),
                     Math.min(1, atmMix),
                 ][j % 6];
-                const q = Math.round(q8 * 100) / 100;
-                if (q !== sala8Was[j]) {
-                    sala8Was[j] = q;
-                    tags8.text(j, `${SLOT_NOUNS.s8.one(j)} ${q.toFixed(2)}`);
+                // Deadband plus a minimum interval, the same as slot 5's
+                // captions and for the same reason: rasterising on every 0.01
+                // crossing of a value fed from a 20 Hz stream relaid the string
+                // several times a second, which reads as the type moving. Six
+                // times a second is still live and is legible.
+                const now8 = performance.now();
+                if (Math.abs(q8 - sala8Was[j]) > 0.008 && now8 - sala8At[j] > 160) {
+                    sala8Was[j] = q8;
+                    sala8At[j] = now8;
+                    tags8.text(j, `${SLOT_NOUNS.s8.one(j)} ${fixed2(q8)}`);
                 }
             }
             _t8b.set(bx - 26, cy + baseH / 2, border.position.z);
@@ -3256,6 +3329,35 @@ export function mountMemoryHierarchy(stageEl: HTMLElement, getLatestState: () =>
             bars8.update(bArr, Math.min(W, H) * 0.19, 14 + texDep * 46);
             bars8.setOpacity((0.12 + vol * 0.34) * masterA
                 * (0.55 + a8.high * 1.4));
+
+            // Peak holds, sitting on the same ring as the bars and falling at
+            // a fixed rate. dt from the shared clock, so they fall at the same
+            // speed on a 60 and a 144 Hz panel — a peak meter whose release
+            // depends on the display is not a meter.
+            caps8.mesh.position.z = -LAYERS * 45;
+            caps8.mesh.rotation.z = vm8.angle * 0.35;
+            caps8.update(bArr, Math.min(W, H) * 0.19, 14 + texDep * 46,
+                calm8.dt);
+            caps8.setOpacity((0.20 + vol * 0.45) * masterA);
+
+            // The level history, laid across the foot of the hierarchy and
+            // standing at the same depth as the rings. It scrolls at one
+            // sample per frame, which is about three seconds of sound at 160
+            // samples — long enough to see a phrase, short enough that the
+            // right-hand end still reads as now.
+            wave8.push(a8.rms * (1.4 + resBody * 0.8), a8.high);
+            wave8.mesh.position.set(0, -H * 0.30, -LAYERS * 45 + 20);
+            wave8.setOpacity((0.10 + vol * 0.34) * masterA);
+
+            // The rail sits under the ribbon. `clip` lights when the sound is
+            // sustained near the ceiling — the limiter's own reading, and the
+            // only absolute number on the slot.
+            rail8.group.position.set(0, -H * 0.38, -LAYERS * 45 + 20);
+            rail8.update(
+                Math.min(1, a8.rms * 2.6),
+                Math.min(1, Math.max(a8.low, a8.mid, a8.high) * 1.8),
+                Math.max(0, a8.rms * 2.6 - 0.86) * 5);
+            rail8.setOpacity((0.28 + vol * 0.5) * masterA);
             // Flux is how fast the picture is changing — an onset without an
             // onset detector. It belongs on the bloom, where a transient in the
             // sound reads as the whole slot flaring rather than as one object.
@@ -3309,7 +3411,8 @@ export function mountMemoryHierarchy(stageEl: HTMLElement, getLatestState: () =>
             pick8.dispose();
             blocks8.dispose(); drops8.dispose();
             motes8.dispose(); tags8.dispose(); ticker8.destroy();
-            spectrum8.dispose(); bars8.dispose(); glitch8.dispose();
+            spectrum8.dispose(); bars8.dispose();
+            wave8.dispose(); caps8.dispose(); rail8.dispose();
             try { controls.dispose(); } catch { /* ignore */ }
             window.removeEventListener("resize", onResize);
             hexTexture.dispose();
@@ -3513,7 +3616,11 @@ export function mountHashing(stageEl: HTMLElement, getLatestState: () => Parliam
         // (which is all these six ever did) makes it react to the intention
         // rather than to the sound.
         const au9 = readInstrument(inst9);
-        ring9.step();
+        // Stepped in TIME, not in frames. The bank's freqs are cycles per
+        // frame, so an unscaled step runs the whole body 2.4x fast on a
+        // 144 Hz panel — the same patch shaking on one display and
+        // swinging on another. `speed` normalises against 60 Hz.
+        ring9.step(calm9.dt * 60);
         if (onset9 > 0) {
             ring9.strike(onset9, au9.tone);
             cfield.field.strike(
