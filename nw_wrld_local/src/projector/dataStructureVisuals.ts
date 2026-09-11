@@ -47,15 +47,41 @@ const SLOT_NOUNS: Record<string, { one: (i: number) => string; what: string }> =
     // Time Travel · DRONE — each trace is one agent's history through the run.
     s4: { what: "traza", one: (i) => `T${i}` },
     // Dynamic Graphs · CAMPANAS — the bodies are the parties to a connection.
-    s5: { what: "nodo",  one: (i) => `N${i}` },
+    // Dynamic Graphs · CAMPANAS — the bodies are the SIX FACTORS of the
+    // BioToken, plus the product itself and the chain flux feeding it, so the
+    // whole expression is on screen:
+    //   value = presence · activity · ednaBio · fungiChem · aiOpt · iucn
+    s5: { what: "factor", one: (i) => ["PRES", "ACTV", "eDNA", "FUNG", "AIOP", "IUCN",
+                                       "TOKN", "FLUX"][i % 8] },
     // Dynamic Optimality · PERCUSIÓN — a splay tree: one root, the rest depth.
-    s6: { what: "rama",  one: (i) => (i === 0 ? "RAÍZ" : `R${i}`) },
+    // Dynamic Optimality · PERCUSIÓN — the tree's nodes carry the ECO SIGNALS
+    // the panel already prints: CO₂, myco, phosphorus, nitrogen. Those four are
+    // the ETH stream read as an ecology (parliamentStore maps /bio/* onto them),
+    // and a splay tree reorganising under pressure is the right structure to
+    // hang them on — the root is whichever signal is currently dominant.
+    s6: { what: "señal", one: (i) => (i === 0 ? "RAÍZ" :
+        ["CO₂", "MYCO", "PHOS", "NITR"][(i - 1) % 4]) },
     // Geometry · BOMBO — what the sweep has acquired.
-    s7: { what: "blanco", one: (i) => `B${i}` },
+    // Geometry · BOMBO — what the sweep acquires is a PARLIAMENTARY STATE.
+    // The store carries consensus, its wave, the phase through the rotation and
+    // the vote count; a radar that acquires targets is the right figure for a
+    // chamber taking a reading of itself.
+    s7: { what: "estado", one: (i) => ["CONS", "OLA", "FASE", "VOTO",
+                                       "QUÓR", "TURN"][i % 6] },
     // Memory Hierarchy · POLVO — cache levels, nearest first.
-    s8: { what: "nivel", one: (i) => `L${i + 1}` },
+    // Memory Hierarchy · POLVO — the levels are read as the ACOUSTIC SPACE
+    // they sound in. Sala mix and RT60 are the one room every voice is heard
+    // through, and a hierarchy of levels is the obvious place to print how deep
+    // that room currently is: L1 nearest, RT60 growing with depth.
+    s8: { what: "sala",  one: (i) => ["SALA", "RT60", "OCUP", "DIFU", "COLA",
+                                      "PRE"][i % 6] },
     // Hashing · MUESTRAS — keys on the left, buckets on the right.
-    s9: { what: "clave", one: (i) => `K${i}` },
+    // Hashing · MUESTRAS — the keys are the MIXER, one per layer, each named
+    // for its own CC. A hash table maps keys to buckets; these keys are the
+    // eight faders that map a layer to a level, which is the same shape of
+    // statement and the one this slot can actually make about the instrument.
+    s9: { what: "clave", one: (i) => ["DRONE", "PAD", "KICK", "PERC",
+                                      "DUST", "SMPL", "CORP", "ULTRA"][i % 8] },
 };
 
 // ─── Shared chromatic-aberration shader (reused across slots) ────────────────
@@ -1043,10 +1069,23 @@ export function mountDynamicGraphs(stageEl: HTMLElement, getLatestState: () => P
     // depth has something to be measured against.
     const motes5 = makeParticles(root5, 900, Math.max(W, H) * 1.5, 0xffaa00);
     // What the bodies ARE. N0..N7, the parties to a connection.
-    const tags5 = makeLabelField(root5, nodes.length, 0xffcc88, 14);
+    // An advanced HUD, not a caption. Smaller, monospaced, wide-tracked and
+    // bracketed at the corners — a readout that something else is inside,
+    // rather than a box with a word in it. The value rides with the name, so
+    // the graph prints the BioToken expression as it computes it.
+    const tags5 = makeLabelField(root5, nodes.length, 0x9fe8c0, 11, {
+        font: "500 26px ui-monospace, 'SF Mono', Menlo, monospace",
+        tracking: 3.5,
+        brackets: true,
+        plate: true,
+    });
+    /** Live value per factor, so the readout is a readout. */
+    const bt5 = new Float32Array(nodes.length);
+    const bt5Was = new Float32Array(nodes.length).fill(-1);
     // What this slot's motion follows. See makeCalm: the drone and the pad,
     // heavily smoothed, instead of a fresh random number every frame.
     const calm5 = makeCalm();
+    // Seeded; the value is appended live in the frame below.
     nodes.forEach((_n, i) => tags5.text(i, SLOT_NOUNS.s5.one(i)));
 
     function makeCircle(radius: number, segs: number, color: number, opacity: number): THREE.Line {
@@ -1404,7 +1443,37 @@ export function mountDynamicGraphs(stageEl: HTMLElement, getLatestState: () => P
         root5.rotation.x = Math.sin(vm5.angle * 0.31) * 0.10 * (0.3 + spatSp);
 
         // Captions ride above their bodies and fade with the layer's own level.
+        // ── The BioToken, as the graph computes it ───────────────────────
+        // Each node prints its own factor and that factor's live value. The
+        // token is the PRODUCT of the six, so a node near zero is visibly the
+        // one holding the whole thing down — the useful reading, and completely
+        // unavailable while they all said N-something.
+        {
+            const sl = st?.species;
+            const pres5 = sl?.length ? sl.reduce((a, x) => a + x.presence, 0) / sl.length : 0.5;
+            const act5 = sl?.length ? sl.reduce((a, x) => a + x.activity, 0) / sl.length : 0.5;
+            const ed = st?.edna;
+            const edna5 = ed?.length
+                ? ed.reduce((a, x) => a + (x.biodiversity ?? 0), 0) / ed.length : 0.5;
+            const fu = st?.fungi;
+            const fung5 = fu?.length
+                ? fu.reduce((a, x) => a + (x.chemical ?? 0), 0) / fu.length : 0.5;
+            const ai5 = (st?.ai?.optimization ?? 64) / 127;
+            const iucn5 = 0.6;
+            bt5[0] = pres5; bt5[1] = act5; bt5[2] = edna5; bt5[3] = fung5;
+            bt5[4] = ai5;   bt5[5] = iucn5;
+            if (bt5.length > 6) bt5[6] = pres5 * act5 * edna5 * fung5 * ai5 * iucn5;
+            if (bt5.length > 7) bt5[7] = c5.gasN;
+        }
         nodes.forEach((n, i) => {
+            // Redrawn only when the printed value actually changes — a canvas
+            // upload per node per frame to show the same two decimals would be
+            // eight texture uploads a frame for nothing.
+            const q = Math.round(bt5[i] * 100) / 100;
+            if (q !== bt5Was[i]) {
+                bt5Was[i] = q;
+                tags5.text(i, `${SLOT_NOUNS.s5.one(i)} ${q.toFixed(2)}`);
+            }
             _tmpB.set(n.p.x, n.p.y + 26, n.p.z);
             tags5.set(i, _tmpB, (0.20 + vol * 0.55) * masterA
                 * (i === pick5.hover || i === pick5.grabbed ? 1.6 : 1));
@@ -1586,7 +1655,15 @@ export function mountDynamicOptimality(stageEl: HTMLElement, getLatestState: () 
     // rotation; an instance has no such state, so the slot keeps it.
     const spin6 = new Float32Array(nodeData.length);
     const motes6 = makeParticles(root6, 800, Math.max(W, H) * 1.4, 0xc8ffe6);
-    const tags6 = makeLabelField(root6, nodeData.length, 0xc8ffe6, 13);
+    // Field-measurement typography: lighter, wider-tracked, underlined rather
+    // than bracketed. An eco signal is a reading taken FROM somewhere, not a
+    // channel on a console, and it should not look like slot 5's HUD.
+    const tags6 = makeLabelField(root6, nodeData.length, 0xc8ffe6, 12, {
+        font: "400 25px ui-monospace, 'SF Mono', Menlo, monospace",
+        tracking: 4.5,
+        underline: true,
+    });
+    const eco6Was = new Float32Array(nodeData.length).fill(-1);
     const calm6 = makeCalm();
     // The ticker came off this slot with the constellation field it was living
     // inside — and it was never about the constellation. It reports where the
@@ -1861,9 +1938,27 @@ export function mountDynamicOptimality(stageEl: HTMLElement, getLatestState: () 
         // RAÍZ names the node the tree is splayed around; the rest carry their
         // depth. Which node is the root CHANGES as the tree rebalances, so the
         // caption is rewritten when it moves rather than baked at mount.
-        if (maxIdx !== lastRoot6) {
-            nodeData.forEach((_n, i) =>
-                tags6.text(i, i === maxIdx ? "RAÍZ" : SLOT_NOUNS.s6.one(i)));
+        // The four eco signals, live, from the store — the same numbers the
+        // left panel's Eco Signals block prints, on the bodies that carry them.
+        {
+            const ec = st?.eco;
+            const v6 = [
+                (ec?.co2 ?? 0) / 127,
+                Math.min(1, (ec?.mycoPulse ?? 0) / 4),
+                (ec?.phosphorus ?? 0) / 100,
+                (ec?.nitrogen ?? 0) / 127,
+            ];
+            nodeData.forEach((_n, i) => {
+                const isRoot = i === maxIdx;
+                const val = isRoot ? consensus : v6[(i - 1 + 4) % 4];
+                const q = Math.round(val * 100) / 100;
+                if (q !== eco6Was[i] || maxIdx !== lastRoot6) {
+                    eco6Was[i] = q;
+                    tags6.text(i, isRoot
+                        ? `RAÍZ ${q.toFixed(2)}`
+                        : `${SLOT_NOUNS.s6.one(i)} ${q.toFixed(2)}`);
+                }
+            });
             lastRoot6 = maxIdx;
         }
         nodeData.forEach((n, i) => {
@@ -2102,8 +2197,14 @@ export function mountGeometry(stageEl: HTMLElement, getLatestState: () => Parlia
     const _t7a = new THREE.Vector3();
     const _t7b = new THREE.Vector3();
     const motes7 = makeParticles(root7, 1000, Math.max(W, H) * 1.6, 0xc8ffe6);
-    const tags7 = makeLabelField(root7, 64, 0xffcc88, 12);
-    for (let i = 0; i < 64; i++) tags7.text(i, SLOT_NOUNS.s7.one(i));
+    // The record of a proceeding: upright, plated, no brackets and no rule —
+    // a minute rather than an instrument reading.
+    const tags7 = makeLabelField(root7, 64, 0xffd8a0, 12, {
+        font: "600 27px ui-monospace, 'SF Mono', Menlo, monospace",
+        tracking: 2,
+        plate: true,
+    });
+    const parl7Was = new Float32Array(64).fill(-1);
     const calm7 = makeCalm();
     const ticker7 = mountSlotTicker(stageEl,
         "BOMBO · opalKick · FRENTE DE PRESIÓN  ·  BLANCOS ADQUIRIDOS",
@@ -2425,6 +2526,25 @@ export function mountGeometry(stageEl: HTMLElement, getLatestState: () => Parlia
                         hov7 || grb7 ? 1 : swR,
                         hov7 || grb7 ? 1 : swG,
                         hov7 || grb7 ? 1 : swB);
+                    // Each acquisition prints one state of the chamber. Six
+                    // readings cycle across the targets, so a busy sweep shows
+                    // the whole record and a quiet one shows the first of it.
+                    {
+                        const pq = [
+                            consensus,
+                            st?.consensusWave ?? 0.5,
+                            st?.phase ?? 0,
+                            Math.min(1, (st?.votes ?? 0) / 40),
+                            consensus >= 0.5 ? 1 : 0,
+                            c7.blockPhase,
+                        ][tcIdx % 6];
+                        const q = Math.round(pq * 100) / 100;
+                        if (q !== parl7Was[tcIdx]) {
+                            parl7Was[tcIdx] = q;
+                            tags7.text(tcIdx,
+                                `${SLOT_NOUNS.s7.one(tcIdx)} ${q.toFixed(2)}`);
+                        }
+                    }
                     _t7b.set(_t7a.x, _t7a.y + 22, _t7a.z);
                     tags7.set(tcIdx, _t7b, (0.22 + vol * 0.5) * masterA
                         * (hov7 || grb7 ? 1.7 : 1));
@@ -2651,8 +2771,18 @@ export function mountMemoryHierarchy(stageEl: HTMLElement, getLatestState: () =>
     const motes8 = makeParticles(root8, 900, Math.max(W, H) * 1.5, 0xc8ffe6);
     // L1..Ln, nearest level first. A cache hierarchy's whole subject is WHICH
     // level you reached, and nothing on screen said.
-    const tags8 = makeLabelField(root8, LAYERS, 0xffcc88, 14);
-    for (let j = 0; j < LAYERS; j++) tags8.text(j, SLOT_NOUNS.s8.one(j));
+    // Glitched on purpose, and only here. POLVO is the granular voice and this
+    // is the slot whose backdrop is machine memory — an RGB split on the type
+    // is the one place in the six where that reads as the subject rather than
+    // as an effect. The offset is derived from the text itself, so a caption
+    // tears the same way every time it is drawn instead of boiling.
+    const tags8 = makeLabelField(root8, LAYERS, 0xc8ffe6, 13, {
+        font: "700 26px ui-monospace, 'SF Mono', Menlo, monospace",
+        tracking: 2.5,
+        glitch: 3.5,
+        plate: true,
+    });
+    const sala8Was = new Float32Array(LAYERS).fill(-1);
     const calm8 = makeCalm();
     const ticker8 = mountSlotTicker(stageEl,
         "POLVO · opalDust · JERARQUÍA DE NIVELES  ·  LA PROFUNDIDAD ES OCUPACIÓN",
@@ -2889,7 +3019,36 @@ export function mountMemoryHierarchy(stageEl: HTMLElement, getLatestState: () =>
             border.position.z = -j * 90 * (0.3 + au8.level * 1.8) + rz8 * 90 * au8.amp;
             border.position.x = rz8 * 14;
             border.rotation.z = Math.sin(vm8.angle * 0.5) * 0.035 + rz8 * 0.06;
-            // L1 sits at the left edge of its own level, at that level's depth.
+            // The room, level by level. SALA MIX and SALA RT60 are the shared
+            // chamber every voice is heard through; the deeper levels print
+            // what that room is doing — its occupancy from the quorum, and the
+            // tail that follows from it.
+            {
+                const chMix8 = sp8.chambermix ?? 0.18;
+                const chSize8 = sp8.chambersize ?? 0.45;
+                const q8 = [
+                    chMix8,
+                    chSize8,
+                    // The ring's quorum is the chamber's occupancy, and
+                    // occupancy is absorption — Sabine. Read defensively: slot
+                    // 8 has no other reason to touch the phenological cursor.
+                    Math.min(1, (() => {
+                        try {
+                            return (window as unknown as {
+                                __phenoCursor?: { quorum?: number };
+                            }).__phenoCursor?.quorum ?? 0.5;
+                        } catch { return 0.5; }
+                    })()),
+                    c8.entropy,
+                    chSize8 * (0.4 + chMix8 * 0.6),
+                    Math.min(1, atmMix),
+                ][j % 6];
+                const q = Math.round(q8 * 100) / 100;
+                if (q !== sala8Was[j]) {
+                    sala8Was[j] = q;
+                    tags8.text(j, `${SLOT_NOUNS.s8.one(j)} ${q.toFixed(2)}`);
+                }
+            }
             _t8b.set(bx - 26, cy + baseH / 2, border.position.z);
             tags8.set(j, _t8b, (0.25 + vol * 0.5) * masterA);
 
@@ -3146,8 +3305,17 @@ export function mountHashing(stageEl: HTMLElement, getLatestState: () => Parliam
     // K0..K7 on the keys. Slot 9 keeps the species field as well, so these are
     // deliberately terse — the animal names are the text on this stage, and a
     // second full-length caption beside them would be two things shouting.
-    const tags9 = makeLabelField(root9, NUM_KEYS, 0xffcc88, 12);
-    for (let i = 0; i < NUM_KEYS; i++) tags9.text(i, SLOT_NOUNS.s9.one(i));
+    // Console typography: tight, upright, bracketed like slot 5 because these
+    // ARE channels — but smaller, since the animal names on this stage are the
+    // text that should lead.
+    const tags9 = makeLabelField(root9, NUM_KEYS, 0xa8d8ff, 11, {
+        font: "500 24px ui-monospace, 'SF Mono', Menlo, monospace",
+        tracking: 2,
+        brackets: true,
+    });
+    const mix9Was = new Float32Array(NUM_KEYS).fill(-1);
+    /** The mixer faders, in the order the keys are drawn. CC 42-49. */
+    const MIX9 = ["drone", "pad", "kick", "perc", "dust", "sample", "corpus", "ultra"];
     const calm9 = makeCalm();
 
     // Arrowhead triangles
@@ -3382,6 +3550,19 @@ export function mountHashing(stageEl: HTMLElement, getLatestState: () => Parliam
                 keyBoxes[i].scale.y * t9 * (20 / 15),
                 keyBoxes[i].scale.z * t9 * (20 / 15), _q9);
             keys9.tint(i, hov9 || grb9 ? 1 : 0.78, 1.0, hov9 || grb9 ? 0.4 : 0.9);
+            // Each key IS a mixer channel: its name, its CC, and its live
+            // level. `mix:<layer>` arrives on the slot's own mirror from
+            // /mix/* — the same value the fader shows — so the table is a
+            // picture of the console mapping layers to levels.
+            {
+                const lvl9 = sp9[`mix:${MIX9[i % MIX9.length]}`] ?? 0.5;
+                const q = Math.round(lvl9 * 100) / 100;
+                if (q !== mix9Was[i]) {
+                    mix9Was[i] = q;
+                    tags9.text(i,
+                        `${SLOT_NOUNS.s9.one(i)} CC${42 + (i % 8)} ${q.toFixed(2)}`);
+                }
+            }
             _t9c.set(keyBoxes[i].position.x - 30, keyBoxes[i].position.y,
                      keyBoxes[i].position.z);
             tags9.set(i, _t9c, (0.20 + vol * 0.5) * masterA * (hov9 || grb9 ? 1.8 : 1));

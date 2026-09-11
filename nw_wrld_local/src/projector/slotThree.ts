@@ -489,8 +489,33 @@ export type LabelField = {
  * distance, which is what a caption wants — it is being read, not being drawn
  * in perspective.
  */
+/**
+ * How a slot's captions are SET, not just what they say.
+ *
+ * Six structures, six registers of text. A BioToken factor is a readout on an
+ * instrument panel and should look like one; an eco signal is a field
+ * measurement; a parliamentary state is a record. Giving all six the same
+ * typeface makes them one system with six views, which is the opposite of what
+ * they are.
+ */
+export type LabelStyle = {
+    /** Canvas font shorthand. Monospace for anything with a number in it. */
+    font?: string;
+    /** Extra tracking in px, applied per glyph. Wide caps read as an index. */
+    tracking?: number;
+    /** Draw a bracket around the text, HUD-style. */
+    brackets?: boolean;
+    /** Draw a rule under the text. */
+    underline?: boolean;
+    /** A faint block behind the glyphs, for readability over bright geometry. */
+    plate?: boolean;
+    /** Per-frame RGB split, in px. Slot 8 uses it; nothing else should. */
+    glitch?: number;
+};
+
 export function makeLabelField(
     parent: THREE.Object3D, capacity: number, color = 0xffcc88, px = 15,
+    style: LabelStyle = {},
 ): LabelField {
     const sprites: THREE.Sprite[] = [];
     const canvases: HTMLCanvasElement[] = [];
@@ -498,18 +523,42 @@ export function makeLabelField(
 
     for (let i = 0; i < capacity; i++) {
         const cv = document.createElement("canvas");
-        cv.width = 256; cv.height = 64;
+        cv.width = 384; cv.height = 72;
         const spr = new THREE.Sprite(new THREE.SpriteMaterial({
             map: new THREE.CanvasTexture(cv),
             transparent: true, depthWrite: false, depthTest: true,
             sizeAttenuation: false, opacity: 0,
         }));
         // In screen units, since attenuation is off. Roughly px tall.
-        spr.scale.set(px * 0.016, px * 0.004, 1);
+        spr.scale.set(px * 0.020, px * 0.00375, 1);
         spr.visible = false;
         parent.add(spr);
         sprites.push(spr);
         canvases.push(cv);
+    }
+
+    const FONT = style.font ?? "600 34px ui-monospace, 'SF Mono', Menlo, monospace";
+    const TRACK = style.tracking ?? 0;
+
+    /** Width of `s` including the extra tracking, so everything stays centred. */
+    function widthOf(g: CanvasRenderingContext2D, s: string): number {
+        return g.measureText(s).width + TRACK * Math.max(0, s.length - 1);
+    }
+
+    /** Draw with per-glyph tracking. canvas letterSpacing is not universal. */
+    function tracked(g: CanvasRenderingContext2D, s: string, cx: number, cy: number,
+                     stroke: boolean) {
+        if (TRACK === 0) {
+            if (stroke) g.strokeText(s, cx, cy); else g.fillText(s, cx, cy);
+            return;
+        }
+        let x = cx - widthOf(g, s) / 2;
+        g.textAlign = "left";
+        for (const ch of s) {
+            if (stroke) g.strokeText(ch, x, cy); else g.fillText(ch, x, cy);
+            x += g.measureText(ch).width + TRACK;
+        }
+        g.textAlign = "center";
     }
 
     function draw(i: number, s: string) {
@@ -517,16 +566,65 @@ export function makeLabelField(
         const g = cv.getContext("2d");
         if (!g) return;
         g.clearRect(0, 0, cv.width, cv.height);
-        g.font = "600 34px ui-monospace, 'SF Mono', Menlo, monospace";
+        g.font = FONT;
         g.textAlign = "center";
         g.textBaseline = "middle";
+        const cx = cv.width / 2, cy = cv.height / 2;
+        const w = widthOf(g, s);
+
+        if (style.plate) {
+            g.fillStyle = "rgba(0,0,0,0.55)";
+            g.fillRect(cx - w / 2 - 10, cy - 24, w + 20, 48);
+        }
+        if (style.brackets) {
+            // The HUD bracket: two corners, not a box. A box is a label; corners
+            // are a readout that something else is inside.
+            const bx = cx - w / 2 - 13, by = cy - 22, bw = w + 26, bh = 44, t = 9;
+            g.strokeStyle = hex;
+            g.globalAlpha = 0.7;
+            g.lineWidth = 3;
+            g.beginPath();
+            g.moveTo(bx, by + t); g.lineTo(bx, by); g.lineTo(bx + t, by);
+            g.moveTo(bx + bw - t, by + bh); g.lineTo(bx + bw, by + bh);
+            g.lineTo(bx + bw, by + bh - t);
+            g.stroke();
+            g.globalAlpha = 1;
+        }
         // A dark pad under the glyphs. Additive scenes wash out thin type, and
         // an outline costs nothing next to a texture upload.
         g.lineWidth = 6;
         g.strokeStyle = "rgba(0,0,0,0.85)";
-        g.strokeText(s, cv.width / 2, cv.height / 2);
+        tracked(g, s, cx, cy, true);
+
+        if (style.glitch && style.glitch > 0) {
+            // RGB split. The offset walks with the text itself rather than with
+            // a random number, so a given caption tears the same way every time
+            // it is drawn and the field does not boil.
+            const d = style.glitch;
+            let h = 0;
+            for (let k = 0; k < s.length; k++) h = (h * 31 + s.charCodeAt(k)) % 211;
+            const o = ((h / 211) - 0.5) * 2 * d;
+            g.globalAlpha = 0.55;
+            g.fillStyle = "#ff3b30";
+            tracked(g, s, cx - o, cy, false);
+            g.fillStyle = "#30d0ff";
+            tracked(g, s, cx + o, cy, false);
+            g.globalAlpha = 1;
+        }
+
         g.fillStyle = hex;
-        g.fillText(s, cv.width / 2, cv.height / 2);
+        tracked(g, s, cx, cy, false);
+
+        if (style.underline) {
+            g.strokeStyle = hex;
+            g.globalAlpha = 0.5;
+            g.lineWidth = 2;
+            g.beginPath();
+            g.moveTo(cx - w / 2, cy + 21);
+            g.lineTo(cx + w / 2, cy + 21);
+            g.stroke();
+            g.globalAlpha = 1;
+        }
         (sprites[i].material as THREE.SpriteMaterial).map!.needsUpdate = true;
     }
 
