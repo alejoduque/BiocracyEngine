@@ -15,106 +15,118 @@
              ███████╗██║ ╚████║╚██████╔╝██║██║ ╚████║███████╗
              ╚══════╝╚═╝  ╚═══╝ ╚═════╝ ╚═╝╚═╝  ╚═══╝╚══════╝
                                                              
-        cybernetic feedback → multispecies parliament        
+     retroalimentación cibernética → parlamento multiespecie  
 ∿─∿─∿─∿─∿─∿─∿─∿─∿─∿─∿─∿─∿─∿─∿─∿─∿─∿─∿─∿─∿─∿─∿─∿─∿─∿─∿─∿─∿─∿─∿
 ```
 
+**Español** · [English](README.en.md)
+
 # BiocracyEngine
 
-A live audiovisual instrument and a deployable public artifact that couples three registers into a single feedback loop: a public blockchain, a deliberative assembly (the multispecies parliament), and the phenology of a tropical dry forest. Every control parameter simultaneously drives SuperCollider audio synthesis and visual modules (slots 0–9, P, F, B, E, and R) via a bidirectional OSC/WebSocket bridge.
+Un instrumento audiovisual en vivo y un artefacto público desplegable que acopla tres registros en un solo bucle de retroalimentación: una blockchain pública, una asamblea deliberativa (el parlamento multiespecie) y la fenología de un bosque seco tropical. Cada parámetro de control acciona simultáneamente la síntesis de audio en SuperCollider y los módulos visuales (slots 0–9, P, F, B, E, R y A) a través de un puente bidireccional OSC/WebSocket.
 
-Rather than "visualizing data," the engine performs a cybernetic coupling where the forest, blockchain protocols, and human actions hold equal standing as political agents.
+Más que "visualizar datos", el motor ejecuta un acoplamiento cibernético donde el bosque, los protocolos blockchain y las acciones humanas tienen igual condición de agentes políticos.
 
-![Slot F · DarkForest — the tropical dry forest of Reserva Manakai (Planeta Rica, Córdoba) as a live stratigraphic data-scape: Humboldt's strata from atmósfera down through dosel, sotobosque and hojarasca to the mycorrhizal network, with species binomials, ecological flow vectors (fotosíntesis CO₂→C, respiración suelo C→ATM, micorriza C→hongo, herbivoría, fijación N) and the incoming Ethereum stream along the right edge.](BEngine.jpg)
+![Slot F · DarkForest — el bosque seco tropical de la Reserva Manakai (Planeta Rica, Córdoba) como paisaje de datos estratigráfico en vivo: los estratos de Humboldt desde la atmósfera hasta la red micorrízica pasando por dosel, sotobosque y hojarasca, con binomios de especies, vectores de flujo ecológico (fotosíntesis CO₂→C, respiración suelo C→ATM, micorriza C→hongo, herbivoría, fijación N) y el flujo entrante de Ethereum por el borde derecho.](BEngine.jpg)
 
-*Slot F · **DarkForest** — the forest reading itself while the chain flows. Strata after Humboldt; every binomial is a member of the parliament.*
-
----
-
-## 1. Theoretical Foundations & Research Contributions
-
-The core contribution of the BiocracyEngine lies in **translating critical, decolonial, and political theory into working technical constraints in software.** It stands as a concrete, deployable counter-model to Nature Fintech and "Ecological State Protocols" by compiling philosophy into executable rules rather than citing it as external authority.
-
-### Philosophy Compiled into Running Rules
-*   **Glissant's Right to Opacity:** Implemented as a software constraint. The *Opacity Clause* (visualized via the `opacityFloor` parameter) withholds a deterministic fraction of active species labels from the projection. This clause is declared *untranslatable to sound* (it does not alter the SuperCollider synthesis), honoring Glissant's assertion that the subaltern must have a right to remain opaque and unconsumed by the Western gaze.
-*   **Agamben's Coming Community:** Seated in the code as a parliament of *singularities, never identities*. The assembly does not classify species by their economic value or utility, but by their sheer presence.
-*   **"Absence is Voice":** In slot P (Phenological Calendar) and slot F (DarkForest), species that fall below the sensory detection threshold are not deleted or set to zero; instead, they persist in the background as 1-bit dither or visual shimmer. Their absence speaks as a low-level frequency, asserting that what is unmeasured still participates.
-*   **Seasonal Benches:** The membership and voting weight of the parliament's benches recompose dynamically following the seasonal cycles of the phenological calendar.
-
-### The Parliament/Surveillance Distinction as an Architectural Claim
-The pipeline used here is: **Acoustic Sensor → Vectorization → Smart Contract**.  
-An important architectural claim of this work is that *the same sensing pipeline constitutes either surveillance or a parliament depending only on the architecture of power surrounding it.* Vectorization and remote sensing are not inherently tools of extraction; they can be configured to establish local sovereignty, turning a surveillance mesh into a site of representation.
-
-### Non-Tradable Inscription: The BioToken
-The BioToken inverts the "tokenize-the-planet" logic of carbon credits and biodiversity offsets. It is:
-*   A **unit of political inscription** (participation) rather than a tradable asset (commodity).
-*   A non-financialized protocol designed to register validated conservation actions and deep listening.
-*   A buildable counter-model to speculative "Ecological State Protocols" and Nature Fintech.
-
-### Disintermediation of the Extractive NGO Circuit
-The system routes conservation value and decision-making sovereignty directly to the local, marginal community (El Balzal, Córdoba, Colombia). Data sovereignty is kept local, and the honest limits of the system—such as the dependencies and boundaries of chain-level governance—are made visible in the interface rather than hidden behind greenwashed UI templates.
-
-### Phenology-Driven Governance
-Rather than using the standardized global taxonomies of the IUCN Red List as an absolute authority, the engine maps the forest's own local seasonal calendar using a 572-species inventory from the Reserva Manakai. Ecological time governs the synthesis: the seasonal weight and active-species fraction are fed back into SuperCollider to drive `harmonicrich` and `texturedepth`.
-
-### Situated Epistemology & Research-Creation
-Rooted in *SubAmérica* and technodiversity (Yuk Hui), this project fuses Investigación-Acción Participativa (IAP, after Orlando Fals Borda) with on-chain governance. The result is delivered as a **liminal research object** rather than a finished artwork, making it reproducible and adaptable by other territorial communities.
+*Slot F · **DarkForest** — el bosque leyéndose a sí mismo mientras la cadena fluye. Estratos según Humboldt; cada binomio es miembro del parlamento.*
 
 ---
 
-## 2. Deployable Public Artifacts
+## 1. Fundamentos teóricos y aportes de investigación
 
-The project is released across three software repositories and a community-facing field tool:
-*   **BiocracyEngine**: The core audiovisual synthesis, WebGL/Three.js projection, and MIDI/OSC bridge engine.
-*   **bioacoustic-scripts**: The python-based web3 blockchain parser and audio-vector feature extraction tools.
-*   **dIAP (Decolonial IAP)**: Decentralized action research protocols and on-chain assembly tools.
-*   **Biomap SoundWalk App**: A participatory listening and conservation instrument. It turns guided soundwalks in Reserva Manakai into logged acts of ecological presence, fusing deep listening and passive acoustic monitoring (PAM) in one field tool. The app carries the incentive layer, distributing BioToken-registered rewards to the El Balzal community for validated conservation actions, closing the loop between listening, inscription, and economic sustainability.
+El aporte central del BiocracyEngine está en **traducir teoría crítica, decolonial y política en restricciones técnicas operantes dentro del software.** Se plantea como contramodelo concreto y desplegable frente al Nature Fintech y los "Protocolos de Estado Ecológico", compilando filosofía en reglas ejecutables en lugar de citarla como autoridad externa.
+
+### Filosofía compilada en reglas que corren
+
+*   **El derecho a la opacidad de Glissant:** implementado como restricción de software. La *Cláusula de Opacidad* (visualizada mediante el parámetro `opacityFloor`) retiene una fracción determinista de las etiquetas de especies activas, excluyéndolas de la proyección. Esta cláusula se declara *intraducible a sonido* (no altera la síntesis en SuperCollider), honrando la afirmación de Glissant de que lo subalterno tiene derecho a permanecer opaco y no consumido por la mirada occidental.
+*   **La comunidad que viene de Agamben:** asentada en el código como un parlamento de *singularidades, nunca identidades*. La asamblea no clasifica a las especies por su valor económico o utilidad, sino por su mera presencia.
+*   **"La ausencia es voz":** en el slot P (Calendario Fenológico) y el slot F (DarkForest), las especies que caen bajo el umbral de detección sensible no se borran ni se ponen en cero; persisten en el fondo como dither de 1 bit o destello visual. Su ausencia habla como frecuencia de bajo nivel, afirmando que lo no medido sigue participando.
+*   **Bancadas estacionales:** la membresía y el peso de voto de las bancadas del parlamento se recomponen dinámicamente siguiendo los ciclos estacionales del calendario fenológico.
+
+### La distinción parlamento/vigilancia como afirmación arquitectónica
+
+El pipeline empleado es: **sensor acústico → vectorización → contrato inteligente**.
+
+Una afirmación arquitectónica importante de este trabajo es que *el mismo pipeline de sensado constituye vigilancia o parlamento dependiendo únicamente de la arquitectura de poder que lo rodea.* La vectorización y el sensado remoto no son intrínsecamente herramientas de extracción; pueden configurarse para establecer soberanía local, convirtiendo una malla de vigilancia en un sitio de representación.
+
+### Inscripción no transable: el BioToken
+
+El BioToken invierte la lógica de "tokenizar el planeta" de los créditos de carbono y las compensaciones de biodiversidad. Es:
+
+*   Una **unidad de inscripción política** (participación) antes que un activo transable (mercancía).
+*   Un protocolo no financiarizado diseñado para registrar acciones de conservación validadas y escucha profunda.
+*   Un contramodelo construible frente a los "Protocolos de Estado Ecológico" especulativos y el Nature Fintech.
+
+### Desintermediación del circuito ONG extractivo
+
+El sistema enruta el valor de conservación y la soberanía de decisión directamente hacia la comunidad local y marginal (El Balzal, Córdoba, Colombia). La soberanía de los datos se mantiene local, y los límites honestos del sistema —como las dependencias y fronteras de la gobernanza a nivel de cadena— se hacen visibles en la interfaz en lugar de esconderse tras plantillas de UI con barniz verde.
+
+### Gobernanza guiada por la fenología
+
+En lugar de usar las taxonomías globales estandarizadas de la Lista Roja de la UICN como autoridad absoluta, el motor mapea el calendario estacional propio del bosque usando un inventario de 572 especies de la Reserva Manakai. El tiempo ecológico gobierna la síntesis: el peso estacional y la fracción de especies activas se retroalimentan hacia SuperCollider para accionar `harmonicRich` y `textureDepth`.
+
+### Epistemología situada e investigación-creación
+
+Enraizado en *SubAmérica* y la tecnodiversidad (Yuk Hui), el proyecto fusiona la Investigación-Acción Participativa (IAP, según Orlando Fals Borda) con gobernanza on-chain. El resultado se entrega como **objeto liminal de investigación** antes que como obra terminada, lo que lo hace reproducible y adaptable por otras comunidades territoriales.
 
 ---
 
-## 3. Technical Architecture & Data Flow
+## 2. Artefactos públicos desplegables
+
+El proyecto se publica en tres repositorios de software y una herramienta de campo de cara a la comunidad:
+
+*   **BiocracyEngine**: el motor central de síntesis audiovisual, proyección WebGL/Three.js y puente MIDI/OSC.
+*   **bioacoustic-scripts**: el parser web3 en Python y las herramientas de extracción de vectores de características de audio.
+*   **dIAP (IAP Decolonial)**: protocolos descentralizados de investigación-acción y herramientas de asamblea on-chain.
+*   **Biomap SoundWalk App**: un instrumento participativo de escucha y conservación. Convierte caminatas sonoras guiadas en la Reserva Manakai en actos registrados de presencia ecológica, fusionando escucha profunda y monitoreo acústico pasivo (PAM) en una sola herramienta de campo. La app lleva la capa de incentivos, distribuyendo recompensas registradas en BioToken a la comunidad de El Balzal por acciones de conservación validadas, cerrando el bucle entre escucha, inscripción y sostenibilidad económica.
+
+---
+
+## 3. Arquitectura técnica y flujo de datos
 
 ```
-ETH Blockchain
+Blockchain ETH
      │
      ▼
-eth_sonify.py  (web3 Python scraper)
+eth_sonify.py  (scraper web3 en Python)
      │  OSC → UDP:57120
      ▼
 SuperCollider
-  ├─ 1_server_config.scd   MOTU/CoreAudio auto-detect
-  ├─ 2_midi_control.scd    Faderfox LC2 → ~buses (20 CC)
+  ├─ 1_server_config.scd   autodetección de dispositivo de audio
+  ├─ 2_midi_control.scd    Faderfox LC2 → ~buses (42 CC)
   ├─ 3_synthdefs.scd       SynthDefs (opalKick/Perc/Drone/Dust/Bell)
-  ├─ 4_gui.scd             SC GUI (1-bit monospace) + matrix mixer
-  ├─ 5_beat_engine.scd     Evolving beat engine (TX-driven melodic pool)
-  ├─ 6_osc_handlers.scd    OSC in from HTML/bridge → ~buses
-  ├─ 10_sample_system.scd  samples/ playback + paulstretch
-  ├─ 14_phenological_corpus.scd  AudioMoth corpus on the 365-day ring
-  └─ audio out → MOTU 828x or CoreAudio stereo
+  ├─ 4_gui.scd             GUI de SC (monoespaciada 1 bit) + mezclador matricial
+  ├─ 5_beat_engine.scd     motor de beat evolutivo (pool melódico guiado por TX)
+  ├─ 6_osc_handlers.scd    OSC entrante desde HTML/puente → ~buses
+  ├─ 10_sample_system.scd  reproducción de samples/ + paulstretch
+  ├─ 14_phenological_corpus.scd  corpus AudioMoth sobre el anillo de 365 días
+  ├─ 17_chain_processing.scd     la cadena procesa las grabaciones del bosque
+  └─ salida de audio → MOTU 828x o estéreo por defecto del sistema
      │
-     │  OSC echo → UDP:3333  (~visualsDest)
+     │  eco OSC → UDP:3333  (~visualsDest)
      ▼
 parliament-bridge.js  (Node.js, OSC↔WebSocket)
-  │  UDP:3333  ← SC / MIDI echo
-  │  WS:3334   ↔ browser
+  │  UDP:3333  ← eco de SC / MIDI
+  │  WS:3334   ↔ navegador
   │  HTTP:3335 /diag
   │
-  │  SC_TO_CH path translation:
-  │    /soneth/* → /ch/setXxx  (method-trigger)
-  │    /parliament/* and /agent/* → raw pass-through
+  │  traducción de rutas SC_TO_CH:
+  │    /soneth/* → /ch/setXxx  (disparo de método)
+  │    /parliament/* y /agent/* → paso directo sin traducir
   │
   ▼
-nw_wrld Electron browser  (parliament.html)
+navegador Electron nw_wrld  (parliament.html)
   │
-  ├─ HTML sliders (34 sliders, 4 rows + Beat Engine)
-  │    └─ input → sendOSC → WS → bridge → SC bus
-  │           └─ patchStoreFromSlider → __applySonethToViz (DIAG-tracked)
+  ├─ sliders HTML (34 sliders, 4 filas + Beat Engine)
+  │    └─ input → sendOSC → WS → puente → bus de SC
+  │           └─ patchStoreFromSlider → __applySonethToViz (rastreado por DIAG)
   │
-  ├─ SC echo → onmessage → __applySonethToViz (DIAG-tracked)
+  ├─ eco de SC → onmessage → __applySonethToViz (rastreado por DIAG)
   │
   └─ applySonethToViz(key, v)  ─────────────────────────────────────────┐
        │                                                                  │
-       ├─ Slot 0  ParliamentStage.js   (Three.js)  amber + phosphor      │
+       ├─ Slot 0  ParliamentStage.js   (Three.js)  ámbar + fósforo        │
        ├─ Slot 1  AsteroidWaves        (p5.js)  → __slot1Soneth          │
        ├─ Slot 2  LowEarthPoint        (Three.js)                        │
        ├─ Slot 3  PerlinBlob           (p5.js)  → __slot3Soneth          │
@@ -124,942 +136,613 @@ nw_wrld Electron browser  (parliament.html)
        ├─ Slot 7  Geometry             (p5.js)  → __slot7Soneth          │
        ├─ Slot 8  MemoryHierarchy      (p5.js)  → __slot8Soneth          │
        ├─ Slot 9  Hashing              (p5.js)  → __slot9Soneth          │
-       ├─ Slot P  PhenologicalCalendar (Three.js · fetched module)       │
-       ├─ Slot F  DarkForest           (Three.js · fetched module)       │
-       ├─ Slot B  Transito             (Three.js · fetched module)       │
-       │          └─ reverse: throughput → /soneth/drone* → bridge → SC  │
-       ├─ Slot E  Estratos             (Three.js · fetched module)       │
-       │          └─ forward: __phenoParams → bancada pins the strata,    │
-       │             activityThreshold → population, opacityFloor +       │
-       │             seasonalWeight → which species are present today     │
-       ├─ Slot R  Registro     (canvas · pretext ASCII field × slot 6)    │
-       │          └─ reverse: buffer → /soneth/memoryfeed, consensus →     │
-       │             atmospheremix                                          │
-       └─ Slot A  Antifonía            (Three.js · fetched module) ───────┘
-                  ├─ forward: /tide/state → chorus density, votes → the room
-                  │           speaks, __ednaBio → per-stratum weight
-                  ├─ events:  calls → /antifonia/call → SC picks the recording
-                  └─ reverse: chorus → /soneth/texturedepth, spread →
-                              spatialspread, machine share → noiselevel
+       ├─ Slot P  PhenologicalCalendar (Three.js · módulo cargado aparte) │
+       ├─ Slot F  DarkForest           (Three.js · módulo cargado aparte) │
+       ├─ Slot B  Transito             (Three.js · módulo cargado aparte) │
+       │          └─ inverso: caudal → /soneth/drone* → puente → SC       │
+       ├─ Slot E  Estratos             (Three.js · módulo cargado aparte) │
+       │          └─ directo: __phenoParams → bancada fija los estratos,  │
+       │             activityThreshold → población, opacityFloor +        │
+       │             seasonalWeight → qué especies están presentes hoy    │
+       ├─ Slot R  Registro     (canvas · campo ASCII pretext × slot 6)    │
+       │          └─ inverso: buffer → /soneth/memoryfeed, consenso →     │
+       │             atmospheremix                                        │
+       └─ Slot A  Antifonía            (Three.js · módulo cargado aparte)─┘
+                  ├─ directo: /tide/state → densidad del coro, votos → la
+                  │           sala habla, __ednaBio → peso por estrato
+                  ├─ eventos: llamados → /antifonia/call → SC elige la grabación
+                  └─ inverso: coro → /soneth/texturedepth, dispersión →
+                              spatialspread, cuota máquina → noiselevel
 
-MIDI (Faderfox Micromodul LC2) ──► SC buses ──► OSC echo ──► bridge ──► browser
+MIDI (Faderfox Micromodul LC2) ──► buses SC ──► eco OSC ──► puente ──► navegador
 ```
 
-### Slots 4–9 · the six instruments
+### Slots 4–9 · los seis instrumentos
 
-The six data-structure slots were flat diagrams on orthographic cameras that
-read control *values* and never the sound. They are now the **six voices of the
-engine, one each and no repeats** — the instrument laid out across six screens:
+Los seis slots de estructuras de datos eran diagramas planos sobre cámaras ortográficas que leían *valores* de control y nunca el sonido. Ahora son las **seis voces del motor, una cada uno y sin repetir** — el instrumento desplegado en seis pantallas:
 
-| Slot | Instrument | SC voice | Register |
+| Slot | Instrumento | Voz en SC | Registro |
 |---|---|---|---|
-| 4 | **DRONE** | `\opalDrone` | the sustained bed |
+| 4 | **DRONE** | `\opalDrone` | la cama sostenida |
 | 5 | **CAMPANAS** | `\elektronBell` | pads |
-| 6 | **PERCUSIÓN** | `\opalPerc` | pulse |
+| 6 | **PERCUSIÓN** | `\opalPerc` | pulso |
 | 7 | **BOMBO** | `\opalKick` | sub |
 | 8 | **POLVO** | `\opalDust` | granular |
-| 9 | **MUESTRAS** | `samplePlayer*` | field recordings |
+| 9 | **MUESTRAS** | `samplePlayer*` | grabaciones de campo |
 
-Each has a perspective camera the viewer can orbit, real depth in its geometry
-(the drone's traces recede by age, the bell lattice breathes on Z, the tree
-stands in layers, the kick radiates as a pressure front, the cache is a stack
-you could walk into, the hash table is a ring), and the same idle drift as every
-other slot.
+Cada uno tiene una cámara en perspectiva que se puede orbitar, profundidad real en su geometría (las trazas del drone se alejan con la edad, la retícula de campanas respira en Z, el árbol se sostiene por capas, el bombo se irradia como frente de presión, la caché es una pila por la que se podría caminar, la tabla hash es un anillo) y la misma deriva en reposo que el resto de slots.
 
-The instrument's name used to be **drawn into the scene** as a sprite floating
-over each one. That is gone. The name was a caption on a projection surface —
-the one element in six otherwise wordless slots that addressed the viewer
-instead of the room, and it sat in the same upper third the performance
-projects into. The binding it announced is the real one and it survives
-untouched: each slot still reads its own band of the spectrum and its own
-voice's onsets, per the table above.
+El nombre del instrumento solía **dibujarse dentro de la escena** como un sprite flotando sobre cada uno. Eso se eliminó: era un rótulo sobre una superficie de proyección, el único elemento en seis slots por lo demás sin palabras que se dirigía al espectador en vez de a la sala, y ocupaba el mismo tercio superior hacia el que proyecta la performance. La vinculación que anunciaba es la real y sobrevive intacta: cada slot sigue leyendo su propia banda del espectro y los onsets de su propia voz, según la tabla de arriba.
 
-**And now they play it.** Each of the six was a listener: bound to one voice,
-reading that voice's band and onset, drawing what it heard. They also *speak*
-now, from their own structural events — the screen plays the instrument:
+**Y ahora lo tocan.** Cada uno de los seis era un oyente: ligado a una voz, leyendo su banda y su onset, dibujando lo que oía. Ahora también *hablan*, desde sus propios eventos estructurales — la pantalla toca el instrumento:
 
-| Slot | Voice | The structure's own event |
+| Slot | Voz | El evento propio de la estructura |
 |---|---|---|
-| 4 | DRONE | the reticule completes a full sweep → a sustained **partial** joins over the bed |
-| 5 | CAMPANAS | an edge forms — two nodes that were not connected now are |
-| 6 | PERCUSIÓN | a node arrives at its target — a rebalance has actually completed |
-| 7 | BOMBO | a target is acquired — a ray crosses a sweep |
-| 8 | POLVO | a layer overflows its own level — blocks spilling past the edge |
-| 9 | MUESTRAS | a hash collision — and *which* bucket collided picks the recording |
+| 4 | DRONE | la retícula completa un barrido entero → un **parcial** sostenido se suma a la cama |
+| 5 | CAMPANAS | se forma una arista — dos nodos que no estaban conectados ahora lo están |
+| 6 | PERCUSIÓN | un nodo llega a su destino — un rebalanceo se ha completado de verdad |
+| 7 | BOMBO | se adquiere un objetivo — un rayo cruza un barrido |
+| 8 | POLVO | una capa desborda su propio nivel — bloques derramándose por el borde |
+| 9 | MUESTRAS | una colisión de hash — y *cuál* bucket colisionó elige la grabación |
 
-**A slot plays the engine's voice, not a new instrument.** The first version made
-them separate: pitches from independent linear maps, envelopes from literals, spawns
-unbundled. They did not blend, and one of them did not move at all — `\elektronBell`
-clamps its fundamental to 28–180 Hz (`3_synthdefs.scd:241`), so a linear map to MIDI
-48–84 crossed the ceiling at tone 0.15 and **85 % of the range played one identical
-pitch**. Now:
+**Un slot toca la voz del motor, no un instrumento nuevo.** La primera versión las hacía separadas: alturas desde mapeos lineales independientes, envolventes desde literales, spawns sin agrupar. No mezclaban, y una de ellas no se movía en absoluto — `\elektronBell` limita su fundamental a 28–180 Hz (`3_synthdefs.scd:241`), así que un mapeo lineal a MIDI 48–84 cruzaba el techo en tono 0.15 y **el 85 % del rango tocaba una única altura idéntica**. Ahora:
 
-- the **pad** snaps to the semitone grid and octave-folds below 160 Hz the way the ETH
-  pads do, and is queued on `~padQueue` so the drain gives it `\polyComp` — spawning
-  direct made it up to 4.9× louder than a concurrent engine pad *and* corrupted the
-  engine's own `1/√n` compensation by staying invisible to `~padLive`;
-- the **perc** draws from `~computePitchPool` × `~speciesBand`, the engine's own mode,
-  rather than a continuous sweep that touched those notes by coincidence;
-- the **kick** walks the engine's seven discrete steps (45.5–54.5 Hz) and rings for its
-  0.9–1.3 s rather than clicking for 0.28;
-- everything spawns inside `s.makeBundle(s.latency, …)`, as every engine voice does.
+- el **pad** se ajusta a la rejilla de semitonos y pliega octavas bajo 160 Hz igual que los pads de ETH, y se encola en `~padQueue` para que el drenaje le dé `\polyComp` — lanzarlo directo lo dejaba hasta 4.9× más fuerte que un pad concurrente del motor *y* corrompía la compensación `1/√n` del propio motor al quedar invisible para `~padLive`;
+- la **percusión** toma de `~computePitchPool` × `~speciesBand`, el modo propio del motor, en vez de un barrido continuo que tocaba esas notas por coincidencia;
+- el **bombo** recorre los siete pasos discretos del motor (45.5–54.5 Hz) y resuena sus 0.9–1.3 s en lugar de chasquear durante 0.28;
+- todo se lanza dentro de `s.makeBundle(s.latency, …)`, como cada voz del motor.
 
-**Slot 4 adds a partial; it does not re-pitch the bed.** It used to call
-`~opalDroneSynth.set(\freq, …)` — a second owner of a node the beat engine walks every
-four bars, with no arbitration (`\drone` is the one voice the engine never stamps into
-`~lastVoiceAt`). On a 4-second glide (`droneFade × 2`) the bed spent most of its life in
-transit and never arrived. It now spawns its own low-amplitude `\opalDrone`, capped at
-two concurrent and released after nine seconds. One owner each.
+**El slot 4 añade un parcial; no re-afina la cama.** Antes llamaba a `~opalDroneSynth.set(\freq, …)` — un segundo dueño de un nodo que el motor de beat recorre cada cuatro compases, sin arbitraje alguno (`\drone` es la única voz que el motor nunca estampa en `~lastVoiceAt`). Con un glissando de 4 segundos (`droneFade × 2`) la cama pasaba la mayor parte de su vida en tránsito y nunca llegaba. Ahora lanza su propio `\opalDrone` de amplitud baja, con tope de dos concurrentes y liberado a los nueve segundos. Un dueño para cada cosa.
 
-**A slot speaks on an EXCURSION, not on a change.** These counts jitter every
-frame — slot 6 adds `Math.random()` to node positions on the line after it counts
-which nodes have arrived, so "arrived" is frame noise by construction. A naive
-"has it risen since last time?" is therefore true whenever the rate gate reopens,
-and the gate stops being a limit and becomes the clock: measured, slot 6 fired
-8×/s (a vibration) and slot 7 at a dead-steady ~83 BPM (a drum machine). Neither
-was the structure speaking; both were the rate limiter. Each slot now runs a
-Schmitt trigger on a slow baseline — the measure has to rise ~35% above what it
-has lately been doing, and come back down before it can speak again. Measured
-after: 0.05–1.35 onsets/s, irregular.
+**Un slot habla ante una EXCURSIÓN, no ante un cambio.** Estas cuentas fluctúan en cada cuadro — el slot 6 suma `Math.random()` a las posiciones de los nodos en la línea siguiente a contar cuáles han llegado, así que "llegado" es ruido de cuadro por construcción. Un ingenuo "¿ha subido desde la última vez?" resulta entonces verdadero siempre que se reabre la compuerta de tasa, y la compuerta deja de ser un límite para volverse el reloj: medido, el slot 6 disparaba 8 veces por segundo (una vibración) y el slot 7 a unos 83 BPM clavados (una caja de ritmos). Ninguno era la estructura hablando; ambos eran el limitador de tasa. Cada slot corre ahora un disparador Schmitt sobre una línea base lenta — la medida tiene que subir ~35 % por encima de lo que ha venido haciendo, y volver a bajar antes de poder hablar de nuevo. Medido después: 0.05–1.35 onsets/s, irregular.
 
-**The slot does not decide whether the note happens.** The beat engine already
-owns when kick, perc and dust speak, and the ETH handler owns the bell; a slot
-deciding the same thing would be a second owner of one rule, which is the
-failure this codebase keeps having to undo — the seven `/rhythm/` toggles that
-were removed for it, the tide exclusivity enforced in exactly one place.
+**El slot no decide si la nota ocurre.** El motor de beat ya es dueño de cuándo hablan bombo, percusión y polvo, y el manejador de ETH es dueño de la campana; un slot decidiendo lo mismo sería un segundo dueño de una sola regla, que es el fallo que este código no para de tener que deshacer — los siete toggles `/rhythm/` que se eliminaron por eso, la exclusividad de la marea impuesta en exactamente un lugar.
 
-So a slot *requests*, on `/slot/voice [voiceIdx, amp, tone]`, and
-`15_slot_voices.scd` decides. Both the engine and the scheduler stamp one shared
-onset clock, `~lastVoiceAt`, and a request landing inside a voice's minimum gap
-is dropped rather than layered. A slot can therefore only speak where the engine
-has left room — the pulse stays the engine's, the punctuation is the slot's.
-Measured: a runaway emitter at 100 requests/second is capped to 13.7 onsets/s on
-`dust`, and a slot asking for a kick immediately after the engine fired one is
-refused.
+Así que un slot *solicita*, en `/slot/voice [voiceIdx, amp, tone]`, y `15_slot_voices.scd` decide. Tanto el motor como el planificador estampan un reloj de onset compartido, `~lastVoiceAt`, y una solicitud que cae dentro del hueco mínimo de una voz se descarta en lugar de superponerse. Un slot sólo puede hablar, por tanto, donde el motor ha dejado sitio — el pulso sigue siendo del motor, la puntuación es del slot. Medido: un emisor desbocado a 100 solicitudes por segundo queda topado en 13.7 onsets/s sobre `dust`, y un slot pidiendo un bombo inmediatamente después de que el motor disparara uno es rechazado.
 
-Gaps are set by what the voice is *for*, not by taste: `drone` 6 s (a re-pitch
-is structural), `dust` 0.07 s (granular, it should be able to swarm), `sample`
-1.6 s (these are 30-second field recordings, and two a second is a collage).
-`/slot/voices/enable 0` puts all six back to listening without unmounting them.
+Los huecos se fijan por aquello *para lo que sirve* la voz, no por gusto: `drone` 6 s (un cambio de altura es estructural), `dust` 0.07 s (granular, debe poder enjambrar), `sample` 1.6 s (son grabaciones de campo de 30 segundos, y dos por segundo es un collage). `/slot/voices/enable 0` devuelve los seis a la escucha sin desmontarlos.
 
-> **The trigger never comes from audio.** A slot firing its own voice from its
-> own band energy is a feedback loop — it would play because it is playing.
-> Every emitter is driven by the simulation, which is also the whole point.
+> **El disparo nunca viene del audio.** Un slot disparando su propia voz desde la energía de su propia banda es un bucle de realimentación: tocaría porque está tocando. Cada emisor lo acciona la simulación, que además es todo el sentido del asunto.
 
-**They react to the sound, not to the intention.** `\masterScope` analyses the
-master bus *after* the limiter and sends 16 log-spaced bands at 20 Hz — that had
-been arriving all along with nothing listening, so the spectrogram was running on
-its synthetic fallback. It now feeds `window.__scAudio`, and SC additionally
-broadcasts `/voice/*` at the moment each note starts. Energy in a band tells you
-a bell is ringing; the onset tells you it was struck, and without it every
-visual is late and smeared.
+**Reaccionan al sonido, no a la intención.** `\masterScope` analiza el bus maestro *después* del limitador y envía 16 bandas espaciadas logarítmicamente a 20 Hz — eso venía llegando desde siempre sin que nadie escuchara, así que el espectrograma corría sobre su reserva sintética. Ahora alimenta `window.__scAudio`, y SC además emite `/voice/*` en el momento en que empieza cada nota. La energía en una banda dice que una campana está sonando; el onset dice que fue golpeada, y sin él todo lo visual llega tarde y emborronado.
 
-Each slot reads **its own register**, normalised against its own recent peak — a
-kick visual must not brighten because a bell rang, and measured on a live engine
-the low band runs ~40× hotter than the high one, so a raw reading leaves the
-treble slots looking dead while they work.
+Cada slot lee **su propio registro**, normalizado contra su propio pico reciente — un visual de bombo no debe iluminarse porque sonó una campana, y medido sobre un motor en vivo la banda grave corre unas 40× más caliente que la aguda, así que una lectura cruda deja los slots de agudos con aspecto de muertos mientras trabajan.
 
-### Idle auto-rotation · ROTATION SPD
+### Autorrotación en reposo · ROTATION SPD
 
-The slider reaches **all sixteen slots** now. It reached exactly one before —
-the phenological calendar, where it sets the year-sweep rate, not any rotation.
+El slider alcanza ahora **los dieciséis slots**. Antes llegaba exactamente a uno: el calendario fenológico, donde fija la tasa de barrido del año, que no es ninguna rotación.
 
-`src/projector/vizMotion.ts` publishes `window.__vizMotion` (mutated in place,
-like `__ednaBio`): `{ rotation, idle, factor, speed, angle, t }`. Interaction is
-captured once at the document — `pointerdown`, `wheel`, `keydown`, `input`, in
-capture phase — so both the control panel and a camera drag reset the clock,
-with no per-module wiring. After **8 s idle** the drift eases in over **4 s**
-(smoothstep, so it neither starts nor settles with a corner) and reaches roughly
-**one turn every three minutes** at `rotation = 1.0`.
+`src/projector/vizMotion.ts` publica `window.__vizMotion` (mutado en sitio, igual que `__ednaBio`): `{ rotation, idle, factor, speed, angle, t }`. La interacción se captura una sola vez en el documento — `pointerdown`, `wheel`, `keydown`, `input`, en fase de captura — de modo que tanto el panel de control como un arrastre de cámara reinician el reloj, sin cableado por módulo. Tras **8 s en reposo** la deriva entra suavemente durante **4 s** (smoothstep, así que ni arranca ni se asienta con una esquina) y alcanza aproximadamente **una vuelta cada tres minutos** con `rotation = 1.0`.
 
-The seven OrbitControls slots need nothing of their own: there is exactly one
-`new OrbitControls` in the tree, so `helpers/threeBase.ts` enables `autoRotate`
-and feeds `autoRotateSpeed` from the shared value on a 200 ms timer. That same
-change **removed the `"change"` → `render` listener**: with damping on it fired
-every `update()`, so every one of those slots was rendering the same frame
-twice.
+Los siete slots con OrbitControls no necesitan nada propio: hay exactamente un `new OrbitControls` en todo el árbol, así que `helpers/threeBase.ts` activa `autoRotate` y alimenta `autoRotateSpeed` desde el valor compartido con un temporizador de 200 ms. Ese mismo cambio **eliminó el listener `"change"` → `render`**: con damping activo se disparaba en cada `update()`, así que cada uno de esos slots renderizaba el mismo cuadro dos veces.
 
-The nine remaining slots each got an idiom rather than a literal spin — a flat
-chart that slowly tilts reads as broken. Slot 1 drifts the phase of its noise
-field; slots 4 and 7 add to their radar sweep; 5 and 6 precess; 8 leans like a
-settling shelf; 9 precesses its bucket ring.
+Los nueve slots restantes recibieron cada uno un idiotismo propio en lugar de un giro literal — un gráfico plano que se inclina despacio se lee como roto. El slot 1 deriva la fase de su campo de ruido; los slots 4 y 7 suman a su barrido de radar; el 5 y el 6 precesan; el 8 se inclina como un estante asentándose; el 9 precesa su anillo de buckets.
 
-### Votes and consensus — all sixteen
+### Votos y consenso — los dieciséis
 
-Votes reached 9 slots and missed 7 (2, 4–9). Consensus was dead in 5: slot 1
-ignored it, slot 8 never received it, the calendar had **no path at all**, and
-DarkForest and Antifonía wrote it into a `coherence` field no render path read.
-Each now has a reaction in its own vocabulary — a radar ping, an edge cascade, a
-forced rebalance, a flush wave down the hierarchy, a forced rehash, a ripple
-through the point cloud; consensus becomes wave alignment, cache coherence,
-phenological quorum, flow straightness, chorus synchrony.
+Los votos llegaban a 9 slots y se saltaban 7 (2, 4–9). El consenso estaba muerto en 5: el slot 1 lo ignoraba, el slot 8 nunca lo recibía, el calendario **no tenía ruta alguna**, y DarkForest y Antifonía lo escribían en un campo `coherence` que ninguna ruta de render leía. Ahora cada uno tiene una reacción en su propio vocabulario — un ping de radar, una cascada de aristas, un rebalanceo forzado, una onda de vaciado bajando por la jerarquía, un rehash forzado, una ondulación atravesando la nube de puntos; el consenso se vuelve alineación de ondas, coherencia de caché, quórum fenológico, rectitud del flujo, sincronía del coro.
 
-**`"failed"` was handled in eight places and produced in none.** SC reports real
-outcomes on `/parliament/vote/result`, and `parliamentStore` already ingested
-them — the result simply never reached `__voteEvent`. It does now, so a rejected
-motion looks different from a carried one.
+**`"failed"` se manejaba en ocho sitios y no se producía en ninguno.** SC reporta resultados reales en `/parliament/vote/result`, y `parliamentStore` ya los ingería — el resultado simplemente nunca llegaba a `__voteEvent`. Ahora sí, de modo que una moción rechazada se ve distinta de una aprobada.
 
-### Bidirectional Feedback Loop
-Every parameter change is reflected across all three control surfaces:
+### Bucle de retroalimentación bidireccional
+
+Cada cambio de parámetro se refleja en las tres superficies de control:
+
 ```
-HTML slider ──► SC bus ──► SC GUI knob (visual update)
-                    └──► OSC echo ──► HTML slider (position sync)
-                                └──► applySonethToViz (12 slots)
+slider HTML ──► bus SC ──► perilla GUI de SC (actualización visual)
+                    └──► eco OSC ──► slider HTML (sincronía de posición)
+                                └──► applySonethToViz (16 slots)
 
-MIDI CC ────► SC bus ──► SC GUI knob (visual update)
-                  └──► OSC echo ──► HTML slider (position sync)
-                              └──► applySonethToViz (12 slots)
+CC MIDI ────► bus SC ──► perilla GUI de SC (actualización visual)
+                  └──► eco OSC ──► slider HTML (sincronía de posición)
+                              └──► applySonethToViz (16 slots)
 
-SC GUI knob ► SC bus ──► OSC echo ──► HTML slider (position sync)
-                                 └──► applySonethToViz (12 slots)
+perilla GUI ► bus SC ──► eco OSC ──► slider HTML (sincronía de posición)
+                                 └──► applySonethToViz (16 slots)
 ```
 
-### Process Ports & Roles
-Four processes are managed by `start_ecosystem.sh`:
+### Procesos, puertos y roles
 
-| App | Process | Ports | Role |
+`start_ecosystem.sh` gestiona cuatro procesos, más el puente láser opcional:
+
+| App | Proceso | Puertos | Rol |
 |---|---|---|---|
-| **Python ETH** | `eth_sonify.py` (venv) | → UDP **57120** | web3 scraper; per-tx `/eth/note` + `/eth/tx_info`, per-block `/eth/block` |
-| **SuperCollider** | `sclang start_sonification.scd` | in **57120** (OSC) + **MIDI**; out **3333**; scsynth **57110** | audio engine, GUI, beat engine, drone, master limiter |
-| **Bridge** | `parliament-bridge.js` (Node) | in UDP **3333**; WS **3334**; out UDP **57120**; HTTP **3335** `/diag` | OSC ↔ WebSocket, path translation |
-| **Browser** | webpack-dev-server + Electron | HTTP **9001**; WS **3334** | `parliament.html` GUI, store, visual slots |
-| **Laser** _(opt)_ | `laser-bridge.js` (Node, `LASER=1`) | WS **3337** in; USB → Helios DAC | vector frames → ILDA / laser onto the forest |
+| **Python ETH** | `eth_sonify.py` (venv) | → UDP **57120** | scraper web3; `/eth/note` + `/eth/tx_info` por tx, `/eth/block` por bloque |
+| **SuperCollider** | `sclang start_sonification.scd` | entra **57120** (OSC) + **MIDI**; sale **3333**; scsynth **57110** | motor de audio, GUI, motor de beat, drone, limitador maestro |
+| **Puente** | `parliament-bridge.js` (Node) | entra UDP **3333**; WS **3334**; sale UDP **57120**; HTTP **3335** `/diag` | OSC ↔ WebSocket, traducción de rutas |
+| **Navegador** | webpack-dev-server + Electron | HTTP **9001**; WS **3334** | GUI `parliament.html`, store, slots visuales |
+| **Láser** _(opc.)_ | `laser-bridge.js` (Node, `LASER=1`) | WS **3337** entrada; USB → DAC Helios | cuadros vectoriales → ILDA / láser sobre el bosque |
 
 ---
 
-## 4. Control Matrix
+## 4. Matriz de control
 
-10 core parameters × 10 visual slots = 100 bindings. Every slider/knob/CC drives both SC audio buses and all visualizations simultaneously. 32 parameters in total, all generated from one registry entry each (`~paramDefs` in `0_parameters.scd`).
+**47 parámetros**, todos generados desde una sola entrada de registro cada uno (`~paramDefs` en `0_parameters.scd`): **42 CC MIDI** y **51 rutas OSC**. Cada slider, perilla o CC acciona a la vez los buses de audio de SC y las visualizaciones. Las diez primeras filas cruzan los slots visuales, dando 10 parámetros × 10 slots = 100 vinculaciones sólo en esa capa.
 
-### Row 1–2: Core Performance + Ambient Processing (all slots)
+Las cifras las reporta el propio motor al arrancar (ver *Comprobación de arranque*); si este documento y el banner discrepan, manda el banner.
 
-| Param | MIDI CC | SC Audio | Slot 0 Parliament | Slot 1 Asteroid | Slot 2 LowEarth | Slot 3 Perlin |
+### Filas 1–2: rendimiento central + procesamiento ambiental (todos los slots)
+
+| Parámetro | CC MIDI | Audio SC | Slot 0 Parliament | Slot 1 Asteroid | Slot 2 LowEarth | Slot 3 Perlin |
 |---|---|---|---|---|---|---|
-| **volume** | CC 0 | master volume | pt light intensity | wave stroke alpha | white cloud opacity | stroke opacity |
-| **pitchShift** | CC 1 | freq ±2 oct | species Z amplitude | lane X offset | cloud Y-stretch | noise intensity |
-| **timeDilation** | CC 2 | env stretch ×0.5–6 | orbit speed | noise X zoom | rotation damping | cycle frames |
-| **spectralShift** | CC 3 | LPF sweep 80–3000 Hz | bloom threshold | amber-cyan tint | line hue shift | layer compression |
-| **spatialSpread** | CC 4 | quad pan L↔R | camera distance | lane spread | lines XY spread | blob X/Y offset |
-| **textureDepth** | CC 32 | granular density | film grain | grid line density | point size | stroke weight |
-| **atmosphereMix** | CC 33 | reverb 0–0.9 | afterimage damp | background ghosting | red cloud opacity | layer count |
-| **memoryFeed** | CC 34 | delay feedback 0–0.8 | bloom strength | ghost trail alpha | red lines opacity | ghost alpha |
-| **harmonicRich** | CC 35 | FM ratio 0.1–8 | lissajous complexity | harmonic overlay | Bézier Z-scale | hue drift |
-| **resonantBody** | CC 36 | filter Q 0.1–0.8 | chroma aberration | peak dot glow | red cloud scale | inner weight |
+| **volume** | CC 0 | volumen maestro | intensidad de luz puntual | alfa del trazo de onda | opacidad de nube blanca | opacidad del trazo |
+| **pitchShift** | CC 1 | freq ±2 oct | amplitud Z de especies | desplazamiento X de carril | estiramiento Y de nube | intensidad de ruido |
+| **timeDilation** | CC 2 | estirado de envolvente ×0.5–6 | velocidad orbital | zoom X del ruido | amortiguación de rotación | cuadros por ciclo |
+| **spectralShift** | CC 3 | barrido LPF 80–2400 Hz | umbral de bloom | tinte ámbar-cian | desplazamiento de tono de línea | compresión de capas |
+| **spatialSpread** | CC 4 | paneo cuadrafónico I↔D | distancia de cámara | separación de carriles | dispersión XY de líneas | desplazamiento X/Y del blob |
+| **textureDepth** | CC 32 | densidad granular | grano de película | densidad de líneas de rejilla | tamaño de punto | grosor de trazo |
+| **atmosphereMix** | CC 33 | reverb 0–0.9 | amortiguación de estela | fantasmeo del fondo | opacidad de nube roja | número de capas |
+| **memoryFeed** | CC 34 | realimentación de delay 0–0.8 | fuerza del bloom | alfa de la estela fantasma | opacidad de líneas rojas | alfa fantasma |
+| **harmonicRich** | CC 35 | razón FM 0.1–5 | complejidad de Lissajous | superposición armónica | escala Z de Bézier | deriva de tono |
+| **resonantBody** | CC 36 | Q del filtro 0.1–0.8 | aberración cromática | brillo del punto de pico | escala de nube roja | peso interior |
 
-### Row 3–4: Drone & Noise
+### Filas 3–4: drone y ruido
 
-| Param | MIDI CC | SC Audio |
+| Parámetro | CC MIDI | Audio SC |
 |---|---|---|
-| **masterAmp** | CC 5 | layer trim — pads, drone **and** beat engine from one control |
-| **filterCutoff** | CC 6 | broad tone tilt, under `spectralShift`'s absolute setting |
-| **noiseLevel** | CC 7 | pink-noise breath under the pad |
-| **noiseFilt** | CC 8 | noise LPF 200–2000 Hz |
-| **droneDepth** | CC 9 | how far the sub body sinks |
-| **droneFade** | CC 37 | glide time on the drone's own controls — **including its pitch** (see below) |
-| **droneSpace** | CC 38 | reverb room size |
-| **droneMix** | CC 39 | dry drone ↔ fully bloomed (wash + sub) |
-| **delayFeedback** | CC 40 | comb delay feedback |
-| **transactionInfluence** | CC 41 | how far chain activity bends the engine |
+| **masterAmp** | CC 5 | recorte de capa — pads, drone **y** motor de beat desde un solo control |
+| **filterCutoff** | CC 6 | inclinación tonal amplia, por debajo del ajuste absoluto de `spectralShift` |
+| **noiseLevel** | CC 7 | aliento de ruido rosa bajo el pad |
+| **noiseFilt** | CC 8 | LPF del ruido 200–2000 Hz |
+| **droneDepth** | CC 9 | cuánto se hunde el cuerpo del sub |
+| **droneFade** | CC 37 | tiempo de glissando en los controles propios del drone — **incluida su altura** (ver abajo) |
+| **droneSpace** | CC 38 | tamaño de sala de la reverb |
+| **droneMix** | CC 39 | drone seco ↔ plenamente florecido (lavado + sub) |
+| **delayFeedback** | CC 40 | realimentación del delay de peine |
+| **transactionInfluence** | CC 41 | cuánto dobla la actividad de la cadena al motor |
 
-> Six of these (CC 5, 6, 9, 37, 38, 39) previously wrote to control buses that
-> **no UGen read** — `\opalDrone` did not declare them and `\elektronBell` read
-> them into variables it discarded. They now shape the drone.
+> Seis de estos (CC 5, 6, 9, 37, 38, 39) escribían antes en buses de control que **ningún UGen leía** — `\opalDrone` no los declaraba y `\elektronBell` los leía hacia variables que descartaba. Ahora dan forma al drone.
 
-> **The drone glides between pitches.** Every four bars the beat engine walks
-> `#[55, 62, 73, 82, 49, 65, 55, 41]` Hz on the phrase counter — about every 45
-> to 50 seconds at the usual tempo — and it did it with a bare `.set(\freq, …)`.
-> `freq` was the one parameter in `\opalDrone` without a lag, so a voice that
-> had been holding a note for most of a minute stepped a fifth or a sixth
-> instantly, which on a continuous drone reads as a fault rather than a change.
-> It now rides `droneFade` like every other continuous control in that SynthDef,
-> doubled — a pitch move needs noticeably longer than a filter move to stop
-> sounding like an edit. At the 2 s default that is a 4 s portamento; the top of
-> the fader takes it to 10.
+> **El drone se desliza entre alturas.** Cada cuatro compases el motor de beat recorre `#[55, 62, 73, 82, 49, 65, 55, 41]` Hz según el contador de frases —más o menos cada 45 a 50 segundos al tempo habitual— y lo hacía con un `.set(\freq, …)` pelado. `freq` era el único parámetro de `\opalDrone` sin lag, así que una voz que llevaba casi un minuto sosteniendo una nota saltaba una quinta o una sexta al instante, lo que en un drone continuo se lee como avería y no como cambio. Ahora cabalga sobre `droneFade` como todos los demás controles continuos de ese SynthDef, al doble — un movimiento de altura necesita bastante más tiempo que uno de filtro para dejar de sonar a edición. Con el valor por defecto de 2 s eso da un portamento de 4 s; arriba del todo el fader lo lleva a 10.
 
-### Row 5: Cámara Fenológica de lo Vivo — the corpus on the 365-day ring
+### Fila 5: Cámara Fenológica de lo Vivo — el corpus sobre el anillo de 365 días
 
-`14_phenological_corpus.scd` plays 261 AudioMoth clips from La Luna / Planeta
-Rica across the phenological ring of Article 42. Only **34 of 365 days carry a
-recording**; the other 331 are silence, and under Article 44 that silence is
-the piece's dominant material, never interpolated.
+`14_phenological_corpus.scd` reproduce 261 clips AudioMoth de La Luna / Planeta Rica a lo largo del anillo fenológico del Artículo 42. Sólo **34 de 365 días llevan grabación**; los otros 331 son silencio, y bajo el Artículo 44 ese silencio es el material dominante de la pieza, jamás interpolado.
 
-| Param | MIDI CC | SC Audio |
+| Parámetro | CC MIDI | Audio SC |
 |---|---|---|
-| **activityThreshold** | CC 10 | Art. 45 — presence above 0.5 lights the seat; below it the species is in the territory but silent in the Chamber |
-| **windowWidth** | CC 11 | Art. 43 — Gaussian reach in ring days. 0.4 leaves recordings isolated points in silence; 2.5 lets a real day be heard from across a gap (it never invents one) |
-| **seasonalBias** | CC 12 | pulls selection toward Seca (−1) or lluvias (+1) independently of the cursor |
-| **absenceWeight** | CC 13 | Art. 44 — 0 leaves unrecorded days truly silent; above it they sound the ×8 ultrasonic layer, so what fills the silence is what human hearing cannot reach |
-| **pulseGain** | CC 14 | Art. 45 — how hard *quórum sensible* pushes back into `harmonicRich`, `textureDepth` and `/bio/consensus` |
-| **opacityFloor** | CC 15 | Art. 47 — raising it withholds more of the corpus from analysis, projection and the laser |
-| **bancada** | CC 16 | Art. 43 — 0 = todas, then the detector's four ecological roles |
-| **phenoRate** | CC 21 | ring speed in days/second. Default 0.0167 = one day per minute = a 6 h 05 m year; full range 91 s → 48 h |
-| **corpusLevel** | CC 22 | the field recordings against the synthesis |
+| **activityThreshold** | CC 10 | Art. 45 — una presencia por encima de 0.5 enciende el escaño; por debajo, la especie está en el territorio pero callada en la Cámara |
+| **windowWidth** | CC 11 | Art. 43 — alcance gaussiano en días del anillo. 0.4 deja las grabaciones como puntos aislados en el silencio; 2.5 permite que un día real se oiga desde el otro lado de un hueco (nunca inventa uno) |
+| **seasonalBias** | CC 12 | inclina la selección hacia Seca (−1) o lluvias (+1) con independencia del cursor |
+| **absenceWeight** | CC 13 | Art. 44 — en 0 deja los días sin grabación verdaderamente mudos; por encima suenan la capa ultrasónica ×8, así que lo que llena el silencio es lo que el oído humano no alcanza |
+| **pulseGain** | CC 14 | Art. 45 — con cuánta fuerza el *quórum sensible* empuja de vuelta hacia `harmonicRich`, `textureDepth` y `/bio/consensus` |
+| **opacityFloor** | CC 15 | Art. 47 — subirlo retiene más del corpus frente al análisis, la proyección y el láser |
+| **bancada** | CC 16 | Art. 43 — 0 = todas, luego los cuatro roles ecológicos del detector |
+| **phenoRate** | CC 21 | velocidad del anillo en días/segundo. Por defecto 0.0167 = un día por minuto = un año de 6 h 05 m; rango completo 91 s → 48 h |
+| **corpusLevel** | CC 22 | las grabaciones de campo frente a la síntesis |
 
-> Before this layer, five of these buses (`windowWidth`, `seasonalBias`,
-> `absenceWeight`, `pulseGain`, `opacityFloor`) were allocated and reachable by
-> MIDI and OSC but had **zero readers in SuperCollider**. The corpus is what
-> they were built for.
+> Antes de esta capa, cinco de estos buses (`windowWidth`, `seasonalBias`, `absenceWeight`, `pulseGain`, `opacityFloor`) estaban asignados y eran alcanzables por MIDI y OSC pero tenían **cero lectores en SuperCollider**. El corpus es aquello para lo que se construyeron.
 
-**The ring answers while the day is still running.** Every control in this row
-is consulted in one place — `~phenoPool`, called once per phenological day —
-and the ring used to sleep out the whole day in a single `wait`. At the default
-rate that is sixty seconds between turning a knob and hearing it, and eight
-minutes at the slow end, so the entire bench read as unwired. The same fault hit
-the transport from the other side: **NEXT REC. DAY ▶** set the cursor correctly
-and the routine slept through it (the log shows two `skip -> doy 211` a few
-seconds apart and the day itself arriving much later).
+**El anillo responde mientras el día todavía corre.** Cada control de esta fila se consulta en un solo lugar — `~phenoPool`, llamado una vez por día fenológico — y el anillo solía dormir el día entero en un único `wait`. Al ritmo por defecto eso son sesenta segundos entre girar una perilla y oírlo, y ocho minutos en el extremo lento, así que toda la bancada se leía como no cableada. El mismo fallo golpeaba al transporte por el otro lado: **NEXT REC. DAY ▶** fijaba el cursor correctamente y la rutina se lo dormía encima (el log muestra dos `skip -> doy 211` con pocos segundos de diferencia y el día en sí llegando mucho más tarde).
 
-The ring still turns at `phenoRate`. What changed is that the wait is sliced
-(0.25 s), and on each slice the Chamber re-asks who is admitted *today*:
+El anillo sigue girando a `phenoRate`. Lo que cambió es que la espera está troceada (0.25 s), y en cada trozo la Cámara vuelve a preguntar quién está admitido *hoy*:
 
-* **skip requests are honoured immediately** — `/pheno/next`, `/pheno/goto` and
-  the button wake the ring and release what is sounding, so the jump is audible
-  instead of buried under a clip with fifty seconds left to run;
-* **selection is re-decided twice a second**, diffed by clip key, so a knob
-  sweep starts only what has genuinely just crossed the threshold and stops only
-  what has fallen below it — nothing retriggers while you drag;
-* **`pulseGain` is picked up on a deadband** rather than once a day, so the
-  reverse breath follows the fader without fighting the performer's own
-  `harmonicRich`.
+* **las solicitudes de salto se atienden de inmediato** — `/pheno/next`, `/pheno/goto` y el botón despiertan al anillo y liberan lo que esté sonando, así que el salto es audible en lugar de quedar sepultado bajo un clip al que le faltan cincuenta segundos;
+* **la selección se vuelve a decidir dos veces por segundo**, comparada por clave de clip, así que un barrido de perilla arranca sólo lo que acaba de cruzar el umbral de verdad y detiene sólo lo que ha caído por debajo — nada se redispara mientras arrastras;
+* **`pulseGain` se recoge sobre una banda muerta** en lugar de una vez al día, así que el aliento inverso sigue al fader sin pelearse con el `harmonicRich` de quien toca.
 
-> **Releasing a corpus voice needs a negative gate.** Both corpus envelopes are
-> `Env.new([0,1,1,0], …)` — fixed length, no release node — and for those EnvGen
-> treats `gate` as a pure trigger: `.set(\gate, 0)` does nothing at all and the
-> clip plays out its full atk+hold+rel. The forced release is `gate < 0`, over
-> `-1.0 - gate` seconds. `~phenoPanic` had always used a zero gate, which is why
-> `/pheno/stop` stopped the ring clock and left every voice sounding.
+> **Liberar una voz del corpus exige una compuerta negativa.** Ambas envolventes del corpus son `Env.new([0,1,1,0], …)` —longitud fija, sin nodo de liberación— y para esas EnvGen trata `gate` como disparo puro: `.set(\gate, 0)` no hace absolutamente nada y el clip se reproduce entero con su atk+hold+rel. La liberación forzada es `gate < 0`, a lo largo de `-1.0 - gate` segundos. `~phenoPanic` siempre había usado una compuerta en cero, que es la razón por la que `/pheno/stop` detenía el reloj del anillo y dejaba todas las voces sonando.
 
-**Two playback paths, because 384 kHz is not optional.** A 60 s AudioMoth clip
-is 92 MB as a server Buffer — the corpus would be 24 GB resident. Nothing reads
-the originals at run time; two derived tiers carry the layer:
+**Dos rutas de reproducción, porque 384 kHz no es opcional.** Un clip AudioMoth de 60 s son 92 MB como Buffer de servidor — el corpus serían 24 GB residentes. Nada lee los originales en tiempo de ejecución; dos niveles derivados sostienen la capa:
 
-* `corpus/audible/` (48 kHz) feeds a fixed pool of 16 RAM slots recycled by the
-  ring's look-ahead. Nothing is allocated at trigger time.
-* `corpus/expanded/` (×8 time-expanded) is streamed with `DiskIn` for the
-  absence voice — 4 cue buffers, ~2 MB.
+* `corpus/audible/` (48 kHz) alimenta un pool fijo de 16 ranuras en RAM recicladas por la anticipación del anillo. No se asigna nada en el momento del disparo.
+* `corpus/expanded/` (expandido ×8 en el tiempo) se transmite con `DiskIn` para la voz de ausencia — 4 buffers de cue, ~2 MB.
 
-Resident cost ≈ 230 MB, so `memSize` and `numBuffers` are unchanged.
+Coste residente ≈ 230 MB, de modo que `memSize` y `numBuffers` quedan sin cambios.
 
-> **Why the expansion is baked offline.** `DiskIn` performs no sample-rate
-> conversion, so pointing it at a raw 384 kHz file at a 48 kHz server expands
-> ×8 for free — a tempting trick, and wrong. It drops *everything* three
-> octaves, so the loud audible band lands at 125 Hz–2.5 kHz and buries the
-> ultrasound it was meant to reveal. The renderer high-passes at 38 kHz
-> (24 dB/oct) **before** expanding, so only what was genuinely inaudible
-> arrives, at 4.75–24 kHz.
+> **Por qué la expansión se hornea fuera de línea.** `DiskIn` no realiza conversión de frecuencia de muestreo, así que apuntarlo a un archivo crudo de 384 kHz en un servidor a 48 kHz expande ×8 gratis — un truco tentador, y equivocado. Baja *todo* tres octavas, así que la banda audible fuerte aterriza en 125 Hz–2.5 kHz y sepulta el ultrasonido que pretendía revelar. El renderizador aplica un pasa-altos a 38 kHz (24 dB/oct) **antes** de expandir, así que sólo llega lo que era genuinamente inaudible, a 4.75–24 kHz.
 
-**Gain staging.** `~trimCorpus = 2.60 × ~trimMaster`, measured rather than
-guessed. The seven MP3s in `samples/` average −22.2 dB mean; `corpus/audible/`
-averages −21.3 dB after the single global gain — within ~1 dB, so parity of
-trim is parity of loudness. Since `corpusLevel` sits in this layer's path and
-defaults to 0.5, the trim compensates: the layer lands within ~1 dB of the
-sample layer at the fader's default and ~6 dB below the drone bed, leaving the
-top half of the fader as real headroom.
+**Escalonado de ganancia.** `~trimCorpus = 2.60 × ~trimMaster`, medido y no adivinado. Los siete MP3 de `samples/` promedian −22.2 dB de media; `corpus/audible/` promedia −21.3 dB tras la ganancia global única — dentro de ~1 dB, así que paridad de trim es paridad de sonoridad. Como `corpusLevel` se sitúa en la ruta de esta capa y por defecto vale 0.5, el trim compensa: la capa aterriza a ~1 dB de la capa de samples con el fader en su valor por defecto y ~6 dB por debajo de la cama del drone, dejando la mitad superior del fader como margen real.
 
-The build applies **one global gain across the whole corpus**, never per-clip
-normalisation — a quiet dry-season night has to stay quiet against a rainy
-insect chorus, since `activity` and `richness` are exactly the signal per-clip
-normalisation would flatten.
+La compilación aplica **una ganancia global sobre todo el corpus**, nunca normalización por clip — una noche seca y callada tiene que seguir callada frente a un coro de insectos en lluvias, ya que `activity` y `richness` son exactamente la señal que la normalización por clip aplanaría.
 
-Build the derived library (~4.2 GB, one-off) with:
+Construye la biblioteca derivada (~4.2 GB, una sola vez) con:
 
 ```bash
-python3 tools/build_corpus.py --dry-run   # counts and projected sizes
-python3 tools/build_corpus.py             # renders + writes corpus/manifest.json
+python3 tools/build_corpus.py --dry-run   # cuentas y tamaños proyectados
+python3 tools/build_corpus.py             # renderiza + escribe corpus/manifest.json
 ```
 
-Ring transport: `/pheno/goto <doy>`, `/pheno/next`, `/pheno/stop`, `/pheno/start`.
+Transporte del anillo: `/pheno/goto <doy>`, `/pheno/next`, `/pheno/stop`, `/pheno/start`.
 
-> **The ring opens on a recorded day.** Only 34 of 365 days carry audio and the
-> first is doy 9, so starting the cursor at doy 1 meant the instrument began
-> with eight minutes of nothing — and since the two arcs are separated by gaps
-> of 178 and 131 days, it can then be silent for up to **three hours** at the
-> default rate. Absence is the material (Art. 44), but it should be arrived at,
-> not booted into. `/pheno/next` and the **NEXT REC. DAY ▶** button skip to the
-> next day that actually has audio.
+> **El anillo abre en un día grabado.** Sólo 34 de 365 días llevan audio y el primero es el doy 9, así que arrancar el cursor en el doy 1 significaba que el instrumento empezaba con ocho minutos de nada — y como los dos arcos están separados por huecos de 178 y 131 días, puede después quedarse en silencio hasta **tres horas** al ritmo por defecto. La ausencia es el material (Art. 44), pero hay que llegar a ella, no arrancar dentro. `/pheno/next` y el botón **NEXT REC. DAY ▶** saltan al siguiente día que efectivamente tiene audio.
 
-### Cámara de las Especies — the five seats, as voices
+### Cámara de las Especies — los cinco escaños, como voces
 
-Browser-only sliders (no MIDI CC), five species × two controls, taken from the
-live IUCN roster. For as long as they existed they emitted `/agents/species/*`
-into UDP 57120 where **no OSCdef received them** — the bridge's `/diag` showed
-30 messages sent and nothing returning — so `FREQ` read a hardcoded `440Hz` and
-`VOT` a hardcoded `0` for every session.
+Sliders sólo de navegador (sin CC MIDI), cinco especies × dos controles, tomados del padrón UICN en vivo. Durante todo el tiempo que existieron emitían `/agents/species/*` hacia UDP 57120 donde **ningún OSCdef los recibía** — el `/diag` del puente mostraba 30 mensajes enviados y nada de vuelta — así que `FREQ` leía un `440Hz` fijo y `VOT` un `0` fijo en cada sesión.
 
-| Control | Emits | SC effect |
+| Control | Emite | Efecto en SC |
 |---|---|---|
-| **Species Activity** (×5) | `/agents/species/activity [id, v]` | weights how often that seat is picked for a percussion hit |
-| **Species Presence** (×5) | `/agents/species/presence [id, v]` | how loudly the seat speaks, and it owns a register |
-| **eDNA Biodiversity** | `/agents/edna/biodiversity [id, v]` | site reading; echoed back with a decaying validation |
+| **Species Activity** (×5) | `/agents/species/activity [id, v]` | pondera cada cuánto se elige ese escaño para un golpe de percusión |
+| **Species Presence** (×5) | `/agents/species/presence [id, v]` | con cuánta fuerza habla el escaño, y es dueño de un registro |
+| **eDNA Biodiversity** | `/agents/edna/biodiversity [id, v]` | lectura del sitio; devuelta con una validación que decae |
 
-The corpus cannot carry taxonomy — it is indexed by ecological *role*, which is
-why Article 43's bancadas are labelled by role. So a species becomes audible in
-the percussion layer instead, where a pitch pool and a trigger already exist.
-The division of labour is deliberate: the **pool** still chooses the degree and
-the **seat** only chooses the register. One species does not get to overwrite
-the melody; it gets to say which octave the chamber hears it in.
+El corpus no puede cargar taxonomía — está indexado por *rol* ecológico, que es la razón por la que las bancadas del Artículo 43 se etiquetan por rol. Así que una especie se vuelve audible en la capa de percusión, donde ya existen un pool de alturas y un disparo. La división del trabajo es deliberada: el **pool** sigue eligiendo el grado y el **escaño** sólo elige el registro. Una especie no puede sobrescribir la melodía; puede decir en qué octava la oye la cámara.
 
-`~speciesBand` is `[1.0, 1.33, 1.78, 2.37, 3.16]` — ~5-semitone steps, upward
-only, seat 0 at unity. Measured against the real pool rather than guessed: a
-symmetric set around 1.0 put the lower seats under the 40 Hz floor `\opalPerc`
-enforces, and at the bottom of the `harmonicRich` fader two or three of them
-collapsed onto 40 Hz and became the same voice (21 clipped notes, adjacent-seat
-ratio 1.00 — identical). Upward-only clips nothing and holds a full 1.33 between
-seats across the whole fader range, topping out near 780 Hz. Unity at seat 0
-means the layer's original register is not lost, just assigned to the first
-seat — which, at the default presences, is also the most likely pick.
+`~speciesBand` es `[1.0, 1.33, 1.78, 2.37, 3.16]` — pasos de ~5 semitonos, sólo hacia arriba, escaño 0 al unísono. Medido contra el pool real en vez de adivinado: un conjunto simétrico alrededor de 1.0 dejaba los escaños bajos por debajo del suelo de 40 Hz que impone `\opalPerc`, y en la parte baja del fader `harmonicRich` dos o tres de ellos colapsaban sobre 40 Hz y se volvían la misma voz (21 notas recortadas, razón entre escaños adyacentes 1.00 — idénticos). Sólo hacia arriba no recorta nada y mantiene un 1.33 completo entre escaños en todo el rango del fader, rematando cerca de 780 Hz. El unísono en el escaño 0 significa que el registro original de la capa no se pierde, sólo queda asignado al primer escaño — que, con las presencias por defecto, es además la elección más probable.
 
-**A species votes by sounding.** `~speciesVotes[i]` increments at the moment of
-the hit, and the seat reports back on
-`/agent/species/state [id, presence, activity, votes, freq]` from the engine's
-existing throttled broadcast. `parliamentStore.ts` has parsed that message, in
-exactly that argument order, since it was written — it simply had no emitter.
+**Una especie vota sonando.** `~speciesVotes[i]` se incrementa en el momento del golpe, y el escaño informa de vuelta en `/agent/species/state [id, presence, activity, votes, freq]` desde la emisión regulada que el motor ya tenía. `parliamentStore.ts` ha parseado ese mensaje, en exactamente ese orden de argumentos, desde que se escribió — simplemente no tenía emisor.
 
-### BioToken V3 — the formula shows its own terms
+### BioToken V3 — la fórmula muestra sus propios términos
 
-The panel's formula was static text and it disagreed with the code it described:
-it read `Presence × Duration` where `bioTokenTerms()` has always multiplied by
-*activity*, and printed IUCN as the raw `×5` multiplier while the factor applied
-is that over 5. Two of its six factors were frozen constants left behind when
-the Fungi Networks and Gaia AI Core panels were removed. Every term now carries
-its live value beside it:
+La fórmula del panel era texto estático y contradecía al código que describía: decía `Presencia × Duración` donde `bioTokenTerms()` siempre ha multiplicado por *actividad*, e imprimía UICN como el multiplicador crudo `×5` cuando el factor aplicado es ese entre 5. Dos de sus seis factores eran constantes congeladas que quedaron atrás cuando se retiraron los paneles Fungi Networks y Gaia AI Core. Cada término lleva ahora su valor vivo al lado:
 
-| Term | Source |
+| Término | Origen |
 |---|---|
-| Presence | mean of `species[].presence` |
-| **Activity** | mean of `species[].activity` — relabelled from "Duration" to match the code |
-| eDNA.biodiv | mean over the **surfaced** sites only — it averaged all eight while only Córdoba has a fader, so seven frozen 0.5s permanently damped the token |
-| Fungi.chem | ← `/bio/nutrient`, the mycelial pulse the Eco panel already shows |
-| AI.optim | ← `/bio/density`, transaction density |
-| IUCN.weight | `max(IUCN_MULT) / 5`, shown normalised |
+| Presencia | media de `species[].presence` |
+| **Actividad** | media de `species[].activity` — reetiquetado desde "Duración" para coincidir con el código |
+| eDNA.biodiv | media sólo sobre los sitios **expuestos** — promediaba los ocho cuando sólo Córdoba tiene fader, así que siete 0.5 congelados amortiguaban el token permanentemente |
+| Fungi.chem | ← `/bio/nutrient`, el pulso micelial que el panel Eco ya muestra |
+| AI.optim | ← `/bio/density`, densidad de transacciones |
+| IUCN.weight | `max(IUCN_MULT) / 5`, mostrado normalizado |
 
-### Row 8: Matrix mixer — the only controls that change loudness
+### Fila 7: la cadena como proceso — `chainProcess`
 
-| Param | MIDI CC | Layer |
+| Parámetro | CC MIDI | Audio SC |
 |---|---|---|
-| **mixDrone** | CC 42 | `\opalDrone` — the continuous bed |
+| **chainProcess** | CC 23 | 0 es el corpus intacto; 1 es el corpus plenamente procesado por lo que la cadena está haciendo |
+
+Hasta aquí el acoplamiento corría: cadena → voces de síntesis. Llegaba una transacción, su valor se mapeaba logarítmicamente a una nota MIDI, su gas a una velocidad, su prioridad a una envolvente, y sonaba una campana. Tres escalares por transacción. Mientras tanto el corpus —261 grabaciones del sitio real— estaba en una capa aparte, meramente planificado por un calendario, sin que la cadena lo tocara.
+
+Eso desperdiciaba los datos: una auditoría de lo que envía `eth_sonify.py` encontró que `blockHash`, `calldataLen` y `nonce` se parseaban y no los leía nadie, mientras `entropy`, `blockNum` y `blockTxCount` se computaban y sólo se imprimían en la línea del monitor. Y apuntaba la pieza al revés. La afirmación de la obra es que la cadena actúa SOBRE un territorio; hacer que la cadena toque junto al bosque, sobre un conjunto separado de instrumentos sintetizados, afirma lo contrario: dos partes tocando juntas.
+
+Así que el corpus es el material y la cadena es lo que se le hace. Tres dimensiones, y ninguna de ellas es una nota — todas son condiciones:
+
+| Lectura de la cadena | Fija |
+|---|---|
+| `entropy` | **DIFUSIÓN** — una cadena que llega de forma pareja deja la grabación legible; una a ráfagas la emborrona hasta que el bosque es un lavado de donde solía estar |
+| `calldataLen` | **VENTANA DE EMBORRONADO** — cuánto sangran las magnitudes a lo ancho del espectro, de modo que un acto que sólo mueve dinero apenas roza la grabación y uno que ejecuta algo la arrastra de lado |
+| `congestion` | **DRIVE y filtro** — llenado del bloque contra la tarifa base: la presión sobre la cadena se vuelve presión sobre la grabación |
+
+Las dos voces del corpus se enrutan a `~corpusProcBus` para poder procesarse como **grupo**; antes escribían directo a la salida principal (`Out.ar(0, …)` cableado en ambas), que es exactamente la razón por la que nada podía colocarse a lo ancho de la capa. `~corpusOutBus` vale 0 por defecto, así que si este archivo no llega a cargar el corpus sale directo como siempre.
+
+### Fila 8: mezclador matricial — los únicos controles que cambian la sonoridad
+
+| Parámetro | CC MIDI | Capa |
+|---|---|---|
+| **mixDrone** | CC 42 | `\opalDrone` — la cama continua |
 | **mixPad** | CC 43 | `\elektronBell` |
 | **mixKick** | CC 44 | `\opalKick` |
 | **mixPerc** | CC 45 | `\opalPerc` |
 | **mixDust** | CC 46 | `\opalDust` |
-| **mixSample** | CC 47 | `samples/` via `\samplePlayer*` |
-| **mixCorpus** | CC 48 | the AudioMoth audible layer |
-| **mixUltra** | CC 49 | the ×8 absence voice |
+| **mixSample** | CC 47 | `samples/` vía `\samplePlayer*` |
+| **mixCorpus** | CC 48 | la capa audible de AudioMoth |
+| **mixUltra** | CC 49 | la voz de ausencia ×8 |
 
-Every other control on the surface shapes **timbre**. Before this row, the
-balance between layers lived only in the hardcoded gain budget of
-`3_synthdefs.scd` (`~trimDrone`, `~trimPad`, …), fixed at load and unreachable
-while playing — so the instrument could not be mixed.
+Todos los demás controles de la superficie dan forma al **timbre**. Antes de esta fila, el balance entre capas vivía sólo en el presupuesto de ganancia cableado de `3_synthdefs.scd` (`~trimDrone`, `~trimPad`, …), fijo en tiempo de carga e inalcanzable mientras se toca — de modo que el instrumento no podía mezclarse.
 
-Unity is **1.0 at mid-throw**: at boot these multiply by exactly 1 and the
-engine sounds as it did before. `0` is a true mute, `2.0` is +6 dB. They
-multiply the trims rather than replacing them, so the documented gain budget
-stays meaningful. Measured on the drone layer: unity 0.0262 RMS, 0.5 → 0.0132
-(−6 dB), 2.0 → 0.0531 (+6 dB), 0 → silence.
+El unísono es **1.0 a media carrera**: al arrancar estos multiplican por exactamente 1 y el motor suena como antes. `0` es un mute verdadero, `2.0` es +6 dB. Multiplican los trims en lugar de reemplazarlos, así que el presupuesto de ganancia documentado sigue teniendo sentido. Medido sobre la capa del drone: unísono 0.0262 RMS, 0.5 → 0.0132 (−6 dB), 2.0 → 0.0531 (+6 dB), 0 → silencio.
 
-The SC GUI strips carry a **MUTE** that remembers the fader position, so
-unmuting restores the exact level. Mixer faders appear on both surfaces and
-follow MIDI, browser and preset loads through the same `~setParam` path as
-every other control.
+Las tiras de la GUI de SC llevan un **MUTE** que recuerda la posición del fader, así que quitar el mute restaura el nivel exacto. Los faders del mezclador aparecen en ambas superficies y siguen a MIDI, navegador y cargas de preset por la misma ruta `~setParam` que cualquier otro control.
 
-### Slot A · Antifonía — the forest's acoustic parliament
+### Slot A · Antifonía — el parlamento acústico del bosque
 
-Antiphony is alternating song between groups: a real bioacoustic phenomenon
-(duetting) and the oldest form of parliament, speaking in turns. Each sound
-source is a member taking the floor, and one session lasts a day.
+La antifonía es canto alternado entre grupos: un fenómeno bioacústico real (dueto) y la forma más antigua de parlamento, hablar por turnos. Cada fuente sonora es un miembro tomando la palabra, y una sesión dura un día.
 
-**The vertical axis is height.** It reuses the same Humboldt strata that order
-DarkForest [F] and Estratos [E] — whoever sings, sings *from* a height: the
-howler from the emergent crowns, the frog from the understory, the bat crossing
-the canopy. A call at 20 m lands in the canopy in all three slots, and a check
-asserts the stack has not drifted apart between them.
+**El eje vertical es la altura.** Reutiliza los mismos estratos de Humboldt que ordenan DarkForest [F] y Estratos [E] — quien canta, canta *desde* una altura: el aullador desde las copas emergentes, la rana desde el sotobosque, el murciélago cruzando el dosel. Un llamado a 20 m aterriza en el dosel en los tres slots, y una comprobación verifica que la pila no se ha desalineado entre ellos.
 
-**The stand is a simulated LiDAR sweep**, not scenery: one ceiba (*Ceiba
-pentandra*) with a clean bole and a flat tiered crown, campanos (*Albizia
-saman*) in umbrella domes wider than they are tall, ~50 ordinary dry-forest
-canopy trees, and exactly two wine palms (*Attalea butyracea*) — ~57 trees,
-counted at runtime and published on `window.__antifoniaStand`. The exact
-composition shifts when anything upstream changes how many numbers the seeded
-generator has drawn, which is why it is *counted* and asserted rather than
-declared: that is how a change to the ceiba silently took the palms to zero
-once already. They are **sown,
-not placed**: regeneration nuclei scattered through the lobe, cohorts crowding
-inward, and a minimum-exclusion test so no two crowns occupy the same cubic
-metre. A hand-written list of positions read as a maquette — even spacing, and
-the ceiba alone in a clearing nobody planted. It now stands off-centre with its
-retinue touching it, because an emergent lives surrounded. An
-aerial flight is simulated (canopy returns strongly, ground moderately, vertical
-boles barely), because that asymmetry is what makes an aerial cloud look the way
-it does. The ground boundary is **amorphous** — polar sampling with an angular
-lobe, thinned at the rim so the plot fades out instead of ending on a cartesian
-edge.
+**El rodal es un barrido LiDAR simulado**, no decorado: una ceiba (*Ceiba pentandra*) de fuste limpio y copa aterrazada plana, campanos (*Albizia saman*) en domos de sombrilla más anchos que altos, ~50 árboles de dosel ordinarios de bosque seco, y exactamente dos palmas de vino (*Attalea butyracea*) — unos 57 árboles, contados en tiempo de ejecución y publicados en `window.__antifoniaStand`. La composición exacta se desplaza cuando algo aguas arriba cambia cuántos números ha sacado el generador sembrado, que es la razón por la que se *cuenta* y se verifica en vez de declararse: así fue como un cambio en la ceiba dejó las palmas en cero en silencio, ya una vez. Están **sembrados, no colocados**: núcleos de regeneración esparcidos por el lóbulo, cohortes apiñándose hacia dentro, y una prueba de exclusión mínima para que dos copas no ocupen el mismo metro cúbico. Una lista de posiciones escrita a mano se leía como maqueta — espaciado uniforme, y la ceiba sola en un claro que nadie plantó. Ahora se alza descentrada con su séquito tocándola, porque un emergente vive rodeado. Se simula un vuelo aéreo (el dosel retorna con fuerza, el suelo moderadamente, los fustes verticales apenas), porque esa asimetría es lo que hace que una nube aérea se vea como se ve. El límite del suelo es **amorfo** — muestreo polar con un lóbulo angular, adelgazado en el borde para que la parcela se desvanezca en lugar de terminar en un canto cartesiano.
 
-**The ceiba's crown is asymmetric, and that is load-bearing.** Its tiers were
-built as wheels — *N* branches at exact angular steps, all the same length, all
-concentric on the axis. From above, a radar sweep; from the front, five
-concentric discs. No emergent looks like that: a forty-metre ceiba has lost
-limbs, the ones left are of very different lengths, and each tier leans toward
-the light it found. Every branch is now described before it is sown — irregular
-angular step, its own length, its own droop, its own curve in plan, and a one-in-
-six chance it is simply missing — and points are distributed by branch *length*,
-because distributing them per branch would make a short limb as dense as one
-twice its size, which is the same symmetry wearing a disguise. Measured on the
-points rather than on the source: the old crown reached 0.74–0.93 R in all 24
-azimuth sectors (CV 0.06); it now reaches 0.00–1.09 R (CV 0.41), with sky
-through the gaps.
+**La copa de la ceiba es asimétrica, y eso es estructural.** Sus terrazas se construían como ruedas — *N* ramas a pasos angulares exactos, todas de la misma longitud, todas concéntricas al eje. Desde arriba, un barrido de radar; desde el frente, cinco discos concéntricos. Ningún emergente se ve así: una ceiba de cuarenta metros ha perdido ramas, las que quedan son de longitudes muy distintas, y cada terraza se inclina hacia la luz que encontró. Ahora cada rama se describe antes de sembrarse — paso angular irregular, su propia longitud, su propia caída, su propia curva en planta, y una probabilidad de una entre seis de sencillamente faltar — y los puntos se distribuyen por *longitud* de rama, porque distribuirlos por rama haría que un miembro corto fuera tan denso como uno del doble de tamaño, que es la misma simetría disfrazada. Medido sobre los puntos y no sobre la fuente: la copa antigua alcanzaba 0.74–0.93 R en los 24 sectores de azimut (CV 0.06); ahora alcanza 0.00–1.09 R (CV 0.41), con cielo entre los huecos.
 
-The cloud is deliberately **sparse and small-pointed**: not a survey, but what
-the machine manages to see of the forest — a spectral presence rather than a
-model. Seeded, so the stand is identical every boot. Six `THREE.Points`, one per
-stratum, shuffled at build so the adaptive LOD can trim the draw range into a
-uniform subsample without regenerating anything. The wind sways each stratum
-(more with height, driven by the geophony bench) by moving **six positions per
-frame** — not one vertex is touched. Measured at **8.3 ms median, the same as
-DarkForest and Estratos**.
+La nube es deliberadamente **escasa y de punto pequeño**: no un levantamiento, sino lo que la máquina alcanza a ver del bosque — una presencia espectral antes que un modelo. Sembrada, así que el rodal es idéntico en cada arranque. Seis `THREE.Points`, uno por estrato, barajados al construir para que el LOD adaptativo pueda recortar el rango de dibujo en un submuestreo uniforme sin regenerar nada. El viento mece cada estrato (más con la altura, accionado por la bancada de geofonía) moviendo **seis posiciones por cuadro** — no se toca ni un vértice. Medido a **8.3 ms de mediana, igual que DarkForest y Estratos**.
 
-Each call lights the stratum it came from, so the forest is the body that
-speaks rather than the backdrop it speaks in front of.
+Cada llamado ilumina el estrato del que vino, así que el bosque es el cuerpo que habla y no el telón frente al que habla.
 
-**Every call is a Japanese candlestick** — the one from a trading chart. Thin
-wick from high to low, thick body where the energy sits, filled if it closed
-above the previous call of its own species and dimmed if below. The "price" is
-frequency. This is not a visual joke: the engine already sonifies a blockchain,
-and putting the forest into the same instrument a currency is quoted with says
-out loud what the whole apparatus does — try to measure nature in real time,
-with the wrong tool, leaving the seam visible.
+**Cada llamado es una vela japonesa** — la de un gráfico bursátil. Mecha fina de máximo a mínimo, cuerpo grueso donde se asienta la energía, rellena si cerró por encima del llamado anterior de su propia especie y atenuada si por debajo. El "precio" es la frecuencia. No es un chiste visual: el motor ya sonifica una blockchain, y meter el bosque en el mismo instrumento con que se cotiza una divisa dice en voz alta lo que hace todo el aparato — intentar medir la naturaleza en tiempo real, con la herramienta equivocada, dejando la costura a la vista.
 
-The candles are **immersed**. The fauna are drawn as **LiDAR returns like
-everything else** — denser clusters of the same white phosphor, not painted
-silhouettes: every mark in this scene comes from the same scan. The howler sings
-from **a howler (*Alouatta seniculus*) moving through the ceiba's branches** —
-one animal, not two. Two of the same size moving through the same crown read as
-a matched pair, which is a decorative relation; one is a presence. It is drawn
-at 0.85 of the size it was, and because `PointsMaterial` attenuates by distance
-and not by object transform, shrinking the animal does **not** shrink its
-returns: a smaller cluster of the same dots, which is what a real scan would
-give. — body, head and
-prehensile tail, pausing long between moves as the animal does. They can only
-be in the ceiba, because it is the one emergent: the same confinement that
-already governed the call, now visible. Other canopy sources sing from a **bird
-actually crossing the stand** — seven of them fly at canopy and emergent height, wings
-beating, and the sky empties outside their hours. First you see who is
-speaking, then what they said. Failing a bird, the call takes a **perch**: a
-tree in this stand tall enough to reach its stratum. The howler can only be in
-the ceiba, because it is the one emergent. The aircraft has no perch — it is in
-the atmosphere, which is what it is. The strip along the bottom draws the same
-reading as a full chart, time on x and frequency on y.
+Las velas están **inmersas**. La fauna se dibuja como **retornos LiDAR igual que todo lo demás** — agrupaciones más densas del mismo fósforo blanco, no siluetas pintadas: cada marca de esta escena viene del mismo escaneo. El aullador canta desde **un aullador (*Alouatta seniculus*) moviéndose por las ramas de la ceiba** — un animal, no dos. Dos del mismo tamaño moviéndose por la misma copa se leen como pareja emparejada, que es una relación decorativa; uno es una presencia. Se dibuja a 0.85 del tamaño que tenía, y como `PointsMaterial` atenúa por distancia y no por transformación de objeto, encoger al animal **no** encoge sus retornos: una agrupación más pequeña de los mismos puntos, que es lo que daría un escaneo real. Tiene cuerpo, cabeza y cola prensil, y pausa largo entre movimientos como hace el animal. Sólo puede estar en la ceiba, porque es el único emergente: el mismo confinamiento que ya gobernaba al llamado, ahora visible. Otras fuentes de dosel cantan desde un **ave que efectivamente cruza el rodal** — siete de ellas vuelan a altura de dosel y emergente, batiendo alas, y el cielo se vacía fuera de sus horas. Primero ves quién habla, después qué dijo. A falta de un ave, el llamado toma una **percha**: un árbol de este rodal lo bastante alto como para alcanzar su estrato. La aeronave no tiene percha — está en la atmósfera, que es lo que es.
 
-The **suelo** has inhabitants now: a **paujil piquiazul** (*Crax alberti*, CR
-endemic) walks between the boles rather than flying, and a **file of leafcutter
-ants** (*Atta cephalotes*) crosses from nest to tree. Both have voices — the
-paujil a deep boom in the register where the kick lives, the ants a faint
-high stridulation. Atta farm fungus, so the file **lights the mycelium it passes
-over**: the two elements are one system rather than two decorations.
+El **suelo** tiene habitantes ahora: un **paujil piquiazul** (*Crax alberti*, CR endémico) camina entre los fustes en vez de volar, y una **fila de hormigas arrieras** (*Atta cephalotes*) cruza del nido al árbol. Ambos tienen voz — el paujil un bum grave en el registro donde vive el bombo, las hormigas una estridulación aguda y tenue. Atta cultiva hongos, así que la fila **ilumina el micelio por el que pasa**: los dos elementos son un sistema en lugar de dos decoraciones.
 
-**Mycelium** runs under the ground and keeps going past the plot and out of
-frame on every side. That it leaves is the claim, not a framing slip: the
-network does not recognise the parcel boundary or the viewport. The unit the
-eye thinks it is looking at — this stand, this rectangle — is an administrative
-cut across something continuous. The forest above can be framed; the one below
-cannot. It is split into **seven sub-networks, each keyed to its own band of the live
-master spectrum**, so different paths light with different parts of the sound
-and the net reads as carrying traffic rather than breathing as one body — the
-"pulse" it had before was a free-running sine tied to nothing. Kick and dust
-onsets give the flashes, band energy the sustain. Seven opacity writes per
-frame; a per-vertex update would be ~200 KB/frame, 350× the bird and howler
-systems combined.
+El **micelio** corre bajo tierra y sigue más allá de la parcela y fuera de cuadro por todos los lados. Que se vaya es la afirmación, no un descuido de encuadre: la red no reconoce el lindero del predio ni el viewport. La unidad que el ojo cree estar mirando —este rodal, este rectángulo— es un corte administrativo sobre algo continuo. El bosque de arriba se puede encuadrar; el de abajo no. Está dividido en **siete subredes, cada una ligada a su propia banda del espectro maestro en vivo**, así que distintos caminos se iluminan con distintas partes del sonido y la red se lee como portadora de tráfico en lugar de respirar como un solo cuerpo — el "pulso" que tenía antes era un seno libre atado a nada. Los onsets de bombo y polvo dan los destellos, la energía de banda el sostenido. Siete escrituras de opacidad por cuadro; una actualización por vértice serían ~200 KB/cuadro, 350× los sistemas del ave y el aullador juntos.
 
-**Frequency does not fight for that axis.** Each call is a glyph whose length is
-its bandwidth; the spectrum reads as morphology. A separate strip along the
-bottom carries time on x and log frequency on y — the acoustic niche, species
-partitioning bands and hours so as not to mask one another.
+**La frecuencia no pelea por ese eje.** Cada llamado es un glifo cuya longitud es su ancho de banda; el espectro se lee como morfología. Una franja aparte a lo largo del borde inferior lleva el tiempo en x y la frecuencia logarítmica en y — el nicho acústico, especies repartiéndose bandas y horas para no enmascararse entre sí.
 
-**Three benches, not one.** Biophony, geophony, and anthropophony. The machine
-is not an intruder in this chamber; it is the third bench, and its noise grows
-into ambient through the deep-listening transitions instead of sitting beside
-them. When the tide rises the forest speaks; when it falls, the machine holds
-the air. That inversion is literal: anthropophony's spawn weight is driven by
-`(1 - tide)`.
+**Tres bancadas, no una.** Biofonía, geofonía y antropofonía. La máquina no es una intrusa en esta cámara; es la tercera bancada, y su ruido crece hacia lo ambiental a través de las transiciones de escucha profunda en lugar de sentarse al lado. Cuando la marea sube habla el bosque; cuando baja, la máquina sostiene el aire. Esa inversión es literal: el peso de aparición de la antropofonía lo acciona `(1 - tide)`.
 
-**It really sounds — and now with the forest's own voice.** A call goes out on
-`/antifonia/call`, and **SuperCollider chooses the recording** (`16_corpus_calls.scd`).
+**Suena de verdad — y ahora con la voz propia del bosque.** Sale un llamado en `/antifonia/call`, y **SuperCollider elige la grabación** (`16_corpus_calls.scd`).
 
-Twelve sources shared seven MP3s: four species split the *aves* bed alone, and
-LLUVIA and VIENTO carried `smp: -1`, drawn on screen and never sounding at all.
-The corpus built from the AudioMoth survey holds 261 clips of the actual site,
-and slot A could not reach any of it — the ring in `14_phenological_corpus.scd`
-plays that material on the 365-day calendar, which is a calendar and not a call.
+Doce fuentes compartían siete MP3: cuatro especies se repartían solas la cama de *aves*, y LLUVIA y VIENTO llevaban `smp: -1`, dibujadas en pantalla y sin sonar jamás. El corpus construido a partir del levantamiento AudioMoth guarda 261 clips del sitio real, y el slot A no podía alcanzar nada de eso — el anillo de `14_phenological_corpus.scd` reproduce ese material sobre el calendario de 365 días, que es un calendario y no un llamado.
 
-The bank now carries **116 two-second grains** (already cut by `build_corpus.py`
-from each ring day's highest-confidence events) and **six geophony stems**, so
-rain and wind finally have a recording. ≈114 MB resident.
+El banco lleva ahora **116 granos de dos segundos** (ya cortados por `build_corpus.py` desde los eventos de mayor confianza de cada día del anillo) y **seis stems de geofonía**, así que la lluvia y el viento por fin tienen grabación. ≈114 MB residentes.
 
-**The species→role map lives in SuperCollider**, because the corpus carries
-ecological roles and *no taxonomy* — that is the same fact that makes Article
-43's bancadas role-labelled. A call therefore says *who* is speaking and *at what
-hour*; SC decides which recording answers:
+**El mapa especie→rol vive en SuperCollider**, porque el corpus lleva roles ecológicos y *ninguna taxonomía* — el mismo hecho que obliga a que las bancadas del Artículo 43 se etiqueten por rol. Un llamado dice por tanto *quién* habla y *a qué hora*; SC decide qué grabación responde:
 
-| Source | answers from |
+| Fuente | responde desde |
 |---|---|
-| aullador · rana · murciélago | `nocturnal_voice` (the bat weighted toward clips that carry ultrasound) |
+| aullador · rana · murciélago | `nocturnal_voice` (el murciélago sesgado hacia clips que llevan ultrasonido) |
 | chicharra · arriera | `insect_chorus` |
 | aves · oropéndola · paujil | `dusk_` / `dawn_chorus_participant` |
-| **lluvia · viento** | **geophony stems** |
-| avión · cinta | their MP3s — the corpus has no anthropophony to offer |
+| **lluvia · viento** | **stems de geofonía** |
+| avión · cinta | sus MP3 — el corpus no tiene antropofonía que ofrecer |
 
-Selection weights confidence against **hour proximity on a 24-hour ring**, through
-a Gaussian of σ ≈ 3 h, about the width of a dawn chorus. A linear falloff was
-tried first and does not work: it spans only 5× across the whole clock, and the
-corpus is so nocturnal that the mass of far clips outvoted the near ones — a call
-at 20 h still drew a median grain from 03 h. The Gaussian gives ~8×, which is the
-difference between a preference and a rounding error.
+La selección pondera la confianza frente a la **proximidad horaria sobre un anillo de 24 horas**, mediante una gaussiana de σ ≈ 3 h, más o menos el ancho de un coro del amanecer. Primero se probó una caída lineal y no funciona: abarca sólo 5× a lo largo de todo el reloj, y el corpus es tan nocturno que la masa de clips lejanos le ganaba el voto a los cercanos — un llamado a las 20 h seguía sacando un grano mediano de las 03 h. La gaussiana da ~8×, que es la diferencia entre una preferencia y un error de redondeo.
 
-**Article 47 is enforced before the clip is chosen and again in the voice.**
-`opacityFloor` (CC 15) filters the eligible pool exactly as it does for the ring,
-and `samplePlayer*` now carries the same veil `\corpusVoice` has always had —
-that SynthDef had *none*, so routing recorded material through it would have
-sounded what the Chamber had withheld. Measured: floor 0 admits 114 of 122 corpus
-entries, 0.5 admits 73, 0.8 admits 23.
+**El Artículo 47 se aplica antes de elegir el clip y otra vez dentro de la voz.** `opacityFloor` (CC 15) filtra el pool elegible exactamente como lo hace para el anillo, y `samplePlayer*` lleva ahora el mismo velo que `\corpusVoice` ha tenido siempre — ese SynthDef no tenía *ninguno*, así que enrutar material grabado por él habría sonado lo que la Cámara había retenido. Medido: un suelo de 0 admite 114 de 122 entradas del corpus, 0.5 admite 73, 0.8 admite 23.
 
-A call **opens a window into** the recording rather than truncating it. Five of
-the seven MP3s are 51–360 s soundscape beds, not isolated calls, so a call's
-duration shapes an envelope — attack, hold, release — over an excerpt taken from
-a varying offset. Previously the duration was a hard `.free`, which cut a
-51-second howler after 3% of itself with no release at all: a broadband click on
-every call, and because the reverb and delay live *inside* the voice, the acoustic
-space vanished with it.
+Un llamado **abre una ventana hacia** la grabación en lugar de truncarla. Cinco de los siete MP3 son camas de paisaje sonoro de 51–360 s, no llamados aislados, así que la duración de un llamado da forma a una envolvente —ataque, sostenido, liberación— sobre un extracto tomado de un desplazamiento variable. Antes la duración era un `.free` duro, que cortaba un aullador de 51 segundos tras el 3 % de sí mismo y sin liberación alguna: un clic de banda ancha en cada llamado, y como la reverb y el delay viven *dentro* de la voz, el espacio acústico desaparecía con él.
 
-> **The envelope now has to fit the recording.** Its span is atk+hold+rel ≈ 2.15 ×
-> the hold, and that span was never computed anywhere — survivable while every
-> file ran 51–360 s, wrong the moment a 2-second grain arrived: it became two
-> seconds of forest followed by eight of silence holding one of twelve voices.
-> The span is built explicitly now and scaled to the material when it overruns.
-> Which also makes true, at last, what this section always claimed: the two short
-> MP3s (ranas 4.9 s, oropéndola 6.2 s) are heard **whole**. They were not — a
-> 10.75 s envelope over a 6.2 s file ran off its own end.
+> **La envolvente ahora tiene que caber en la grabación.** Su extensión es atk+hold+rel ≈ 2.15 × el sostenido, y esa extensión no se computaba en ninguna parte — sobrevivible mientras todos los archivos duraran 51–360 s, equivocada en el momento en que llegó un grano de 2 segundos: se volvía dos segundos de bosque seguidos de ocho de silencio reteniendo una de doce voces. La extensión se construye explícitamente ahora y se escala al material cuando se pasa. Lo que además hace por fin cierto lo que esta sección siempre afirmó: los dos MP3 cortos (ranas 4.9 s, oropéndola 6.2 s) se oyen **enteros**. No se oían — una envolvente de 10.75 s sobre un archivo de 6.2 s se salía de su propio final.
 
-Only biophony is published to `__activeSpecies`: rain is not a species and
-neither is an aircraft, and that field feeds the parliament's living census and
-the laser's opacity clause.
+Sólo la biofonía se publica en `__activeSpecies`: la lluvia no es una especie y una aeronave tampoco, y ese campo alimenta el censo vivo del parlamento y la cláusula de opacidad del láser.
 
-Inspired by **AveRosetta™** (NeotropicalScience), a forest-communication
-visualizer crossing a LiDAR cloud with annotated calls. No AveRosetta code or
-data is used here; the debt is conceptual and is credited on screen.
+Inspirado en **AveRosetta™** (NeotropicalScience), un visualizador de comunicación forestal que cruza una nube LiDAR con llamados anotados. Aquí no se usa código ni datos de AveRosetta; la deuda es conceptual y se acredita en pantalla.
 
-Real annotations drop in at `assets/json/antifonia_calls.json` (schema in the
-module header); absent that, the session is generated from the source table.
+Las anotaciones reales entran en `assets/json/antifonia_calls.json` (esquema en la cabecera del módulo); a falta de eso, la sesión se genera desde la tabla fuente.
 
-### Marea — the density arc
+### Marea — el arco de densidad
 
-The rhythm is not a grid. There is no step pattern deciding what sounds; a slow
-swell decides how *likely* any onset is, and events are placed by probability
-with ±45% of a tick of jitter so nothing lands on an audible pulse. The kick can
-only occur where the chain itself has a seam — a new block — and even there only
-with probability `tide²`, so the low end is present at the crest and absent
-through the trough.
+El ritmo no es una rejilla. No hay patrón de pasos decidiendo qué suena; un oleaje lento decide qué tan *probable* es cualquier onset, y los eventos se colocan por probabilidad con ±45 % de un tick de jitter para que nada caiga sobre un pulso audible. El bombo sólo puede ocurrir donde la cadena misma tiene una costura —un bloque nuevo— e incluso ahí sólo con probabilidad `tide²`, de modo que el extremo grave está presente en la cresta y ausente en el valle.
 
-The arc is measured in **blocks**, not seconds, so it stays locked to the
-chain's own cadence rather than drifting against it when the network speeds up
-or stalls.
+El arco se mide en **bloques**, no en segundos, así que queda enganchado a la cadencia propia de la cadena en lugar de derivar contra ella cuando la red se acelera o se atasca.
 
-| Control | OSC | MIDI CC | Effect |
+| Control | OSC | CC MIDI | Efecto |
 |---|---|---|---|
-| **ARCO CORTO** | `/tide/short` | CC 17 | ~3.5 blocks (40–50 s) |
-| **ARCO MEDIO** | `/tide/media` | CC 18 | ~8 blocks (1.5–2 min) — default |
-| **ARCO LARGO** | `/tide/larga` | CC 19 | ~25 blocks (4–6 min) |
-| **PULSO** | `/tide/pulse` | CC 20 | sub-bass heartbeat, one per block, crosses the troughs |
+| **ARCO CORTO** | `/tide/short` | CC 17 | ~3.5 bloques (40–50 s) |
+| **ARCO MEDIO** | `/tide/media` | CC 18 | ~8 bloques (1.5–2 min) — por defecto |
+| **ARCO LARGO** | `/tide/larga` | CC 19 | ~25 bloques (4–6 min) |
+| **PULSO** | `/tide/pulse` | CC 20 | latido de sub-graves, uno por bloque, atraviesa los valles |
 
-The three arcs are **mutually exclusive, and SC owns that rule** — it is
-enforced once in `~setParam` (`exclusiveGroup`), the single write path every
-surface already shares, so ticking one in the browser also unticks the others
-on the SC GUI and under MIDI. The browser only reflects the echo; it never
-enforces. All three off is a legal state: flat density, no swell.
+Los tres arcos son **mutuamente excluyentes, y SC es dueño de esa regla** — se impone una sola vez en `~setParam` (`exclusiveGroup`), la única ruta de escritura que todas las superficies ya comparten, así que marcar uno en el navegador también desmarca los otros en la GUI de SC y bajo MIDI. El navegador sólo refleja el eco; nunca impone. Los tres apagados es un estado legal: densidad plana, sin oleaje.
 
-Watch it on `[MON]`: `tide:<arc>/<phase>=<swell>` and `puls:`.
+Obsérvalo en `[MON]`: `tide:<arco>/<fase>=<oleaje>` y `puls:`.
 
-### Gain staging
+### Escalonado de ganancia
 
-The master bus previously ran at `outPk` 3–6 against a full scale of 1.0 with
-the limiter holding back 90–98% *continuously* — a compressor, not a limiter,
-which is why the level barely responded to `masterVolume` or `masterAmp`. The
-cause was singular: the pad layer summed **linearly** with concurrency (20 pads
-= 1.96) while every other layer was ≤ 0.17.
+El bus maestro corría antes a `outPk` 3–6 contra una escala completa de 1.0 con el limitador conteniendo el 90–98 % de forma *continua* — un compresor, no un limitador, que es la razón por la que el nivel apenas respondía a `masterVolume` o `masterAmp`. La causa era una sola: la capa de pads sumaba **linealmente** con la concurrencia (20 pads = 1.96) mientras cualquier otra capa estaba en ≤ 0.17.
 
-Pads get polyphony compensation (`1/√n`, so the layer grows as `√n`), and a
-single `~trimMaster` sets the absolute level.
+Los pads reciben compensación de polifonía (`1/√n`, así que la capa crece como `√n`), y un único `~trimMaster` fija el nivel absoluto.
 
-The balance was then wrong in a second way, which peak measurements could not
-see. Calibrating on the **crest** left nothing holding the **floor**: measured
-over a full tidal arc the mix was below 0.05 — inaudible — in **48% of
-windows**, with a 340:1 crest factor. Half the piece was silence punctuated by
-peaks. The drone is now the **bed** rather than a quiet reference, the tidal
-trough thins to 0.42 instead of 0.15, and the field recordings sustain and
-cross-fade instead of punctuating. Result: **inaudible 48% → 16%**, crest
-340:1 → **37:1**, median level ×1.8, `outPk` p90 0.745.
+El balance estaba entonces mal de una segunda manera, que las mediciones de pico no podían ver. Calibrar sobre la **cresta** dejaba sin nada que sostuviera el **suelo**: medida a lo largo de un arco de marea completo, la mezcla estaba por debajo de 0.05 —inaudible— en el **48 % de las ventanas**, con un factor de cresta de 340:1. Media pieza era silencio puntuado por picos. El drone es ahora la **cama** en lugar de una referencia callada, el valle de marea adelgaza hasta 0.42 en vez de 0.15, y las grabaciones de campo sostienen y se funden entre sí en lugar de puntuar. Resultado: **inaudible 48 % → 16 %**, cresta 340:1 → **37:1**, nivel mediano ×1.8, `outPk` p90 0.745.
 
-These trims remain the *structure* of the balance. What Row 8 adds is a live
-multiplier on each of them, so the structure can be adjusted while playing
-without editing constants and rebooting.
+Estos trims siguen siendo la *estructura* del balance. Lo que la Fila 8 añade es un multiplicador en vivo sobre cada uno, para que la estructura pueda ajustarse mientras se toca sin editar constantes y reiniciar.
 
-### Slot 0 is no longer entirely amber
+### El slot 0 ya no es enteramente ámbar
 
-`ParliamentStage.js` rendered every element in one hue, which made the chamber
-read as a single instrument panel rather than an assembly — nothing could stand
-apart from the amber because nothing was allowed to. Two elements now burn
-**white phosphorous** (`#f2fff4`, a trace of green so it stays a phosphor rather
-than a UI white):
+`ParliamentStage.js` renderizaba cada elemento en un solo tono, lo que hacía que la cámara se leyera como un único panel de instrumentos en vez de como una asamblea — nada podía destacarse del ámbar porque a nada se le permitía. Dos elementos arden ahora en **fósforo blanco** (`#f2fff4`, una traza de verde para que siga siendo un fósforo y no un blanco de interfaz):
 
-* **the outermost radar ring** — the boundary of what the instrument can see.
-  It is the only ring with real presence (base opacity 0.28 against 0.06), so a
-  change of hue there is seen rather than inferred.
-* **Alouatta, the howler** — Article 46 of the Cámara Fenológica gives it the
-  one alert protocol in the statute, obliging the Corporation to attend to its
-  silence. The species the instrument is bound to listen for is the species
-  that is not amber. It keeps the same three-step dim→bright activity ramp as
-  the others, in phosphor rather than amber, so it reads as the same state
-  machine in a different substance — not as a node stuck at one colour while
-  the rest of the chamber breathes.
+* **el anillo de radar más exterior** — el límite de lo que el instrumento alcanza a ver. Es el único anillo con presencia real (opacidad base 0.28 frente a 0.06), así que un cambio de tono ahí se ve en lugar de inferirse.
+* **Alouatta, el aullador** — el Artículo 46 de la Cámara Fenológica le otorga el único protocolo de alerta del estatuto, que obliga a la Corporación a atender su silencio. La especie que el instrumento está obligado a escuchar es la especie que no es ámbar. Mantiene la misma rampa de actividad de tres pasos atenuado→brillante que las demás, en fósforo y no en ámbar, así que se lee como la misma máquina de estados en otra sustancia — no como un nodo atascado en un color mientras el resto de la cámara respira.
 
-### The SC GUI is 1-bit monospace, with two exceptions
+### La GUI de SC es monoespaciada de 1 bit, con dos excepciones
 
-Black and white only, one typeface (Menlo), labels in caps. The previous amber
-scheme carried five hues that each encoded a state — green ok, red stop, yellow
-armed — none of which survived a projector or a photograph, and which made hue
-do the work that state should. Every control is white on black and an
-**engaged** control inverts to black on white.
+Sólo blanco y negro, una sola tipografía (Menlo), etiquetas en mayúsculas. El esquema ámbar anterior llevaba cinco tonos que codificaban cada uno un estado —verde ok, rojo alto, amarillo armado— ninguno de los cuales sobrevivía a un proyector o a una fotografía, y que hacían que el tono hiciera el trabajo que debería hacer el estado. Cada control es blanco sobre negro y un control **accionado** se invierte a negro sobre blanco.
 
-Two things are deliberately not 1-bit, because inversion needs a body to invert
-and neither of these has one.
+Dos cosas no son de 1 bit deliberadamente, porque la inversión necesita un cuerpo que invertir y ninguna de las dos lo tiene.
 
-**The status lights are red when live, dark when dead.** A control has a shape
-you can read; a light has nothing but its own state. When the palette went
-1-bit, `mainTheme.green` and `mainTheme.red` both became `Color.white` — and the
-LED drawFunc still chose between those two names as its *only* state signal, so
-all five lights were identical white discs in every condition. They now carry
-two literal colours of their own; an unlit light keeps its rim, so only the
-filament goes out. Nothing else on the window is red, so the status row is the
-one thing that can catch your eye across a stage.
+**Las luces de estado son rojas cuando hay señal, oscuras cuando no.** Un control tiene una forma que se puede leer; una luz no tiene más que su propio estado. Cuando la paleta pasó a 1 bit, `mainTheme.green` y `mainTheme.red` se volvieron ambos `Color.white` — y el drawFunc del LED seguía eligiendo entre esos dos nombres como su *única* señal de estado, así que las cinco luces eran discos blancos idénticos en cualquier condición. Ahora llevan dos colores literales propios; una luz apagada conserva su aro, así que sólo se apaga el filamento. Nada más en la ventana es rojo, así que la fila de estado es lo único que puede llamarte la atención desde el otro lado de un escenario.
 
-Three of them were also answering the wrong question — testing whether
-something had been *registered* rather than whether it was *running*, which
-becomes true at boot and stays true through a dead feed:
+Tres de ellas además respondían a la pregunta equivocada — comprobaban si algo se había *registrado* en vez de si estaba *corriendo*, lo que se vuelve cierto al arrancar y sigue cierto a través de un feed muerto:
 
-| Light | Was | Is |
+| Luz | Era | Es |
 |---|---|---|
-| **SERVER** | `Server.default.serverRunning` | unchanged |
-| **BEAT** | `~beatRoutine.notNil` — never nil'd after `.stop`, so a stopped engine read as running | `~lastBeatTime` within 3 s, stamped once per step |
-| **OSC** | `OSCdef(\txHandler).notNil` — registration, not traffic | `~lastOscTime` within 5 s |
-| **ETH** | *(did not exist)* | `~lastEthTime` within 30 s — the feed the OSC light used to claim, and never watched |
-| **MIDI** | a device is enumerated — stays lit through a dead cable | `~lastMidiTime` within 5 s, any CC |
-| **BRIDGE RX** | `~lastBrowserOscTime` within 5 s | unchanged — the only one that was ever live |
+| **SERVER** | `Server.default.serverRunning` | sin cambios |
+| **BEAT** | `~beatRoutine.notNil` — nunca se ponía en nil tras `.stop`, así que un motor detenido se leía como corriendo | `~lastBeatTime` dentro de 3 s, estampado una vez por paso |
+| **OSC** | `OSCdef(\txHandler).notNil` — registro, no tráfico | `~lastOscTime` dentro de 5 s |
+| **ETH** | *(no existía)* | `~lastEthTime` dentro de 30 s — el feed que la luz OSC decía representar, y nunca vigiló |
+| **MIDI** | hay un dispositivo enumerado — sigue encendida con el cable muerto | `~lastMidiTime` dentro de 5 s, cualquier CC |
+| **BRIDGE RX** | `~lastBrowserOscTime` dentro de 5 s | sin cambios — la única que estuvo viva desde siempre |
 
-**The knob grid is seven across.** Four performance rows of 5/5/5/6 became three of
-seven — the Cámara row already proved seven fits (7 × 132 px cells + gaps + margins =
-992 px inside 1100) — and `phenoRate` joined the Cámara row to make it seven too. Seven
-rows became six.
+**La rejilla de perillas es de siete de ancho.** Cuatro filas de rendimiento de 5/5/5/6 pasaron a tres de siete —la fila de la Cámara ya había probado que siete caben (7 × celdas de 132 px + huecos + márgenes = 992 px dentro de 1100)— y `phenoRate` se unió a la fila de la Cámara para hacerla también de siete. Siete filas pasaron a seis.
 
-**`bancada` is a button row, not a knob.** It is the last stepped spec that was still a
-Knob, and a Knob cannot serve one here: `~makeKnob` rebuilds the `ControlSpec` from
-`(min, max, warp)` and **drops the step**, `~setParam` re-quantises against the real spec
-and writes the rounded value back into the widget, and a `\vert`-mode Knob drags
-*relative to its current value*. So the write-back reset the accumulator on every mouse
-event, and crossing into position 1 needed 0.125 normalised in a single event — about
-16 px between two consecutive Qt moves. The knob was not sending nothing; it was sending
-0, repeatedly. MIDI CC 16 and the browser's five buttons were always fine. Five radio
-buttons now, reconciled from the bus at 2 Hz so every source relights them.
+**`bancada` es una fila de botones, no una perilla.** Es la última especificación escalonada que seguía siendo un Knob, y un Knob no puede servir aquí: `~makeKnob` reconstruye el `ControlSpec` a partir de `(min, max, warp)` y **descarta el paso**, `~setParam` recuantiza contra la especificación real y escribe el valor redondeado de vuelta en el widget, y un Knob en modo `\vert` arrastra *relativo a su valor actual*. Así que la reescritura reiniciaba el acumulador en cada evento de ratón, y cruzar a la posición 1 requería 0.125 normalizado en un solo evento — unos 16 px entre dos movimientos consecutivos de Qt. La perilla no estaba enviando nada; estaba enviando 0, repetidamente. El CC MIDI 16 y los cinco botones del navegador siempre estuvieron bien. Ahora son cinco botones de radio, reconciliados desde el bus a 2 Hz para que cualquier fuente los reencienda.
 
-**Row 5, the Cámara Fenológica, is tinted amber.** It is the one bench whose
-controls change *who speaks* rather than how the engine sounds. The tint marks
-the row; it does not restart the hue-as-state habit the rewrite removed.
+**La fila 5, la Cámara Fenológica, va tintada en ámbar.** Es la única bancada cuyos controles cambian *quién habla* en lugar de cómo suena el motor. El tinte marca la fila; no reinstaura el hábito de tono-como-estado que la reescritura eliminó.
 
 ---
 
-## 5. Laser Projection (ILDA / Helios DAC)
+## 5. Proyección láser (ILDA / DAC Helios)
 
-Projects the engine's **vector** geometry onto a real-world forest. Lasers draw sparse bright strokes (not rasterised images), so the browser sends a small laser-friendly scene — not the 3-D framebuffer.
+Proyecta la geometría **vectorial** del motor sobre un bosque real. Los láseres dibujan trazos brillantes y escasos (no imágenes rasterizadas), así que el navegador envía una escena pequeña apta para láser — no el framebuffer 3-D.
 
 ```
-browser laserTap ──WS:3337──► laser-bridge.js ──USB──► Helios DAC ──► laser
-                                     └──────────────► frames.ild (ILDA fmt 5)
+laserTap del navegador ──WS:3337──► laser-bridge.js ──USB──► DAC Helios ──► láser
+                                          └──────────────► frames.ild (ILDA fmt 5)
 ```
 
-**Enable:** `LASER=1 ./start_ecosystem.sh` (off by default). With no DAC and no native binding it runs **DRY** (logs only) — safe to start anywhere.
+**Activar:** `LASER=1 ./start_ecosystem.sh` (apagado por defecto). Sin DAC y sin binding nativo corre en **SECO** (sólo logs) — seguro de arrancar en cualquier parte.
 
-**Frame contract** (browser → bridge): normalised, centre `(0,0)`, `x,y ∈ −1..1`.
+**Contrato de cuadro** (navegador → puente): normalizado, centro `(0,0)`, `x,y ∈ −1..1`.
+
 ```json
 { "type":"laserFrame", "pps":30000,
   "points":[ {"x":-0.8,"y":0.0,"r":0,"g":200,"b":90,"blank":false}, … ] }
 ```
 
-**Frame source** (`src/projector/laserTap.ts`, started by `parliamentEntry.init`):
-1. `window.__laserFrame` — any module may publish its own vector scene.
-2. **slot-P default** — the phenological **year-ring** + a marker at today's active species (`window.__activeSpecies`). A **sensitive** species is *not* drawn: the opacity clause (Glissant) extended into physical space — the vulnerable being is never cast onto the real forest.
+**Origen del cuadro** (`src/projector/laserTap.ts`, iniciado por `parliamentEntry.init`):
 
-### What gets projected: the pulsar plot
+1. `window.__laserFrame` — cualquier módulo puede publicar su propia escena vectorial.
+2. **por defecto, el slot P** — el **anillo del año** fenológico + un marcador en las especies activas de hoy (`window.__activeSpecies`). Una especie **sensible** *no* se dibuja: la cláusula de opacidad (Glissant) extendida al espacio físico — el ser vulnerable nunca se proyecta sobre el bosque real.
 
-Stacked ridgelines — the *Unknown Pleasures* / B1919+21 image. Successive observations of the same object drawn one above another, so a pattern invisible in a single pass emerges from the stack. `pulsarPlot.ts` publishes `window.__laserFrame`, which `laserTap.ts` already prefers over its year-ring default.
+### Qué se proyecta: el gráfico de púlsar
 
-**Four sources**, ticked independently from the SC GUI (`/laser/src/*`, registry-backed so presets carry them). Each draws in its own hue so a mixed stack stays legible. **With none ticked the year ring returns** — that is how the ring stays reachable without a control of its own.
+Crestas apiladas — la imagen de *Unknown Pleasures* / B1919+21. Observaciones sucesivas del mismo objeto dibujadas una sobre otra, de modo que un patrón invisible en una sola pasada emerge de la pila. `pulsarPlot.ts` publica `window.__laserFrame`, que `laserTap.ts` ya prefiere sobre su anillo del año por defecto.
 
-| Tick | One row is | Hue |
+**Cuatro fuentes**, marcables de forma independiente desde la GUI de SC (`/laser/src/*`, respaldadas por el registro para que los presets las lleven). Cada una dibuja en su propio tono para que una pila mixta siga siendo legible. **Sin ninguna marcada vuelve el anillo del año** — así es como el anillo sigue siendo alcanzable sin un control propio.
+
+| Marca | OSC | Una fila es | Tono |
+|---|---|---|---|
+| `MIX` | `/laser/src/mix` | una instantánea del espectro de todo lo que suena | verde |
+| `CORPUS` | `/laser/src/corpus` | lo mismo, sólo sobre el bus del corpus — la voz propia del bosque | ámbar |
+| `DÍA` | `/laser/src/ring` | el espectro del corpus medido mientras suena un día `/pheno/clip` | azul |
+| `CHAIN` | `/laser/src/chain` | las transacciones de un bloque; x es orden de llegada, altura es la puja | rojo |
+
+El Artículo 47 se lleva consigo, no se vuelve a litigar: un clip opaco nunca se anuncia, y una especie **sensible** no aporta fila alguna — la misma negativa que `laserTap.ts` ya hace para el anillo.
+
+#### Por qué seis filas, y por qué serpentina
+
+Los límites del galvo hacen de esto un problema de **longitud de trayecto**. Cada punto se escanea `FRAME_HZ` veces por segundo, así que un cuadro recibe una cantidad fija de tinta:
+
+```
+tinta por cuadro = OMEGA_MAX / FRAME_HZ / grados_por_unidad
+                 = 10000 / 30 / 22.5  =  14.8 unidades normalizadas
+```
+
+Una fila de ancho completo cuesta ~1.5 unidades antes de ondularse. **Las 80 filas del álbum necesitarían ~420 unidades.** Seis es el techo, así que la profundidad de la pila vive en el *tiempo*: el gráfico se desplaza, y el patrón emerge para quien mira en vez de echar un vistazo.
+
+Dos cosas son estructurales antes que estilísticas:
+
+- **Escaneo serpentina.** Dibujar cada fila de izquierda a derecha implica retrazar el ancho completo entre ellas, y el espejo recorre eso esté el haz encendido o no. Medido: 19.36 unidades, **131 % del presupuesto → cuadro entero en blanco**. Alternar la dirección hace que el único movimiento entre filas sea el paso de fila. Serpentina: 12.03 unidades, 81 %.
+- **Muestreo por longitud de arco.** Espaciar los puntos de forma pareja en *x* y dimensionar ese espaciado al límite de paso no deja nada para la componente vertical, así que cada segmento inclinado excede el límite y acaba interpolado. Medido: un cuadro de 516 puntos se volvía **1041**, y una trayectoria que usaba sólo el 77 % del presupuesto de tinta alcanzaba el **128 %** del presupuesto de puntos y se apagaba.
+
+El generador se **autopresupuesta** — descarta la fila más antigua hasta que el cuadro cabe, *antes* de enviarlo. El apagado automático es una red de seguridad, y el contenido que cae en la red es contenido que no se está proyectando. Medido de extremo a extremo: 646 puntos, **81 % del presupuesto de escaneo, 0 excesos de velocidad, nada apagado**.
+
+### Límites del escáner (Unity RAW 1.7 W, DMX + ILDA)
+
+Un proyector láser se acciona **con una forma de onda**: a la tasa de puntos del DAC cada punto es una muestra, X en el canal izquierdo e Y en el derecho. Los límites de abajo vienen de la hoja de datos del equipo, y cada uno es una variable de entorno.
+
+`Scan Speed 30 kpps @ 8°` es un **par tasa–ángulo, no una tasa**. Un escáner que sigue 30 000 puntos/s a lo largo de 8° no puede seguir 30 000 puntos/s a lo largo de 45° — el espejo tiene cinco veces más camino que recorrer por punto. Así que el límite de paso se deriva de un techo de velocidad angular en lugar de elegirse:
+
+```
+OMEGA_MAX  = ÁNGULO_NOMINAL × PPS_NOMINAL / TRAVERSE_PTS  =  8° × 30000 / 24  =  10 000 °/s
+MAX_STEP   = OMEGA_MAX / pps / (SCAN_ANGLE / 2)           ≈  0.0185 a 24 kpps
+```
+
+`TRAVERSE_PTS` es la única cifra que la hoja de datos no publica (el número de puntos del patrón de prueba ILDA) y se fija deliberadamente baja, poniendo el techo en el **fondo** del rango que se le atribuye a un escáner de 30 K.
+
+| Variable | Por defecto | Origen |
 |---|---|---|
-| `MIX` | a spectrum snapshot of everything sounding | green |
-| `CORPUS` | the same, over the corpus bus alone — the forest's own voice | amber |
-| `DÍA` | the corpus spectrum measured while a `/pheno/clip` day is sounding | blue |
-| `CHAIN` | a block's worth of transactions; x is arrival order, height is the bid | red |
-
-Article 47 is carried, not re-litigated: an opaque clip is never announced, and a **sensitive** species contributes no row at all — the same refusal `laserTap.ts` already makes for the ring.
-
-#### Why six rows, and why serpentine
-
-The galvo limits make this a **path-length** problem. Every point is scanned `FRAME_HZ` times a second, so a frame gets a fixed quantity of ink:
-
-```
-ink per frame = OMEGA_MAX / FRAME_HZ / deg_per_unit
-              = 10000 / 30 / 22.5  =  14.8 normalised units
-```
-
-A full-width row costs ~1.5 units before it wiggles. **The album's 80 rows would need ~420 units.** Six is the ceiling, so the depth of the stack lives in *time* — the plot scrolls, and the pattern emerges for someone who watches rather than glances.
-
-Two things are load-bearing rather than stylistic:
-
-- **Serpentine scanning.** Drawing every row left-to-right means retracing the full width between them, and the mirror travels that whether the beam is on or not. Measured: 19.36 units, **131 % of budget → whole frame blanked**. Alternating direction makes the only inter-row move the row step. Serpentine: 12.03 units, 81 %.
-- **Arc-length sampling.** Spacing points evenly in *x* and sizing that spacing to the step limit leaves nothing for the vertical component, so every sloped segment exceeds the limit and gets interpolated. Measured: a 516-point frame became **1041**, and a path using only 77 % of the ink budget hit **128 %** of the point budget and was blanked.
-
-The generator is **self-budgeting** — it sheds the oldest row until the frame fits, *before* sending. Auto-blanking is a safety net, and content that lands in the net is content that is not being projected. Measured end to end: 646 points, **81 % scan budget, 0 over-speed, nothing blanked**.
-
-### Scanner limits (Unity RAW 1.7 W, DMX + ILDA)
-
-A laser projector is driven **by a waveform**: at the DAC's point rate each point is one sample, X on the left channel and Y on the right. The limits below come from the fixture datasheet, and every one is an env var.
-
-`Scan Speed 30 kpps @ 8°` is a **rate–angle pair, not a rate**. A scanner that tracks 30 000 points/s across 8° cannot track 30 000 points/s across 45° — the mirror has five times as far to travel per point. So the step limit is derived from an angular-velocity ceiling rather than picked:
-
-```
-OMEGA_MAX  = RATED_ANGLE × RATED_PPS / TRAVERSE_PTS    =  8° × 30000 / 24  =  10 000 °/s
-MAX_STEP   = OMEGA_MAX / pps / (SCAN_ANGLE / 2)        ≈  0.0185 at 24 kpps
-```
-
-`TRAVERSE_PTS` is the one figure the datasheet does not publish (the ILDA test pattern's point count) and is set deliberately low, putting the ceiling at the **bottom** of the range a 30 K scanner is credited with.
-
-| Env | Default | Source |
-|---|---|---|
-| `LASER_PPS` | `24000` | derated to 80 % of the rating; clamped to `LASER_RATED_PPS` |
+| `LASER_PPS` | `24000` | derateado al 80 % de la especificación; limitado a `LASER_RATED_PPS` |
 | `LASER_RATED_PPS` | `30000` | *Scan Speed 30 kpps @ 8°* |
-| `LASER_RATED_ANGLE` | `8` | the angle that rating is quoted at |
-| `LASER_SCAN_ANGLE` | `45` | *Scan Angle 45°*, full field |
-| `LASER_TRAVERSE_PTS` | `24` | modelling constant — lower = more headroom |
+| `LASER_RATED_ANGLE` | `8` | el ángulo al que se cita esa especificación |
+| `LASER_SCAN_ANGLE` | `45` | *Scan Angle 45°*, campo completo |
+| `LASER_TRAVERSE_PTS` | `24` | constante de modelado — más bajo = más margen |
 | `LASER_POWER_W` | `1.7` | *Power > 1.7 W* |
 | `LASER_BEAM_MM` / `LASER_DIVERGE` | `5` / `1.1` | *Beam 5 × 3 mm*, *< 1.1 mrad* |
-| `LASER_THROW_M` / `LASER_DWELL_MS` | `10` / `1.0` | projection distance; dwell window |
-| `LASER_MAX_STEP` | *(unset)* | override only — unset, it is computed above |
+| `LASER_THROW_M` / `LASER_DWELL_MS` | `10` / `1.0` | distancia de proyección; ventana de permanencia |
+| `LASER_MAX_STEP` | *(sin fijar)* | sólo para forzar — sin fijar, se computa arriba |
 
-**Dwell** is physical, not a guessed epsilon: the beam must clear **its own width** at the throw distance within `LASER_DWELL_MS`, or successive points are landing in the same spot.
+**La permanencia** es física, no un épsilon adivinado: el haz debe despejar **su propio ancho** a la distancia de proyección dentro de `LASER_DWELL_MS`, o puntos sucesivos están aterrizando en el mismo sitio.
 
-### Auto-blanking
+### Apagado automático
 
-Interpolation makes most jumps survivable but cannot make *every* frame compliant — `LASER_MAX_POINTS` and the scan budget are hard ceilings. Past them the beam is **switched off** rather than projected, targeted wherever targeting is meaningful:
+La interpolación hace sobrevivible la mayoría de los saltos pero no puede hacer conforme *cada* cuadro — `LASER_MAX_POINTS` y el presupuesto de escaneo son techos duros. Pasados esos, el haz se **apaga** en lugar de proyectarse, dirigido allí donde dirigirlo tenga sentido:
 
-| Fault | Response |
+| Fallo | Respuesta |
 |---|---|
-| **over-speed** | blank the point being jumped to — the mirrors still travel the gap, but dark. Does *not* repair the mechanical over-command, so the raw count is still reported separately. |
-| **dwell** | once a stationary unblanked run reaches `LASER_DWELL_MS`, the rest of it is blanked. The one case where blanking removes the hazard outright. |
-| **budget > 100 %** | cannot be targeted — no subset is being drawn at the rate it was authored for. **The whole frame goes dark.** |
+| **exceso de velocidad** | apagar el punto al que se salta — los espejos siguen recorriendo el hueco, pero a oscuras. *No* repara la sobreorden mecánica, así que el conteo crudo se sigue reportando aparte. |
+| **permanencia** | una vez que una tirada estacionaria sin apagar alcanza `LASER_DWELL_MS`, el resto se apaga. El único caso en que apagar elimina el riesgo del todo. |
+| **presupuesto > 100 %** | no se puede dirigir — ningún subconjunto se está dibujando a la tasa para la que fue creado. **El cuadro entero se apaga.** |
 
-Held for `LASER_BLANK_HOLD_MS` (250 ms) after the last fault, so a frame sitting on the threshold cannot strobe the beam at the frame rate. Disable with `LASER_SAFE_BLANK=0`.
+Se sostiene durante `LASER_BLANK_HOLD_MS` (250 ms) tras el último fallo, para que un cuadro sentado en el umbral no pueda estroboscopiar el haz a la frecuencia de cuadro. Desactivar con `LASER_SAFE_BLANK=0`.
 
-The scope reports what was **done** separately from what was **measured** — a dwell of 0 because the beam was switched off is a different fact from a dwell of 0 because nothing ever stopped moving. Verified:
+El osciloscopio reporta lo que se **hizo** por separado de lo que se **midió** — una permanencia de 0 porque el haz estaba apagado es un hecho distinto de una permanencia de 0 porque nada dejó nunca de moverse. Verificado:
 
 ```
-gentle   300 pts   679/10000 deg/s   field 2.7 deg   budget  56%   within scanner spec
-parked   400 pts     0/10000 deg/s   dwell 958 us                  BLANKED 376 parked pts
-dense   1200 pts   budget 225%                                     BLANKED — needs 54000 pps
+suave    300 pts   679/10000 grados/s   campo 2.7 grados   presup.  56%   dentro de especificación
+parado   400 pts     0/10000 grados/s   permanencia 958 us               APAGADO 376 pts parados
+denso   1200 pts   presupuesto 225%                                      APAGADO — necesita 54000 pps
 ```
 
-### Galvo-safety scope (SC GUI, right-hand column)
+### Osciloscopio de seguridad del galvo (GUI de SC, columna derecha)
 
-`laser-bridge.js` sends `/laser/scope` to sclang at 12 Hz carrying the frame **after** sanitisation — the signal the DAC actually receives. The SC GUI draws it in a fixed **452 px column beside the scroll area** (window 1570 px), so it stays readable while the hands are on the knobs; the scope itself is 440 × 847. Three labelled lanes: **X**, **Y**, and **STEP / LIMIT** — a step limit is a limit on *slope*, so velocity is what the scope has to show, and it is not the same kind of quantity as the two above it. Decimated buckets carry the **worst** step inside them, never the step between surviving points.
+`laser-bridge.js` envía `/laser/scope` a sclang a 12 Hz llevando el cuadro **después** del saneamiento — la señal que el DAC recibe realmente. La GUI de SC lo dibuja en una columna fija de **452 px junto al área de scroll** (ventana de 1570 px), para que siga siendo legible con las manos en las perillas; el osciloscopio en sí es de 440 × 847. Tres carriles etiquetados: **X**, **Y** y **PASO / LÍMITE** — un límite de paso es un límite sobre la *pendiente*, así que la velocidad es lo que el osciloscopio tiene que mostrar, y no es el mismo tipo de magnitud que las dos de arriba. Los buckets diezmados llevan el **peor** paso dentro de ellos, nunca el paso entre los puntos supervivientes.
 
-Two lamps, in the same visual language as the feed lights but without their age column (neither is a feed whose silence means anything):
+Dos lámparas, en el mismo lenguaje visual que las luces de feed pero sin su columna de edad (ninguna de las dos es un feed cuyo silencio signifique algo):
 
-| Lamp | Lit when |
+| Lámpara | Encendida cuando |
 |---|---|
-| **DAC** | the bridge has bound a real Helios. Dry run *and* no-bridge both read dark — in neither case is anything reaching a laser. |
-| **BLANK** | the beam is down right now. Follows the bridge's own `LASER_BLANK_HOLD_MS` window, not the frame that tripped it: a 250 ms blanking reported for one 12 Hz frame would flash for 80 ms and be missed. |
+| **DAC** | el puente ha enlazado un Helios real. La corrida en seco *y* la ausencia de puente se leen ambas como apagado — en ninguno de los dos casos llega nada a un láser. |
+| **BLANK** | el haz está caído ahora mismo. Sigue la ventana `LASER_BLANK_HOLD_MS` del propio puente, no el cuadro que lo disparó: un apagado de 250 ms reportado en un cuadro a 12 Hz destellaría 80 ms y pasaría desapercibido. |
 
-Both go dark when the bridge stops speaking — an unlit BLANK must never be readable as *not blanking* when in truth nothing is being projected at all.
+Ambas se apagan cuando el puente deja de hablar — un BLANK apagado no debe jamás poder leerse como *no está apagando* cuando en realidad no se está proyectando nada en absoluto.
 
-Four states, all reachable:
+Cuatro estados, todos alcanzables:
 
-| Condition | Reads |
+| Condición | Se lee |
 |---|---|
-| Within spec | `9274 / 10000 deg/s`, scan budget `48 %` |
-| Frame wider than the rating | `field 31.5 deg (rated 8.0)` → *wide field* |
-| Beam stopped moving | `BEAM PARKED 13.3 ms` |
-| Too dense to scan | `budget 180 %`, residual `OVER-SPEED ×460` |
-| Bridge absent | `no bridge` — never "compliant" |
+| Dentro de especificación | `9274 / 10000 grados/s`, presupuesto de escaneo `48 %` |
+| Cuadro más ancho que la especificación | `field 31.5 deg (rated 8.0)` → *campo ancho* |
+| El haz dejó de moverse | `BEAM PARKED 13.3 ms` |
+| Demasiado denso para escanear | `budget 180 %`, residual `OVER-SPEED ×460` |
+| Puente ausente | `no bridge` — nunca "conforme" |
 
-> **Not a safety system.** This is a **Class 4** fixture (> 1.7 W RGB). People are protected by the interlock, E-stop, key, aperture mask, the fixture's own Scan Guard, beam-path design and trained operation. The scope keeps the engine inside the scanner's published *mechanical* envelope and makes loss of beam motion visible. It does not make anything eye-safe.
+> **No es un sistema de seguridad.** Este es un equipo de **Clase 4** (> 1.7 W RGB). A las personas las protegen el enclavamiento, la parada de emergencia, la llave, la máscara de apertura, el Scan Guard propio del equipo, el diseño del trayecto del haz y la operación entrenada. El osciloscopio mantiene al motor dentro de la envolvente *mecánica* publicada del escáner y hace visible la pérdida de movimiento del haz. No vuelve nada seguro para la vista.
 
 ---
 
-## 6. Quick Start & Diagnostics
+## 6. Arranque rápido y diagnóstico
 
-### Run the ecosystem
+### Requisitos
+
+Node.js + npm, Python 3, `lsof`, `pkill`, y **SuperCollider**. El lanzador corre en **Linux y macOS**:
+
+* localiza `sclang` en el `PATH` (Linux: `pacman -S supercollider`, `apt install supercollider`) o, en macOS, dentro de `/Applications/SuperCollider.app`;
+* `SCLANG=/ruta/a/sclang ./start_ecosystem.sh` fuerza una ruta concreta — builds locales o varias versiones en paralelo;
+* abre el navegador con `xdg-open` o `open`, lo que haya; sin ninguno imprime la URL y sigue.
+
+> **En Linux no se pueden enumerar los dispositivos de audio.** `ServerOptions.outDevices` pasa por un primitivo que sólo existe en macOS y Windows; scsynth llega a la tarjeta por JACK/ALSA y no hay nada que enumerar. La detección es por tanto de mejor esfuerzo: sin lista se usa el dispositivo por defecto del sistema en estéreo, y el modo espacial de 4 canales de la MOTU 828x hay que pedirlo explícitamente enrutando por JACK. No es un error — pero no capturarlo sí lo era, porque abortaba `1_server_config.scd` entero y se llevaba por delante los `numBuffers`/`memSize`/`maxNodes` que están justo debajo, que es la memoria en la que carga el corpus.
+
+El scraper de Ethereum necesita su propio venv:
+
+```bash
+python3 -m venv eth_listener/venv
+source eth_listener/venv/bin/activate
+pip install web3 python-osc
+```
+
+### Correr el ecosistema
+
 ```bash
 ./start_ecosystem.sh
 ```
-Launches all services: nw_wrld, parliament-bridge, SuperCollider, Python ETH scraper.
 
-### Diagnostic Sweep Test
+Levanta todos los servicios: nw_wrld, parliament-bridge, SuperCollider y el scraper de Ethereum en Python. `LASER=1` añade el puente láser (ver §5).
+
+### Prueba de barrido diagnóstico
+
 ```bash
 cd nw_wrld_local && node diag-sweep.js
 ```
-Sends all 22 params through the bridge (0 → 1 → 0.5), then runs a continuous volume LFO.
 
-### Live engine monitor
+Envía los 22 parámetros de las filas 1–4 a través del puente (0 → 1 → 0.5), y después corre un LFO continuo de volumen. No cubre el registro completo de 47 parámetros: es una prueba de que la ruta navegador→puente→SC está viva, no un barrido exhaustivo.
 
-The single most useful tool when something "sounds wrong". SuperCollider posts
-one line every 2 s describing what it is actually receiving and doing:
+### Monitor del motor en vivo
+
+La herramienta más útil cuando algo "suena mal". SuperCollider publica una línea cada 2 s describiendo qué está recibiendo y haciendo realmente:
 
 ```bash
 tail -f sclang_log.txt | grep MON
 ```
+
 ```
 [MON] flags:B-E---S  bells:47/gate:310/cap:12/bar:88  env(atk/dec/amp):0.81/0.83/0.071
       prio:0.264 ent:0.517 dens:0.312  blk:25670857 txN:290 idx:289 base:0.051  synths:9
 ```
 
-| Field | Answers |
+| Campo | Responde |
 |---|---|
-| `bells` | pads spawned, and skipped *by which gate*: `gate` time-gate, `cap` synth ceiling, `drop` queue overflow; `q:` shows pending/total queued |
-| `kick` `perc` `err` | beat-engine spawns, and any errors the guarded loop caught and recovered from |
-| `tg` `amp` | transport gain (`0.05` = Stop Parliament latched) and the performer's master level |
-| `outPk` `gr` | peak level reaching the limiter, and how hard it is pulling back |
-| `env` | atk/dec/amp of the last pad — if these stop being identical, the envelope is responding to the transaction |
-| `prio` `ent` `dens` | live chain-derived values; a constant here means a mapping has saturated |
-| `blk` `txN` `idx` `base` | whether the enriched `eth_sonify.py` payload is arriving at all |
+| `bells` | pads lanzados, y saltados *por qué compuerta*: `gate` compuerta temporal, `cap` techo de synths, `drop` desborde de cola; `q:` muestra pendientes/total encolados |
+| `kick` `perc` `err` | lanzamientos del motor de beat, y cualquier error que el bucle protegido atrapó y del que se recuperó |
+| `tg` `amp` | ganancia de transporte (`0.05` = Stop Parliament enganchado) y el nivel maestro de quien toca |
+| `outPk` `gr` | nivel de pico llegando al limitador, y con cuánta fuerza está conteniendo |
+| `env` | atk/dec/amp del último pad — si dejan de ser idénticos, la envolvente está respondiendo a la transacción |
+| `prio` `ent` `dens` | valores vivos derivados de la cadena; una constante aquí significa que un mapeo se saturó |
+| `blk` `txN` `idx` `base` | si el payload enriquecido de `eth_sonify.py` está llegando siquiera |
 
-Three OSC controls, from anything that can reach SC on **57120**:
+Tres controles OSC, desde cualquier cosa que alcance a SC en el **57120**:
 
-| Address | Effect |
+| Dirección | Efecto |
 |---|---|
-| `/diag/osctrace 1` | `OSCFunc.trace` — post **every** inbound OSC message; the definitive test of whether a control reaches SC |
-| `/diag/monitor 0` | silence the `[MON]` line |
-| `/diag/reset` | zero the pad counters to measure a fresh window |
+| `/diag/osctrace 1` | `OSCFunc.trace` — publica **todos** los mensajes OSC entrantes; la prueba definitiva de si un control llega a SC |
+| `/diag/monitor 0` | silencia la línea `[MON]` |
+| `/diag/reset` | pone a cero los contadores de pads para medir una ventana nueva |
 
-### Boot sanity check
+### Comprobación de arranque
 
-The registry banner in `sclang_log.txt` confirms the engine loaded the current
-sources — worth checking first when a change appears to have no effect, since
-`start_sonification.scd` reads all twelve `.scd` files from disk **at boot**:
+El banner del registro en `sclang_log.txt` confirma que el motor cargó las fuentes actuales — lo primero que conviene mirar cuando un cambio parece no tener efecto, ya que `start_sonification.scd` lee los dieciséis archivos `.scd` desde disco **en el arranque**:
 
 ```
-Parameter registry loaded: 35 parameters, 39 OSC routes, 34 MIDI CCs.
+Parameter registry loaded: 47 parameters, 51 OSC routes, 42 MIDI CCs.
 Master limiter active (2 ch, ceiling 0.92) — output can no longer clip.
+=== CONTROL BUS SETUP COMPLETE ===
 ```
+
+El lanzador espera esa última línea hasta 60 s antes de abrir la interfaz. Un arranque en frío compila primero la class library de SuperCollider y después carga los buffers del corpus, así que tardar bastante es normal; lo que no es normal es que `sclang` muera durante el proceso, y en ese caso el lanzador lo dice y deja de esperar.
 
 ---
 
-## License
+## Licencia
 
-MIT License
+Licencia MIT

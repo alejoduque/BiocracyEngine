@@ -11,12 +11,21 @@ thisProcess.openUDPPort(57120);
 
 // --- DYNAMIC DEVICE DETECTION ---
 // MOTU 828x Gen5 → 4-channel spatial mode
-// No MOTU → Apple Core Audio built-in → 2-channel stereo fallback
+// No MOTU → system default device → 2-channel stereo fallback
+//
+// ServerOptions.outDevices enumerates devices through a primitive that only
+// exists on macOS and Windows. On Linux scsynth reaches the card through
+// JACK/ALSA and there is nothing to enumerate, so the primitive fails outright
+// — and an uncaught primitive failure aborts the WHOLE file at this line. That
+// took numBuffers/memSize/maxNodes below with it, which is the memory the
+// phenological corpus loads into, so the failure showed up much later as an
+// unrelated allocation problem. Enumeration is therefore best-effort: no list
+// is not an error, it just means the device cannot be chosen from here.
 ~detectAudioDevice = {
-    var devices = ServerOptions.outDevices;
-    var motu = devices.select({ |d|
+    var devices = try { ServerOptions.outDevices } { nil };
+    var motu = devices !? { |d0| d0.select({ |d|
         d.contains("MOTU") or: { d.contains("828") } or: { d.contains("Gen5") }
-    }).first;
+    }).first };
 
     if(motu.notNil) {
         "✓ MOTU 828x detected: % — enabling 4-channel spatial mode.".format(motu).postln;
@@ -24,8 +33,14 @@ thisProcess.openUDPPort(57120);
         Server.default.options.numOutputBusChannels = 4;
         Server.default.options.numInputBusChannels = 2;
     } {
-        "i MOTU not found — falling back to Apple Core Audio (2-channel stereo).".postln;
-        Server.default.options.device = nil; // Let macOS pick the default (built-in speakers)
+        if(devices.isNil) {
+            // Route a MOTU here with JACK (or set SC_JACK_DEFAULT_OUTPUTS);
+            // 4-channel spatial mode has to be asked for explicitly on Linux.
+            "i Device enumeration unavailable (Linux/JACK) — using the system default, 2-channel stereo.".postln;
+        } {
+            "i MOTU not found — falling back to the default device (2-channel stereo).".postln;
+        };
+        Server.default.options.device = nil; // let the platform pick the default
         Server.default.options.numOutputBusChannels = 2; // Stereo only
         Server.default.options.numInputBusChannels = 2;
     };

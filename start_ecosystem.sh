@@ -24,10 +24,25 @@ require npm
 require python3
 require lsof
 require pkill
-if [ ! -x /Applications/SuperCollider.app/Contents/MacOS/sclang ]; then
-    echo "❌ Falta SuperCollider en /Applications/SuperCollider.app — instala desde https://supercollider.github.io/"
+
+# ── Localizar sclang (macOS y Linux) ───────────────────────────────────────
+# En macOS vive dentro del .app; en Linux es un binario normal en el PATH.
+# $SCLANG permite forzar una ruta concreta (builds locales, varias versiones).
+if [ -n "$SCLANG" ]; then
+    :   # ruta dada por el usuario, se valida abajo
+elif command -v sclang &>/dev/null; then
+    SCLANG=$(command -v sclang)
+elif [ -x /Applications/SuperCollider.app/Contents/MacOS/sclang ]; then
+    SCLANG=/Applications/SuperCollider.app/Contents/MacOS/sclang
+fi
+if [ -z "$SCLANG" ] || [ ! -x "$SCLANG" ]; then
+    echo "❌ Falta SuperCollider (no encuentro 'sclang')."
+    echo "   macOS: instala desde https://supercollider.github.io/"
+    echo "   Linux: p.ej. pacman -S supercollider | apt install supercollider"
+    echo "   O apunta a tu binario:  SCLANG=/ruta/a/sclang ./start_ecosystem.sh"
     exit 1
 fi
+echo "   sclang: $SCLANG"
 if [ ! -f eth_listener/venv/bin/activate ]; then
     echo "❌ Falta eth_listener/venv. Crea con:"
     echo "    python3 -m venv eth_listener/venv && source eth_listener/venv/bin/activate && pip install web3 python-osc"
@@ -80,12 +95,14 @@ echo "   Listo. Esperando que los puertos se liberen..."
 sleep 1
 echo ""
 
-# ── Wrapper de unbuffering compatible con macOS ────────────────────────────
-# stdbuf es GNU-only y no existe en macOS por defecto.
-# Buscamos: unbuffer (brew install expect) > gstdbuf (brew install coreutils) > directo
+# ── Wrapper de unbuffering compatible con macOS y Linux ────────────────────
+# stdbuf es GNU-only: en Linux está de serie, en macOS no existe.
+# Buscamos: unbuffer (brew install expect) > stdbuf/gstdbuf (coreutils) > directo
 run_unbuffered() {
     if command -v unbuffer &>/dev/null; then
         unbuffer "$@"
+    elif command -v stdbuf &>/dev/null; then
+        stdbuf -oL "$@"
     elif command -v gstdbuf &>/dev/null; then
         gstdbuf -oL "$@"
     else
@@ -195,25 +212,34 @@ fi
 # 2. Levantar Motor SuperCollider (Con GUI de Control)
 echo ""
 echo ">> Paso 2: Iniciando Motor SuperCollider (V3 GUI)..."
-run_unbuffered /Applications/SuperCollider.app/Contents/MacOS/sclang start_sonification.scd > sclang_log.txt 2>&1 &
+run_unbuffered "$SCLANG" start_sonification.scd > sclang_log.txt 2>&1 &
 SC_PID=$!
 echo "   sclang corriendo en Background (PID: $SC_PID). Log: sclang_log.txt"
 
 # ── (6) Esperar a que SC complete el boot antes de abrir la UI ─────────────
 # Sin esto, el navegador abre la HTML mientras SC todavía está cargando
 # SynthDefs y los sliders se sienten muertos durante ~5 segundos.
+# 20s no alcanzaban: en un arranque en frío sclang compila la class library
+# antes de leer una sola línea nuestra, y encima el corpus fenológico carga
+# ~230 MB de buffers. Medido en Linux el boot pasa de 20s con holgura, así que
+# el aviso saltaba en cada arranque sano y dejaba de significar algo.
 echo "   Esperando boot completo de SC (CONTROL BUS SETUP COMPLETE)..."
 SC_READY=0
-for i in {1..40}; do
+for i in {1..120}; do
     if grep -q "CONTROL BUS SETUP COMPLETE" sclang_log.txt 2>/dev/null; then
         SC_READY=1
         echo "   ✓ SC listo (después de $((i * 5))00ms)."
         break
     fi
+    # Si sclang murió, no tiene sentido esperar el minuto entero.
+    if ! kill -0 "$SC_PID" 2>/dev/null; then
+        echo "   ❌ sclang terminó durante el boot — mira sclang_log.txt"
+        break
+    fi
     sleep 0.5
 done
 if [ "$SC_READY" -eq 0 ]; then
-    echo "   ⚠ SC no señaló CONTROL BUS SETUP COMPLETE en 20s — abro UI igual; revisa sclang_log.txt"
+    echo "   ⚠ SC no señaló CONTROL BUS SETUP COMPLETE en 60s — abro UI igual; revisa sclang_log.txt"
 fi
 
 # 2.5 OPCIONAL: Parliament Synthesizer.
@@ -222,7 +248,15 @@ fi
 
 echo ""
 echo "   Abriendo Parliament en http://localhost:9001/parliament.html ..."
-open http://localhost:9001/parliament.html
+# `open` es de macOS; en Linux el equivalente es xdg-open. Si no hay ninguno
+# (sesión headless / SSH), no es fatal: la URL ya está impresa arriba.
+if command -v xdg-open &>/dev/null; then
+    xdg-open http://localhost:9001/parliament.html >/dev/null 2>&1 &
+elif command -v open &>/dev/null; then
+    open http://localhost:9001/parliament.html
+else
+    echo "   (sin xdg-open/open — ábrela a mano)"
+fi
 
 # 3. Levantar el Scraper Python de Ethereum (En Foreground)
 echo ""
