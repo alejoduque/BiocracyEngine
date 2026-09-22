@@ -219,18 +219,27 @@ echo "   sclang corriendo en Background (PID: $SC_PID). Log: sclang_log.txt"
 # ── (6) Esperar a que SC complete el boot antes de abrir la UI ─────────────
 # Sin esto, el navegador abre la HTML mientras SC todavía está cargando
 # SynthDefs y los sliders se sienten muertos durante ~5 segundos.
+# 20s no alcanzaban: en un arranque en frío sclang compila la class library
+# antes de leer una sola línea nuestra, y encima el corpus fenológico carga
+# ~230 MB de buffers. Medido en Linux el boot pasa de 20s con holgura, así que
+# el aviso saltaba en cada arranque sano y dejaba de significar algo.
 echo "   Esperando boot completo de SC (CONTROL BUS SETUP COMPLETE)..."
 SC_READY=0
-for i in {1..40}; do
+for i in {1..120}; do
     if grep -q "CONTROL BUS SETUP COMPLETE" sclang_log.txt 2>/dev/null; then
         SC_READY=1
         echo "   ✓ SC listo (después de $((i * 5))00ms)."
         break
     fi
+    # Si sclang murió, no tiene sentido esperar el minuto entero.
+    if ! kill -0 "$SC_PID" 2>/dev/null; then
+        echo "   ❌ sclang terminó durante el boot — mira sclang_log.txt"
+        break
+    fi
     sleep 0.5
 done
 if [ "$SC_READY" -eq 0 ]; then
-    echo "   ⚠ SC no señaló CONTROL BUS SETUP COMPLETE en 20s — abro UI igual; revisa sclang_log.txt"
+    echo "   ⚠ SC no señaló CONTROL BUS SETUP COMPLETE en 60s — abro UI igual; revisa sclang_log.txt"
 fi
 
 # 2.5 OPCIONAL: Parliament Synthesizer.
