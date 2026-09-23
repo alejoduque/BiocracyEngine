@@ -1,0 +1,142 @@
+[
+  {
+    "n": "01",
+    "idx": "01/20",
+    "seccion": "El territorio",
+    "pie": "Reserva Manakai, bosque seco tropical, Córdoba. Vista aérea del fragmento y su borde de potrero: la forma exacta del problema. De los nueve millones de hectáreas de bosque seco que tuvo Colombia persiste hoy cerca del 8 %, en remanentes como este.",
+    "src": "media/laminas/lamina-01.jpg"
+  },
+  {
+    "n": "02",
+    "idx": "02/20",
+    "seccion": "El territorio",
+    "pie": "Anochecer sobre el dosel. La hora en que el coro diurno cede y entra la fauna nocturna: el cambio de turno que las grabadoras registran todas las noches del año.",
+    "src": "media/laminas/lamina-02.jpg"
+  },
+  {
+    "n": "03",
+    "idx": "03/20",
+    "seccion": "El territorio",
+    "pie": "Registro nocturno de cámara trampa: un felino manchado cruza el sotobosque a las 21:33. El aparato fecha y mide la temperatura de cada aparición; el archivo sonoro hace lo mismo con lo que no se deja fotografiar.",
+    "src": "media/laminas/lamina-03.jpg"
+  },
+  {
+    "n": "04",
+    "idx": "04/20",
+    "seccion": "El territorio",
+    "pie": "Huellas frescas en el barro de un bebedero. Antes que cualquier sensor, este es el registro que la gente del lugar ya sabe leer.",
+    "src": "media/laminas/lamina-04.jpg"
+  },
+  {
+    "n": "05",
+    "idx": "05/20",
+    "seccion": "La comunidad y el método",
+    "pie": "Cartografía colectiva del departamento de Córdoba dibujada en tablero, presentada en una exposición dedicada a Orlando Fals Borda (Montería, Colombia), quien desde una antropología social desarrolló el método de Investigación Acción Participativa que guía este proyecto. Aquí los nombres los ponen quienes participan del ejercicio: el mapa no se entrega hecho ni viene de afuera.",
+    "src": "media/laminas/lamina-05.jpg"
+  },
+  {
+    "n": "06",
+    "idx": "06/20",
+    "seccion": "La comunidad y el método",
+    "pie": "Jóvenes reunidos en la casa comunal de El Balzal, junto a la reserva. Este es el lugar y el formato en que se sostendría el laboratorio de escucha: donde la comunidad ya se reúne, y no en un aula.",
+    "src": "media/laminas/lamina-06.jpg"
+  },
+  {
+    "n": "07",
+    "idx": "07/20",
+    "seccion": "La comunidad y el método",
+    "pie": "Recorrido de reconocimiento con habitantes del territorio para decidir dónde van las estaciones de escucha. La ubicación de un micrófono es una decisión sobre qué se vuelve audible.",
+    "src": "media/laminas/lamina-07.jpg"
+  },
+  {
+    "n": "08",
+    "idx": "08/20",
+    "seccion": "La comunidad y el método",
+    "pie": "Equipo de campo: grabadora, micrófono, audífonos, botas. Nada de esto exige formación previa. La beca no compra hardware —ya existe—: sostiene el proceso de aprender a usarlo entre todos.",
+    "src": "media/laminas/lamina-08.jpg"
+  },
+  {
+    "n": "09",
+    "idx": "09/20",
+    "seccion": "El instrumento",
+    "pie": "Estación de registro instalada y amarrada al tronco. Permanece semanas en el sitio grabando sin nadie presente; recuperar la tarjeta es la rutina que estructura el año de trabajo.",
+    "src": "media/laminas/lamina-09.jpg"
+  },
+  {
+    "n": "10",
+    "idx": "10/20",
+    "seccion": "El instrumento",
+    "pie": "Espectrograma de un evento detectado por el sistema. La franja continua es el coro de insectos; los trazos que la cruzan, voces individuales. Aquí la escucha se vuelve dato — y el dato, materia de composición.",
+    "src": "media/laminas/lamina-10.jpg"
+  },
+  {
+    "n": "11",
+    "idx": "11/20",
+    "seccion": "El instrumento",
+    "pie": "Calendario fenológico de la reserva: 72 especies censadas ordenadas sobre el año, con el régimen de lluvias en el anillo exterior. Es el instrumento que quedaría instalado en el territorio al final del proceso.",
+    "src": "media/laminas/lamina-11.jpg"
+  },
+  {
+    "n": "12",
+    "idx": "12/20",
+    "seccion": "El instrumento",
+    "pie": "Aplicación de registro georreferenciado en campo: cada grabación queda con fecha, duración, nota y especie. Las coordenadas aparecen reservadas — el criterio de opacidad que el proyecto propone se aplica también a su propio portafolio.",
+    "src": "media/laminas/lamina-12.jpg"
+  },
+  {
+    "n": "13",
+    "idx": "13/20",
+    "seccion": "El instrumento",
+    "pie": "«Parliament of All Things»: interfaz en vivo del motor. Cada especie acústica detectada entra con su categoría de riesgo UICN y un peso de voto; el estado del bosque modula el sonido de la sala en tiempo real.",
+    "src": "media/laminas/lamina-13.jpg"
+  },
+  {
+    "n": "14",
+    "idx": "14/20",
+    "seccion": "La obra",
+    "pie": "«El paso de una voz», diagrama del sistema. Una voz del bosque atraviesa el anillo fenológico hasta ser inscrita, o permanece opaca: el derecho a no ser registrado es una función del sistema, no una omisión suya.",
+    "src": "media/laminas/lamina-14.jpg"
+  },
+  {
+    "n": "15",
+    "idx": "15/20",
+    "seccion": "La obra",
+    "pie": "Simulación de montaje de la instalación multicanal en sala: espectrogramas proyectados, sistema envolvente de altavoces, escucha de pie.",
+    "src": "media/laminas/lamina-15.jpg"
+  },
+  {
+    "n": "16",
+    "idx": "16/20",
+    "seccion": "La obra",
+    "pie": "Simulación de la instalación desplegada en el bosque seco, en estación seca. La sala de escucha vuelve al lugar del que salió el material.",
+    "src": "media/laminas/lamina-16.jpg"
+  },
+  {
+    "n": "17",
+    "idx": "17/20",
+    "seccion": "La obra",
+    "pie": "Segunda variación de la propuesta en campo, con el sistema abierto al bosque y sin sala que lo contenga.",
+    "src": "media/laminas/lamina-17.jpg"
+  },
+  {
+    "n": "18",
+    "idx": "18/20",
+    "seccion": "Trayectoria",
+    "pie": "«[de] Bioacústica [a] Biocracia. Parlamento de lo Vivo en el Bosque Seco Tropical», tesis doctoral en curso — Doctorado en Diseño, Arte y Ciencia, Universidad Jorge Tadeo Lozano; dirección de Felipe César Londoño.",
+    "src": "media/laminas/lamina-18.jpg"
+  },
+  {
+    "n": "19",
+    "idx": "19/20",
+    "seccion": "Trayectoria",
+    "pie": "«Especies y Espectros: de la bioacústica a la escucha profunda en las artes mediales», encuentro co-organizado en el Museo de Arte Moderno de Medellín con la University of Illinois y el MAMM.",
+    "src": "media/laminas/lamina-19.jpg"
+  },
+  {
+    "n": "20",
+    "idx": "20/20",
+    "seccion": "Trayectoria",
+    "pie": "Trabajo de campo con sistema de grabación y transmisión en Désert Numérique, Saint-Nazaire-le-Désert (Francia). Práctica sonora de campo de la que este proyecto es continuación.",
+    "src": "media/laminas/lamina-20.jpg"
+  }
+]

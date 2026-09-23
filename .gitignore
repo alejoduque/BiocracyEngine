@@ -30,5 +30,15 @@ recordings/
 corpus/*
 !corpus/manifest.json
 
+# Derived web media (~13 MB), por la misma razón que corpus/: todo se
+# reconstruye desde fuentes que no están —ni van a estar— en el repositorio.
+#   media/audio/    web/build_media.sh        <- recordings/ (ignorado arriba)
+#   media/video/    web/build_media.sh        <- cámara trampa + etc.altred.xyz
+#   media/laminas/  web/extract_portfolio.py  <- el portafolio publicado
+# laminas.json sí se versiona: es pequeño, lleva los pies de foto y es lo que
+# permite regenerar la galería sin volver a parsear el portafolio.
+web/media/*
+!web/media/laminas.json
+
 # Session autosave state — machine-local, not a shareable preset
 presets/_autosave.json
