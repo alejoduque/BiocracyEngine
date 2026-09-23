@@ -128,6 +128,11 @@
      fenológico y la interfaz del motor—, no fotografías. A un tercio de ancho
      sus rótulos son ilegibles, así que ocupan dos columnas. */
   .laminas figure.w2 { grid-column:span 2; }
+  /* Una lámina sola al final de la cuadrícula se ve raquítica junto a dos
+     huecos vacíos. Si la última empieza fila —posiciones 1, 4, 7…— ocupa dos
+     columnas. Con tres por fila esto alcanza a las secciones de cuatro
+     láminas, que son las dos primeras. */
+  .laminas figure:last-child:nth-child(3n+1) { grid-column:span 2; }
   .laminas img { width:100%; height:auto; display:block; background:#111;
     cursor:zoom-in; }
   .laminas figcaption { font-size:12px; line-height:1.55; color:#a8a8a8;
@@ -138,6 +143,10 @@
 
   @media (max-width: 1000px) {
     .laminas { grid-template-columns:repeat(2, 1fr); }
+    /* La regla de la huérfana se recalcula: con dos columnas la última queda
+       sola cuando cae en posición impar, y ahí ocupa el ancho entero. */
+    .laminas figure:last-child:nth-child(3n+1) { grid-column:auto; }
+    .laminas figure:last-child:nth-child(odd) { grid-column:span 2; }
   }
   @media (max-width: 620px) {
     .laminas { grid-template-columns:1fr; }
@@ -497,8 +506,18 @@ trabajo; esta página es una parte pequeña de él.</p>
     'media/video/hero-3-perfil.mp4',     // ocelote de perfil, IR nocturno
     'media/video/hero-4-amanecer.mp4'    // espectrograma 06:59 — voces sueltas
   ];
-  var HOLD_MS = 9000;   // tiempo sobre cada clip
-  var FADE_MS = 2500;   // duración del fundido
+  // Sostén y fundido. Estos dos números NO dependen de los archivos: cambiarlos
+  // no obliga a regenerar nada, sólo a recargar.
+  //
+  // Estaban en 9 s + 2.5, o sea 11.5 s por clip y 46 s de vuelta completa, y se
+  // sentía apresurado: uno alcanzaba a registrar que había un ocelote y ya
+  // estaba viendo otra cosa. Ahora son 22 s por clip y 88 s de vuelta.
+  //
+  // Los clips de cámara trampa duran 10.2 s, así que en un sostén de 18 s dan
+  // dos vueltas — van en bucle de todos modos. Los espectrogramas duran 30.1 s
+  // y se ven sin repetirse.
+  var HOLD_MS = 18000;  // tiempo sobre cada clip
+  var FADE_MS = 4000;   // duración del fundido
 
   var COMPS = [
     { id:'lecho',    label:'lecho',    nota:'11:13 · 95–155 s — el drone como cama, centroide 210–280 Hz' },
@@ -625,7 +644,11 @@ trabajo; esta página es una parte pequeña de él.</p>
     analyser.fftSize = 2048;
     // El suavizado propio del analizador evita tener que filtrar a mano: sin
     // él las bandas tiemblan por cuadro y la imagen vibra en vez de respirar.
-    analyser.smoothingTimeConstant = 0.82;
+    // Subido de 0.82 a 0.88 junto con el sostén de los clips: a 0.82 la imagen
+    // seguía cada golpe y el conjunto quedaba nervioso. Más arriba de 0.9 el
+    // espectro empieza a ir por detrás de lo que se oye y deja de ser una
+    // lectura fiel.
+    analyser.smoothingTimeConstant = 0.88;
     freq = new Uint8Array(analyser.frequencyBinCount);
     ac.createMediaElementSource(au).connect(analyser);
     analyser.connect(ac.destination);
