@@ -21,24 +21,30 @@ sclang_log.txt
 
 archive/
 
-# Audio captures (large, ephemeral)
-recordings/
+# Audio captures (large, ephemeral). Los .wav reales viven aquí y no se
+# versionan; sus nombres quedan documentados en recordings/README.md, que sí.
+# No hay placeholder vacío para ellos porque ocuparían esas mismas rutas.
+recordings/*.wav
 
 # Derived phenological corpus (~4.5 GB, rebuildable from the AudioMoth
 # originals with tools/build_corpus.py). The manifest is small and is the
 # thing the engine actually reads, so it is tracked.
+#
+# El árbol de rutas SÍ está versionado —725 .flac vacíos generados por
+# tools/make_placeholders.py— pero por seguimiento explícito, no por excepción
+# aquí: se añadieron con `git add -f` y git los sigue aunque esta regla los
+# excluya. Así, si alguien corre build_corpus.py en este mismo directorio, los
+# archivos reales aparecen como MODIFICADOS en git status en lugar de colarse
+# en un commit: un aviso visible en vez de 4.2 GB silenciosos.
 corpus/*
 !corpus/manifest.json
 
-# Derived web media (~13 MB), por la misma razón que corpus/: todo se
-# reconstruye desde fuentes que no están —ni van a estar— en el repositorio.
-#   media/audio/    web/build_media.sh        <- recordings/ (ignorado arriba)
-#   media/video/    web/build_media.sh        <- cámara trampa + etc.altred.xyz
-#   media/laminas/  web/extract_portfolio.py  <- el portafolio publicado
-# laminas.json sí se versiona: es pequeño, lleva los pies de foto y es lo que
-# permite regenerar la galería sin volver a parsear el portafolio.
-web/media/*
-!web/media/laminas.json
+# web/media/ SÍ se versiona (~13 MB). Es derivado y reconstruible con
+# web/build_media.sh y web/extract_portfolio.py, pero sus fuentes no están en
+# el repositorio y dos de ellas no son reproducibles por nadie más: las
+# grabaciones del motor y los videos de cámara trampa sólo existen en el disco
+# de quien los capturó. Sin el media versionado, un clon no puede reconstruir
+# la página — que es justamente lo que este repositorio debería permitir.
 
 # Session autosave state — machine-local, not a shareable preset
 presets/_autosave.json
