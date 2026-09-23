@@ -31,8 +31,10 @@ TMP=$(mktemp); trap 'rm -f "$TMP"' EXIT
 ok=0; bad=0
 while IFS= read -r f; do
     rel="${f#./}"
-    # Los .sh son fuente, no contenido servido, y se excluyen de la subida.
-    case "$rel" in *.sh) continue;; esac
+    # Los .sh y los .py son fuente, no contenido servido, y se excluyen de la
+    # subida. La lista tiene que coincidir con la de deploy.sh: si aquí se
+    # comprueba algo que allí no se sube, el despliegue correcto da error.
+    case "$rel" in *.sh|*.py) continue;; esac
 
     local_size=$(stat -c%s "$HERE/$rel" 2>/dev/null || stat -f%z "$HERE/$rel" 2>/dev/null)
     code=$(curl -s -o "$TMP" -w "%{http_code}" --max-time 120 "$BASE/$rel")

@@ -32,9 +32,11 @@
     background:linear-gradient(to top, rgba(0,0,0,.34), rgba(0,0,0,0)); }
   /* Translúcido y en modo screen: las barras se suman a la luz del video en
      lugar de taparlo, así que el ocelote y el espectrograma siguen leyéndose
-     por debajo. Antes era un panel opaco que recortaba el tercio inferior. */
+     por debajo. Antes era un panel opaco que recortaba el tercio inferior.
+     Subido de .6 a .72 al entrar el color: el extremo grave de la rampa es un
+     violeta oscuro y a .6 sobre negro se caía por debajo del umbral de verse. */
   #fft { display:block; width:100%; height:120px;
-    opacity:.6; mix-blend-mode:screen; }
+    opacity:.72; mix-blend-mode:screen; }
   .scope .rot { display:flex; justify-content:space-between;
     font-size:11px; color:#c8c8c8; padding-top:2px; letter-spacing:.06em;
     text-shadow:0 0 8px #000; }
@@ -120,38 +122,83 @@
     font:13px/1.4 ui-monospace, SFMono-Regular, Menlo, monospace;
     letter-spacing:.14em; text-transform:uppercase; color:#fff;
     border-bottom:1px solid #262626; }
+  /* La rejilla tiene SEIS columnas y no tres. Tres bastaban mientras todas las
+     filas fueran de tres láminas, pero hay filas de dos y hay láminas que van
+     solas y centradas, y ni la mitad ni el centro de tres columnas se pueden
+     escribir en tercios. Con seis: una lámina normal ocupa 2 —tres por fila—,
+     una de par ocupa 3 —dos por fila— y la que va sola ocupa las columnas 3 y
+     4, que es el centro exacto y del mismo ancho que sus vecinas. Los huecos
+     entre pistas caen justo donde caen los huecos entre figuras, así que los
+     anchos salen idénticos a los de la rejilla de tres: seis pistas más cinco
+     huecos, se mire por donde se mire. */
   .laminas { max-width:1400px; margin:0 auto; padding:0 var(--gap);
     display:grid; gap:22px var(--gap);
-    grid-template-columns:repeat(3, 1fr); }
-  .laminas figure { margin:0; }
-  /* Dos de las láminas son documentos que hay que poder leer —el calendario
-     fenológico y la interfaz del motor—, no fotografías. A un tercio de ancho
-     sus rótulos son ilegibles, así que ocupan dos columnas. */
-  .laminas figure.w2 { grid-column:span 2; }
-  /* Una lámina sola al final de la cuadrícula se ve raquítica junto a dos
-     huecos vacíos. Si la última empieza fila —posiciones 1, 4, 7…— ocupa dos
-     columnas. Con tres por fila esto alcanza a las secciones de cuatro
-     láminas, que son las dos primeras. */
-  .laminas figure:last-child:nth-child(3n+1) { grid-column:span 2; }
-  .laminas img { width:100%; height:auto; display:block; background:#111;
-    cursor:zoom-in; }
+    grid-template-columns:repeat(6, 1fr); }
+  .laminas figure { margin:0; grid-column:span 2; }
+  /* Dos por fila. Las láminas de sala son muy apaisadas —la simulación del
+     montaje es 1.77:1 y la variación en campo 2.36:1— y a un tercio de ancho
+     quedan como una franja de dos centímetros donde no se ve nada. */
+  .laminas figure.med { grid-column:span 3; }
+  /* Una lámina sola al final de una fila se veía raquítica pegada a la
+     izquierda con dos huecos a la derecha, y estirada a dos columnas quedaba
+     desproporcionada frente a las de arriba. Va centrada y del ancho de las
+     demás, que es la única versión que no llama la atención sobre sí misma. */
+  .laminas figure.sola { grid-column:3 / span 2; }
+  /* Lo mismo pero automático, para las secciones de cuatro láminas: si la
+     última abre fila —posiciones 1, 4, 7…— es que se quedó sola. Se excluye a
+     las dobles, que ya traen su propia colocación. */
+  .laminas figure:last-child:nth-child(3n+1):not(.doble) { grid-column:3 / span 2; }
+  /* Las cuatro láminas que cargan el argumento —04 huellas, 08 equipo de campo,
+     13 interfaz del motor, 17 variación en campo— van solas y al doble: cuatro
+     de las seis columnas, centradas, que es exactamente dos veces el ancho de
+     una lámina normal. El techo de altura se dobla con ellas (620 → 1240) para
+     que las verticales también crezcan y no se queden frenadas por el tope
+     general. */
+  .laminas figure.doble { grid-column:2 / span 4; }
+  .laminas figure.doble img { max-height:1240px; }
+  /* Techo de altura. Una fila de la rejilla es tan alta como su lámina más
+     alta, y aquí las proporciones no se parecen entre sí: la captura de la
+     aplicación es 1:2.2 y al ancho de una columna mide mil píxeles, así que
+     estiraba su fila y dejaba medio metro de negro debajo de sus dos vecinas.
+     Limitadas a 620 —la altura de un retrato normal a este ancho— las filas
+     quedan parejas y la lámina alta se centra en su columna en vez de mandar
+     sobre las demás. Nada se recorta: la imagen se reduce entera, y la lupa la
+     sigue dando a pantalla completa. */
+  .laminas img { max-width:100%; max-height:620px; width:auto; height:auto;
+    display:block; margin:0 auto; background:#111; cursor:zoom-in; }
   .laminas figcaption { font-size:12px; line-height:1.55; color:#a8a8a8;
     padding-top:7px; }
-  /* El índice «01/20» en blanco delante del pie: conserva el orden de lectura
-     del portafolio, donde las láminas son una secuencia y no un muestrario. */
+  /* El índice «01/20» en blanco delante del pie: remite a la lámina en el
+     portafolio, donde son una secuencia y no un muestrario. Aquí la página las
+     agrupa por lo que muestran y por cómo caben, así que en las últimas
+     secciones los números no van seguidos — el índice es la referencia al
+     documento original, no el orden de esta página. */
   .laminas .idx { color:#fff; margin-right:.6em; letter-spacing:.06em; }
 
+  /* En tableta todo pasa a dos por fila: media rejilla cada una. Las filas que
+     arriba eran de dos ya lo son, y las de tres se parten. */
   @media (max-width: 1000px) {
-    .laminas { grid-template-columns:repeat(2, 1fr); }
-    /* La regla de la huérfana se recalcula: con dos columnas la última queda
-       sola cuando cae en posición impar, y ahí ocupa el ancho entero. */
-    .laminas figure:last-child:nth-child(3n+1) { grid-column:auto; }
-    .laminas figure:last-child:nth-child(odd) { grid-column:span 2; }
+    .laminas figure,
+    .laminas figure.med,
+    .laminas figure.sola,
+    .laminas figure:last-child:nth-child(3n+1) { grid-column:span 3; }
+    /* La regla de la huérfana se recalcula: con dos por fila la última queda
+       sola cuando cae en posición impar, y ahí ocupa el ancho entero — a media
+       rejilla y centrada se leería como un error de maquetación. */
+    .laminas figure:last-child:nth-child(odd) { grid-column:span 6; }
+    /* Las dobles pasan a ancho completo: con dos columnas ya no hay forma de
+       centrar algo que mide el doble sin que sea la fila entera. */
+    .laminas figure.doble,
+    .laminas figure.doble:last-child:nth-child(odd) { grid-column:span 6; }
   }
+  /* En el teléfono no hay filas: media columna de una sola no significa nada. */
   @media (max-width: 620px) {
-    .laminas { grid-template-columns:1fr; }
-    /* Ocupar dos columnas de una sola no significa nada y rompe el grid. */
-    .laminas figure.w2 { grid-column:auto; }
+    .laminas figure,
+    .laminas figure.med,
+    .laminas figure.sola,
+    .laminas figure:last-child:nth-child(3n+1),
+    .laminas figure:last-child:nth-child(odd),
+    .laminas figure.doble { grid-column:span 6; }
   }
 
   /* ── Lupa ──────────────────────────────────────────────────────────────── */
@@ -217,43 +264,54 @@
 
 <div class="text">
 
-<p>Este trabajo se presenta en <strong>«La pluralidad de la escucha»</strong>,
-que reúne la segunda edición de Re:Mediaciones — Encuentro de Artes
-Electrónicas y del Cuerpo con el <strong>III Congreso Colombiano de Bioacústica
-y Ecoacústica</strong> (septiembre–octubre de 2026), y tiende un puente con la
-exposición <strong>«Ejercicios de empatía: salida interior»</strong> de la
-Trienal de Arte de Universidades Católicas. Los marcos curatoriales y
-metodológicos son distintos y la confluencia es deliberada: lo que comparten
-son prácticas que movilizan otras formas de percibir, de relacionarnos y de
-habitar el mundo.</p>
+<h2>Vigilancia o parlamento</h2>
 
-<p>La bioacústica y la ecoacústica se han dedicado a comprender la comunicación
-de las especies y las circunstancias acústicas de un entorno, clasificando los
-fenómenos sonoros en biofonías, antropofonías y geofonías (Krause, 2012). Lo
-que se propone aquí desborda ese campo para integrar el arte, la comunicación y
-las ciencias sociales: la escucha como <strong>espacio de mediación para el
-reconocimiento de lo «otro»</strong> — de otras especies, de otros paisajes, de
-otras comunidades humanas y de otras expresiones tecnológicas.</p>
+<p>Una red de estaciones acústicas y cámaras trampa lleva dos años registrando
+este fragmento de bosque. La página reúne los dos flujos en una misma
+superficie —lo que la cámara inscribió y lo que el motor hizo con lo que el
+micrófono captó—, y conviene precisar la dirección de esa relación: el sonido
+que se oye no es el bosque. Es una cadena de bloques pública sonificada, y la
+deformación que se observa en la imagen es esa cadena operando sobre el
+registro del territorio.</p>
 
-<p>La pieza ocupa los cuatro registros que el encuentro convoca, y no de manera
-abstracta. La <em>acustemología</em>, porque lo que hay aquí es la narración de
-lo escuchado. La <em>grabación de campo</em>, que es literalmente su materia:
-dos años de una grabadora atada a un tronco. La <em>escucha afectiva</em>, que
-es lo que ocurre cuando ese archivo se devuelve a quienes viven con el bosque y
-nunca habían oído lo que la máquina guardaba. Y la <em>escucha
-fenomenológica</em>, que es la pregunta que queda al detenerse ante un
-espectrograma sin saber todavía qué fue eso.</p>
+<p>La distinción no es un detalle técnico. Los dispositivos contemporáneos de
+registro e identificación de fauna no son instrumentos neutrales de
+observación: intervienen como <strong>actores mediadores</strong> en la
+producción de aquello que documentan. Haraway lo formula a propósito de la
+cámara acoplada al cuerpo de un animal —la <em>crittercam</em>—: al otro lado
+del aparato no hay un ojo inocente, hay un dispositivo material-semiótico donde
+el animal, el operador, la óptica y la institución que financia el registro
+quedan enredados en la misma imagen. Lo que este trabajo hace es exponer ese
+enredo en lugar de disimularlo bajo la forma del dato.</p>
 
-<p>Una red de grabadoras y cámaras trampa lleva dos años escuchando y mirando
-este bosque. Esta página pone las dos cosas en la misma superficie: lo que la
-cámara vio, y lo que el motor hizo con lo que el micrófono oyó. El sonido que
-suena no es el bosque — es una blockchain pública sonificada, y lo que ves
-hacer a la imagen es esa cadena actuando sobre ella.</p>
+<p>Leída así, la cadena de sensores deja de ser un aparato de vigilancia
+dedicado a capturar esencias —qué <em>es</em> un ocelote, qué especie canta— y
+puede funcionar como un <strong>parlamento de las cosas</strong> en el que
+ocelotes, humanos y tecnologías comparecen como agentes de una misma red. La
+lógica es la del <em>cualsea</em> agambeniano: el sistema no fija identidades
+previas, admite a cada individuo en su singularidad irrepetible, y la identidad
+no antecede a la relación sino que emerge de ella. Los ensamblajes que resultan
+—biológicos, técnicos y sociales a la vez— atraviesan la partición
+naturaleza/cultura en vez de reproducirla, y operan a la vez como objetos
+frontera entre sistemas de conocimiento distintos y como actores políticos que
+representan poblaciones no humanas en la gobernanza de la conservación.</p>
 
-<p>Esa dirección es la afirmación entera del trabajo. No son dos partes tocando
-juntas: es una cadena que <strong>actúa sobre</strong> un territorio. El motor
-que produjo este audio está construido para que la señal y el argumento
-apunten al mismo lado.</p>
+<p>De ahí que la pieza no sean dos partes sonando juntas. Es una cadena que
+<strong>actúa sobre</strong> un territorio, y el motor que produjo este audio
+está construido para que la señal y el argumento apunten en la misma
+dirección.</p>
+
+<p>La cadena técnica, por lo demás, es siempre la misma: sensor acústico,
+vectorización, inscripción. Produce un aparato de vigilancia o produce un
+parlamento, y lo que decide cuál de los dos no está en el código. Está en quién
+decide qué se registra, qué se publica y qué se calla.</p>
+
+<p>El motor lleva esa decisión a reglas que corren. Las especies detectadas
+entran a una asamblea que no las clasifica por su valor económico sino por su
+presencia; las bancadas se recomponen siguiendo el calendario fenológico del
+lugar en vez de una taxonomía global; y lo que cae bajo el umbral de detección
+no se borra ni se pone en cero, persiste como ruido de bajo nivel. Lo que no se
+mide sigue participando.</p>
 
 <h2>Cinco composiciones</h2>
 
@@ -327,20 +385,6 @@ La hora a la que este bosque quedó registrado no la eligió el bosque: la
 eligieron quienes programaron la grabadora. Un archivo es también el mapa de
 las decisiones que lo hicieron.</p>
 
-<h2>Vigilancia o parlamento</h2>
-
-<p>La cadena técnica es siempre la misma: sensor acústico, vectorización,
-inscripción. Produce un aparato de vigilancia o produce un parlamento, y lo que
-decide cuál de los dos no está en el código. Está en quién decide qué se
-registra, qué se publica y qué se calla.</p>
-
-<p>El motor lleva esa decisión a reglas que corren. Las especies detectadas
-entran a una asamblea que no las clasifica por su valor económico sino por su
-presencia; las bancadas se recomponen siguiendo el calendario fenológico del
-lugar en vez de una taxonomía global; y lo que cae bajo el umbral de detección
-no se borra ni se pone en cero, persiste como ruido de bajo nivel. Lo que no se
-mide sigue participando.</p>
-
 <h2>El proyecto en veinte láminas</h2>
 <p>El territorio, la comunidad que lo habita, el instrumento que se construyó para escucharlo y la obra que sale de ahí. Las láminas y sus pies vienen del portafolio del proyecto.</p>
 </div>
@@ -359,7 +403,7 @@ mide sigue participando.</p>
     <img src="media/laminas/lamina-03.jpg" alt="Registro nocturno de cámara trampa: un felino manchado cruza el sotobosque a las 21:33. El aparato fecha y mid" loading="lazy" decoding="async">
     <figcaption><span class="idx">03/20</span>Registro nocturno de cámara trampa: un felino manchado cruza el sotobosque a las 21:33. El aparato fecha y mide la temperatura de cada aparición; el archivo sonoro hace lo mismo con lo que no se deja fotografiar.</figcaption>
   </figure>
-  <figure>
+  <figure class="doble">
     <img src="media/laminas/lamina-04.jpg" alt="Huellas frescas en el barro de un bebedero. Antes que cualquier sensor, este es el registro que la gente del l" loading="lazy" decoding="async">
     <figcaption><span class="idx">04/20</span>Huellas frescas en el barro de un bebedero. Antes que cualquier sensor, este es el registro que la gente del lugar ya sabe leer.</figcaption>
   </figure>
@@ -379,7 +423,7 @@ mide sigue participando.</p>
     <img src="media/laminas/lamina-07.jpg" alt="Recorrido de reconocimiento con habitantes del territorio para decidir dónde van las estaciones de escucha. La" loading="lazy" decoding="async">
     <figcaption><span class="idx">07/20</span>Recorrido de reconocimiento con habitantes del territorio para decidir dónde van las estaciones de escucha. La ubicación de un micrófono es una decisión sobre qué se vuelve audible.</figcaption>
   </figure>
-  <figure>
+  <figure class="doble">
     <img src="media/laminas/lamina-08.jpg" alt="Equipo de campo: grabadora, micrófono, audífonos, botas. Nada de esto exige formación previa. La beca no compr" loading="lazy" decoding="async">
     <figcaption><span class="idx">08/20</span>Equipo de campo: grabadora, micrófono, audífonos, botas. Nada de esto exige formación previa. La beca no compra hardware —ya existe—: sostiene el proceso de aprender a usarlo entre todos.</figcaption>
   </figure>
@@ -395,15 +439,24 @@ mide sigue participando.</p>
     <img src="media/laminas/lamina-10.jpg" alt="Espectrograma de un evento detectado por el sistema. La franja continua es el coro de insectos; los trazos que" loading="lazy" decoding="async">
     <figcaption><span class="idx">10/20</span>Espectrograma de un evento detectado por el sistema. La franja continua es el coro de insectos; los trazos que la cruzan, voces individuales. Aquí la escucha se vuelve dato — y el dato, materia de composición.</figcaption>
   </figure>
-  <figure class="w2">
-    <img src="media/laminas/lamina-11.jpg" alt="Calendario fenológico de la reserva: 72 especies censadas ordenadas sobre el año, con el régimen de lluvias en" loading="lazy" decoding="async">
-    <figcaption><span class="idx">11/20</span>Calendario fenológico de la reserva: 72 especies censadas ordenadas sobre el año, con el régimen de lluvias en el anillo exterior. Es el instrumento que quedaría instalado en el territorio al final del proceso.</figcaption>
-  </figure>
   <figure>
     <img src="media/laminas/lamina-12.jpg" alt="Aplicación de registro georreferenciado en campo: cada grabación queda con fecha, duración, nota y especie. La" loading="lazy" decoding="async">
     <figcaption><span class="idx">12/20</span>Aplicación de registro georreferenciado en campo: cada grabación queda con fecha, duración, nota y especie. Las coordenadas aparecen reservadas — el criterio de opacidad que el proyecto propone se aplica también a su propio portafolio.</figcaption>
   </figure>
-  <figure class="w2">
+  <!-- Segunda fila: los dos documentos apaisados del sistema —el calendario y
+       el diagrama—, a mitad de rejilla cada uno. La interfaz del motor, que
+       antes iba con ellos, baja a cerrar la sección al doble de tamaño: es la
+       lámina donde se ve la tesis funcionando, y a un tercio de ancho no se
+       leía como tal. -->
+  <figure class="med">
+    <img src="media/laminas/lamina-11.jpg" alt="Calendario fenológico de la reserva: 72 especies censadas ordenadas sobre el año, con el régimen de lluvias en" loading="lazy" decoding="async">
+    <figcaption><span class="idx">11/20</span>Calendario fenológico de la reserva: 72 especies censadas ordenadas sobre el año, con el régimen de lluvias en el anillo exterior. Es el instrumento que quedaría instalado en el territorio al final del proceso.</figcaption>
+  </figure>
+  <figure class="med">
+    <img src="media/laminas/lamina-14.jpg" alt="«El paso de una voz», diagrama del sistema. Una voz del bosque atraviesa el anillo fenológico hasta ser inscri" loading="lazy" decoding="async">
+    <figcaption><span class="idx">14/20</span>«El paso de una voz», diagrama del sistema. Una voz del bosque atraviesa el anillo fenológico hasta ser inscrita, o permanece opaca: el derecho a no ser registrado es una función del sistema, no una omisión suya.</figcaption>
+  </figure>
+  <figure class="doble">
     <img src="media/laminas/lamina-13.jpg" alt="«Parliament of All Things»: interfaz en vivo del motor. Cada especie acústica detectada entra con su categoría" loading="lazy" decoding="async">
     <figcaption><span class="idx">13/20</span>«Parliament of All Things»: interfaz en vivo del motor. Cada especie acústica detectada entra con su categoría de riesgo UICN y un peso de voto; el estado del bosque modula el sonido de la sala en tiempo real.</figcaption>
   </figure>
@@ -411,15 +464,15 @@ mide sigue participando.</p>
 
 <h3 class="lam-sec">La obra</h3>
 <div class="laminas">
-  <figure>
-    <img src="media/laminas/lamina-14.jpg" alt="«El paso de una voz», diagrama del sistema. Una voz del bosque atraviesa el anillo fenológico hasta ser inscri" loading="lazy" decoding="async">
-    <figcaption><span class="idx">14/20</span>«El paso de una voz», diagrama del sistema. Una voz del bosque atraviesa el anillo fenológico hasta ser inscrita, o permanece opaca: el derecho a no ser registrado es una función del sistema, no una omisión suya.</figcaption>
-  </figure>
-  <figure>
+  <figure class="med">
     <img src="media/laminas/lamina-15.jpg" alt="Simulación de montaje de la instalación multicanal en sala: espectrogramas proyectados, sistema envolvente de " loading="lazy" decoding="async">
     <figcaption><span class="idx">15/20</span>Simulación de montaje de la instalación multicanal en sala: espectrogramas proyectados, sistema envolvente de altavoces, escucha de pie.</figcaption>
   </figure>
-  <figure>
+  <figure class="med">
+    <img src="media/laminas/lamina-20.jpg" alt="Trabajo de campo con sistema de grabación y transmisión en Désert Numérique, Saint-Nazaire-le-Désert (Francia)" loading="lazy" decoding="async">
+    <figcaption><span class="idx">20/20</span>Trabajo de campo con sistema de grabación y transmisión en Désert Numérique, Saint-Nazaire-le-Désert (Francia). Práctica sonora de campo de la que este proyecto es continuación.</figcaption>
+  </figure>
+  <figure class="doble">
     <img src="media/laminas/lamina-17.jpg" alt="Segunda variación de la propuesta en campo, con el sistema abierto al bosque y sin sala que lo contenga." loading="lazy" decoding="async">
     <figcaption><span class="idx">17/20</span>Segunda variación de la propuesta en campo, con el sistema abierto al bosque y sin sala que lo contenga.</figcaption>
   </figure>
@@ -427,17 +480,13 @@ mide sigue participando.</p>
 
 <h3 class="lam-sec">Trayectoria</h3>
 <div class="laminas">
-  <figure>
+  <figure class="med">
     <img src="media/laminas/lamina-18.jpg" alt="«[de] Bioacústica [a] Biocracia. Parlamento de lo Vivo en el Bosque Seco Tropical», tesis doctoral en curso — " loading="lazy" decoding="async">
     <figcaption><span class="idx">18/20</span>«[de] Bioacústica [a] Biocracia. Parlamento de lo Vivo en el Bosque Seco Tropical», tesis doctoral en curso — Doctorado en Diseño, Arte y Ciencia, Universidad Jorge Tadeo Lozano; dirección de Felipe César Londoño.</figcaption>
   </figure>
-  <figure>
+  <figure class="med">
     <img src="media/laminas/lamina-19.jpg" alt="«Especies y Espectros: de la bioacústica a la escucha profunda en las artes mediales», encuentro co-organizado" loading="lazy" decoding="async">
     <figcaption><span class="idx">19/20</span>«Especies y Espectros: de la bioacústica a la escucha profunda en las artes mediales», encuentro co-organizado en el Museo de Arte Moderno de Medellín con la University of Illinois y el MAMM.</figcaption>
-  </figure>
-  <figure>
-    <img src="media/laminas/lamina-20.jpg" alt="Trabajo de campo con sistema de grabación y transmisión en Désert Numérique, Saint-Nazaire-le-Désert (Francia)" loading="lazy" decoding="async">
-    <figcaption><span class="idx">20/20</span>Trabajo de campo con sistema de grabación y transmisión en Désert Numérique, Saint-Nazaire-le-Désert (Francia). Práctica sonora de campo de la que este proyecto es continuación.</figcaption>
   </figure>
 </div>
 
@@ -459,6 +508,35 @@ colectivamente qué <em>no</em> se hace público.</p>
 <p>Una grabadora lleva dos años registrando este bosque sin que la comunidad que
 vive con él haya oído lo que la máquina guarda. Devolver esa escucha es el
 trabajo; esta página es una parte pequeña de él.</p>
+
+<h2>Dónde se presenta</h2>
+
+<p>Este trabajo se presenta en <strong>«La pluralidad de la escucha»</strong>,
+que reúne la segunda edición de Re:Mediaciones — Encuentro de Artes
+Electrónicas y del Cuerpo con el <strong>III Congreso Colombiano de Bioacústica
+y Ecoacústica</strong> (septiembre–octubre de 2026), y tiende un puente con la
+exposición <strong>«Ejercicios de empatía: salida interior»</strong> de la
+Trienal de Arte de Universidades Católicas. Los marcos curatoriales y
+metodológicos son distintos y la confluencia es deliberada: lo que comparten
+son prácticas que movilizan otras formas de percibir, de relacionarnos y de
+habitar el mundo.</p>
+
+<p>La bioacústica y la ecoacústica se han dedicado a comprender la comunicación
+de las especies y las circunstancias acústicas de un entorno, clasificando los
+fenómenos sonoros en biofonías, antropofonías y geofonías (Krause, 2012). Lo
+que se propone aquí desborda ese campo para integrar el arte, la comunicación y
+las ciencias sociales: la escucha como <strong>espacio de mediación para el
+reconocimiento de lo «otro»</strong> — de otras especies, de otros paisajes, de
+otras comunidades humanas y de otras expresiones tecnológicas.</p>
+
+<p>La pieza ocupa los cuatro registros que el encuentro convoca, y no de manera
+abstracta. La <em>acustemología</em>, porque lo que hay aquí es la narración de
+lo escuchado. La <em>grabación de campo</em>, que es literalmente su materia:
+dos años de una grabadora atada a un tronco. La <em>escucha afectiva</em>, que
+es lo que ocurre cuando ese archivo se devuelve a quienes viven con el bosque y
+nunca habían oído lo que la máquina guardaba. Y la <em>escucha
+fenomenológica</em>, que es la pregunta que queda al detenerse ante un
+espectrograma sin saber todavía qué fue eso.</p>
 
 </div>
 
@@ -598,15 +676,80 @@ trabajo; esta página es una parte pequeña de él.</p>
   // tiene que seguir siendo legible. Un efecto que se come al animal convierte
   // el registro en textura, que es precisamente lo que el proyecto reprocha a
   // la estética de datos.
+  // ── El encuadre: paneo y zoom ─────────────────────────────────────────────
+  // La cámara trampa está amarrada a un tronco y no se mueve: el encuadre es
+  // exactamente el mismo durante los diez segundos del clip. Un travelling
+  // lentísimo por encima le devuelve algo de respiración sin inventar un
+  // movimiento de cámara que no ocurrió — se recorre la imagen, no el bosque.
+  //
+  // Se hace con scale() y NO con scrollX/scrollY. scroll* suma al vector de
+  // coordenadas y después aplica fract(), así que en cuanto el desplazamiento
+  // saca la coordenada de [0,1] la imagen se envuelve y aparece una costura:
+  // el borde derecho del cuadro pegado al izquierdo, cruzando el animal.
+  // scale(cantidad, 1, 1, ox, oy) mueve el punto fijo del zoom, que es un
+  // paneo exacto, y tiene la propiedad que hace falta: con cantidad >= 1 la
+  // coordenada que devuelve no puede salirse de [0,1] para NINGÚN ox, oy
+  // dentro de [0,1] —es (st−o)/z+o, que contrae el intervalo hacia o—, así
+  // que el recorte lo garantiza la aritmética y no el haber elegido bien las
+  // amplitudes. Subir el zoom sólo da más recorrido; nunca rompe el cuadro.
+  //
+  // El zoom base es el margen del que el paneo se alimenta: a 1.12 se ve el
+  // 89 % del cuadro y queda un 11 % por el que deslizarse.
+  var ZOOM_BASE = 1.12;   // sobre-escala fija
+  var ZOOM_AUD  = 0.05;   // lo que el grave añade encima, hinchando la imagen
+  var PAN_AMT   = 0.84;   // fracción del margen que se recorre (1 = hasta el borde)
+  // Periodos largos y sin divisor común: el recorrido es una figura de
+  // Lissajous que no vuelve a pasar por el mismo sitio en toda la visita, así
+  // que no se percibe como un bucle. Con periodos iguales sería una diagonal.
+  var PAN_TX = 41, PAN_TY = 67;   // segundos por vuelta en cada eje
+
+  var T0 = (window.performance || Date).now();
+  function secs() { return ((window.performance || Date).now() - T0) / 1000; }
+
+  function zoom() { return ZOOM_BASE + bass * ZOOM_AUD; }
+  function panX() { return 0.5 + (PAN_AMT / 2) * Math.sin(secs() * 2 * Math.PI / PAN_TX); }
+  function panY() { return 0.5 + (PAN_AMT / 2) * Math.cos(secs() * 2 * Math.PI / PAN_TY); }
+
+  // ── El fundido ────────────────────────────────────────────────────────────
+  // Un crossfade recto entre dos clips es lenguaje de televisión: una imagen se
+  // apaga mientras la otra se enciende y en la mitad hay un momento de nada,
+  // dos fantasmas transparentes uno encima del otro. Aquí las dos capas se
+  // empujan con el mismo campo de ruido y signo contrario, así que durante el
+  // cruce la que sale y la que entra se deforman en direcciones opuestas y se
+  // atraviesan en vez de superponerse. Se lee como una sola imagen que se está
+  // recomponiendo, que es justo lo que la pieza afirma que está pasando.
+  //
+  // turb() vale 0 en reposo y 1 en el centro del cruce. Fuera del fundido la
+  // cadena es idéntica a no llevar nada de esto —el desplazamiento es cero y
+  // el shader devuelve la coordenada intacta—, así que el clip se ve limpio
+  // los dieciocho segundos que dura su sostén. El efecto existe sólo en los
+  // cuatro segundos en que hay algo que justificar.
+  var WARP  = 0.045;  // desplazamiento máximo, en coordenadas de textura
+  var BLOOM = 0.05;   // brillo que sube y baja con el cruce
+
+  function turb() { return 4 * mix * (1 - mix); }
+
   function chain(a, b) {
-    src(window['s' + a])
-      .blend(src(window['s' + b]), function () { return mix; })
-      // el grave hincha la imagen desde el centro
-      .modulateScale(osc(1.6, 0.08), function () { return bass * 0.22; })
+    // Dos llamadas a noise() con los mismos parámetros dan el mismo campo —es
+    // una función del tiempo y de la coordenada, no lleva estado ni semilla—,
+    // así que las dos capas se deforman con el mismo relieve y en sentido
+    // contrario. Van separadas y no compartiendo un objeto porque cada rama de
+    // la cadena compila su propio glsl.
+    var sale  = src(window['s' + a])
+      .modulate(noise(2.4, 0.06), function () { return  WARP * turb(); });
+    var entra = src(window['s' + b])
+      .modulate(noise(2.4, 0.06), function () { return -WARP * turb(); });
+
+    sale.blend(entra, function () { return mix; })
+      // paneo y zoom, aplicados después de la mezcla: las dos capas se mueven
+      // juntas, como si la cámara recorriera el resultado y no cada clip
+      .scale(zoom, 1, 1, panX, panY)
       // el medio abre el contraste — el IR nocturno responde mucho a esto
       .contrast(function () { return 1 + mid * 0.55; })
-      // el agudo levanta el piso de negro, que en IR lee como niebla
-      .brightness(function () { return treble * 0.06; })
+      // el agudo levanta el piso de negro, que en IR lee como niebla; el
+      // segundo término es el destello del cruce, que hace que la transición
+      // se lea como energía y no como ausencia
+      .brightness(function () { return treble * 0.06 + BLOOM * turb(); })
       .out(o0);
   }
 
@@ -669,6 +812,48 @@ trabajo; esta página es una parte pequeña de él.</p>
 
   var fx = fftCv.getContext('2d');
 
+  // ── El color del espectro ─────────────────────────────────────────────────
+  // Cada columna se pinta según LA FRECUENCIA que ocupa, no según su altura.
+  // La altura ya dice cuánta energía hay; repetirlo en color sería gastar dos
+  // veces el mismo canal y no añadir nada. Así el color codifica el eje —la
+  // posición—, y una banda concreta del espectro se reconoce por su tono aun
+  // cuando la barra esté baja.
+  //
+  // Es una rampa secuencial y no un arcoíris: la luminosidad sube de forma
+  // monótona del grave al agudo, con saltos medibles entre pasos, así que la
+  // figura sigue leyéndose en escala de grises, impresa y con cualquier tipo
+  // de daltonismo. Un arcoíris de tono constante en luminosidad —el que sale
+  // por defecto al mapear frecuencia a matiz— no cumple nada de eso y además
+  // inventa fronteras donde el espectro es continuo.
+  //
+  // La familia es la del espectrograma: violeta, magenta, naranja, oro. Es
+  // literalmente la imagen de la que habla esta página —dos de los cuatro
+  // clips del escenario son espectrogramas—, así que el espectro en vivo y el
+  // espectro grabado quedan en el mismo código de color. El extremo grave está
+  // levantado del negro a propósito: un morado oscuro sobre fondo negro
+  // desaparece, y así queda en 2.6:1 contra el fondo.
+  var RAMPA = ['#6a33a0', '#a63a93', '#cc4f6d', '#e87446', '#f7a834', '#ffe58f'];
+  var BARS = 96;
+
+  function rampa(t) {
+    var s = Math.max(0, Math.min(1, t)) * (RAMPA.length - 1);
+    var i = Math.min(RAMPA.length - 2, Math.floor(s)), k = s - i;
+    var out = '#';
+    for (var c = 0; c < 3; c++) {
+      var a = parseInt(RAMPA[i].substr(1 + c * 2, 2), 16);
+      var b = parseInt(RAMPA[i + 1].substr(1 + c * 2, 2), 16);
+      var v = Math.round(a + (b - a) * k);
+      out += (v < 16 ? '0' : '') + v.toString(16);
+    }
+    return out;
+  }
+
+  // El color de una columna depende sólo de dónde cae en el eje, y el eje no
+  // cambia: se calculan los noventa y seis una vez y no sesenta veces por
+  // segundo.
+  var BARCOL = [];
+  for (var bi = 0; bi < BARS; bi++) BARCOL.push(rampa(bi / (BARS - 1)));
+
   function frame() {
     requestAnimationFrame(frame);
     if (!analyser) return;
@@ -678,15 +863,27 @@ trabajo; esta página es una parte pequeña de él.</p>
     mid    = bandAvg(200, 2000);
     treble = bandAvg(2000, 16000);
 
-    // El espectro dibujado: blanco sobre negro, sin degradados ni color, la
-    // misma regla de 1 bit de la GUI del motor. Las barras van espaciadas
-    // logarítmicamente porque el oído lo está, y porque con espaciado lineal
-    // los primeros dos centímetros se comen toda la información.
+    // Las barras van espaciadas logarítmicamente porque el oído lo está, y
+    // porque con espaciado lineal los primeros dos centímetros se comen toda
+    // la información.
     var W = fftCv.width, H = fftCv.height;
     fx.clearRect(0, 0, W, H);
-    var BARS = 96, nyq = ac.sampleRate / 2;
+    var nyq = ac.sampleRate / 2;
     var f0 = 20, f1 = Math.min(16000, nyq);
-    fx.fillStyle = '#fff';
+    var w = W / BARS;
+
+    // El eje es la propia rampa: dos píxeles abajo, siempre encendidos, que
+    // declaran qué color corresponde a qué frecuencia. Hace de leyenda sin
+    // ocupar sitio ni añadir un recuadro, y de línea de base para las barras,
+    // que nacen de él. Con el espectro en silencio sigue viéndose, así que la
+    // escala se entiende antes de que suene nada.
+    // Cuatro píxeles del lienzo y no dos: el canvas mide 240 de alto y se
+    // muestra a 120, así que todo lo vertical se ve a la mitad.
+    for (var g = 0; g < BARS; g++) {
+      fx.fillStyle = BARCOL[g];
+      fx.fillRect(g * w, H - 4, w + 1, 4);
+    }
+
     for (var b = 0; b < BARS; b++) {
       var fa = f0 * Math.pow(f1 / f0, b / BARS);
       var fb = f0 * Math.pow(f1 / f0, (b + 1) / BARS);
@@ -694,9 +891,9 @@ trabajo; esta página es una parte pequeña de él.</p>
       var i1 = Math.max(i0, Math.min(freq.length - 1, Math.floor(fb / nyq * freq.length)));
       var m = 0;
       for (var i = i0; i <= i1; i++) if (freq[i] > m) m = freq[i];
-      var h = (m / 255) * (H - 2);
-      var x = (b / BARS) * W;
-      fx.fillRect(x, H - h, (W / BARS) - 1.5, h);
+      var h = (m / 255) * (H - 6);
+      fx.fillStyle = BARCOL[b];
+      fx.fillRect(b * w, H - 4 - h, w - 2, h);
     }
   }
   requestAnimationFrame(frame);
