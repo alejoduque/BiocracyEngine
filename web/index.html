@@ -1,0 +1,816 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Parlamento de lo Vivo — la cadena sobre el bosque</title>
+<style>
+  :root { --gap: 10px; }
+  html, body { margin:0; background:#000; color:#fff; }
+  body { font:14px/1.5 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+
+  /* El escenario ocupa el ancho y es deliberadamente grande: es la pieza, no
+     un banner. No queda atado a la proporción de un clip porque hydra cicla
+     varios de formas distintas por él. */
+  .hero { position:relative; width:100%; height:78vh; min-height:340px;
+    overflow:hidden; background:#000; }
+  #c { position:absolute; inset:0; width:100%; height:100%; display:block; }
+
+  .stack { position:absolute; left:var(--gap); top:var(--gap); z-index:3;
+    width:min(56vw, 560px); pointer-events:none; }
+  .stack h1 { margin:0; font-size:clamp(18px, 3.4vw, 34px); line-height:1.15;
+    letter-spacing:.02em; text-shadow:0 0 18px #000, 0 0 4px #000; }
+  .stack p { margin:.5em 0 0; font-size:13px; color:#d8d8d8;
+    text-shadow:0 0 14px #000, 0 0 4px #000; }
+
+  /* El espectro cruza el ancho entero del escenario, pegado abajo: lo que se
+     oye y lo que se ve son la misma superficie, no dos paneles separados. Iba
+     en un recuadro pequeño en una esquina y ahí no se leía como el centro de
+     la pieza que es. */
+  .scope { position:absolute; left:0; right:0; bottom:0; z-index:3;
+    pointer-events:none; padding:0 var(--gap) 6px;
+    background:linear-gradient(to top, rgba(0,0,0,.34), rgba(0,0,0,0)); }
+  /* Translúcido y en modo screen: las barras se suman a la luz del video en
+     lugar de taparlo, así que el ocelote y el espectrograma siguen leyéndose
+     por debajo. Antes era un panel opaco que recortaba el tercio inferior. */
+  #fft { display:block; width:100%; height:120px;
+    opacity:.6; mix-blend-mode:screen; }
+  .scope .rot { display:flex; justify-content:space-between;
+    font-size:11px; color:#c8c8c8; padding-top:2px; letter-spacing:.06em;
+    text-shadow:0 0 8px #000; }
+
+  /* La invitación a escuchar. La página abre en silencio —el video va mudo por
+     obligación del navegador— así que sin esto parece una pieza muda y nadie
+     baja a buscar el transporte. */
+  #listen { position:absolute; inset:0; display:flex; flex-direction:column;
+    align-items:center; justify-content:center; z-index:5; cursor:pointer;
+    background:rgba(0,0,0,.42); border:0; color:#fff; font:inherit;
+    text-align:center; padding:var(--gap); transition:background .2s; }
+  #listen:hover { background:rgba(0,0,0,.28); }
+  #listen[hidden] { display:none; }
+  #listen .big { font-size:clamp(15px, 2.2vw, 21px); letter-spacing:.16em;
+    border:1px solid rgba(255,255,255,.85); padding:13px 26px; border-radius:3px;
+    background:rgba(0,0,0,.5); }
+  #listen:hover .big { background:#fff; color:#000; }
+  #listen .sub { margin-top:11px; font-size:12px; color:#d0d0d0;
+    text-shadow:0 0 10px #000; }
+
+  #msg { position:absolute; inset:0; display:flex; align-items:center;
+    justify-content:center; z-index:6; background:rgba(0,0,0,.5);
+    cursor:pointer; text-align:center; padding:var(--gap); }
+  #msg[hidden] { display:none; }
+
+  /* ── Transporte ───────────────────────────────────────────────────────── */
+  .transport { padding:14px var(--gap) 16px; border-bottom:1px solid #1c1c1c;
+    background:#070707; }
+  .transport .lede { margin:0 0 10px; font-size:12px; letter-spacing:.14em;
+    text-transform:uppercase; color:#8a8a8a; }
+  .comps { display:flex; flex-wrap:wrap; gap:7px; }
+  .comps button {
+    background:#000; color:#fff; border:1px solid rgba(255,255,255,.5);
+    padding:11px 19px; cursor:pointer; font:inherit; font-size:15px;
+    border-radius:3px; letter-spacing:.04em;
+  }
+  .comps button:hover { background:#222; }
+  /* Un control accionado se invierte a negro sobre blanco — la misma regla de
+     1 bit que gobierna la GUI de SuperCollider del motor. */
+  .comps button[aria-pressed="true"] { background:#fff; color:#000; }
+  .nowplaying { margin:11px 0 0; font-size:13px; color:#b4b4b4; min-height:1.4em; }
+
+  /* Control de volumen: a -16 LUFS las composiciones ya se oyen, pero esto se
+     escucha con auriculares tanto como en un altavoz de portátil. */
+  .vol { display:flex; align-items:center; gap:9px; margin-top:12px;
+    font-size:11px; letter-spacing:.1em; color:#8a8a8a; }
+  .vol input { width:170px; accent-color:#fff; }
+
+  /* ── Tiras de video ───────────────────────────────────────────────────── */
+  .strip { display:flex; flex-wrap:wrap; gap:var(--gap); padding:var(--gap); }
+  .strip figure { flex:1 1 300px; min-width:0; margin:0; }
+  .strip video { width:100%; height:auto; display:block; background:#111; }
+  .strip figcaption { font-size:12px; color:#a8a8a8; padding-top:5px; }
+
+  /* ── Texto de lectura ─────────────────────────────────────────────────── */
+  .text { max-width:74ch; margin:0 auto; padding:22px var(--gap) 4px;
+    font-family:Verdana, Geneva, Tahoma, sans-serif; font-size:14px;
+    line-height:1.72; color:#e6e6e6; }
+  .text p { margin:0 0 1.1em; }
+  .text h2 { font:13px/1.4 ui-monospace, SFMono-Regular, Menlo, monospace;
+    letter-spacing:.14em; text-transform:uppercase; color:#fff;
+    margin:2.2em 0 .9em; padding-bottom:.5em; border-bottom:1px solid #262626; }
+  .text a { color:#fff; }
+  .text strong { color:#fff; }
+
+  table { width:100%; border-collapse:collapse; margin:0 0 1.4em;
+    font:12px/1.5 ui-monospace, SFMono-Regular, Menlo, monospace; }
+  th, td { text-align:left; padding:6px 9px 6px 0; border-bottom:1px solid #1e1e1e;
+    vertical-align:top; }
+  th { color:#fff; font-weight:500; letter-spacing:.05em; }
+  td { color:#c4c4c4; }
+  td.n { color:#fff; white-space:nowrap; }
+
+  .note { border-left:2px solid #3a3a3a; padding:2px 0 2px 14px; color:#bdbdbd;
+    margin:0 0 1.3em; }
+
+  /* ── Láminas del portafolio ───────────────────────────────────────────── */
+  /* Fuera de la columna de lectura, a todo el ancho: son veinte y encajonadas
+     en 74ch quedarían como sellos. Tres columnas fijas en pantalla ancha —con
+     auto-fill acababan siendo cuatro y cada lámina quedaba pequeña—, dos en
+     tableta, una en el teléfono. */
+  .lam-sec { max-width:1400px; margin:2.4em auto .9em; padding:0 var(--gap) .5em;
+    font:13px/1.4 ui-monospace, SFMono-Regular, Menlo, monospace;
+    letter-spacing:.14em; text-transform:uppercase; color:#fff;
+    border-bottom:1px solid #262626; }
+  .laminas { max-width:1400px; margin:0 auto; padding:0 var(--gap);
+    display:grid; gap:22px var(--gap);
+    grid-template-columns:repeat(3, 1fr); }
+  .laminas figure { margin:0; }
+  /* Dos de las láminas son documentos que hay que poder leer —el calendario
+     fenológico y la interfaz del motor—, no fotografías. A un tercio de ancho
+     sus rótulos son ilegibles, así que ocupan dos columnas. */
+  .laminas figure.w2 { grid-column:span 2; }
+  .laminas img { width:100%; height:auto; display:block; background:#111;
+    cursor:zoom-in; }
+  .laminas figcaption { font-size:12px; line-height:1.55; color:#a8a8a8;
+    padding-top:7px; }
+  /* El índice «01/20» en blanco delante del pie: conserva el orden de lectura
+     del portafolio, donde las láminas son una secuencia y no un muestrario. */
+  .laminas .idx { color:#fff; margin-right:.6em; letter-spacing:.06em; }
+
+  @media (max-width: 1000px) {
+    .laminas { grid-template-columns:repeat(2, 1fr); }
+  }
+  @media (max-width: 620px) {
+    .laminas { grid-template-columns:1fr; }
+    /* Ocupar dos columnas de una sola no significa nada y rompe el grid. */
+    .laminas figure.w2 { grid-column:auto; }
+  }
+
+  /* ── Lupa ──────────────────────────────────────────────────────────────── */
+  #lupa { position:fixed; inset:0; z-index:50; display:none;
+    background:rgba(0,0,0,.93); cursor:zoom-out;
+    align-items:center; justify-content:center; flex-direction:column;
+    padding:var(--gap); }
+  #lupa[open] { display:flex; }
+  #lupa img { max-width:100%; max-height:84vh; object-fit:contain; display:block; }
+  #lupa .pie { max-width:90ch; margin-top:12px; font-size:12px; line-height:1.6;
+    color:#c0c0c0; text-align:center; }
+  #lupa .cerrar { position:absolute; top:var(--gap); right:calc(var(--gap) + 4px);
+    font-size:22px; color:#fff; line-height:1; }
+
+  .ui { padding:10px var(--gap) 34px; text-align:center; }
+  .ui a {
+    background:rgba(0,0,0,.45); color:#fff; border:1px solid rgba(255,255,255,.45);
+    padding:6px 12px; margin:0 5px 8px 0; cursor:pointer; text-decoration:none;
+    font:inherit; border-radius:3px; display:inline-block;
+  }
+  .ui a:hover { background:#fff; color:#000; }
+  .credit { margin:14px auto 0; max-width:66ch; color:#8e8e8e; font-size:12px;
+    line-height:1.65; }
+
+  @media (max-width: 700px) {
+    .hero { height:58vh; }
+    .stack { width:calc(100% - 2*var(--gap)); }
+    .scope { position:static; width:auto; padding:var(--gap); }
+  }
+</style>
+</head>
+<body>
+
+<section class="hero">
+  <canvas id="c"></canvas>
+
+  <div class="stack">
+    <h1>Parlamento de lo Vivo</h1>
+    <p>Reserva Manakai · bosque seco tropical · Córdoba, Colombia</p>
+  </div>
+
+  <div class="scope">
+    <canvas id="fft" width="1400" height="240"></canvas>
+    <div class="rot"><span>20 Hz</span><span id="scopelbl">espectro en vivo</span><span>16 kHz</span></div>
+  </div>
+
+  <button id="listen" type="button">
+    <span class="big">▶ ESCUCHAR</span>
+    <span class="sub">cinco composiciones</span>
+  </button>
+
+  <div id="msg">cargando…</div>
+</section>
+
+<div class="transport">
+  <p class="lede">Cinco composiciones · dos sesiones del motor</p>
+  <div class="comps" id="comps"></div>
+  <p class="nowplaying" id="now">Elige una para oírla. El espectro de arriba es el de lo que suena.</p>
+  <label class="vol">VOLUMEN
+    <input id="vol" type="range" min="0" max="100" value="85" aria-label="volumen">
+  </label>
+</div>
+
+<div class="text">
+
+<p>Este trabajo se presenta en <strong>«La pluralidad de la escucha»</strong>,
+que reúne la segunda edición de Re:Mediaciones — Encuentro de Artes
+Electrónicas y del Cuerpo con el <strong>III Congreso Colombiano de Bioacústica
+y Ecoacústica</strong> (septiembre–octubre de 2026), y tiende un puente con la
+exposición <strong>«Ejercicios de empatía: salida interior»</strong> de la
+Trienal de Arte de Universidades Católicas. Los marcos curatoriales y
+metodológicos son distintos y la confluencia es deliberada: lo que comparten
+son prácticas que movilizan otras formas de percibir, de relacionarnos y de
+habitar el mundo.</p>
+
+<p>La bioacústica y la ecoacústica se han dedicado a comprender la comunicación
+de las especies y las circunstancias acústicas de un entorno, clasificando los
+fenómenos sonoros en biofonías, antropofonías y geofonías (Krause, 2012). Lo
+que se propone aquí desborda ese campo para integrar el arte, la comunicación y
+las ciencias sociales: la escucha como <strong>espacio de mediación para el
+reconocimiento de lo «otro»</strong> — de otras especies, de otros paisajes, de
+otras comunidades humanas y de otras expresiones tecnológicas.</p>
+
+<p>La pieza ocupa los cuatro registros que el encuentro convoca, y no de manera
+abstracta. La <em>acustemología</em>, porque lo que hay aquí es la narración de
+lo escuchado. La <em>grabación de campo</em>, que es literalmente su materia:
+dos años de una grabadora atada a un tronco. La <em>escucha afectiva</em>, que
+es lo que ocurre cuando ese archivo se devuelve a quienes viven con el bosque y
+nunca habían oído lo que la máquina guardaba. Y la <em>escucha
+fenomenológica</em>, que es la pregunta que queda al detenerse ante un
+espectrograma sin saber todavía qué fue eso.</p>
+
+<p>Una red de grabadoras y cámaras trampa lleva dos años escuchando y mirando
+este bosque. Esta página pone las dos cosas en la misma superficie: lo que la
+cámara vio, y lo que el motor hizo con lo que el micrófono oyó. El sonido que
+suena no es el bosque — es una blockchain pública sonificada, y lo que ves
+hacer a la imagen es esa cadena actuando sobre ella.</p>
+
+<p>Esa dirección es la afirmación entera del trabajo. No son dos partes tocando
+juntas: es una cadena que <strong>actúa sobre</strong> un territorio. El motor
+que produjo este audio está construido para que la señal y el argumento
+apunten al mismo lado.</p>
+
+<h2>Cinco composiciones</h2>
+
+<p>Las dos sesiones duran 6:55 y 6:37. Los cortes no se eligieron a oído ni por
+reloj: se midió RMS, centroide espectral y flujo segundo a segundo sobre ambas,
+y cada composición aísla un comportamiento distinto del motor. Las cifras de
+abajo son las medidas sobre la grabación original, antes de nivelar.</p>
+
+<table>
+  <tr><th>Composición</th><th>Sesión · corte</th><th>Nivel medio</th><th>Centroide</th><th>Lo que hace</th></tr>
+  <tr><td class="n">lecho</td><td class="n">11:13 · 95–155 s</td><td class="n">−30.8 dBFS</td><td class="n">210–280 Hz</td><td>El drone como cama, con el motor de beat ya trabajando encima.</td></tr>
+  <tr><td class="n">enjambre</td><td class="n">11:13 · 160–220 s</td><td class="n">−32.4 dBFS</td><td class="n">280–350 Hz</td><td>El flujo espectral más alto de las dos sesiones (0.190). La cadena en su momento más denso.</td></tr>
+  <tr><td class="n">ascenso</td><td class="n">11:13 · 285–345 s</td><td class="n">−31.1 dBFS</td><td class="n">666 → 3399 Hz</td><td>El centroide sube cinco veces mientras el nivel cae: se vuelve brillante y delgado a la vez.</td></tr>
+  <tr><td class="n">meseta</td><td class="n">11:20 · 165–225 s</td><td class="n">−35.8 dBFS</td><td class="n">1404–2406 Hz</td><td>Un minuto entero sostenido en registro alto, sin volver a bajar.</td></tr>
+  <tr><td class="n">retorno</td><td class="n">11:20 · 260–320 s</td><td class="n">−35.4 dBFS</td><td class="n">219–430 Hz</td><td>La caída al registro grave, con el flujo subiendo otra vez.</td></tr>
+</table>
+
+<p class="note">Las cinco están niveladas a una sonoridad común (−16 LUFS).
+El corpus del bosque se construye al revés —una ganancia global, nunca
+normalización por clip, porque allí el nivel <em>es</em> el dato: una noche seca
+callada tiene que sonar callada frente a un coro de lluvias—. Aquí no: la
+diferencia de nivel entre estos cinco fragmentos, medida en 9 dB, no dice nada
+del bosque ni del motor, dice qué minuto se cortó. Lo que sí queda intacto es el
+rango dinámico <em>dentro</em> de cada una, que es donde está lo que hay que
+oír.</p>
+
+</div>
+
+<div class="strip">
+  <figure>
+    <video class="clip" src="media/video/strip-1-1809.mp4" muted loop playsinline preload="metadata"></video>
+    <figcaption>CAM01 · 29/08/2025 18:09:50 · 30 °C</figcaption>
+  </figure>
+  <figure>
+    <video class="clip" src="media/video/strip-2-1811.mp4" muted loop playsinline preload="metadata"></video>
+    <figcaption>CAM01 · 29/08/2025 18:11:55 · 30 °C</figcaption>
+  </figure>
+</div>
+
+<div class="text">
+
+<p>Dos registros de la misma cámara, el mismo día, con <strong>dos minutos y
+cinco segundos</strong> de diferencia. ¿Es el mismo ocelote
+(<em>Leopardus pardalis</em>)? La pregunta parece trivial y no lo es: de ella
+dependen los conteos de abundancia con los que se decide si un bosque se
+protege o no.</p>
+
+<p>Las herramientas de reidentificación suelen responderla con un porcentaje de
+similitud que confunde tres preguntas distintas: si un modelo relaciona las dos
+imágenes, si las dos imágenes muestran suficiente anatomía compartida para que
+una persona pueda compararlas con responsabilidad, y si es el mismo individuo.
+El sistema que acompaña este proyecto las separa a propósito y no decide la
+tercera. Ningún número que produce es una probabilidad calibrada de identidad:
+<strong>la identidad sigue siendo una decisión humana</strong>.</p>
+
+<p>En el escenario de arriba, entre las apariciones del ocelote, se cuelan dos
+espectrogramas. No ilustran el sonido que estás oyendo: son grabaciones de la
+AudioMoth en la reserva, a 192 kHz, convertidas en imagen — el eje vertical es
+frecuencia, el horizontal es tiempo, el brillo es energía.</p>
+
+<p>Puestos uno al lado del otro dicen algo que ninguna de las dos imágenes dice
+sola. El de las <strong>18:05</strong> es una franja densa y continua entre 2.7
+y 9.5 kHz, sin huecos: el coro de insectos del atardecer, tan tupido que se
+comporta como una pared. El de las <strong>06:59</strong>, dos días después, es
+otra cosa — bandas separadas, trazos que suben y bajan, silencios entre medio.
+Ahí hay voces contándose una por una.</p>
+
+<p>De las 91 grabaciones de esa campaña, <strong>57 son de las seis de la
+tarde</strong>. El resto se reparte entre las siete de la noche y el amanecer.
+La hora a la que este bosque quedó registrado no la eligió el bosque: la
+eligieron quienes programaron la grabadora. Un archivo es también el mapa de
+las decisiones que lo hicieron.</p>
+
+<h2>Vigilancia o parlamento</h2>
+
+<p>La cadena técnica es siempre la misma: sensor acústico, vectorización,
+inscripción. Produce un aparato de vigilancia o produce un parlamento, y lo que
+decide cuál de los dos no está en el código. Está en quién decide qué se
+registra, qué se publica y qué se calla.</p>
+
+<p>El motor lleva esa decisión a reglas que corren. Las especies detectadas
+entran a una asamblea que no las clasifica por su valor económico sino por su
+presencia; las bancadas se recomponen siguiendo el calendario fenológico del
+lugar en vez de una taxonomía global; y lo que cae bajo el umbral de detección
+no se borra ni se pone en cero, persiste como ruido de bajo nivel. Lo que no se
+mide sigue participando.</p>
+
+<h2>El proyecto en veinte láminas</h2>
+<p>El territorio, la comunidad que lo habita, el instrumento que se construyó para escucharlo y la obra que sale de ahí. Las láminas y sus pies vienen del portafolio del proyecto.</p>
+</div>
+
+<h3 class="lam-sec">El territorio</h3>
+<div class="laminas">
+  <figure>
+    <img src="media/laminas/lamina-01.jpg" alt="Reserva Manakai, bosque seco tropical, Córdoba. Vista aérea del fragmento y su borde de potrero: la forma exac" loading="lazy" decoding="async">
+    <figcaption><span class="idx">01/20</span>Reserva Manakai, bosque seco tropical, Córdoba. Vista aérea del fragmento y su borde de potrero: la forma exacta del problema. De los nueve millones de hectáreas de bosque seco que tuvo Colombia persiste hoy cerca del 8 %, en remanentes como este.</figcaption>
+  </figure>
+  <figure>
+    <img src="media/laminas/lamina-02.jpg" alt="Anochecer sobre el dosel. La hora en que el coro diurno cede y entra la fauna nocturna: el cambio de turno que" loading="lazy" decoding="async">
+    <figcaption><span class="idx">02/20</span>Anochecer sobre el dosel. La hora en que el coro diurno cede y entra la fauna nocturna: el cambio de turno que las grabadoras registran todas las noches del año.</figcaption>
+  </figure>
+  <figure>
+    <img src="media/laminas/lamina-03.jpg" alt="Registro nocturno de cámara trampa: un felino manchado cruza el sotobosque a las 21:33. El aparato fecha y mid" loading="lazy" decoding="async">
+    <figcaption><span class="idx">03/20</span>Registro nocturno de cámara trampa: un felino manchado cruza el sotobosque a las 21:33. El aparato fecha y mide la temperatura de cada aparición; el archivo sonoro hace lo mismo con lo que no se deja fotografiar.</figcaption>
+  </figure>
+  <figure>
+    <img src="media/laminas/lamina-04.jpg" alt="Huellas frescas en el barro de un bebedero. Antes que cualquier sensor, este es el registro que la gente del l" loading="lazy" decoding="async">
+    <figcaption><span class="idx">04/20</span>Huellas frescas en el barro de un bebedero. Antes que cualquier sensor, este es el registro que la gente del lugar ya sabe leer.</figcaption>
+  </figure>
+</div>
+
+<h3 class="lam-sec">La comunidad y el método</h3>
+<div class="laminas">
+  <figure>
+    <img src="media/laminas/lamina-05.jpg" alt="Cartografía colectiva del departamento de Córdoba dibujada en tablero, presentada en una exposición dedicada a" loading="lazy" decoding="async">
+    <figcaption><span class="idx">05/20</span>Cartografía colectiva del departamento de Córdoba dibujada en tablero, presentada en una exposición dedicada a Orlando Fals Borda (Montería, Colombia), quien desde una antropología social desarrolló el método de Investigación Acción Participativa que guía este proyecto. Aquí los nombres los ponen quienes participan del ejercicio: el mapa no se entrega hecho ni viene de afuera.</figcaption>
+  </figure>
+  <figure>
+    <img src="media/laminas/lamina-06.jpg" alt="Jóvenes reunidos en la casa comunal de El Balzal, junto a la reserva. Este es el lugar y el formato en que se " loading="lazy" decoding="async">
+    <figcaption><span class="idx">06/20</span>Jóvenes reunidos en la casa comunal de El Balzal, junto a la reserva. Este es el lugar y el formato en que se sostendría el laboratorio de escucha: donde la comunidad ya se reúne, y no en un aula.</figcaption>
+  </figure>
+  <figure>
+    <img src="media/laminas/lamina-07.jpg" alt="Recorrido de reconocimiento con habitantes del territorio para decidir dónde van las estaciones de escucha. La" loading="lazy" decoding="async">
+    <figcaption><span class="idx">07/20</span>Recorrido de reconocimiento con habitantes del territorio para decidir dónde van las estaciones de escucha. La ubicación de un micrófono es una decisión sobre qué se vuelve audible.</figcaption>
+  </figure>
+  <figure>
+    <img src="media/laminas/lamina-08.jpg" alt="Equipo de campo: grabadora, micrófono, audífonos, botas. Nada de esto exige formación previa. La beca no compr" loading="lazy" decoding="async">
+    <figcaption><span class="idx">08/20</span>Equipo de campo: grabadora, micrófono, audífonos, botas. Nada de esto exige formación previa. La beca no compra hardware —ya existe—: sostiene el proceso de aprender a usarlo entre todos.</figcaption>
+  </figure>
+</div>
+
+<h3 class="lam-sec">El instrumento</h3>
+<div class="laminas">
+  <figure>
+    <img src="media/laminas/lamina-09.jpg" alt="Estación de registro instalada y amarrada al tronco. Permanece semanas en el sitio grabando sin nadie presente" loading="lazy" decoding="async">
+    <figcaption><span class="idx">09/20</span>Estación de registro instalada y amarrada al tronco. Permanece semanas en el sitio grabando sin nadie presente; recuperar la tarjeta es la rutina que estructura el año de trabajo.</figcaption>
+  </figure>
+  <figure>
+    <img src="media/laminas/lamina-10.jpg" alt="Espectrograma de un evento detectado por el sistema. La franja continua es el coro de insectos; los trazos que" loading="lazy" decoding="async">
+    <figcaption><span class="idx">10/20</span>Espectrograma de un evento detectado por el sistema. La franja continua es el coro de insectos; los trazos que la cruzan, voces individuales. Aquí la escucha se vuelve dato — y el dato, materia de composición.</figcaption>
+  </figure>
+  <figure class="w2">
+    <img src="media/laminas/lamina-11.jpg" alt="Calendario fenológico de la reserva: 72 especies censadas ordenadas sobre el año, con el régimen de lluvias en" loading="lazy" decoding="async">
+    <figcaption><span class="idx">11/20</span>Calendario fenológico de la reserva: 72 especies censadas ordenadas sobre el año, con el régimen de lluvias en el anillo exterior. Es el instrumento que quedaría instalado en el territorio al final del proceso.</figcaption>
+  </figure>
+  <figure>
+    <img src="media/laminas/lamina-12.jpg" alt="Aplicación de registro georreferenciado en campo: cada grabación queda con fecha, duración, nota y especie. La" loading="lazy" decoding="async">
+    <figcaption><span class="idx">12/20</span>Aplicación de registro georreferenciado en campo: cada grabación queda con fecha, duración, nota y especie. Las coordenadas aparecen reservadas — el criterio de opacidad que el proyecto propone se aplica también a su propio portafolio.</figcaption>
+  </figure>
+  <figure class="w2">
+    <img src="media/laminas/lamina-13.jpg" alt="«Parliament of All Things»: interfaz en vivo del motor. Cada especie acústica detectada entra con su categoría" loading="lazy" decoding="async">
+    <figcaption><span class="idx">13/20</span>«Parliament of All Things»: interfaz en vivo del motor. Cada especie acústica detectada entra con su categoría de riesgo UICN y un peso de voto; el estado del bosque modula el sonido de la sala en tiempo real.</figcaption>
+  </figure>
+</div>
+
+<h3 class="lam-sec">La obra</h3>
+<div class="laminas">
+  <figure>
+    <img src="media/laminas/lamina-14.jpg" alt="«El paso de una voz», diagrama del sistema. Una voz del bosque atraviesa el anillo fenológico hasta ser inscri" loading="lazy" decoding="async">
+    <figcaption><span class="idx">14/20</span>«El paso de una voz», diagrama del sistema. Una voz del bosque atraviesa el anillo fenológico hasta ser inscrita, o permanece opaca: el derecho a no ser registrado es una función del sistema, no una omisión suya.</figcaption>
+  </figure>
+  <figure>
+    <img src="media/laminas/lamina-15.jpg" alt="Simulación de montaje de la instalación multicanal en sala: espectrogramas proyectados, sistema envolvente de " loading="lazy" decoding="async">
+    <figcaption><span class="idx">15/20</span>Simulación de montaje de la instalación multicanal en sala: espectrogramas proyectados, sistema envolvente de altavoces, escucha de pie.</figcaption>
+  </figure>
+  <figure>
+    <img src="media/laminas/lamina-17.jpg" alt="Segunda variación de la propuesta en campo, con el sistema abierto al bosque y sin sala que lo contenga." loading="lazy" decoding="async">
+    <figcaption><span class="idx">17/20</span>Segunda variación de la propuesta en campo, con el sistema abierto al bosque y sin sala que lo contenga.</figcaption>
+  </figure>
+</div>
+
+<h3 class="lam-sec">Trayectoria</h3>
+<div class="laminas">
+  <figure>
+    <img src="media/laminas/lamina-18.jpg" alt="«[de] Bioacústica [a] Biocracia. Parlamento de lo Vivo en el Bosque Seco Tropical», tesis doctoral en curso — " loading="lazy" decoding="async">
+    <figcaption><span class="idx">18/20</span>«[de] Bioacústica [a] Biocracia. Parlamento de lo Vivo en el Bosque Seco Tropical», tesis doctoral en curso — Doctorado en Diseño, Arte y Ciencia, Universidad Jorge Tadeo Lozano; dirección de Felipe César Londoño.</figcaption>
+  </figure>
+  <figure>
+    <img src="media/laminas/lamina-19.jpg" alt="«Especies y Espectros: de la bioacústica a la escucha profunda en las artes mediales», encuentro co-organizado" loading="lazy" decoding="async">
+    <figcaption><span class="idx">19/20</span>«Especies y Espectros: de la bioacústica a la escucha profunda en las artes mediales», encuentro co-organizado en el Museo de Arte Moderno de Medellín con la University of Illinois y el MAMM.</figcaption>
+  </figure>
+  <figure>
+    <img src="media/laminas/lamina-20.jpg" alt="Trabajo de campo con sistema de grabación y transmisión en Désert Numérique, Saint-Nazaire-le-Désert (Francia)" loading="lazy" decoding="async">
+    <figcaption><span class="idx">20/20</span>Trabajo de campo con sistema de grabación y transmisión en Désert Numérique, Saint-Nazaire-le-Désert (Francia). Práctica sonora de campo de la que este proyecto es continuación.</figcaption>
+  </figure>
+</div>
+
+<div class="text">
+<h2>Con quién</h2>
+
+<p>Nada de esto se sostiene como software solo. El proceso que lo rodea entrega
+el archivo y las grabadoras a un grupo de jóvenes de 10 a 15 años del
+territorio, junto al semillero BioDiverso–Fauno de la Universidad de Córdoba,
+en encuentros en la casa comunal de El Balzal.</p>
+
+<p>Tres movimientos que se repiten: <strong>escuchar</strong> —mantener las
+estaciones, recuperar las tarjetas, sostener la atención—,
+<strong>vectorizar</strong> —convertir esa escucha en datos con herramientas
+libres— y <strong>componer</strong> —volver ese material obra—. El eje político
+está en el segundo. Por eso una parte explícita del trabajo consiste en decidir
+colectivamente qué <em>no</em> se hace público.</p>
+
+<p>Una grabadora lleva dos años registrando este bosque sin que la comunidad que
+vive con él haya oído lo que la máquina guarda. Devolver esa escucha es el
+trabajo; esta página es una parte pequeña de él.</p>
+
+</div>
+
+<div class="ui">
+  <a href="https://etc.altred.xyz/posts/bioacusticabiocracia/">[de] Bioacústica [a] Biocracia &#8599;</a>
+  <a href="https://etc.altred.xyz/posts/e4/">Especies y Espectros &#8599;</a>
+  <a href="https://github.com/alejoduque/BiocracyEngine">BiocracyEngine &#8599;</a>
+  <a href="https://github.com/alejoduque/ID_indv">ID_indv &#8599;</a>
+  <a href="https://github.com/alejoduque/bioacustic-scripts">bioacustic-scripts &#8599;</a>
+  <a href="https://altred.xyz/">altred &#8599;</a>
+  <p class="credit">
+    Alejandro Duque Jaramillo · Reserva Manakai, Planeta Rica, Córdoba ·
+    Tesis doctoral en Diseño, Arte y Ciencia, Universidad Jorge Tadeo Lozano.
+    Video de cámara trampa CAM01, agosto de 2025. Audio: dos sesiones del motor
+    de sonificación, 22 de septiembre de 2026. Las coordenadas de las estaciones
+    de escucha se mantienen reservadas.
+  </p>
+</div>
+
+<div id="lupa" role="dialog" aria-modal="true" aria-label="lámina ampliada">
+  <span class="cerrar" aria-hidden="true">×</span>
+  <img id="lupa-img" alt="">
+  <p class="pie" id="lupa-pie"></p>
+</div>
+
+<audio id="au" preload="none" loop crossorigin="anonymous"></audio>
+
+<script src="assets/js/hydra-synth.js"></script>
+<script>
+(function () {
+  'use strict';
+
+  // ── Fuentes ───────────────────────────────────────────────────────────────
+  // Hydra cicla estos cuatro como fondo, con fundido cruzado. El orden alterna
+  // a propósito lo que la cámara VIO con lo que el micrófono OYÓ: ocelote,
+  // espectrograma, ocelote, espectrograma. El mismo bosque por dos vías de
+  // registro que normalmente se publican por separado, aquí en el mismo
+  // encuadre y disolviéndose una en otra.
+  //
+  // CUATRO es el máximo: hydra crea s0..s3 (numSources = 4) y un quinto clip
+  // se ignoraría en silencio.
+  var HERO_CLIPS = [
+    'media/video/hero-1-pareja.mp4',     // dos ocelotes, luz de día
+    'media/video/hero-2-atardecer.mp4',  // espectrograma 18:05 — coro de insectos
+    'media/video/hero-3-perfil.mp4',     // ocelote de perfil, IR nocturno
+    'media/video/hero-4-amanecer.mp4'    // espectrograma 06:59 — voces sueltas
+  ];
+  var HOLD_MS = 9000;   // tiempo sobre cada clip
+  var FADE_MS = 2500;   // duración del fundido
+
+  var COMPS = [
+    { id:'lecho',    label:'lecho',    nota:'11:13 · 95–155 s — el drone como cama, centroide 210–280 Hz' },
+    { id:'enjambre', label:'enjambre', nota:'11:13 · 160–220 s — el flujo espectral más alto de las dos sesiones' },
+    { id:'ascenso',  label:'ascenso',  nota:'11:13 · 285–345 s — el centroide sube de 666 a 3399 Hz' },
+    { id:'meseta',   label:'meseta',   nota:'11:20 · 165–225 s — un minuto sostenido en registro alto' },
+    { id:'retorno',  label:'retorno',  nota:'11:20 · 260–320 s — la caída al grave, con el flujo subiendo' }
+  ];
+
+  var canvas  = document.getElementById('c');
+  var msg     = document.getElementById('msg');
+  var fftCv   = document.getElementById('fft');
+  var au      = document.getElementById('au');
+  var compsEl = document.getElementById('comps');
+  var nowEl   = document.getElementById('now');
+  var listen  = document.getElementById('listen');
+  var volEl   = document.getElementById('vol');
+  var scopeLbl= document.getElementById('scopelbl');
+  var strip   = Array.prototype.slice.call(document.querySelectorAll('.strip video'));
+
+  var heroVideos = [];
+  var mix = 0, cur = 0;
+
+  // Las tres bandas que hydra lee. Se escriben una vez por cuadro desde el
+  // analizador y se leen como funciones dentro de la cadena, que es el mismo
+  // recurso con que la plantilla anima el fundido: hydra reevalúa la función en
+  // cada cuadro, así que no hay que reconstruir la cadena sesenta veces por
+  // segundo.
+  var bass = 0, mid = 0, treble = 0;
+
+  function fail(t) { msg.hidden = false; msg.textContent = t; }
+
+  if (typeof window.Hydra === 'undefined') { fail('no se pudo cargar hydra-synth.js'); return; }
+
+  function size() {
+    var r = canvas.parentNode.getBoundingClientRect();
+    canvas.width  = Math.max(1, Math.round(r.width));
+    canvas.height = Math.max(1, Math.round(r.height));
+  }
+  size();
+  window.addEventListener('resize', size);
+
+  try {
+    // detectAudio:false a propósito. El analizador de hydra escucha el
+    // MICRÓFONO, y lo que tiene que mover esta imagen es la composición que
+    // suena, no la sala de quien mira. El análisis se hace abajo, a mano.
+    new window.Hydra({ canvas: canvas, detectAudio: false, enableStreamCapture: false });
+  } catch (e) {
+    fail('este navegador no puede iniciar WebGL');
+    return;
+  }
+
+  // muted/playsinline/loop antes del primer play(): la reproducción automática
+  // sólo se permite en video silenciado, y playsinline evita que iOS se vaya a
+  // pantalla completa.
+  function makeVideo(url) {
+    var v = document.createElement('video');
+    v.src = url;
+    v.loop = true; v.muted = true; v.defaultMuted = true;
+    v.playsInline = true;
+    v.setAttribute('playsinline', ''); v.setAttribute('muted', '');
+    v.preload = 'auto';
+    return v;
+  }
+
+  HERO_CLIPS.forEach(function (url, i) {
+    var v = makeVideo(url);
+    heroVideos.push(v);
+    window['s' + i].init({ src: v });
+  });
+
+  // ── La cadena actuando sobre el bosque ────────────────────────────────────
+  // El audio es la blockchain sonificada; el video es el bosque. Que el sonido
+  // deforme la imagen y no al revés es la afirmación del trabajo puesta en la
+  // dirección de la señal.
+  //
+  // Las cantidades son deliberadamente contenidas: la imagen de cámara trampa
+  // tiene que seguir siendo legible. Un efecto que se come al animal convierte
+  // el registro en textura, que es precisamente lo que el proyecto reprocha a
+  // la estética de datos.
+  function chain(a, b) {
+    src(window['s' + a])
+      .blend(src(window['s' + b]), function () { return mix; })
+      // el grave hincha la imagen desde el centro
+      .modulateScale(osc(1.6, 0.08), function () { return bass * 0.22; })
+      // el medio abre el contraste — el IR nocturno responde mucho a esto
+      .contrast(function () { return 1 + mid * 0.55; })
+      // el agudo levanta el piso de negro, que en IR lee como niebla
+      .brightness(function () { return treble * 0.06; })
+      .out(o0);
+  }
+
+  var n = HERO_CLIPS.length;
+  chain(0, n > 1 ? 1 : 0);
+  render(o0);
+
+  function step() {
+    if (n < 2) return;
+    var nxt = (cur + 1) % n;
+    chain(cur, nxt);
+    var t0 = (window.performance || Date).now();
+    (function anim() {
+      var k = Math.min(1, ((window.performance || Date).now() - t0) / FADE_MS);
+      mix = k * k * (3 - 2 * k);            // smoothstep: entra y sale sin esquina
+      if (k < 1) { requestAnimationFrame(anim); return; }
+      cur = nxt; mix = 0;
+      chain(cur, (cur + 1) % n);
+      setTimeout(step, HOLD_MS);
+    })();
+  }
+  if (n > 1) setTimeout(step, HOLD_MS);
+
+  // ── Análisis de audio ─────────────────────────────────────────────────────
+  // createMediaElementSource sólo puede llamarse UNA vez por elemento, así que
+  // el grafo se arma una sola vez y después sólo cambia el .src del <audio>.
+  var ac = null, analyser = null, freq = null, active = null;
+
+  function initAudio() {
+    if (ac) return true;
+    var AC = window.AudioContext || window.webkitAudioContext;
+    if (!AC) return false;
+    ac = new AC();
+    analyser = ac.createAnalyser();
+    analyser.fftSize = 2048;
+    // El suavizado propio del analizador evita tener que filtrar a mano: sin
+    // él las bandas tiemblan por cuadro y la imagen vibra en vez de respirar.
+    analyser.smoothingTimeConstant = 0.82;
+    freq = new Uint8Array(analyser.frequencyBinCount);
+    ac.createMediaElementSource(au).connect(analyser);
+    analyser.connect(ac.destination);
+    return true;
+  }
+
+  // Límites de banda en Hz, convertidos a índices de bin con la frecuencia de
+  // muestreo real del contexto — que no siempre es 48 kHz y en algunos equipos
+  // es 44.1, lo que correría todas las bandas si se fijaran los índices a mano.
+  function bandAvg(loHz, hiHz) {
+    var nyq = ac.sampleRate / 2;
+    var lo = Math.max(1, Math.floor(loHz / nyq * freq.length));
+    var hi = Math.min(freq.length - 1, Math.ceil(hiHz / nyq * freq.length));
+    var s = 0;
+    for (var i = lo; i <= hi; i++) s += freq[i];
+    return (s / (hi - lo + 1)) / 255;
+  }
+
+  var fx = fftCv.getContext('2d');
+
+  function frame() {
+    requestAnimationFrame(frame);
+    if (!analyser) return;
+    analyser.getByteFrequencyData(freq);
+
+    bass   = bandAvg(20, 200);
+    mid    = bandAvg(200, 2000);
+    treble = bandAvg(2000, 16000);
+
+    // El espectro dibujado: blanco sobre negro, sin degradados ni color, la
+    // misma regla de 1 bit de la GUI del motor. Las barras van espaciadas
+    // logarítmicamente porque el oído lo está, y porque con espaciado lineal
+    // los primeros dos centímetros se comen toda la información.
+    var W = fftCv.width, H = fftCv.height;
+    fx.clearRect(0, 0, W, H);
+    var BARS = 96, nyq = ac.sampleRate / 2;
+    var f0 = 20, f1 = Math.min(16000, nyq);
+    fx.fillStyle = '#fff';
+    for (var b = 0; b < BARS; b++) {
+      var fa = f0 * Math.pow(f1 / f0, b / BARS);
+      var fb = f0 * Math.pow(f1 / f0, (b + 1) / BARS);
+      var i0 = Math.max(1, Math.floor(fa / nyq * freq.length));
+      var i1 = Math.max(i0, Math.min(freq.length - 1, Math.floor(fb / nyq * freq.length)));
+      var m = 0;
+      for (var i = i0; i <= i1; i++) if (freq[i] > m) m = freq[i];
+      var h = (m / 255) * (H - 2);
+      var x = (b / BARS) * W;
+      fx.fillRect(x, H - h, (W / BARS) - 1.5, h);
+    }
+  }
+  requestAnimationFrame(frame);
+
+  // ── Transporte ────────────────────────────────────────────────────────────
+  COMPS.forEach(function (c) {
+    var btn = document.createElement('button');
+    btn.type = 'button';
+    btn.textContent = c.label;
+    btn.dataset.id = c.id;
+    btn.setAttribute('aria-pressed', 'false');
+    btn.addEventListener('click', function () { choose(c, btn); });
+    compsEl.appendChild(btn);
+  });
+
+  function clearPressed() {
+    Array.prototype.forEach.call(compsEl.children, function (b) {
+      b.setAttribute('aria-pressed', 'false');
+    });
+  }
+
+  function btnFor(id) {
+    return Array.prototype.filter.call(compsEl.children, function (b) {
+      return b.dataset.id === id;
+    })[0];
+  }
+
+  function choose(c, btn) {
+    if (!initAudio()) { nowEl.textContent = 'este navegador no tiene Web Audio'; return; }
+    // El contexto nace suspendido hasta que hay un gesto; este clic lo es.
+    if (ac.state === 'suspended') ac.resume();
+
+    if (active === c.id && !au.paused) {     // segundo clic sobre la misma: pausa
+      au.pause(); clearPressed();
+      nowEl.textContent = 'en pausa — ' + c.nota;
+      scopeLbl.textContent = 'en pausa';
+      return;
+    }
+
+    if (active !== c.id) {
+      active = c.id;
+      au.src = 'media/audio/' + c.id + '.mp3';
+    }
+    clearPressed();
+    btn.setAttribute('aria-pressed', 'true');
+    nowEl.textContent = c.nota;
+    au.play().then(function () {
+      listen.hidden = true;
+      scopeLbl.textContent = 'sonando: ' + c.label;
+    }).catch(function () {
+      nowEl.textContent = 'no se pudo reproducir ' + c.label + ' — ¿falta media/audio/' + c.id + '.mp3?';
+      clearPressed();
+    });
+  }
+
+  // El botón grande del escenario arranca por la primera composición. Es el
+  // único gesto que hace falta: sin él la página abre muda y se lee como una
+  // pieza sin sonido.
+  listen.addEventListener('click', function () {
+    choose(COMPS[0], btnFor(COMPS[0].id));
+  });
+
+  au.volume = volEl.value / 100;
+  volEl.addEventListener('input', function () { au.volume = volEl.value / 100; });
+
+  au.addEventListener('error', function () {
+    nowEl.textContent = 'falta media/audio/' + active + '.mp3 — corre ./build_media.sh';
+    clearPressed();
+  });
+
+  // ── Arranque del video ────────────────────────────────────────────────────
+  function all() { return heroVideos.concat(strip); }
+
+  function playAll() {
+    return Promise.all(all().map(function (v) {
+      var pr = v.play();
+      return pr && pr.catch ? pr.catch(function () {}) : Promise.resolve();
+    }));
+  }
+
+  playAll().then(function () { msg.hidden = true; }).catch(function () {
+    msg.hidden = false;
+    msg.textContent = 'tocar para comenzar';
+    msg.addEventListener('click', function once() {
+      msg.removeEventListener('click', once);
+      playAll().then(function () { msg.hidden = true; });
+    });
+  });
+  // Ocultar el aviso en cuanto haya primer cuadro, aunque falte algún clip.
+  heroVideos[0].addEventListener('playing', function () { msg.hidden = true; });
+
+  // ── Lupa ──────────────────────────────────────────────────────────────────
+  // Las láminas a un tercio de ancho sirven para recorrer la secuencia, no para
+  // leerlas. Un clic abre la imagen a pantalla completa con su pie.
+  //
+  // Se delega en el contenedor en vez de poner un listener por imagen: son
+  // diecinueve, y si mañana se añade otra desde laminas.json seguiría
+  // funcionando sin tocar nada.
+  var lupa    = document.getElementById('lupa');
+  var lupaImg = document.getElementById('lupa-img');
+  var lupaPie = document.getElementById('lupa-pie');
+
+  document.addEventListener('click', function (e) {
+    var img = e.target.closest ? e.target.closest('.laminas img') : null;
+    if (!img) return;
+    var fig = img.closest('figure');
+    var cap = fig ? fig.querySelector('figcaption') : null;
+    lupaImg.src = img.currentSrc || img.src;
+    lupaImg.alt = img.alt || '';
+    lupaPie.textContent = cap ? cap.textContent : '';
+    lupa.setAttribute('open', '');
+    // Sin esto la página de atrás sigue desplazándose bajo la lupa.
+    document.body.style.overflow = 'hidden';
+  });
+
+  function cerrarLupa() {
+    lupa.removeAttribute('open');
+    document.body.style.overflow = '';
+    // Soltar la imagen: diecinueve láminas de 1000 px retenidas en memoria no
+    // hacen falta una vez cerrada.
+    lupaImg.removeAttribute('src');
+  }
+  lupa.addEventListener('click', cerrarLupa);
+  document.addEventListener('keydown', function (e) {
+    if (e.key === 'Escape' && lupa.hasAttribute('open')) cerrarLupa();
+  });
+
+  // Varios videos decodificando para una pestaña que nadie mira es puro gasto.
+  document.addEventListener('visibilitychange', function () {
+    if (document.hidden) {
+      all().forEach(function (v) { v.pause(); });
+      if (!au.paused) { au.pause(); clearPressed(); }
+    } else {
+      all().forEach(function (v) { v.play().catch(function () {}); });
+    }
+  });
+})();
+</script>
+</body>
+</html>
