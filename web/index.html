@@ -41,32 +41,34 @@
     font-size:11px; color:#c8c8c8; padding-top:2px; letter-spacing:.06em;
     text-shadow:0 0 8px #000; }
 
-  /* La invitación a escuchar. La página abre en silencio —el video va mudo por
-     obligación del navegador— así que sin esto parece una pieza muda y nadie
-     baja a buscar el transporte. */
-  #listen { position:absolute; inset:0; display:flex; flex-direction:column;
-    align-items:center; justify-content:center; z-index:5; cursor:pointer;
-    background:rgba(0,0,0,.42); border:0; color:#fff; font:inherit;
-    text-align:center; padding:var(--gap); transition:background .2s; }
-  #listen:hover { background:rgba(0,0,0,.28); }
-  #listen[hidden] { display:none; }
-  #listen .big { font-size:clamp(15px, 2.2vw, 21px); letter-spacing:.16em;
-    border:1px solid rgba(255,255,255,.85); padding:13px 26px; border-radius:3px;
-    background:rgba(0,0,0,.5); }
-  #listen:hover .big { background:#fff; color:#000; }
-  #listen .sub { margin-top:11px; font-size:12px; color:#d0d0d0;
-    text-shadow:0 0 10px #000; }
-
-  #msg { position:absolute; inset:0; display:flex; align-items:center;
-    justify-content:center; z-index:6; background:rgba(0,0,0,.5);
-    cursor:pointer; text-align:center; padding:var(--gap); }
+  #msg { position:absolute; inset:0; display:flex; flex-direction:column;
+    align-items:center; justify-content:center; gap:12px; z-index:6;
+    background:rgba(0,0,0,.5); cursor:pointer; text-align:center;
+    padding:var(--gap); }
   #msg[hidden] { display:none; }
+  #msg .bar { width:min(56vw, 220px); height:3px; background:rgba(255,255,255,.18);
+    border-radius:2px; overflow:hidden; }
+  #msg .bar[hidden] { display:none; }
+  /* Progreso indeterminado: no hay un total fiable que medir —son varios
+     videos y el arranque de WebGL a la vez—, así que la barra no promete un
+     porcentaje que no puede cumplir; sólo dice que algo sigue en curso. */
+  #msg .fill { width:40%; height:100%; background:#fff;
+    animation: msgbar 1.3s ease-in-out infinite; }
+  @keyframes msgbar {
+    0%   { transform:translateX(-100%); }
+    100% { transform:translateX(350%); }
+  }
+  #msg .txt { font-size:13px; color:#d0d0d0; letter-spacing:.06em;
+    text-shadow:0 0 10px #000; }
 
   /* ── Transporte ───────────────────────────────────────────────────────── */
   .transport { padding:14px var(--gap) 16px; border-bottom:1px solid #1c1c1c;
     background:#070707; }
   .transport .lede { margin:0 0 10px; font-size:12px; letter-spacing:.14em;
     text-transform:uppercase; color:#8a8a8a; }
+  /* Debajo del video y arriba de las cinco pistas, centrado: es el control
+     principal, no uno más de la fila de composiciones. */
+  .toggle-row { display:flex; justify-content:center; margin:0 0 14px; }
   .comps { display:flex; flex-wrap:wrap; gap:7px; }
   .comps button {
     background:#000; color:#fff; border:1px solid rgba(255,255,255,.5);
@@ -77,6 +79,17 @@
   /* Un control accionado se invierte a negro sobre blanco — la misma regla de
      1 bit que gobierna la GUI de SuperCollider del motor. */
   .comps button[aria-pressed="true"] { background:#fff; color:#000; }
+
+  /* Pausar/escuchar general, al otro lado de las cinco: no elige una
+     composición, alterna la que ya está sonando. En «escuchando» baja a un
+     tono más opaco a propósito — deja de invitar al clic porque ya no hace
+     falta pulsarlo, sólo informa de que el motor sigue activo. */
+  .toggle { background:#000; color:#fff; border:1px solid rgba(255,255,255,.5);
+    padding:11px 19px; cursor:pointer; font:inherit; font-size:15px;
+    border-radius:3px; letter-spacing:.04em; white-space:nowrap;
+    transition:opacity .2s, background .2s; }
+  .toggle:hover { background:#222; }
+  .toggle[aria-pressed="true"] { opacity:.5; }
   .nowplaying { margin:11px 0 0; font-size:13px; color:#b4b4b4; min-height:1.4em; }
 
   /* Control de volumen: a -16 LUFS las composiciones ya se oyen, pero esto se
@@ -220,13 +233,26 @@
     font:inherit; border-radius:3px; display:inline-block;
   }
   .ui a:hover { background:#fff; color:#000; }
-  .credit { margin:14px auto 0; max-width:66ch; color:#8e8e8e; font-size:12px;
+  /* Tan ancho como cinco de las seis columnas de la rejilla de láminas —
+     1400px × 5/6—, no la mitad de antes: el pie tiene que leerse como parte
+     del mismo ancho que ocupa el resto de la página, no como una nota al
+     margen. */
+  .credit { margin:14px auto 0; max-width:1167px; color:#8e8e8e; font-size:12px;
     line-height:1.65; }
 
   @media (max-width: 700px) {
     .hero { height:58vh; }
     .stack { width:calc(100% - 2*var(--gap)); }
-    .scope { position:static; width:auto; padding:var(--gap); }
+    /* Antes pasaba a position:static, y sin nada más en el flujo del .hero
+       —el canvas y el título van absolutos— eso lo dejaba pegado arriba, no
+       abajo. Se queda anclado al fondo del video como en escritorio; sólo
+       baja de tamaño para no comerse media pantalla. */
+    #fft { height:84px; }
+    .scope { padding:0 var(--gap) 4px; }
+    /* Pistas más chicas en el teléfono: cinco botones a tamaño de escritorio
+       más el de Play/Pause no entran limpio en el ancho y se amontonan. */
+    .comps { gap:5px; }
+    .comps button, .toggle { padding:8px 13px; font-size:13px; }
   }
 </style>
 </head>
@@ -245,18 +271,19 @@
     <div class="rot"><span>20 Hz</span><span id="scopelbl">espectro en vivo</span><span>16 kHz</span></div>
   </div>
 
-  <button id="listen" type="button">
-    <span class="big">▶ ESCUCHAR</span>
-    <span class="sub">cinco composiciones</span>
-  </button>
-
-  <div id="msg">cargando…</div>
+  <div id="msg">
+    <div class="bar" id="msgbar"><div class="fill"></div></div>
+    <span class="txt" id="msgtxt">cargando…</span>
+  </div>
 </section>
 
 <div class="transport">
-  <p class="lede">Cinco composiciones · dos sesiones del motor</p>
+  <div class="toggle-row">
+    <button id="toggle" class="toggle" type="button" aria-pressed="false">▶ Play</button>
+  </div>
+  <p class="lede">Sesiones del motor BiocracyEngine</p>
   <div class="comps" id="comps"></div>
-  <p class="nowplaying" id="now">Elige una para oírla. El espectro de arriba es el de lo que suena.</p>
+  <p class="nowplaying" id="now">Elige una para oírla.</p>
   <label class="vol">VOLUMEN
     <input id="vol" type="range" min="0" max="100" value="85" aria-label="volumen">
   </label>
@@ -266,13 +293,10 @@
 
 <h2>Vigilancia o parlamento</h2>
 
-<p>Una red de estaciones acústicas y cámaras trampa lleva dos años registrando
-este fragmento de bosque. La página reúne los dos flujos en una misma
-superficie —lo que la cámara inscribió y lo que el motor hizo con lo que el
-micrófono captó—, y conviene precisar la dirección de esa relación: el sonido
-que se oye no es el bosque. Es una cadena de bloques pública sonificada, y la
-deformación que se observa en la imagen es esa cadena operando sobre el
-registro del territorio.</p>
+<p>Una red de estaciones acústicas y cámaras trampa lleva 4 años registrando
+este fragmento de bosque. La página reúne los flujos en una misma
+superficie, y conviene precisar la dirección de esa relación: el sonido
+que se oye no es el bosque pristino. Es tambien la cadena de bloques pública sonificada [ETH] blockchain dejando registros del territorio.</p>
 
 <p>La distinción no es un detalle técnico. Los dispositivos contemporáneos de
 registro e identificación de fauna no son instrumentos neutrales de
@@ -296,14 +320,8 @@ naturaleza/cultura en vez de reproducirla, y operan a la vez como objetos
 frontera entre sistemas de conocimiento distintos y como actores políticos que
 representan poblaciones no humanas en la gobernanza de la conservación.</p>
 
-<p>De ahí que la pieza no sean dos partes sonando juntas. Es una cadena que
-<strong>actúa sobre</strong> un territorio, y el motor que produjo este audio
-está construido para que la señal y el argumento apunten en la misma
-dirección.</p>
-
-<p>La cadena técnica, por lo demás, es siempre la misma: sensor acústico,
-vectorización, inscripción. Produce un aparato de vigilancia o produce un
-parlamento, y lo que decide cuál de los dos no está en el código. Está en quién
+<p>La cadena técnica es la misma: sensor acústico,
+vectorización, inscripción. Aparato de vigilancia o Parlamento?, lo que decide cuál de los dos no está en el código. Está en quién
 decide qué se registra, qué se publica y qué se calla.</p>
 
 <p>El motor lleva esa decisión a reglas que corren. Las especies detectadas
@@ -312,13 +330,6 @@ presencia; las bancadas se recomponen siguiendo el calendario fenológico del
 lugar en vez de una taxonomía global; y lo que cae bajo el umbral de detección
 no se borra ni se pone en cero, persiste como ruido de bajo nivel. Lo que no se
 mide sigue participando.</p>
-
-<h2>Cinco composiciones</h2>
-
-<p>Las dos sesiones duran 6:55 y 6:37. Los cortes no se eligieron a oído ni por
-reloj: se midió RMS, centroide espectral y flujo segundo a segundo sobre ambas,
-y cada composición aísla un comportamiento distinto del motor. Las cifras de
-abajo son las medidas sobre la grabación original, antes de nivelar.</p>
 
 <table>
   <tr><th>Composición</th><th>Sesión · corte</th><th>Nivel medio</th><th>Centroide</th><th>Lo que hace</th></tr>
@@ -493,7 +504,7 @@ las decisiones que lo hicieron.</p>
 <div class="text">
 <h2>Con quién</h2>
 
-<p>Nada de esto se sostiene como software solo. El proceso que lo rodea entrega
+<p>Nada de esto se sostiene como software solo. El proceso que lo rodea entregará
 el archivo y las grabadoras a un grupo de jóvenes de 10 a 15 años del
 territorio, junto al semillero BioDiverso–Fauno de la Universidad de Córdoba,
 en encuentros en la casa comunal de El Balzal.</p>
@@ -547,12 +558,13 @@ espectrograma sin saber todavía qué fue eso.</p>
   <a href="https://github.com/alejoduque/ID_indv">ID_indv &#8599;</a>
   <a href="https://github.com/alejoduque/bioacustic-scripts">bioacustic-scripts &#8599;</a>
   <a href="https://altred.xyz/">altred &#8599;</a>
+  <a href="https://planktum.bandcamp.com/">planktum · bandcamp &#8599;</a>
+  <a href="https://github.com/alejoduque">github/alejoduque &#8599;</a>
+  <a href="https://www.instagram.com/alejod._/">instagram &#8599;</a>
   <p class="credit">
     Alejandro Duque Jaramillo · Reserva Manakai, Planeta Rica, Córdoba ·
     Tesis doctoral en Diseño, Arte y Ciencia, Universidad Jorge Tadeo Lozano.
-    Video de cámara trampa CAM01, agosto de 2025. Audio: dos sesiones del motor
-    de sonificación, 22 de septiembre de 2026. Las coordenadas de las estaciones
-    de escucha se mantienen reservadas.
+    Las coordenadas de las estaciones de escucha se mantienen reservadas.
   </p>
 </div>
 
@@ -607,11 +619,13 @@ espectrograma sin saber todavía qué fue eso.</p>
 
   var canvas  = document.getElementById('c');
   var msg     = document.getElementById('msg');
+  var msgBar  = document.getElementById('msgbar');
+  var msgTxt  = document.getElementById('msgtxt');
   var fftCv   = document.getElementById('fft');
   var au      = document.getElementById('au');
   var compsEl = document.getElementById('comps');
+  var toggleBtn = document.getElementById('toggle');
   var nowEl   = document.getElementById('now');
-  var listen  = document.getElementById('listen');
   var volEl   = document.getElementById('vol');
   var scopeLbl= document.getElementById('scopelbl');
   var strip   = Array.prototype.slice.call(document.querySelectorAll('.strip video'));
@@ -626,7 +640,10 @@ espectrograma sin saber todavía qué fue eso.</p>
   // segundo.
   var bass = 0, mid = 0, treble = 0;
 
-  function fail(t) { msg.hidden = false; msg.textContent = t; }
+  // Errores reales de carga (falta hydra-synth.js, no hay WebGL) no son
+  // progreso interrumpido, son un estado final: la barra se oculta y sólo
+  // queda el texto.
+  function fail(t) { msg.hidden = false; msgBar.hidden = true; msgTxt.textContent = t; }
 
   if (typeof window.Hydra === 'undefined') { fail('no se pudo cargar hydra-synth.js'); return; }
 
@@ -664,7 +681,6 @@ espectrograma sin saber todavía qué fue eso.</p>
   HERO_CLIPS.forEach(function (url, i) {
     var v = makeVideo(url);
     heroVideos.push(v);
-    window['s' + i].init({ src: v });
   });
 
   // ── La cadena actuando sobre el bosque ────────────────────────────────────
@@ -695,6 +711,12 @@ espectrograma sin saber todavía qué fue eso.</p>
   //
   // El zoom base es el margen del que el paneo se alimenta: a 1.12 se ve el
   // 89 % del cuadro y queda un 11 % por el que deslizarse.
+  // Estos cuatro gobiernan el encuadre TODO el tiempo, no sólo el cruce —por
+  // eso se quedan en los valores originales y no en los que salieron del
+  // ajuste en el editor de hydra. La sesión de ajuste movió el centro del
+  // paneo (panX pasó a orbitar 0.829 en vez de 0.5) y eso descentraba el video
+  // de forma permanente, no sólo durante la transición. El look nuevo vive
+  // aparte, en el fundido de abajo, donde sí está apagado fuera del cruce.
   var ZOOM_BASE = 1.12;   // sobre-escala fija
   var ZOOM_AUD  = 0.05;   // lo que el grave añade encima, hinchando la imagen
   var PAN_AMT   = 0.84;   // fracción del margen que se recorre (1 = hasta el borde)
@@ -710,52 +732,270 @@ espectrograma sin saber todavía qué fue eso.</p>
   function panX() { return 0.5 + (PAN_AMT / 2) * Math.sin(secs() * 2 * Math.PI / PAN_TX); }
   function panY() { return 0.5 + (PAN_AMT / 2) * Math.cos(secs() * 2 * Math.PI / PAN_TY); }
 
-  // ── El fundido ────────────────────────────────────────────────────────────
+  // ── El fundido: realimentación de grano fino ──────────────────────────────
   // Un crossfade recto entre dos clips es lenguaje de televisión: una imagen se
-  // apaga mientras la otra se enciende y en la mitad hay un momento de nada,
-  // dos fantasmas transparentes uno encima del otro. Aquí las dos capas se
-  // empujan con el mismo campo de ruido y signo contrario, así que durante el
-  // cruce la que sale y la que entra se deforman en direcciones opuestas y se
-  // atraviesan en vez de superponerse. Se lee como una sola imagen que se está
-  // recomponiendo, que es justo lo que la pieza afirma que está pasando.
+  // apaga mientras la otra se enciende y en la mitad hay dos fantasmas
+  // transparentes uno encima del otro. Las dos versiones anteriores de esto no
+  // servían por razones opuestas. Con noise() el relieve que deformaba era un
+  // material ajeno a los clips —ondula igual sobre un ocelote que sobre un
+  // espectrograma— y quedaba como un filtro puesto encima: ondas suaves sobre
+  // una imagen, el gesto por defecto de cualquier visual generativo. Con
+  // pixelate() y bloques el problema era el contrario, un efecto de transición
+  // de video doméstico, y además grueso: lo que se quiere no son cuadrados
+  // grandes sino grano.
   //
-  // turb() vale 0 en reposo y 1 en el centro del cruce. Fuera del fundido la
-  // cadena es idéntica a no llevar nada de esto —el desplazamiento es cero y
-  // el shader devuelve la coordenada intacta—, así que el clip se ve limpio
-  // los dieciocho segundos que dura su sostén. El efecto existe sólo en los
-  // cuatro segundos en que hay algo que justificar.
-  var WARP  = 0.045;  // desplazamiento máximo, en coordenadas de textura
-  var BLOOM = 0.05;   // brillo que sube y baja con el cruce
+  // La forma buena es la de la portada de altred.xyz, que es a su vez el idioma
+  // de los bocetos de hydra con voronoi: un búfer que se muerde la cola. o2 se
+  // lee a sí mismo, se deja empujar, deriva un poco y se recarga con la imagen
+  // viva; lo que se acumula cuadro a cuadro son filamentos finos, no manchas.
+  // En aquel boceto la estructura de alta frecuencia la ponía el generador
+  // —voronoi por un osc pasado por kaleid(200)—. Aquí no hay generador: la
+  // ponen los propios clips.
+  //
+  // Tres fuentes de desplazamiento, todas sacadas del material:
+  //
+  //   AUTO   el rastro empujado por sus propios valores, que es lo que le da
+  //          dirección y lo convierte en flujo en vez de en desenfoque;
+  //   GRANO  la mezcla viva de los dos clips, un empujón general muy pequeño;
+  //   BORDE  el mapa de contornos de esa mezcla —la diferencia entre el cuadro
+  //          y una copia suya apenas escalada—, que vale casi cero en las zonas
+  //          planas y se dispara en cada filo. El foliage y las estriaciones
+  //          del espectrograma son casi todo filo, así que ahí está la
+  //          frecuencia alta del material y de ahí sale el grano.
+  //
+  // El término aditivo y la compuerta luma van juntos y no se pueden separar.
+  // add() es lo que hace que los filamentos brillen en vez de promediarse, pero
+  // por sí solo satura: probado sin compuerta, el cuadro entero se va a blanco
+  // puro en menos de dos segundos. luma() apaga lo que queda por debajo del
+  // umbral y con eso la ganancia efectiva del lazo baja de uno en casi toda la
+  // superficie. Son el freno y el acelerador del mismo mecanismo.
+  //
+  // La deriva se hace con el punto fijo de scale() y NO con scrollX/scrollY —
+  // scroll* termina en fract() y mete una costura por el borde, que dentro de
+  // un lazo de realimentación se queda dando vueltas.
+  //
+  // turb() vale 0 en reposo y 1 en el centro del cruce, y CADA término de
+  // abajo está escrito como «1 − algo·turb()» o «algo·turb()»: en reposo
+  // siempre da la identidad (escala 1, mezcla 1, empuje 0), así que el
+  // acumulador es exactamente el cuadro vivo y no queda residuo. Eso es lo
+  // que garantiza que fuera del cruce se vea la fuente tal cual —posterizada
+  // o descentrada "para siempre" es la señal de que esa garantía se rompió—.
+  //
+  // Los números salen de una sesión de ajuste en vivo en el editor de hydra
+  // (hydra.ojack.xyz), pero ahí varias líneas base habían dejado de ser 1 —la
+  // escala del acumulador partía de 0.616 y la mezcla de recarga de 1.512,
+  // constantes, no atadas a turb()—, así que el efecto no se apagaba nunca:
+  // quedaba posterizando y corriendo el encuadre incluso con los dos clips
+  // en reposo. Aquí están vueltos a atar a turb() conservando el mismo valor
+  // en el pico del cruce (turb()=1) que tenían en el editor, así que el
+  // aspecto del cruce es el mismo que se ajustó a ojo; lo único que cambia es
+  // que ahora sí se apaga entre un cruce y el siguiente.
+  var DERIVA = 0.389;       // contracción del acumulador, en el pico del cruce
+  var DX = 0.54, DY = 1.058; // punto fijo hacia el que se contrae
+  var APLASTE = 0.157;      // compresión vertical del acumulador, en el pico
+  var AUTO   = 0.012;       // el rastro empujado por sus propios valores
+  var GRANO  = 0.003;       // empuje de la mezcla viva
+  var BORDE  = 0.394;       // empuje del mapa de contornos: el grano
+  var EDGE   = 0.008;       // desescalado con que se saca ese mapa
+  var ESTELA = 0.876;       // cuánto se aparta la recarga de la fuente viva, en el pico
+  var GLOW   = 0.074;       // término aditivo, el brillo de los filamentos
+  var UMBRAL = 0.1;         // compuerta luma: umbral y tolerancia, ambos
+  var TOL    = 0.031;       //   atados a turb() para que en reposo no corte nada
+  var BLOOM  = 0.011;       // brillo que sube y baja con el cruce
 
   function turb() { return 4 * mix * (1 - mix); }
 
-  function chain(a, b) {
-    // Dos llamadas a noise() con los mismos parámetros dan el mismo campo —es
-    // una función del tiempo y de la coordenada, no lleva estado ni semilla—,
-    // así que las dos capas se deforman con el mismo relieve y en sentido
-    // contrario. Van separadas y no compartiendo un objeto porque cada rama de
-    // la cadena compila su propio glsl.
-    var sale  = src(window['s' + a])
-      .modulate(noise(2.4, 0.06), function () { return  WARP * turb(); });
-    var entra = src(window['s' + b])
-      .modulate(noise(2.4, 0.06), function () { return -WARP * turb(); });
+  // La mezcla viva de los dos clips. Se mantiene limpia dentro del lazo:
+  // aplicar la trama aquí multiplicaría el grafo de Hydra muchas veces porque
+  // vivo() se usa en varias ramas de modulate()/blend(). La trama se aplica
+  // una sola vez, al resultado visible, más abajo.
+  function vivo(a, b) {
+    return src(window['s' + a])
+      .blend(src(window['s' + b]), function () { return mix; });
+  }
 
-    sale.blend(entra, function () { return mix; })
-      // paneo y zoom, aplicados después de la mezcla: las dos capas se mueven
-      // juntas, como si la cámara recorriera el resultado y no cada clip
+  // ── Trama de puntos: sólo sobre los registros de cámara ──────────────────
+  // La trama NO se genera como otro grafo GLSL de Hydra. Se dibuja en un
+  // canvas 2D sobre la salida ya renderizada. Esto mantiene el feedback de
+  // Hydra intacto y evita expandir el árbol GLSL con shape().repeat(), que es
+  // especialmente costoso cuando el mismo grafo se recompila durante los
+  // cruces.
+  var DOT_X = 192;       // número aproximado de celdas horizontales
+  var DOT_Y = 108;       // número aproximado de celdas verticales
+  var DOT_MAX = 0.47;    // radio máximo de cada punto, en proporción a la celda
+  var DOT_GAIN = 1.10;    // ganancia de luminancia
+  var dotCanvas = document.createElement('canvas');
+  var dotCtx = dotCanvas.getContext('2d', { alpha: true });
+  dotCanvas.setAttribute('aria-hidden', 'true');
+  dotCanvas.style.cssText =
+    'position:absolute;inset:0;width:100%;height:100%;display:none;pointer-events:none;z-index:1;';
+  canvas.parentNode.appendChild(dotCanvas);
+
+  function resizeDots() {
+    var r = canvas.parentNode.getBoundingClientRect();
+    dotCanvas.width = Math.max(1, Math.round(r.width));
+    dotCanvas.height = Math.max(1, Math.round(r.height));
+  }
+  resizeDots();
+  window.addEventListener('resize', resizeDots);
+
+  function esCamara(i) { return i === 0 || i === 2; }
+
+  // La trama se enciende cuando el cuadro actual es cámara o cuando estamos
+  // entrando a un clip de cámara. Durante un cruce se aplica al cuadro que
+  // Hydra ya compuso, de modo que no altera el feedback interno.
+  function tramaActiva() {
+    var nxt = (cur + 1) % n;
+    return esCamara(cur) || (mix > 0 && esCamara(nxt));
+  }
+
+  var sampleCanvas = document.createElement('canvas');
+  var sampleCtx = sampleCanvas.getContext('2d', { willReadFrequently: true });
+
+  function drawDots() {
+    if (!tramaActiva()) {
+      dotCanvas.style.display = 'none';
+      dotCtx.clearRect(0, 0, dotCanvas.width, dotCanvas.height);
+      requestAnimationFrame(drawDots);
+      return;
+    }
+
+    dotCanvas.style.display = 'block';
+
+    var sw = DOT_X;
+    var sh = DOT_Y;
+    if (sampleCanvas.width !== sw || sampleCanvas.height !== sh) {
+      sampleCanvas.width = sw;
+      sampleCanvas.height = sh;
+    }
+
+    sampleCtx.clearRect(0, 0, sw, sh);
+    sampleCtx.drawImage(canvas, 0, 0, sw, sh);
+    var pixels = sampleCtx.getImageData(0, 0, sw, sh).data;
+
+    dotCtx.clearRect(0, 0, dotCanvas.width, dotCanvas.height);
+    var cw = dotCanvas.width / sw;
+    var ch = dotCanvas.height / sh;
+    var radiusScale = Math.min(cw, ch) * DOT_MAX;
+
+    dotCtx.fillStyle = '#000';
+
+    // Cada punto conserva la luminancia local del vídeo: oscuro = punto
+    // pequeño, claro = punto grande. No se binariza el vídeo; se vuelve una
+    // trama variable, que es la parte importante del efecto.
+    for (var y = 0; y < sh; y++) {
+      for (var x = 0; x < sw; x++) {
+        var k = (y * sw + x) * 4;
+        var lum = (0.2126 * pixels[k] +
+                   0.7152 * pixels[k + 1] +
+                   0.0722 * pixels[k + 2]) / 255;
+        lum = Math.min(1, lum * DOT_GAIN);
+        if (lum < 0.025) continue;
+
+        var radius = radiusScale * lum;
+        dotCtx.beginPath();
+        dotCtx.arc((x + 0.5) * cw, (y + 0.5) * ch, radius, 0, Math.PI * 2);
+        dotCtx.fill();
+      }
+    }
+
+    requestAnimationFrame(drawDots);
+  }
+
+  // El mapa de contornos. diff() entre la mezcla y una versión suya reescalada
+  // deja el valor absoluto del gradiente local: negro donde la imagen es
+  // plana, un filo blanco en cada borde. Sólo se usa dentro de un modulate()
+  // cuyo empuje es BORDE*turb(), así que aunque su propio reescalado interno
+  // no esté atado a turb(), a amount=0 el modulate no deja pasar nada de él.
+  function borde(a, b) {
+    return vivo(a, b).diff(vivo(a, b).scale(3.342 - EDGE, 1, 1, 0.063, 0.5));
+  }
+
+  function chain(a, b) {
+    // o2 — el acumulador. No lleva paneo ni zoom a propósito: si el paneo
+    // entrara en el lazo se compondría consigo mismo cuadro tras cuadro y el
+    // zoom se dispararía. La cámara recorre el resultado, fuera del lazo.
+    src(o2)
+      .scale(function () { return 1 - DERIVA  * turb(); },
+             1,
+             function () { return 1 - APLASTE * turb(); },
+             DX, DY)
+      .modulate(src(o2),      function () { return AUTO  * turb(); })
+      .modulate(vivo(a, b),   function () { return GRANO * turb(); })
+      .modulate(borde(a, b),  function () { return BORDE * turb(); })
+      // La recarga es blend() y no add(): un lerp no puede desbordarse, así que
+      // el lazo es estable por construcción y en reposo devuelve el cuadro vivo
+      // exacto. Lo aditivo viene después y acotado.
+      .blend(vivo(a, b),      function () { return 1 - ESTELA * turb(); })
+      .add(src(o2),           function () { return GLOW  * turb(); })
+      .luma(function () { return UMBRAL * turb(); },
+            function () { return TOL    * turb(); })
+      .out(o2);
+
+    // o0 — lo que se ve: el acumulador recorrido por la cámara y con el audio
+    // encima. Zoom, paneo y contraste corren siempre —son el encuadre base,
+    // no el efecto de cruce— así que se quedan en sus valores originales.
+    // La trama se coloca DESPUÉS del feedback y del encuadre. Así no entra
+    // en el acumulador y no puede convertirse en una recursión del propio
+    // patrón. Los espectrogramas pasan por la salida sin esta transformación.
+    src(o2)
       .scale(zoom, 1, 1, panX, panY)
-      // el medio abre el contraste — el IR nocturno responde mucho a esto
       .contrast(function () { return 1 + mid * 0.55; })
-      // el agudo levanta el piso de negro, que en IR lee como niebla; el
-      // segundo término es el destello del cruce, que hace que la transición
-      // se lea como energía y no como ausencia
       .brightness(function () { return treble * 0.06 + BLOOM * turb(); })
       .out(o0);
   }
 
   var n = HERO_CLIPS.length;
-  chain(0, n > 1 ? 1 : 0);
-  render(o0);
+
+  // No construimos el grafo GLSL hasta que todos los vídeos tengan al menos
+  // un frame disponible. Esto evita texImage2D: no video durante el arranque.
+  function videoReady(v) {
+    if (v.readyState >= 3 && v.videoWidth > 0) return Promise.resolve();
+    return new Promise(function (resolve, reject) {
+      var timer = setTimeout(function () {
+        cleanup();
+        reject(new Error('video timeout'));
+      }, 30000);
+
+      function cleanup() {
+        clearTimeout(timer);
+        v.removeEventListener('canplay', done);
+        v.removeEventListener('loadeddata', done);
+        v.removeEventListener('error', error);
+      }
+      function done() {
+        if (v.videoWidth > 0) {
+          cleanup();
+          resolve();
+        }
+      }
+      function error() {
+        cleanup();
+        reject(new Error('video load error'));
+      }
+
+      v.addEventListener('canplay', done);
+      v.addEventListener('loadeddata', done);
+      v.addEventListener('error', error);
+      v.load();
+    });
+  }
+
+  Promise.all(heroVideos.map(videoReady)).then(function () {
+    // Only now hand the actual HTMLVideoElements to Hydra. Calling init()
+    // before canplay is what produced texImage2D: no video.
+    heroVideos.forEach(function (v, i) {
+      window['s' + i].init({ src: v });
+      v.play().catch(function () {});
+    });
+
+    chain(0, n > 1 ? 1 : 0);
+    render(o0);
+    resizeDots();
+    requestAnimationFrame(drawDots);
+  }).catch(function () {
+    fail('no se pudieron cargar los videos');
+  });
 
   function step() {
     if (n < 2) return;
@@ -921,6 +1161,10 @@ espectrograma sin saber todavía qué fue eso.</p>
     })[0];
   }
 
+  function compById(id) {
+    return COMPS.filter(function (c) { return c.id === id; })[0];
+  }
+
   function choose(c, btn) {
     if (!initAudio()) { nowEl.textContent = 'este navegador no tiene Web Audio'; return; }
     // El contexto nace suspendido hasta que hay un gesto; este clic lo es.
@@ -941,7 +1185,6 @@ espectrograma sin saber todavía qué fue eso.</p>
     btn.setAttribute('aria-pressed', 'true');
     nowEl.textContent = c.nota;
     au.play().then(function () {
-      listen.hidden = true;
       scopeLbl.textContent = 'sonando: ' + c.label;
     }).catch(function () {
       nowEl.textContent = 'no se pudo reproducir ' + c.label + ' — ¿falta media/audio/' + c.id + '.mp3?';
@@ -949,11 +1192,32 @@ espectrograma sin saber todavía qué fue eso.</p>
     });
   }
 
-  // El botón grande del escenario arranca por la primera composición. Es el
-  // único gesto que hace falta: sin él la página abre muda y se lee como una
-  // pieza sin sonido.
-  listen.addEventListener('click', function () {
+  // Sin botón grande de invitación, el primer intento de sonar lo hace la
+  // propia carga (ver más abajo, tryAutoStartAudio). El navegador puede
+  // negarse por no haber gesto todavía —es lo normal—, y ahí el de
+  // Play/Pause queda como único punto de entrada.
+  function tryAutoStartAudio() {
+    if (active) return;    // ya se eligió algo, no reiniciar
     choose(COMPS[0], btnFor(COMPS[0].id));
+  }
+
+  // El botón general de pausar/escuchar no elige composición: alterna la que
+  // ya está activa, o arranca la primera si todavía no suena nada.
+  toggleBtn.addEventListener('click', function () {
+    if (active) choose(compById(active), btnFor(active));
+    else choose(COMPS[0], btnFor(COMPS[0].id));
+  });
+
+  // Única fuente de verdad para el estado visual del botón: da igual si el
+  // play/pausa lo disparó un clic en él, en una de las cinco composiciones o
+  // el cambio de pestaña —todos pasan por el elemento <audio>.
+  au.addEventListener('play', function () {
+    toggleBtn.setAttribute('aria-pressed', 'true');
+    toggleBtn.textContent = '❚❚ Pause';
+  });
+  au.addEventListener('pause', function () {
+    toggleBtn.setAttribute('aria-pressed', 'false');
+    toggleBtn.textContent = '▶ Play';
   });
 
   au.volume = volEl.value / 100;
@@ -974,13 +1238,22 @@ espectrograma sin saber todavía qué fue eso.</p>
     }));
   }
 
-  playAll().then(function () { msg.hidden = true; }).catch(function () {
+  playAll().then(function () {
+    msg.hidden = true;
+    // No intentamos crear AudioContext aquí: Chrome exige un gesto del usuario.
+    // El primer clic en Play o en una composición llama a choose(), que sí es
+    // un gesto válido y crea/reanuda el contexto.
+  }).catch(function () {
+    // Esto no es carga en curso, es un gesto pendiente: la barra desaparece y
+    // el texto pasa a ser la instrucción, no un estado de espera.
     msg.hidden = false;
-    msg.textContent = 'tocar para comenzar';
+    msgBar.hidden = true;
+    msgTxt.textContent = 'tocar para comenzar';
     msg.addEventListener('click', function once() {
       msg.removeEventListener('click', once);
+      // Este clic sí es un gesto real, así que aquí el audio arranca de verdad.
       playAll().then(function () { msg.hidden = true; });
-    });
+      });
   });
   // Ocultar el aviso en cuanto haya primer cuadro, aunque falte algún clip.
   heroVideos[0].addEventListener('playing', function () { msg.hidden = true; });
