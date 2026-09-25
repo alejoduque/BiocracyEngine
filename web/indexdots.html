@@ -263,12 +263,12 @@
 
   <div class="stack">
     <h1>Parlamento de lo Vivo</h1>
-    <p>Reserva Manakai · Bosque Seco Tropical · Córdoba, Colombia</p>
+    <p>Reserva Manakai · bosque seco tropical · Córdoba, Colombia</p>
   </div>
 
   <div class="scope">
     <canvas id="fft" width="1400" height="240"></canvas>
-    <div class="rot"><span>20 Hz</span><span id="scopelbl">Espectro Vivo</span><span>16 kHz</span></div>
+    <div class="rot"><span>20 Hz</span><span id="scopelbl">espectro en vivo</span><span>16 kHz</span></div>
   </div>
 
   <div id="msg">
@@ -281,9 +281,9 @@
   <div class="toggle-row">
     <button id="toggle" class="toggle" type="button" aria-pressed="false">▶ Play</button>
   </div>
-  <p class="lede">Sesiones del motor BiocracyEngine</p>
+  <p class="lede">Cinco composiciones · dos sesiones del motor</p>
   <div class="comps" id="comps"></div>
-  <p class="nowplaying" id="now">Elige una para oírla.</p>
+  <p class="nowplaying" id="now">Elige una para oírla. El espectro de arriba es el de lo que suena.</p>
   <label class="vol">VOLUMEN
     <input id="vol" type="range" min="0" max="100" value="85" aria-label="volumen">
   </label>
@@ -291,12 +291,15 @@
 
 <div class="text">
 
-<h2>¿Vigilancia o Parlamento?</h2>
+<h2>Vigilancia o parlamento</h2>
 
-<p>Una red de estaciones acústicas (audiomoth) y cámaras trampa lleva 4 años registrando
-este fragmento de bosque. Aquí se reúnen algunos de los flujos en una misma
-superficie de bosque, conviene precisar de inmediato que la dirección de esa relación: el sonido
-que se oye (aquí) no es el de un bosque prístino ya que incluye incidencias de una cadena de bloques pública [Ethereum Mainnet] blockchain que en un momento por venir dejara tambien registros del territorio.</p>
+<p>Una red de estaciones acústicas y cámaras trampa lleva dos años registrando
+este fragmento de bosque. La página reúne los dos flujos en una misma
+superficie —lo que la cámara inscribió y lo que el motor hizo con lo que el
+micrófono captó—, y conviene precisar la dirección de esa relación: el sonido
+que se oye no es el bosque. Es una cadena de bloques pública sonificada, y la
+deformación que se observa en la imagen es esa cadena operando sobre el
+registro del territorio.</p>
 
 <p>La distinción no es un detalle técnico. Los dispositivos contemporáneos de
 registro e identificación de fauna no son instrumentos neutrales de
@@ -306,7 +309,7 @@ cámara acoplada al cuerpo de un animal —la <em>crittercam</em>—: al otro la
 del aparato no hay un ojo inocente, hay un dispositivo material-semiótico donde
 el animal, el operador, la óptica y la institución que financia el registro
 quedan enredados en la misma imagen. Lo que este trabajo hace es exponer ese
-enredo en lugar de disimularlo bajo la forma del dato. E intentar de paso remover la NGO del proceso. Los incentivos de conservación deberán llegar a quienes habitan el territorio.</p>
+enredo en lugar de disimularlo bajo la forma del dato.</p>
 
 <p>Leída así, la cadena de sensores deja de ser un aparato de vigilancia
 dedicado a capturar esencias —qué <em>es</em> un ocelote, qué especie canta— y
@@ -315,19 +318,34 @@ ocelotes, humanos y tecnologías comparecen como agentes de una misma red. La
 lógica es la del <em>cualsea</em> agambeniano: el sistema no fija identidades
 previas, admite a cada individuo en su singularidad irrepetible, y la identidad
 no antecede a la relación sino que emerge de ella. Los ensamblajes que resultan
+—biológicos, técnicos y sociales a la vez— atraviesan la partición
 naturaleza/cultura en vez de reproducirla, y operan a la vez como objetos
+frontera entre sistemas de conocimiento distintos y como actores políticos que
 representan poblaciones no humanas en la gobernanza de la conservación.</p>
 
-<p>La cadena técnica es la misma: sensor acústico,
-vectorización, inscripción. Aparato de vigilancia o Parlamento!, lo que inclina la balanza no está en el código. Está en quién
-decide qué se registra, qué se publica y qué se calla. La comunidad de manera amplia participa, a esto le llamo dIAP o Investigación Acción Participativa Distribuida.</p>
+<p>De ahí que la pieza no sean dos partes sonando juntas. Es una cadena que
+<strong>actúa sobre</strong> un territorio, y el motor que produjo este audio
+está construido para que la señal y el argumento apunten en la misma
+dirección.</p>
 
-<p>El motor <em>[BiocracyEngine]</em> lleva esa decisión a reglas que corren. Las especies detectadas
+<p>La cadena técnica, por lo demás, es siempre la misma: sensor acústico,
+vectorización, inscripción. Produce un aparato de vigilancia o produce un
+parlamento, y lo que decide cuál de los dos no está en el código. Está en quién
+decide qué se registra, qué se publica y qué se calla.</p>
+
+<p>El motor lleva esa decisión a reglas que corren. Las especies detectadas
 entran a una asamblea que no las clasifica por su valor económico sino por su
 presencia; las bancadas se recomponen siguiendo el calendario fenológico del
 lugar en vez de una taxonomía global; y lo que cae bajo el umbral de detección
 no se borra ni se pone en cero, persiste como ruido de bajo nivel. Lo que no se
-mide sigue participando desde la opacidad.</p>
+mide sigue participando.</p>
+
+<h2>Cinco composiciones</h2>
+
+<p>Las dos sesiones duran 6:55 y 6:37. Los cortes no se eligieron a oído ni por
+reloj: se midió RMS, centroide espectral y flujo segundo a segundo sobre ambas,
+y cada composición aísla un comportamiento distinto del motor. Las cifras de
+abajo son las medidas sobre la grabación original, antes de nivelar.</p>
 
 <table>
   <tr><th>Composición</th><th>Sesión · corte</th><th>Nivel medio</th><th>Centroide</th><th>Lo que hace</th></tr>
@@ -337,6 +355,15 @@ mide sigue participando desde la opacidad.</p>
   <tr><td class="n">meseta</td><td class="n">11:20 · 165–225 s</td><td class="n">−35.8 dBFS</td><td class="n">1404–2406 Hz</td><td>Un minuto entero sostenido en registro alto, sin volver a bajar.</td></tr>
   <tr><td class="n">retorno</td><td class="n">11:20 · 260–320 s</td><td class="n">−35.4 dBFS</td><td class="n">219–430 Hz</td><td>La caída al registro grave, con el flujo subiendo otra vez.</td></tr>
 </table>
+
+<p class="note">Las cinco están niveladas a una sonoridad común (−16 LUFS).
+El corpus del bosque se construye al revés —una ganancia global, nunca
+normalización por clip, porque allí el nivel <em>es</em> el dato: una noche seca
+callada tiene que sonar callada frente a un coro de lluvias—. Aquí no: la
+diferencia de nivel entre estos cinco fragmentos, medida en 9 dB, no dice nada
+del bosque ni del motor, dice qué minuto se cortó. Lo que sí queda intacto es el
+rango dinámico <em>dentro</em> de cada una, que es donde está lo que hay que
+oír.</p>
 
 </div>
 
@@ -353,37 +380,19 @@ mide sigue participando desde la opacidad.</p>
 
 <div class="text">
 
-<h2>Caso #1</h2>
-
 <p>Dos registros de la misma cámara, el mismo día, con <strong>dos minutos y
 cinco segundos</strong> de diferencia. ¿Es el mismo ocelote
-(<em>Leopardus pardalis</em>)? La pregunta parece trivial y no lo es. De ella
+(<em>Leopardus pardalis</em>)? La pregunta parece trivial y no lo es: de ella
 dependen los conteos de abundancia con los que se decide si un bosque se
-protege o se abre a la minería para explorarlo, léase explotarlo, y si los
-fondos de conservación llegan o no.</p>
+protege o no.</p>
 
-<p>Las herramientas científicas responden con un porcentaje de similitud,
-investido del "rigor" que se le supone a todo lo cuantificado. Ese número
-confunde tres preguntas distintas: si un modelo relaciona las dos imágenes, si
-las dos imágenes muestran suficiente anatomía compartida para que alguien pueda
-compararlas con responsabilidad, y si es el mismo individuo. El sistema que
-acompaña este proyecto las separa a propósito y deja abierta la tercera.
-Ningún número que produce es una probabilidad calibrada de identidad.</p>
-
-<p>Esa apertura se sostiene en lo que Édouard Glissant llamó el
-<strong>derecho a la opacidad</strong> (Glissant, 1990). En su poética de la
-Relación, el otro se acoge con todo su espesor, sin exigirle transparencia.
-Comprender, advertía Glissant, arrastra el gesto de prender, de apropiarse; la
-Relación propone en cambio un dar-con. Entre las dos fotografías quedan dos
-minutos y cinco segundos que la cámara no registró. La postura, el rodeo y lo
-que el ocelote hizo en ese intervalo también forman parte de quién es. La
-presencia y la vocalización son principios de identidad; la opacidad y el
-silencio son principios de privacidad. Un individuo que evade la cámara o que
-calla a ciertas horas fija sus propios términos de aparición, y el archivo los
-acoge como tales. La identidad del ocelote queda así tramada en la Relación,
-entre el animal, el aparato y quienes miran, como un tejido de opacidades que
-conviven sin disolverse unas en otras. Lo que la cámara no capturó sigue
-participando en la pregunta.</p>
+<p>Las herramientas de reidentificación suelen responderla con un porcentaje de
+similitud que confunde tres preguntas distintas: si un modelo relaciona las dos
+imágenes, si las dos imágenes muestran suficiente anatomía compartida para que
+una persona pueda compararlas con responsabilidad, y si es el mismo individuo.
+El sistema que acompaña este proyecto las separa a propósito y no decide la
+tercera. Ningún número que produce es una probabilidad calibrada de identidad:
+<strong>la identidad sigue siendo una decisión humana</strong>.</p>
 
 <p>En el escenario de arriba, entre las apariciones del ocelote, se cuelan dos
 espectrogramas. No ilustran el sonido que estás oyendo: son grabaciones de la
@@ -403,8 +412,8 @@ La hora a la que este bosque quedó registrado no la eligió el bosque: la
 eligieron quienes programaron la grabadora. Un archivo es también el mapa de
 las decisiones que lo hicieron.</p>
 
-<h2>El proyecto en veinte imágenes</h2>
-<p>El territorio, la comunidad que lo habita, el instrumento que se construyó para escucharlo y los <em>Objetos Liminales</em> que salen del cruce entre territorio, maquinas, capas y campos. Las láminas y sus pies de página vienen de un portafolio del proyecto que deberá crecer con los jovenes de la comunidad de El Balzal.</p>
+<h2>El proyecto en veinte láminas</h2>
+<p>El territorio, la comunidad que lo habita, el instrumento que se construyó para escucharlo y la obra que sale de ahí. Las láminas y sus pies vienen del portafolio del proyecto.</p>
 </div>
 
 <h3 class="lam-sec">El territorio</h3>
@@ -472,6 +481,7 @@ las decisiones que lo hicieron.</p>
   </figure>
   <figure class="med">
     <img src="media/laminas/lamina-14.jpg" alt="«El paso de una voz», diagrama del sistema. Una voz del bosque atraviesa el anillo fenológico hasta ser inscri" loading="lazy" decoding="async">
+    <figcaption><span class="idx">14/20</span>«El paso de una voz», diagrama del sistema. Una voz del bosque atraviesa el anillo fenológico hasta ser inscrita, o permanece opaca: el derecho a no ser registrado es una función del sistema, no una omisión suya.</figcaption>
   </figure>
   <figure class="doble">
     <img src="media/laminas/lamina-13.jpg" alt="«Parliament of All Things»: interfaz en vivo del motor. Cada especie acústica detectada entra con su categoría" loading="lazy" decoding="async">
@@ -510,7 +520,7 @@ las decisiones que lo hicieron.</p>
 <div class="text">
 <h2>Con quién</h2>
 
-<p>Nada de esto se sostiene como software solo. El proceso que lo rodea entregará
+<p>Nada de esto se sostiene como software solo. El proceso que lo rodea entrega
 el archivo y las grabadoras a un grupo de jóvenes de 10 a 15 años del
 territorio, junto al semillero BioDiverso–Fauno de la Universidad de Córdoba,
 en encuentros en la casa comunal de El Balzal.</p>
@@ -546,10 +556,10 @@ las ciencias sociales: la escucha como <strong>espacio de mediación para el
 reconocimiento de lo «otro»</strong> — de otras especies, de otros paisajes, de
 otras comunidades humanas y de otras expresiones tecnológicas.</p>
 
-<p>Este <em>Objeto Liminal</em>  ocupa los cuatro registros que el encuentro convoca, y no de manera
+<p>La pieza ocupa los cuatro registros que el encuentro convoca, y no de manera
 abstracta. La <em>acustemología</em>, porque lo que hay aquí es la narración de
 lo escuchado. La <em>grabación de campo</em>, que es literalmente su materia:
-la de una grabadora atada a un tronco. La <em>escucha afectiva</em>, que
+dos años de una grabadora atada a un tronco. La <em>escucha afectiva</em>, que
 es lo que ocurre cuando ese archivo se devuelve a quienes viven con el bosque y
 nunca habían oído lo que la máquina guardaba. Y la <em>escucha
 fenomenológica</em>, que es la pregunta que queda al detenerse ante un
@@ -569,7 +579,7 @@ espectrograma sin saber todavía qué fue eso.</p>
   <a href="https://www.instagram.com/alejod._/">instagram &#8599;</a>
   <p class="credit">
     Alejandro Duque Jaramillo · Reserva Manakai, Planeta Rica, Córdoba ·
-    Tesis doctoral en Diseño, Arte y Ciencia, Universidad Jorge Tadeo Lozano.<br>
+    Tesis doctoral en Diseño, Arte y Ciencia, Universidad Jorge Tadeo Lozano.
     Las coordenadas de las estaciones de escucha se mantienen reservadas.
   </p>
 </div>
