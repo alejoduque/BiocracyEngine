@@ -46,14 +46,22 @@ LOUDNESS_LUFS=-16     # referencia habitual de reproducción web
 TRUE_PEAK_DBTP=-1.5   # margen para que el códec con pérdida no rebase 0 dBFS
 A="$REC/eth_sonification_20260922_111301.wav"
 B="$REC/eth_sonification_20260922_112003.wav"
+C="$REC/eth_sonification_20260926_173107.wav"
 
 # nombre : archivo : inicio(s) : duración(s)
+#
+# cierre reemplaza a meseta en los botones de index.html: 325–385 s es el
+# minuto más denso de la sesión del 26/09 (−30.2 dBFS, centroide 350–655 Hz)
+# y termina disolviéndose 30 dB hasta el silencio — ninguna de las otras
+# cuatro es un final. meseta se sigue construyendo porque indexdots.html
+# todavía la usa.
 AUDIO_SEGMENTS=(
   "lecho:$A:95:60"
   "enjambre:$A:160:60"
   "ascenso:$A:285:60"
   "meseta:$B:165:60"
   "retorno:$B:260:60"
+  "cierre:$C:325:60"
 )
 
 for seg in "${AUDIO_SEGMENTS[@]}"; do

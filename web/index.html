@@ -452,10 +452,10 @@ mide sigue participando desde la opacidad.</p>
 <table>
   <tr><th>Composición</th><th>Sesión · corte</th><th>Nivel medio</th><th>Centroide</th><th>Lo que hace</th></tr>
   <tr><td class="n">lecho</td><td class="n">11:13&nbsp;· 95–155&nbsp;s</td><td class="n">−30.8 dBFS</td><td class="n">210–280&nbsp;Hz</td><td>El drone como cama, con el motor de beat ya trabajando encima.</td></tr>
-  <tr><td class="n">enjambre</td><td class="n">11:13&nbsp;· 160–220&nbsp;s</td><td class="n">−32.4 dBFS</td><td class="n">280–350&nbsp;Hz</td><td>El flujo espectral más alto de las dos sesiones (0.190). La cadena en su momento más denso.</td></tr>
+  <tr><td class="n">enjambre</td><td class="n">11:13&nbsp;· 160–220&nbsp;s</td><td class="n">−32.4 dBFS</td><td class="n">280–350&nbsp;Hz</td><td>El flujo espectral más alto de las dos sesiones del 22 de septiembre (0.190). La cadena en su momento más denso.</td></tr>
   <tr><td class="n">ascenso</td><td class="n">11:13&nbsp;· 285–345&nbsp;s</td><td class="n">−31.1 dBFS</td><td class="n">666&nbsp;→ 3399&nbsp;Hz</td><td>El centroide sube cinco veces mientras el nivel cae: se vuelve brillante y delgado a la vez.</td></tr>
-  <tr><td class="n">meseta</td><td class="n">11:20&nbsp;· 165–225&nbsp;s</td><td class="n">−35.8 dBFS</td><td class="n">1404–2406&nbsp;Hz</td><td>Un minuto entero sostenido en registro alto, sin volver a bajar.</td></tr>
   <tr><td class="n">retorno</td><td class="n">11:20&nbsp;· 260–320&nbsp;s</td><td class="n">−35.4 dBFS</td><td class="n">219–430&nbsp;Hz</td><td>La caída al registro grave, con el flujo subiendo otra vez.</td></tr>
+  <tr><td class="n">cierre</td><td class="n">17:31&nbsp;· 325–385&nbsp;s</td><td class="n">−30.2 dBFS</td><td class="n">350–655&nbsp;Hz</td><td>El minuto más denso de la sesión y su disolución: el nivel cae 30&nbsp;dB hasta el silencio.</td></tr>
 </table>
 
 </div>
@@ -795,10 +795,10 @@ espectrograma sin saber todavía qué fue eso.</p>
 
   var COMPS = [
     { id:'lecho',    label:'lecho',    nota:'11:13 · 95–155 s — el drone como cama, centroide 210–280 Hz' },
-    { id:'enjambre', label:'enjambre', nota:'11:13 · 160–220 s — el flujo espectral más alto de las dos sesiones' },
+    { id:'enjambre', label:'enjambre', nota:'11:13 · 160–220 s — el flujo espectral más alto de las sesiones del 22/09' },
     { id:'ascenso',  label:'ascenso',  nota:'11:13 · 285–345 s — el centroide sube de 666 a 3399 Hz' },
-    { id:'meseta',   label:'meseta',   nota:'11:20 · 165–225 s — un minuto sostenido en registro alto' },
-    { id:'retorno',  label:'retorno',  nota:'11:20 · 260–320 s — la caída al grave, con el flujo subiendo' }
+    { id:'retorno',  label:'retorno',  nota:'11:20 · 260–320 s — la caída al grave, con el flujo subiendo' },
+    { id:'cierre',   label:'cierre',   nota:'17:31 · 325–385 s — el minuto más denso, y la disolución hasta el silencio' }
   ];
 
   var canvas  = document.getElementById('c');

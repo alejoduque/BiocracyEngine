@@ -13,6 +13,10 @@ placeholder los habría pisado.
 |---|---|---|---|
 | `eth_sonification_20260922_111301.wav` | 415 s | 4 ch · 24 bit · 48 kHz | `lecho` 95–155 s · `enjambre` 160–220 s · `ascenso` 285–345 s |
 | `eth_sonification_20260922_112003.wav` | 397 s | 4 ch · 24 bit · 48 kHz | `meseta` 165–225 s · `retorno` 260–320 s |
+| `eth_sonification_20260926_173107.wav` | 399 s | 2 ch · 24 bit · 48 kHz | `cierre` 325–385 s |
+
+`cierre` reemplaza a `meseta` en los botones de `web/index.html`; `meseta` se
+sigue construyendo porque `web/indexdots.html` la usa.
 
 Los cortes no se eligieron a oído. Se midió RMS, centroide espectral y flujo
 segundo a segundo sobre las dos sesiones, y cada composición aísla un
