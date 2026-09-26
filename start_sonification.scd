@@ -100,7 +100,7 @@
     "".postln;
     "=== Recording Setup ===".postln;
     "Recording functions available:".postln;
-    "   ~startRecording.() - Start 4-channel recording".postln;
+    "   ~startRecording.() - Start recording (4-ch on MOTU, stereo on Core Audio)".postln;
     "   ~stopRecording.() - Stop recording".postln;
     "   ~quickRecord.() - Record 30 seconds".postln;
     "   ~getRecordingStatus.() - Check recording status".postln;

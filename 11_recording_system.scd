@@ -1,12 +1,18 @@
 // SuperCollider Ethereum Sonification - Multichannel Recording System
 // Current Date and Time (UTC): 2025-09-01 08:30:00
 // Current User's Login: alejoduque
-// Purpose: Record final spatialized mix as 4-channel audio files
+// Purpose: Record the final mix — 4 channels on the MOTU quad rig, stereo on Core Audio
 
 (
 s.doWhenBooted({
     
     // Recording system parameters
+    //
+    // channels: as many as the MIX has, which is ~limiterChans (3_synthdefs):
+    // 4 on the MOTU's quad rig, 2 on Core Audio stereo (1_server_config picks
+    // which). This was a fixed 4, so a session on the laptop's own output was
+    // written as a 4-track file whose rear pair was either silence or, on a
+    // 2-output server where buses 2-3 are the hardware INPUTS, the microphone.
     ~recordingParams = (
         isRecording: false,
         recordingPath: nil,
@@ -14,13 +20,14 @@ s.doWhenBooted({
         recordingBuffer: nil,
         recordingDuration: 0,
         maxRecordingMinutes: 60,  // Maximum recording length
-        channels: 4,              // Quadraphonic output
-        sampleRate: 44100,
+        channels: (~limiterChans ? s.options.numOutputBusChannels).clip(1, 4),
+        sampleRate: s.sampleRate,
         bitDepth: 24
     );
-    
+    ~recChanLabel = { |n| if(n >= 4, "quadraphonic", if(n == 2, "stereo", "mono")) };
+
     // Recording bus setup - tap final output
-    ~recordingBus = Bus.audio(s, 4);  // 4-channel recording bus
+    ~recordingBus = Bus.audio(s, ~recordingParams.channels);
     
     // Create recording directory if needed
     ~recordingDir = thisProcess.nowExecutingPath.dirname +/+ "recordings";
@@ -39,13 +46,15 @@ s.doWhenBooted({
         ~recordingDir +/+ filename;
     };
     
-    // Simple recording synth - direct to file
+    // Simple recording synth - direct to file. The channel count is fixed
+    // into the def when it is built, which is fine: it only changes when the
+    // server is rebooted on another device, and this file runs again then.
     SynthDef(\simpleRecorder, {
         arg recordBuf, gate=1;
         var sig;
-        
-        // Read the main output (4-channel)
-        sig = In.ar(0, 4);
+
+        // Read the main output: the mix's own channels, no more
+        sig = In.ar(0, ~recordingParams.channels);
         
         // Direct to disk recording
         DiskOut.ar(recordBuf, sig);
@@ -68,12 +77,13 @@ s.doWhenBooted({
             recordingPath = customPath ?? { ~generateRecordingFilename.value };
             
             try {
-                "Starting 4-channel recording...".postln;
+                "Starting %-channel (%) recording...".format(
+                    ~recordingParams.channels, ~recChanLabel.(~recordingParams.channels)).postln;
                 "File: %".format(recordingPath).postln;
                 "Duration limit: % minutes".format(~recordingParams.maxRecordingMinutes).postln;
                 
                 // Create buffer for DiskOut and prepare file
-                ~recordingBuffer = Buffer.alloc(s, 65536, 4);
+                ~recordingBuffer = Buffer.alloc(s, 65536, ~recordingParams.channels);
                 ~recordingBuffer.write(recordingPath, "wav", "int24", 0, 0, true);
                 
                 // Wait for buffer creation with defer
@@ -84,7 +94,7 @@ s.doWhenBooted({
                         \gate, 1
                     ], ~defaultGroup, \addToTail);
                     
-                    "✓ 4-channel recording started successfully".postln;
+                    "✓ %-channel recording started successfully".format(~recordingParams.channels).postln;
                 }.defer(0.1);
                 
                 // Update recording state
@@ -152,7 +162,8 @@ s.doWhenBooted({
                 (duration % 60).floor
             ).postln;
             "File saved: %".format(path).postln;
-            "Channels: 4 (quadraphonic)".postln;
+            "Channels: % (%)".format(~recordingParams.channels,
+                ~recChanLabel.(~recordingParams.channels)).postln;
             
             // Reset state
             ~recordingParams.isRecording = false;
@@ -188,7 +199,7 @@ s.doWhenBooted({
                 (duration % 60).floor
             ).postln;
             "File: %".format(~recordingParams.recordingPath.basename).postln;
-            "Channels: 4".postln;
+            "Channels: %".format(~recordingParams.channels).postln;
             "=======================".postln;
         } {
             "Status: NOT RECORDING".postln;

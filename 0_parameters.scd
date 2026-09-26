@@ -887,7 +887,12 @@ if(File.exists(~presetDir).not) { File.mkdir(~presetDir) };
                 // browser. ~presetMenu is nil until 4_gui has run.
                 {
                     if(~presetMenu.notNil) {
-                        var i = (~listConfigs.value ? []).indexOf(safe);
+                        // indexOfEqual, NOT indexOf: indexOf compares by
+                        // identity (===), and two Strings with the same
+                        // letters are different objects — so it always
+                        // returned nil and this menu never followed a load
+                        // made from the browser.
+                        var i = (~listConfigs.value ? []).indexOfEqual(safe);
                         if(i.notNil) { ~presetMenu.value = i };
                     };
                 }.defer;

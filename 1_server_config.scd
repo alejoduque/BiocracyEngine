@@ -11,21 +11,48 @@ thisProcess.openUDPPort(57120);
 
 // --- DYNAMIC DEVICE DETECTION ---
 // MOTU 828x → 4-channel spatial mode at 48000 Hz (native MOTU rate)
-// No MOTU → Apple Core Audio built-in → 2-channel stereo fallback
+// No MOTU → Core Audio default output (built-in, headphones…) → 2-channel stereo
 //
 // ROOT CAUSE OF SILENT AUDIO WITH MOTU:
 // scsynth defaults to 44100 Hz. MOTU runs at 48000 Hz. Core Audio silently
 // discards audio when rates mismatch — no error, no warning, just silence.
+//
+// The macOS default output device, as system_profiler reports it: its name and
+// current sample rate, or nil fields if the report can't be read. PortAudio's
+// device list does not say which device is the default, and on some sessions
+// it does not list the MOTU by name at all even while macOS is routing to it,
+// which is why the fallback below used to ASSUME the MOTU. Asking macOS
+// replaces the assumption with the answer.
+~defaultOutputDevice = {
+    var txt = try { "system_profiler SPAudioDataType 2>/dev/null".unixCmdGetStdOut } { "" };
+    var name, found, rate;
+    txt.split($\n).do { |line|
+        var t = line.stripWhiteSpace;
+        // Device headers are the lines indented exactly 8 spaces, ending in ':'
+        if(line.beginsWith("        ") and: { line.size > 8 } and: { line[8] != $  }
+            and: { t.endsWith(":") }) {
+            name = t.drop(-1);
+        };
+        if(t == "Default Output Device: Yes") { found = name };
+        if(found.notNil and: { found == name } and: { t.beginsWith("Current SampleRate:") }) {
+            rate = t.split($:).last.stripWhiteSpace.asInteger;
+        };
+    };
+    (name: found, rate: rate)
+};
+
 ~detectAudioDevice = {
     // ── All vars first — SC requires var declarations before any executable ──
     var outDevices = ServerOptions.outDevices ? [];
     var inDevices  = ServerOptions.inDevices  ? [];
     // Broad match: "MOTU 828x", "MOTU AVB", "828mk3", etc.
     // asString.toUpper guard handles nil entries PortAudio occasionally returns.
-    var motu = outDevices.select({ |d|
+    var isMotu = { |d|
         var ds = d.asString.toUpper;
         ds.contains("MOTU") or: { ds.contains("828") } or: { ds.contains("GEN5") }
-    }).first;
+    };
+    var motu = outDevices.select(isMotu).first;
+    var def = ~defaultOutputDevice.value;
 
     // Print every PortAudio device name — makes name-mismatch failures visible.
     "=== SC AUDIO DEVICES (PortAudio) ===".postln;
@@ -46,17 +73,41 @@ thisProcess.openUDPPort(57120);
         // The router synth in 3_synthdefs.scd uses this offset to copy
         // SC's master bus 0-1 → the correct physical outputs.
         ~motuOutOffset = 4;
+        ~audioMode = \motu;
         "  Speaker offset: Out.ar(%) → MOTU analog 3-4".format(~motuOutOffset).postln;
     } {
-        // System default = MOTU (confirmed by system_profiler).
-        // Same channel config as explicit detection path.
-        "⚠ MOTU not in PortAudio list — using system default at 48000 Hz.".postln;
-        "  Channels 0-7 exposed; speaker offset ~motuOutOffset = 4.".postln;
-        Server.default.options.device               = nil;
-        Server.default.options.sampleRate           = 48000;
-        Server.default.options.numOutputBusChannels = 8;
-        Server.default.options.numInputBusChannels  = 2;
-        ~motuOutOffset = 4;
+        if(def.name.notNil and: { isMotu.(def.name) }) {
+            // Not in PortAudio's list, but macOS says the default output IS
+            // the MOTU — the case this branch used to assume unconditionally.
+            // Same channel config as the explicit detection path.
+            "⚠ MOTU not in PortAudio list, but it is the macOS default (%) — 8-ch out, 48000 Hz."
+                .format(def.name).postln;
+            Server.default.options.device               = nil;
+            Server.default.options.sampleRate           = 48000;
+            Server.default.options.numOutputBusChannels = 8;
+            Server.default.options.numInputBusChannels  = 2;
+            ~motuOutOffset = 4;
+            ~audioMode = \motu;
+        } {
+            // No MOTU: stereo on whatever macOS is playing through. This used
+            // to open 8 channels and assume the MOTU anyway, so the mix stayed
+            // quad on a 2-channel device — the rear pair (buses 2-3) went
+            // nowhere, every pan lost half its ring, the router folded down to
+            // outputs that did not exist, and recordings came out 4-track.
+            //
+            // 2 output buses makes ~limiterChans 2 (3_synthdefs.scd), so every
+            // voice takes its Pan2 branch and the recorder writes stereo.
+            // The rate is the device's own: a mismatch is the silence above.
+            var rate = def.rate ? 48000;
+            "✓ No MOTU — Core Audio default output (%) in STEREO, % Hz."
+                .format(def.name ? "unknown", rate).postln;
+            Server.default.options.device               = nil;
+            Server.default.options.sampleRate           = rate;
+            Server.default.options.numOutputBusChannels = 2;
+            Server.default.options.numInputBusChannels  = 2;
+            ~motuOutOffset = 0;
+            ~audioMode = \stereo;
+        };
     };
 };
 
