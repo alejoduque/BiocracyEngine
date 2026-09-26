@@ -48,13 +48,14 @@
   .escena { position:absolute; left:var(--gap); bottom:150px; z-index:3; margin:0;
     max-width:calc(100% - 2*var(--gap)); font-size:12px; color:#e2e2e2;
     letter-spacing:.04em; pointer-events:none;
-    display:flex; align-items:center; gap:9px;
+    display:flex; flex-direction:column; align-items:flex-start; gap:8px;
     text-shadow:0 0 10px #000, 0 0 3px #000; }
-  /* El anillo fenológico, del tamaño de una letra grande: el año como un
-     círculo de trazo fino, cuatro marcas donde cambian las temporadas, la
-     fecha de la pieza sobre él y un punto que da una vuelta mientras la pieza
-     suena. Sin números ni rótulos: el pie de al lado ya dice la fecha. */
-  #anillo { width:30px; height:30px; flex:none; }
+  /* El anillo fenológico, encima del pie y alineado con él a la izquierda: el
+     año como un círculo de trazo fino, cuatro marcas donde cambian las
+     temporadas, la fecha de la pieza sobre él y un punto que da una vuelta
+     mientras la pieza suena. Sin números ni rótulos: el pie de abajo ya dice
+     la fecha. El pie queda donde estaba; el anillo crece hacia arriba. */
+  #anillo { width:90px; height:90px; flex:none; }
   #anillo[hidden] { display:none; }
 
   #msg { position:absolute; inset:0; display:flex; flex-direction:column;
@@ -303,8 +304,8 @@
        baja de tamaño para no comerse media pantalla. */
     #fft { height:84px; }
     .scope { padding:0 var(--gap) 4px; }
-    .escena { bottom:112px; font-size:11px; gap:7px; }
-    #anillo { width:26px; height:26px; }
+    .escena { bottom:112px; font-size:11px; gap:6px; }
+    #anillo { width:78px; height:78px; }
     /* Pistas más chicas en el teléfono: cinco botones a tamaño de escritorio
        más el de Play/Pause no entran limpio en el ancho y se amontonan. */
     .comps { gap:5px; }
@@ -323,7 +324,7 @@
   </div>
 
   <div class="escena">
-    <canvas id="anillo" width="60" height="60" aria-hidden="true" hidden></canvas>
+    <canvas id="anillo" width="180" height="180" aria-hidden="true" hidden></canvas>
     <span id="escena"></span>
   </div>
 
@@ -1596,11 +1597,13 @@ espectrograma sin saber todavía qué fue eso.</p>
     if (anilloEl.hidden || !enEscena) return;
     // A la densidad de la pantalla, para que el trazo sea de verdad un pelo.
     var dpr = Math.min(3, window.devicePixelRatio || 1);
-    var lado = Math.round(anilloEl.clientWidth * dpr) || 60;
+    var lado = Math.round(anilloEl.clientWidth * dpr) || 180;
     if (anilloDpr !== dpr || anilloEl.width !== lado) {
       anilloEl.width = anilloEl.height = lado; anilloDpr = dpr;
     }
-    var c = lado / 2, r = lado / 2 - 4 * dpr;
+    // El círculo sigue siendo un pelo (1 px) a cualquier tamaño; las marcas y
+    // el punto crecen con él, para que no se pierdan en 90 px.
+    var c = lado / 2, r = lado / 2 - 7 * dpr;
     actx.clearRect(0, 0, lado, lado);
     // Una sombra oscura y corta: el anillo tiene que leerse sobre un
     // espectrograma claro igual que sobre la noche del infrarrojo.
@@ -1617,7 +1620,7 @@ espectrograma sin saber todavía qué fue eso.</p>
       var a = anguloDe(d);
       actx.beginPath();
       actx.moveTo(c + Math.cos(a) * r, c + Math.sin(a) * r);
-      actx.lineTo(c + Math.cos(a) * (r + 2.5 * dpr), c + Math.sin(a) * (r + 2.5 * dpr));
+      actx.lineTo(c + Math.cos(a) * (r + 4 * dpr), c + Math.sin(a) * (r + 4 * dpr));
       actx.stroke();
     });
 
@@ -1625,8 +1628,8 @@ espectrograma sin saber todavía qué fue eso.</p>
     var a0 = doy ? anguloDe(doy) : -Math.PI / 2;
     if (doy) {
       actx.beginPath();
-      actx.moveTo(c + Math.cos(a0) * (r - 3 * dpr), c + Math.sin(a0) * (r - 3 * dpr));
-      actx.lineTo(c + Math.cos(a0) * (r + 3 * dpr), c + Math.sin(a0) * (r + 3 * dpr));
+      actx.moveTo(c + Math.cos(a0) * (r - 5 * dpr), c + Math.sin(a0) * (r - 5 * dpr));
+      actx.lineTo(c + Math.cos(a0) * (r + 5 * dpr), c + Math.sin(a0) * (r + 5 * dpr));
       actx.stroke();
     }
 
@@ -1634,7 +1637,7 @@ espectrograma sin saber todavía qué fue eso.</p>
     if (v && v.duration > 0 && isFinite(v.duration)) p = (v.currentTime % v.duration) / v.duration;
     var a = a0 + p * Math.PI * 2;
     actx.beginPath();
-    actx.arc(c + Math.cos(a) * r, c + Math.sin(a) * r, 2 * dpr, 0, Math.PI * 2);
+    actx.arc(c + Math.cos(a) * r, c + Math.sin(a) * r, 3 * dpr, 0, Math.PI * 2);
     actx.fill();
   }
   requestAnimationFrame(dibujarAnillo);
