@@ -245,6 +245,10 @@
      donde se ve y un solo espectro que la escucha. Sólo bajan los carteles
      (320–480 px, perezosos); el video, cuando se elige. */
   .archivo[hidden] { display:none; }
+  /* La invitación, pegada a cada título: sin ella las miniaturas se leen
+     como una galería y nadie sabe que llevan la pieza al escenario. */
+  .arch-guia { max-width:1400px; margin:-.4em auto .9em; padding:0 var(--gap);
+    font-size:12px; line-height:1.5; color:#c4c4c4; letter-spacing:.03em; }
   .arch { max-width:1400px; margin:0 auto; padding:0 var(--gap);
     display:grid; gap:14px var(--gap);
     grid-template-columns:repeat(auto-fill, minmax(190px, 1fr)); }
@@ -405,6 +409,38 @@ mide sigue participando desde la opacidad.</p>
 
 </div>
 
+<div class="text">
+
+<h2>Archivo</h2>
+
+<p>El escenario de arriba no se queda en esos cuatro clips. Después sigue con
+dos archivos completos, alternados igual que hasta ahora —lo que la cámara
+registró, lo que el micrófono capturó— y cada pieza se muestra entera, de
+principio a fin.</p>
+
+<p><strong>La cámara</strong>: las 22 capturas de la cámara trampa CAM_02 en la
+Reserva Manakai, del 10 al 22 de agosto de 2026, todas y en su orden, con el
+sonido que grabó la propia cámara: la lluvia, los aulladores, un grillo, una
+mosca. <strong>El micrófono</strong>: 36 grabaciones AudioMoth de un minuto, tres
+por cada hora entre las seis de la tarde y las cinco de la mañana, de la
+estación seca de enero de 2025 y del medio seco de julio y agosto de 2024.</p>
+
+<p>Con <em>bosque</em> elegido arriba, lo que suena es la pieza que está en
+escena, y el espectro vivo la lee mientras suena. El espectrograma se dibujó
+desde la grabación original, que llega hasta el ultrasonido; lo que se oye es
+sólo la banda audible, así que buena parte de lo que se ve no se oye.</p>
+
+</div>
+
+<section class="archivo" id="archivo" hidden>
+  <h3 class="lam-sec">Lo que la cámara registró · CAM_02, agosto de 2026</h3>
+  <p class="arch-guia">Haz clic en una captura para llevarla al escenario, con el sonido que grabó la cámara.</p>
+  <div class="arch" id="arch-camara"></div>
+  <h3 class="lam-sec">Lo que el micrófono capturó · una noche, de 18:00 a 05:00</h3>
+  <p class="arch-guia">Haz clic en una grabación para llevarla al escenario: su espectrograma y su minuto de audio.</p>
+  <div class="noche" id="arch-bosque"></div>
+</section>
+
 <div class="strip">
   <figure>
     <video class="clip" src="media/video/strip-1-1809.mp4" muted loop playsinline preload="metadata"></video>
@@ -467,36 +503,6 @@ tarde</strong>. El resto se reparte entre las siete de la noche y el amanecer.
 La hora a la que este bosque quedó registrado no la eligió el bosque: la
 eligieron quienes programaron la grabadora. Un archivo es también el mapa de
 las decisiones que lo hicieron.</p>
-
-<h2>Archivo</h2>
-
-<p>El escenario de arriba no se queda en esos cuatro clips. Después sigue con
-dos archivos completos, alternados igual que hasta ahora —lo que la cámara vio,
-lo que el micrófono oyó— y cada pieza se muestra entera, de principio a fin.</p>
-
-<p><strong>La cámara</strong>: las 22 capturas de la cámara trampa CAM_02 en la
-Reserva Manakai, del 10 al 22 de agosto de 2026, todas y en su orden, con el
-sonido que grabó la propia cámara: la lluvia, los aulladores, un grillo, una
-mosca. <strong>El micrófono</strong>: 36 grabaciones AudioMoth de un minuto, tres
-por cada hora entre las seis de la tarde y las cinco de la mañana, de la
-estación seca de enero de 2025 y del medio seco de julio y agosto de 2024.</p>
-
-<p>Con <em>bosque</em> elegido arriba, lo que suena es la pieza que está en
-escena, y el espectro vivo la lee mientras suena. El espectrograma se dibujó
-desde la grabación original, que llega hasta el ultrasonido; lo que se oye es
-sólo la banda audible, así que buena parte de lo que se ve no se oye. Cualquier
-pieza de aquí abajo se puede llevar al escenario con un clic.</p>
-
-</div>
-
-<section class="archivo" id="archivo" hidden>
-  <h3 class="lam-sec">Lo que la cámara vio · CAM_02, agosto de 2026</h3>
-  <div class="arch" id="arch-camara"></div>
-  <h3 class="lam-sec">Lo que el micrófono oyó · una noche, de 18:00 a 05:00</h3>
-  <div class="noche" id="arch-bosque"></div>
-</section>
-
-<div class="text">
 
 <h2>El proyecto en veinte imágenes</h2>
 <p>El territorio, la comunidad que lo habita, el instrumento que se construyó para escucharlo y los <em>Objetos Liminales</em> que salen del cruce entre territorio, maquinas, capas y campos. Las láminas y sus pies de página vienen de un portafolio del proyecto que deberá crecer con los jovenes de la comunidad de El Balzal.</p>
@@ -684,7 +690,7 @@ espectrograma sin saber todavía qué fue eso.</p>
 
   // ── Fuentes ───────────────────────────────────────────────────────────────
   // Hydra cicla estos cuatro como fondo, con fundido cruzado. El orden alterna
-  // a propósito lo que la cámara VIO con lo que el micrófono OYÓ: ocelote,
+  // a propósito lo que la cámara REGISTRÓ con lo que el micrófono CAPTURÓ: ocelote,
   // espectrograma, ocelote, espectrograma. El mismo bosque por dos vías de
   // registro que normalmente se publican por separado, aquí en el mismo
   // encuadre y disolviéndose una en otra.
@@ -701,7 +707,7 @@ espectrograma sin saber todavía qué fue eso.</p>
   // que se está cargando—, así que el ciclo admite cualquier número de clips y
   // la página sólo descarga el que viene.
   //
-  // camara: la trama de puntos sólo cae sobre lo que vio la cámara.
+  // camara: la trama de puntos sólo cae sobre lo que registró la cámara.
   // fecha: dónde cae la pieza en el anillo fenológico, junto al pie.
   var HERO_CLIPS = [
     { src:'media/video/hero-1-pareja.mp4',    camara:true,  fecha:'2025-08-29', pie:'CAM01 · 29/08/2025 06:35 · dos ocelotes, luz de día' },
