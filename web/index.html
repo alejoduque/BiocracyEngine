@@ -331,10 +331,21 @@
     .fuente-motor .fuente-pie { justify-self:start; text-align:left; }
     .comps button, .bosque { padding:5px 8px; font-size:11px; letter-spacing:.02em; }
     .comps button { padding:5px 2px; text-align:center; overflow:hidden; text-overflow:ellipsis; }
-    /* La tabla de las cinco composiciones mide ~500 px —cinco columnas, dos
-       sin cortar— y en el teléfono empujaba TODA la página a desplazarse de
-       lado. Que se desplace ella, dentro de su caja. */
-    table { display:block; overflow-x:auto; -webkit-overflow-scrolling:touch; }
+    /* La tabla de las cinco composiciones. Con las cifras sin cortar, las
+       cuatro primeras columnas se quedaban 411 de los 390 px y «Lo que hace»
+       —lo único que se lee de corrido— caía a 81 px: una frase de cinco
+       palabras por línea y una tabla de casi 900 px de alto, que además
+       empujaba la página de lado. En el teléfono las cifras pueden partirse
+       (tiempos y hercios van pegados a su unidad con &nbsp; en el HTML, así
+       que parten «11:13 ·» / «95–155 s»; «dBFS» baja bajo su número como
+       «medio» bajo «Nivel»), y la descripción se queda con la mitad del ancho. */
+    table { font-size:11px; }
+    th, td { padding:5px 6px 5px 0; }
+    /* Los encabezados son palabras largas sueltas («Composición») y ellos
+       fijaban el ancho mínimo de su columna: que se partan con guion. */
+    th { -webkit-hyphens:auto; hyphens:auto; hyphenate-limit-chars:8 3 3; }
+    td.n { white-space:normal; font-size:10.5px; }
+    th:last-child, td:last-child { width:48%; }
   }
   /* Teléfonos angostos (360 px): «enjambre» dejaba de caber en su quinto de
      fila. Un punto menos de letra y sin el espacio tras el triángulo. */
@@ -436,11 +447,11 @@ mide sigue participando desde la opacidad.</p>
 
 <table>
   <tr><th>Composición</th><th>Sesión · corte</th><th>Nivel medio</th><th>Centroide</th><th>Lo que hace</th></tr>
-  <tr><td class="n">lecho</td><td class="n">11:13 · 95–155 s</td><td class="n">−30.8 dBFS</td><td class="n">210–280 Hz</td><td>El drone como cama, con el motor de beat ya trabajando encima.</td></tr>
-  <tr><td class="n">enjambre</td><td class="n">11:13 · 160–220 s</td><td class="n">−32.4 dBFS</td><td class="n">280–350 Hz</td><td>El flujo espectral más alto de las dos sesiones (0.190). La cadena en su momento más denso.</td></tr>
-  <tr><td class="n">ascenso</td><td class="n">11:13 · 285–345 s</td><td class="n">−31.1 dBFS</td><td class="n">666 → 3399 Hz</td><td>El centroide sube cinco veces mientras el nivel cae: se vuelve brillante y delgado a la vez.</td></tr>
-  <tr><td class="n">meseta</td><td class="n">11:20 · 165–225 s</td><td class="n">−35.8 dBFS</td><td class="n">1404–2406 Hz</td><td>Un minuto entero sostenido en registro alto, sin volver a bajar.</td></tr>
-  <tr><td class="n">retorno</td><td class="n">11:20 · 260–320 s</td><td class="n">−35.4 dBFS</td><td class="n">219–430 Hz</td><td>La caída al registro grave, con el flujo subiendo otra vez.</td></tr>
+  <tr><td class="n">lecho</td><td class="n">11:13&nbsp;· 95–155&nbsp;s</td><td class="n">−30.8 dBFS</td><td class="n">210–280&nbsp;Hz</td><td>El drone como cama, con el motor de beat ya trabajando encima.</td></tr>
+  <tr><td class="n">enjambre</td><td class="n">11:13&nbsp;· 160–220&nbsp;s</td><td class="n">−32.4 dBFS</td><td class="n">280–350&nbsp;Hz</td><td>El flujo espectral más alto de las dos sesiones (0.190). La cadena en su momento más denso.</td></tr>
+  <tr><td class="n">ascenso</td><td class="n">11:13&nbsp;· 285–345&nbsp;s</td><td class="n">−31.1 dBFS</td><td class="n">666&nbsp;→ 3399&nbsp;Hz</td><td>El centroide sube cinco veces mientras el nivel cae: se vuelve brillante y delgado a la vez.</td></tr>
+  <tr><td class="n">meseta</td><td class="n">11:20&nbsp;· 165–225&nbsp;s</td><td class="n">−35.8 dBFS</td><td class="n">1404–2406&nbsp;Hz</td><td>Un minuto entero sostenido en registro alto, sin volver a bajar.</td></tr>
+  <tr><td class="n">retorno</td><td class="n">11:20&nbsp;· 260–320&nbsp;s</td><td class="n">−35.4 dBFS</td><td class="n">219–430&nbsp;Hz</td><td>La caída al registro grave, con el flujo subiendo otra vez.</td></tr>
 </table>
 
 </div>
