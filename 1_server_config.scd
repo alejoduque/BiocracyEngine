@@ -11,22 +11,32 @@ thisProcess.openUDPPort(57120);
 
 // --- DYNAMIC DEVICE DETECTION ---
 // MOTU 828x → 4-channel spatial mode at 48000 Hz (native MOTU rate)
-// No MOTU → Core Audio default output (built-in, headphones…) → 2-channel stereo
+// No MOTU → the system default output (built-in, headphones…) → 2-channel stereo
 //
 // ROOT CAUSE OF SILENT AUDIO WITH MOTU:
 // scsynth defaults to 44100 Hz. MOTU runs at 48000 Hz. Core Audio silently
 // discards audio when rates mismatch — no error, no warning, just silence.
 //
+// ServerOptions.outDevices enumerates devices through a primitive that only
+// exists on macOS and Windows. On Linux scsynth reaches the card through
+// JACK/ALSA and there is nothing to enumerate, so the primitive fails outright
+// — and an uncaught primitive failure aborts the WHOLE file at this line. That
+// took numBuffers/memSize/maxNodes below with it, which is the memory the
+// phenological corpus loads into, so the failure showed up much later as an
+// unrelated allocation problem. Enumeration is therefore best-effort: no list
+// is not an error, it just means the device cannot be chosen from here.
+//
 // The macOS default output device, as system_profiler reports it: its name and
-// current sample rate, or nil fields if the report can't be read. PortAudio's
-// device list does not say which device is the default, and on some sessions
-// it does not list the MOTU by name at all even while macOS is routing to it,
-// which is why the fallback below used to ASSUME the MOTU. Asking macOS
-// replaces the assumption with the answer.
+// current sample rate, or nil fields if the report can't be read (and on Linux,
+// where there is no system_profiler). PortAudio's device list does not say
+// which device is the default, and on some sessions it does not list the MOTU
+// by name at all even while macOS is routing to it, which is why the fallback
+// below used to ASSUME the MOTU. Asking macOS replaces the assumption with the
+// answer.
 ~defaultOutputDevice = {
     var txt = try { "system_profiler SPAudioDataType 2>/dev/null".unixCmdGetStdOut } { "" };
     var name, found, rate;
-    txt.split($\n).do { |line|
+    (txt ? "").split($\n).do { |line|
         var t = line.stripWhiteSpace;
         // Device headers are the lines indented exactly 8 spaces, ending in ':'
         if(line.beginsWith("        ") and: { line.size > 8 } and: { line[8] != $  }
@@ -43,23 +53,29 @@ thisProcess.openUDPPort(57120);
 
 ~detectAudioDevice = {
     // ── All vars first — SC requires var declarations before any executable ──
-    var outDevices = ServerOptions.outDevices ? [];
-    var inDevices  = ServerOptions.inDevices  ? [];
+    // nil on Linux, where the enumeration primitive does not exist (see above).
+    var outDevices = try { ServerOptions.outDevices } { nil };
+    var inDevices  = try { ServerOptions.inDevices } { nil };
+    var enumerable = outDevices.notNil;
     // Broad match: "MOTU 828x", "MOTU AVB", "828mk3", etc.
     // asString.toUpper guard handles nil entries PortAudio occasionally returns.
     var isMotu = { |d|
         var ds = d.asString.toUpper;
         ds.contains("MOTU") or: { ds.contains("828") } or: { ds.contains("GEN5") }
     };
-    var motu = outDevices.select(isMotu).first;
+    var motu = (outDevices ? []).select(isMotu).first;
     var def = ~defaultOutputDevice.value;
 
     // Print every PortAudio device name — makes name-mismatch failures visible.
     "=== SC AUDIO DEVICES (PortAudio) ===".postln;
-    "Output devices:".postln;
-    outDevices.do { |d, i| "  out[%]: %".format(i, d).postln };
-    "Input devices:".postln;
-    inDevices.do  { |d, i| "  in [%]: %".format(i, d).postln };
+    if(enumerable) {
+        "Output devices:".postln;
+        outDevices.do { |d, i| "  out[%]: %".format(i, d).postln };
+        "Input devices:".postln;
+        (inDevices ? []).do  { |d, i| "  in [%]: %".format(i, d).postln };
+    } {
+        "  (enumeration unavailable — Linux/JACK)".postln;
+    };
     "=====================================".postln;
 
     if(motu.notNil) {
@@ -89,18 +105,27 @@ thisProcess.openUDPPort(57120);
             ~motuOutOffset = 4;
             ~audioMode = \motu;
         } {
-            // No MOTU: stereo on whatever macOS is playing through. This used
-            // to open 8 channels and assume the MOTU anyway, so the mix stayed
-            // quad on a 2-channel device — the rear pair (buses 2-3) went
-            // nowhere, every pan lost half its ring, the router folded down to
-            // outputs that did not exist, and recordings came out 4-track.
+            // No MOTU: stereo on whatever the system is playing through. This
+            // used to open 8 channels and assume the MOTU anyway, so the mix
+            // stayed quad on a 2-channel device — the rear pair (buses 2-3)
+            // went nowhere, every pan lost half its ring, the router folded
+            // down to outputs that did not exist, and recordings came out
+            // 4-track.
             //
             // 2 output buses makes ~limiterChans 2 (3_synthdefs.scd), so every
             // voice takes its Pan2 branch and the recorder writes stereo.
             // The rate is the device's own: a mismatch is the silence above.
-            var rate = def.rate ? 48000;
-            "✓ No MOTU — Core Audio default output (%) in STEREO, % Hz."
-                .format(def.name ? "unknown", rate).postln;
+            // On Linux it is left to JACK (nil), as it always was there —
+            // forcing 48 kHz on a JACK server running at another rate fails.
+            var rate = def.rate ?? { if(enumerable) { 48000 } { nil } };
+            if(enumerable) {
+                "✓ No MOTU — default output (%) in STEREO, % Hz."
+                    .format(def.name ? "unknown", rate).postln;
+            } {
+                // Route a MOTU here with JACK (or set SC_JACK_DEFAULT_OUTPUTS);
+                // 4-channel spatial mode has to be asked for explicitly on Linux.
+                "i Device enumeration unavailable (Linux/JACK) — using the system default, 2-channel stereo.".postln;
+            };
             Server.default.options.device               = nil;
             Server.default.options.sampleRate           = rate;
             Server.default.options.numOutputBusChannels = 2;

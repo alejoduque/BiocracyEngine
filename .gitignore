@@ -21,12 +21,27 @@ sclang_log.txt
 
 archive/
 
-# Audio captures (large, ephemeral)
-recordings/
+# Audio captures (large, ephemeral). Los .wav reales viven aquí y no se
+# versionan; sus nombres quedan documentados en recordings/README.md, que sí.
+# No hay placeholder vacío para ellos porque ocuparían esas mismas rutas.
+recordings/*.wav
 
 # Derived phenological corpus (~4.5 GB, rebuildable from the AudioMoth
 # originals with tools/build_corpus.py). The manifest is small and is the
 # thing the engine actually reads, so it is tracked.
+#
+# El árbol de rutas NO se versiona, y no debe volver a versionarse.
+#
+# Hubo un tiempo en que sí: 725 .flac vacíos, añadidos con `git add -f`, para
+# que un real apareciera como MODIFICADO en vez de colarse en un commit. Pero
+# esta regla ya impide que se cuele, y seguirlos tenía el efecto contrario y
+# grave: git trata como prescindible todo archivo ignorado, así que cambiar a
+# una rama que los sigue PISA el corpus real de 4.2 GB con archivos vacíos, sin
+# preguntar ni avisar. Pasó el 2026-09-25 y hubo que reconstruirlo desde los
+# originales AudioMoth.
+#
+# Para ver qué rutas espera el motor sin tener el corpus, en un clon limpio:
+#   python3 tools/make_placeholders.py   # crea sólo lo que falte, nunca pisa
 corpus/*
 !corpus/manifest.json
 # The camera-trap register (tools/build_cameratrap.py). Tracked, unlike the
@@ -37,6 +52,13 @@ corpus/*
 # corpus/visual/ (~115 MB of derived h264 + index.json) stays out entirely:
 # rebuildable with tools/build_visual.py, and the index is meaningless without
 # the video beside it. Slot C prints the build command when it finds neither.
+
+# web/media/ SÍ se versiona (~13 MB). Es derivado y reconstruible con
+# web/build_media.sh y web/extract_portfolio.py, pero sus fuentes no están en
+# el repositorio y dos de ellas no son reproducibles por nadie más: las
+# grabaciones del motor y los videos de cámara trampa sólo existen en el disco
+# de quien los capturó. Sin el media versionado, un clon no puede reconstruir
+# la página — que es justamente lo que este repositorio debería permitir.
 
 # Session autosave state — machine-local, not a shareable preset
 presets/_autosave.json
