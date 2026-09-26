@@ -11,12 +11,16 @@ placeholder los habría pisado.
 
 | Archivo | Duración | Formato | Composiciones que salen de ahí |
 |---|---|---|---|
-| `eth_sonification_20260922_111301.wav` | 415 s | 4 ch · 24 bit · 48 kHz | `lecho` 95–155 s · `enjambre` 160–220 s · `ascenso` 285–345 s |
-| `eth_sonification_20260922_112003.wav` | 397 s | 4 ch · 24 bit · 48 kHz | `meseta` 165–225 s · `retorno` 260–320 s |
-| `eth_sonification_20260926_173107.wav` | 399 s | 2 ch · 24 bit · 48 kHz | `cierre` 325–385 s |
+| `eth_sonification_20260922_111301.wav` | 415 s | 4 ch · 24 bit · 48 kHz | `lecho` 95–155 s · `enjambre` 160–220 s · `ascenso` 285–345 s — **ya no está en ninguna máquina** |
+| `eth_sonification_20260922_112003.wav` | 397 s | 4 ch · 24 bit · 48 kHz | `meseta` 165–225 s · `retorno` 260–320 s — **ya no está en ninguna máquina** |
+| `eth_sonification_20260818_212001_5min_SantaAnitaPerf.wav` | 340 s | 4 ch · 24 bit · 48 kHz | `oleaje` 0–338 s, la actuación entera |
+| `eth_sonification_20260926_173107.wav` | 399 s | 2 ch · 24 bit · 48 kHz | `cierre` 110–385 s |
 
-`cierre` reemplaza a `meseta` en los botones de `web/index.html`; `meseta` se
-sigue construyendo porque `web/indexdots.html` la usa.
+Los cortes, su texto y el orden de los botones viven en `web/composiciones.json`.
+Los de un minuto son los del 22/09: sus grabaciones se perdieron y no pueden
+alargarse; las sesiones nuevas entran como cortes de cuatro a cinco minutos
+(`web/build_composiciones.py --proponer`). `meseta` y `retorno` ya no son
+botones, pero sus mp3 se quedan porque `web/indexdots.html` los usa.
 
 Los cortes no se eligieron a oído. Se midió RMS, centroide espectral y flujo
 segundo a segundo sobre las dos sesiones, y cada composición aísla un
@@ -35,7 +39,8 @@ aquí mientras el motor corre. El nombre lo pone él:
 Con los `.wav` presentes:
 
 ```bash
-cd web && ./build_media.sh --force
+cd web && ./build_composiciones.py --proponer ../recordings/<sesion>.wav   # propone un corte
+cd web && ./build_media.sh                                                  # construye lo que falte
 ```
 
 Sin ellos el script avisa y omite esas pistas en lugar de fallar, para que el

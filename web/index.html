@@ -57,6 +57,19 @@
      la fecha. El pie queda donde estaba; el anillo crece hacia arriba. */
   #anillo { width:90px; height:90px; flex:none; }
   #anillo[hidden] { display:none; }
+  /* La línea de tiempo de las composiciones: el mismo instrumento que el
+     anillo fenológico, a la derecha, cuando suena una sesión del motor. Por
+     fuera, las cinco piezas como arcos del programa (como las temporadas en
+     el año); por dentro, la pieza que suena dibujada por su propio nivel y su
+     brillo. Es lo único del escenario que se puede tocar: un clic lleva ahí. */
+  .linea { position:absolute; right:var(--gap); bottom:150px; z-index:3; margin:0;
+    display:flex; flex-direction:column; align-items:flex-end; gap:8px;
+    font-size:12px; color:#e2e2e2; letter-spacing:.04em; text-align:right;
+    text-shadow:0 0 10px #000, 0 0 3px #000; pointer-events:none; }
+  .linea[hidden] { display:none; }
+  #lineacv { width:90px; height:90px; flex:none; pointer-events:auto; cursor:pointer; }
+  /* Con la línea a la derecha, el pie del escenario no corre por debajo de ella. */
+  .hero:has(.linea:not([hidden])) .escena { max-width:calc(100% - 2*var(--gap) - 120px); }
 
   #msg { position:absolute; inset:0; display:flex; flex-direction:column;
     align-items:center; justify-content:center; gap:12px; z-index:6;
@@ -321,6 +334,8 @@
     .scope { padding:0 var(--gap) 4px; }
     .escena { bottom:112px; font-size:11px; gap:6px; }
     #anillo { width:78px; height:78px; }
+    .linea { bottom:112px; font-size:11px; gap:6px; }
+    #lineacv { width:78px; height:78px; }
     /* En el teléfono la misma rejilla se reordena: arriba «bosque» y el
        volumen, que se estira hasta el borde; el pie del bosque; las cinco
        sesiones en UNA fila de cinco columnas iguales —a tamaño libre se
@@ -373,6 +388,12 @@
   <div class="escena">
     <canvas id="anillo" width="180" height="180" aria-hidden="true" hidden></canvas>
     <span id="escena"></span>
+  </div>
+
+  <div class="linea" id="linea" hidden>
+    <canvas id="lineacv" width="180" height="180" role="slider" aria-label="posición en la composición"
+      title="clic en el anillo: ir a ese punto de la pieza"></canvas>
+    <span id="lineapie"></span>
   </div>
 
   <div class="scope">
@@ -449,13 +470,13 @@ lugar en vez de una taxonomía global; y lo que cae bajo el umbral de detección
 no se borra ni se pone en cero, persiste como ruido de bajo nivel. Lo que no se
 mide sigue participando desde la opacidad.</p>
 
-<table>
+<table id="tabla-comps">
   <tr><th>Composición</th><th>Sesión · corte</th><th>Nivel medio</th><th>Centroide</th><th>Lo que hace</th></tr>
   <tr><td class="n">lecho</td><td class="n">11:13&nbsp;· 95–155&nbsp;s</td><td class="n">−30.8 dBFS</td><td class="n">210–280&nbsp;Hz</td><td>El drone como cama, con el motor de beat ya trabajando encima.</td></tr>
   <tr><td class="n">enjambre</td><td class="n">11:13&nbsp;· 160–220&nbsp;s</td><td class="n">−32.4 dBFS</td><td class="n">280–350&nbsp;Hz</td><td>El flujo espectral más alto de las dos sesiones del 22 de septiembre (0.190). La cadena en su momento más denso.</td></tr>
   <tr><td class="n">ascenso</td><td class="n">11:13&nbsp;· 285–345&nbsp;s</td><td class="n">−31.1 dBFS</td><td class="n">666&nbsp;→ 3399&nbsp;Hz</td><td>El centroide sube cinco veces mientras el nivel cae: se vuelve brillante y delgado a la vez.</td></tr>
-  <tr><td class="n">retorno</td><td class="n">11:20&nbsp;· 260–320&nbsp;s</td><td class="n">−35.4 dBFS</td><td class="n">219–430&nbsp;Hz</td><td>La caída al registro grave, con el flujo subiendo otra vez.</td></tr>
-  <tr><td class="n">cierre</td><td class="n">17:31&nbsp;· 325–385&nbsp;s</td><td class="n">−30.2 dBFS</td><td class="n">350–655&nbsp;Hz</td><td>El minuto más denso de la sesión y su disolución: el nivel cae 30&nbsp;dB hasta el silencio.</td></tr>
+  <tr><td class="n">oleaje</td><td class="n">21:20&nbsp;· 0–338&nbsp;s (5:38)</td><td class="n">−36.8 dBFS</td><td class="n">400–1600&nbsp;Hz</td><td>La actuación en Santa Anita de principio a fin. El brillo sube y baja en oleadas —del grave al registro medio y otra vez abajo—, hace su pico de flujo pasados los cuatro minutos y cierra con un último empuje antes de apagarse.</td></tr>
+  <tr><td class="n">cierre</td><td class="n">17:31&nbsp;· 110–385&nbsp;s (4:35)</td><td class="n">−32.7 dBFS</td><td class="n">390–3630&nbsp;Hz</td><td>Salta de golpe al registro alto y lo sostiene un minuto, vuelve al grave, y termina con el minuto más denso de la sesión disolviéndose 30&nbsp;dB hasta el silencio.</td></tr>
 </table>
 
 </div>
@@ -743,7 +764,7 @@ espectrograma sin saber todavía qué fue eso.</p>
   <p class="pie" id="lupa-pie"></p>
 </div>
 
-<audio id="au" preload="none" loop crossorigin="anonymous"></audio>
+<audio id="au" preload="none" crossorigin="anonymous"></audio>
 
 <script src="assets/js/hydra-synth.js"></script>
 <script>
@@ -793,12 +814,19 @@ espectrograma sin saber todavía qué fue eso.</p>
   var HOLD_MS = 18000;  // tiempo mínimo sobre cada clip
   var FADE_MS = 4000;   // duración del fundido
 
+  // Las composiciones salen de media/audio/composiciones.json, que escribe
+  // build_composiciones.py a partir de composiciones.json: botones, tabla y la
+  // línea de tiempo del escenario leen de ahí, así que una sesión nueva entra
+  // editando ese manifiesto y corriendo ./build_media.sh, sin tocar esta
+  // página. Esta lista es sólo el respaldo si el json no carga: los mismos
+  // botones, sin perfil que dibujar.
+  var COMPS_URL = 'media/audio/composiciones.json';
   var COMPS = [
-    { id:'lecho',    label:'lecho',    nota:'11:13 · 95–155 s — el drone como cama, centroide 210–280 Hz' },
-    { id:'enjambre', label:'enjambre', nota:'11:13 · 160–220 s — el flujo espectral más alto de las sesiones del 22/09' },
-    { id:'ascenso',  label:'ascenso',  nota:'11:13 · 285–345 s — el centroide sube de 666 a 3399 Hz' },
-    { id:'retorno',  label:'retorno',  nota:'11:20 · 260–320 s — la caída al grave, con el flujo subiendo' },
-    { id:'cierre',   label:'cierre',   nota:'17:31 · 325–385 s — el minuto más denso, y la disolución hasta el silencio' }
+    { id:'lecho',    label:'lecho',    duracion:60,  nota:'11:13 · 95–155 s — el drone como cama, centroide 210–280 Hz' },
+    { id:'enjambre', label:'enjambre', duracion:60,  nota:'11:13 · 160–220 s — el flujo espectral más alto de las sesiones del 22/09' },
+    { id:'ascenso',  label:'ascenso',  duracion:60,  nota:'11:13 · 285–345 s — el centroide sube de 666 a 3399 Hz' },
+    { id:'oleaje',   label:'oleaje',   duracion:338, nota:'21:20 · 0–338 s (5:38) — la actuación de Santa Anita entera' },
+    { id:'cierre',   label:'cierre',   duracion:275, nota:'17:31 · 110–385 s (4:35) — salta al agudo, vuelve, y se disuelve hasta el silencio' }
   ];
 
   var canvas  = document.getElementById('c');
@@ -1545,14 +1573,77 @@ espectrograma sin saber todavía qué fue eso.</p>
   var bosqueBtn = document.getElementById('bosque');
   bosqueBtn.addEventListener('click', function () { choose(BOSQUE, bosqueBtn); });
 
-  COMPS.forEach(function (c) {
-    var btn = document.createElement('button');
-    btn.type = 'button';
-    btn.textContent = c.label;
-    btn.dataset.id = c.id;
-    btn.setAttribute('aria-pressed', 'false');
-    btn.addEventListener('click', function () { choose(c, btn); });
-    compsEl.appendChild(btn);
+  function pintarBotones() {
+    compsEl.textContent = '';
+    COMPS.forEach(function (c) {
+      var btn = document.createElement('button');
+      btn.type = 'button';
+      btn.textContent = c.label;
+      btn.dataset.id = c.id;
+      btn.setAttribute('aria-pressed', String(active === c.id && !au.paused));
+      btn.addEventListener('click', function () { choose(c, btn); });
+      compsEl.appendChild(btn);
+    });
+  }
+  pintarBotones();
+
+  function mmss(t) {
+    t = Math.max(0, Math.floor(t || 0));
+    return Math.floor(t / 60) + ':' + ('0' + t % 60).slice(-2);
+  }
+
+  // El manifiesto generado. Si carga, reemplaza el respaldo: botones (sólo los
+  // que llevan boton:true, en su orden), la nota de cada uno, la tabla del
+  // texto y el perfil que dibuja la línea de tiempo.
+  fetch(COMPS_URL).then(function (r) { return r.ok ? r.json() : null; }).then(function (j) {
+    if (!j || !j.composiciones) return;
+    var lista = j.composiciones.filter(function (c) { return c.boton !== false; });
+    if (!lista.length) return;
+    COMPS = lista.map(function (c) {
+      var larga = c.duracion > 90;
+      return {
+        id: c.id, label: c.label, duracion: c.duracion, perfil: c.perfil,
+        nota: c.sesion.hora + ' · ' + c.corte[0] + '–' + c.corte[1] + ' s' +
+              (larga ? ' (' + mmss(c.duracion) + ')' : '') + ' — ' + c.breve,
+        fila: c
+      };
+    });
+    pintarBotones();
+    pintarTabla();
+  }).catch(function () {});
+
+  function pintarTabla() {
+    var t = document.getElementById('tabla-comps');
+    if (!t) return;
+    while (t.rows.length > 1) t.deleteRow(1);
+    var nb = function (x) { return String(x).replace(/ /g, '\u00a0'); };
+    COMPS.forEach(function (c) {
+      var f = c.fila, tr = t.insertRow(-1);
+      var celdas = [
+        c.label,
+        nb(f.sesion.hora + ' · ' + f.corte[0] + '–' + f.corte[1] + ' s') +
+          (c.duracion > 90 ? ' ' + nb('(' + mmss(c.duracion) + ')') : ''),
+        f.nivel_dbfs == null ? '—' : nb(String(f.nivel_dbfs).replace('-', '−') + ' dBFS'),
+        nb(f.centroide),
+        f.hace
+      ];
+      celdas.forEach(function (txt, k) {
+        var td = tr.insertCell(-1);
+        td.textContent = txt;
+        if (k < 4) td.className = 'n';
+      });
+    });
+  }
+
+  // Las cinco en secuencia: al terminar una entra la siguiente, y después de
+  // la última vuelve la primera. El <audio> tenía loop, así que cada pieza se
+  // repetía sola para siempre y la línea de tiempo no tenía programa que
+  // recorrer.
+  au.addEventListener('ended', function () {
+    if (active === BOSQUE.id) return;
+    var i = COMPS.map(function (c) { return c.id; }).indexOf(active);
+    var n = COMPS[(i + 1) % COMPS.length];
+    choose(n, btnFor(n.id));
   });
 
   function clearPressed() {
@@ -1842,6 +1933,179 @@ espectrograma sin saber todavía qué fue eso.</p>
     actx.fill();
   }
   requestAnimationFrame(dibujarAnillo);
+
+  // ── La línea de tiempo de las composiciones ───────────────────────────────
+  // El mismo instrumento que el anillo fenológico, a la derecha del escenario
+  // y sólo mientras hay una sesión del motor elegida.
+  //
+  // Por fuera, el programa: las cinco piezas como arcos proporcionales a lo
+  // que duran —como las temporadas en el año—, la que suena gruesa, las ya
+  // oídas a medio tono, las que vienen tenues, y un punto que recorre las
+  // cinco. Por dentro, la pieza que suena dibujada por sí misma: un trazo
+  // radial cada pocos segundos, largo según su nivel y del color de su brillo
+  // (el centroide, en la misma rampa del espectro de abajo). Lo ya oído va
+  // pleno, lo que el navegador ya bajó a media luz, lo que falta bajar casi
+  // apagado: así la carga se lee en el mismo dibujo, sin un segundo círculo.
+  // Un clic en el anillo de fuera lleva a ese punto del programa; por dentro,
+  // a ese punto de la pieza.
+  var lineaEl  = document.getElementById('linea');
+  var lineaCv  = document.getElementById('lineacv');
+  var lineaPie = document.getElementById('lineapie');
+  var lctx = lineaCv.getContext('2d');
+  var lineaDpr = 0, lineaPieTxt = '';
+
+  function compActiva() {
+    if (!active || active === BOSQUE.id) return null;
+    for (var i = 0; i < COMPS.length; i++) if (COMPS[i].id === active) return { c: COMPS[i], i: i };
+    return null;
+  }
+  function durDe(c) {
+    if (c.id === active && au.duration > 0 && isFinite(au.duration)) return au.duration;
+    return c.duracion || 60;
+  }
+  // 100 Hz – 5 kHz, en escala logarítmica, sobre la rampa del espectro.
+  function colorCentroide(hz) {
+    return rampa(Math.log(Math.max(100, hz || 100) / 100) / Math.log(50));
+  }
+  function cargaAudio() {
+    if (!(au.duration > 0) || !isFinite(au.duration)) return 0;
+    var b = au.buffered, end = 0;
+    for (var i = 0; i < b.length; i++) end = Math.max(end, b.end(i));
+    return Math.min(1, end / au.duration);
+  }
+
+  function dibujarLinea() {
+    requestAnimationFrame(dibujarLinea);
+    var ca = compActiva();
+    if (lineaEl.hidden !== !ca) lineaEl.hidden = !ca;
+    if (!ca) return;
+    var dpr = Math.min(3, window.devicePixelRatio || 1);
+    var lado = Math.round(lineaCv.clientWidth * dpr) || 180;
+    if (lineaDpr !== dpr || lineaCv.width !== lado) {
+      lineaCv.width = lineaCv.height = lado; lineaDpr = dpr;
+    }
+    var c = lado / 2, r = lado / 2 - 7 * dpr, TAU = Math.PI * 2, ARR = -Math.PI / 2;
+    lctx.clearRect(0, 0, lado, lado);
+    lctx.shadowColor = 'rgba(0,0,0,.85)';
+    lctx.shadowBlur = 3 * dpr;
+    lctx.lineCap = 'butt';
+
+    // ── El programa, por fuera ──────────────────────────────────────────────
+    var total = 0, antes = 0;
+    COMPS.forEach(function (x, k) { var d = durDe(x); total += d; if (k < ca.i) antes += d; });
+    var t = au.currentTime || 0, acc = 0, hueco = 0.035;
+    lctx.strokeStyle = 'rgba(255,255,255,.9)';
+    COMPS.forEach(function (x, k) {
+      var d = durDe(x);
+      var a1 = ARR + acc / total * TAU + hueco, a2 = ARR + (acc + d) / total * TAU - hueco;
+      acc += d;
+      if (a2 <= a1) a2 = a1 + 0.01;
+      var esta = k === ca.i;
+      lctx.globalAlpha = esta ? 1 : (k < ca.i ? 0.7 : 0.4);
+      lctx.lineWidth = esta ? 2.5 * dpr : dpr;
+      lctx.beginPath();
+      lctx.arc(c, c, r, a1, a2);
+      lctx.stroke();
+    });
+    lctx.globalAlpha = 1;
+    var ap = ARR + (antes + Math.min(t, durDe(ca.c))) / total * TAU;
+    lctx.fillStyle = 'rgba(255,255,255,.95)';
+    lctx.beginPath();
+    lctx.arc(c + Math.cos(ap) * r, c + Math.sin(ap) * r, 3 * dpr, 0, TAU);
+    lctx.fill();
+
+    // ── La pieza, por dentro ────────────────────────────────────────────────
+    var dur = durDe(ca.c), p = dur ? Math.min(1, t / dur) : 0, carga = cargaAudio();
+    var ri = r - 8 * dpr, largo = lado * 0.085;
+    var perf = ca.c.perfil;
+    if (perf && perf.nivel && perf.nivel.length) {
+      var N = perf.nivel.length, grupo = Math.max(1, Math.ceil(N / 110));
+      lctx.lineWidth = Math.max(1, 1.3 * dpr);
+      lctx.shadowBlur = 0;
+      for (var k = 0; k < N; k += grupo) {
+        var lv = -90, cen = 0;
+        for (var q = k; q < Math.min(N, k + grupo); q++) {
+          if (perf.nivel[q] > lv) { lv = perf.nivel[q]; cen = perf.centroide[q]; }
+        }
+        var f = k / N, a = ARR + f * TAU;
+        var len = Math.max(0.1, Math.min(1, (lv + 48) / 36)) * largo;
+        lctx.globalAlpha = f <= p ? 1 : (f <= carga ? 0.38 : 0.12);
+        lctx.strokeStyle = colorCentroide(cen);
+        lctx.beginPath();
+        lctx.moveTo(c + Math.cos(a) * ri, c + Math.sin(a) * ri);
+        lctx.lineTo(c + Math.cos(a) * (ri - len), c + Math.sin(a) * (ri - len));
+        lctx.stroke();
+      }
+      lctx.shadowBlur = 3 * dpr;
+    } else {
+      // Sin perfil (el json no cargó): un círculo y el avance como arco.
+      lctx.lineWidth = 2 * dpr;
+      lctx.globalAlpha = 0.14;
+      lctx.strokeStyle = '#fff';
+      lctx.beginPath(); lctx.arc(c, c, ri - largo / 2, 0, TAU); lctx.stroke();
+      lctx.globalAlpha = 0.85;
+      lctx.beginPath(); lctx.arc(c, c, ri - largo / 2, ARR, ARR + p * TAU); lctx.stroke();
+    }
+    // El cabezal: una marca blanca que cruza la banda de la pieza.
+    lctx.globalAlpha = 1;
+    lctx.strokeStyle = '#fff';
+    lctx.lineWidth = 1.5 * dpr;
+    var ah = ARR + p * TAU;
+    lctx.beginPath();
+    lctx.moveTo(c + Math.cos(ah) * (ri + 3 * dpr), c + Math.sin(ah) * (ri + 3 * dpr));
+    lctx.lineTo(c + Math.cos(ah) * (ri - largo - 3 * dpr), c + Math.sin(ah) * (ri - largo - 3 * dpr));
+    lctx.stroke();
+
+    // El nombre en el centro y el tiempo debajo; en pausa, las dos barras.
+    var fs = Math.round(lado * 0.085);
+    lctx.font = '600 ' + fs + 'px ui-monospace, SFMono-Regular, Menlo, monospace';
+    lctx.textAlign = 'center';
+    lctx.textBaseline = 'middle';
+    lctx.fillStyle = 'rgba(255,255,255,.92)';
+    lctx.fillText(ca.c.label, c, c - fs * 0.45);
+    lctx.font = Math.round(fs * 0.9) + 'px ui-monospace, SFMono-Regular, Menlo, monospace';
+    lctx.fillStyle = 'rgba(255,255,255,.7)';
+    lctx.fillText((au.paused ? '❚❚ ' : '') + mmss(t), c, c + fs * 0.75);
+
+    var pie = (ca.i + 1) + '/' + COMPS.length + ' · ' + mmss(t) + ' / ' + mmss(dur);
+    if (pie !== lineaPieTxt) {
+      lineaPie.textContent = pie; lineaPieTxt = pie;
+      lineaCv.setAttribute('aria-valuetext', ca.c.label + ', ' + mmss(t) + ' de ' + mmss(dur));
+    }
+  }
+  requestAnimationFrame(dibujarLinea);
+
+  lineaCv.addEventListener('click', function (ev) {
+    var ca = compActiva();
+    if (!ca) return;
+    var rect = lineaCv.getBoundingClientRect();
+    var dx = ev.clientX - rect.left - rect.width / 2, dy = ev.clientY - rect.top - rect.height / 2;
+    var f = ((Math.atan2(dy, dx) + Math.PI / 2) / (Math.PI * 2) + 1) % 1;
+    var rc = rect.width / 2 - 7;
+    if (Math.sqrt(dx * dx + dy * dy) < rc - 5) {             // por dentro: la pieza
+      if (au.duration > 0 && isFinite(au.duration)) au.currentTime = f * au.duration;
+      return;
+    }
+    // Por fuera: el programa. Qué pieza cae ahí y en qué segundo de ella.
+    var total = 0;
+    COMPS.forEach(function (x) { total += durDe(x); });
+    var objetivo = f * total, acc = 0;
+    for (var k = 0; k < COMPS.length; k++) {
+      var d = durDe(COMPS[k]);
+      if (objetivo < acc + d || k === COMPS.length - 1) {
+        var off = Math.max(0, objetivo - acc);
+        if (k === ca.i) { au.currentTime = off; return; }
+        var x = COMPS[k];
+        au.addEventListener('loadedmetadata', function ir() {
+          au.removeEventListener('loadedmetadata', ir);
+          au.currentTime = Math.min(off, Math.max(0, au.duration - 1));
+        });
+        choose(x, btnFor(x.id));
+        return;
+      }
+      acc += d;
+    }
+  });
 
   // No hay Play general: cada botón es su propio play/pausa, y el triángulo o
   // las dos barras salen de su aria-pressed (ver .comps button::before en el

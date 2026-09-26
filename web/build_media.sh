@@ -42,53 +42,21 @@ mkdir -p "$OUT/audio" "$OUT/video"
 # Se normaliza entonces la sonoridad ENTRE pistas y no dentro de ellas: el rango
 # dinámico interno —la subida de centroide de ascenso, el flujo de enjambre— es
 # justo lo que hay que escuchar y queda intacto.
-LOUDNESS_LUFS=-16     # referencia habitual de reproducción web
-TRUE_PEAK_DBTP=-1.5   # margen para que el códec con pérdida no rebase 0 dBFS
-A="$REC/eth_sonification_20260922_111301.wav"
-B="$REC/eth_sonification_20260922_112003.wav"
-C="$REC/eth_sonification_20260926_173107.wav"
-
-# nombre : archivo : inicio(s) : duración(s)
+# Los cortes, los textos y el orden viven en composiciones.json; el trabajo lo
+# hace build_composiciones.py, que además mide cada corte y escribe
+# media/audio/composiciones.json —lo que leen los botones, la tabla y la línea
+# de tiempo del escenario—. Una sesión nueva entra así:
 #
-# cierre reemplaza a meseta en los botones de index.html: 325–385 s es el
-# minuto más denso de la sesión del 26/09 (−30.2 dBFS, centroide 350–655 Hz)
-# y termina disolviéndose 30 dB hasta el silencio — ninguna de las otras
-# cuatro es un final. meseta se sigue construyendo porque indexdots.html
-# todavía la usa.
-AUDIO_SEGMENTS=(
-  "lecho:$A:95:60"
-  "enjambre:$A:160:60"
-  "ascenso:$A:285:60"
-  "meseta:$B:165:60"
-  "retorno:$B:260:60"
-  "cierre:$C:325:60"
-)
-
-for seg in "${AUDIO_SEGMENTS[@]}"; do
-  IFS=: read -r name src ss dur <<< "$seg"
-  dst="$OUT/audio/$name.mp3"
-  if [ -f "$dst" ] && [ $FORCE -eq 0 ]; then echo "  = $name.mp3"; continue; fi
-  [ -f "$src" ] || { echo "⚠  falta $(basename "$src") — omito $name"; continue; }
-  # -ac 2 baja la mezcla cuadrafónica a estéreo; el modo espacial de 4 canales
-  # no sobrevive a un navegador de todos modos.
-  #
-  # loudnorm en dos pasadas. En una sola pasada el filtro va adivinando la
-  # ganancia sobre la marcha y el primer par de segundos queda mal nivelado —
-  # que en un fragmento de 60 s es justo la entrada. La primera pasada mide, la
-  # segunda aplica las cifras medidas.
-  # -hide_banner y NO -v error: loudnorm imprime su JSON a nivel info, así que
-  # bajar el log a error lo silencia y la medición sale vacía. Con `set -e` eso
-  # además mata el script sin decir nada, que es exactamente lo que pasó.
-  meas=$(ffmpeg -hide_banner -ss "$ss" -t "$dur" -i "$src" -ac 2 \
-      -af "loudnorm=I=${LOUDNESS_LUFS}:TP=${TRUE_PEAK_DBTP}:LRA=11:print_format=json" \
-      -f null /dev/null 2>&1 | tr -d '\n\t ' | grep -o '{"input_i".*}' || true)
-  if [ -z "$meas" ]; then echo "⚠  no pude medir $name — lo omito"; continue; fi
-  get() { echo "$meas" | grep -o "\"$1\":\"[^\"]*\"" | cut -d'"' -f4; }
-  ffmpeg -v error -ss "$ss" -t "$dur" -i "$src" -ac 2 \
-    -af "loudnorm=I=${LOUDNESS_LUFS}:TP=${TRUE_PEAK_DBTP}:LRA=11:measured_I=$(get input_i):measured_TP=$(get input_tp):measured_LRA=$(get input_lra):measured_thresh=$(get input_thresh):offset=$(get target_offset):linear=true" \
-    -ar 48000 -c:a libmp3lame -b:a 128k -y "$dst"
-  echo "  + $name.mp3  ($(du -h "$dst" | cut -f1))"
-done
+#   ./build_composiciones.py --proponer ../recordings/eth_sonification_….wav
+#   (pegar la entrada propuesta en composiciones.json, con su texto)
+#   ./build_media.sh
+#
+# Desde los cortes de cuatro y cinco minutos ya no es loudnorm lineal: en un
+# corte largo loudnorm cae a su modo dinámico y comprime el arco. Es una
+# ganancia fija por pieza y un limitador sólo para los picos (ver el script).
+command -v python3 >/dev/null || { echo "❌ falta python3"; exit 1; }
+if [ $FORCE -eq 1 ]; then python3 "$HERE/build_composiciones.py" --force
+else python3 "$HERE/build_composiciones.py"; fi
 
 # ── Video ───────────────────────────────────────────────────────────────────
 # Seleccionados mirando los 56 clips uno por uno. Dos quedaron fuera a
