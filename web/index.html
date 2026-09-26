@@ -146,6 +146,10 @@
     margin:2.2em 0 .9em; padding-bottom:.5em; border-bottom:1px solid #262626; }
   .text a { color:#fff; }
   .text strong { color:#fff; }
+  /* Muestra de color de una temporada en la leyenda del anillo: la misma
+     barra que su arco, para que el texto y el anillo se lean juntos. */
+  .est { display:inline-block; width:1.1em; height:.32em; border-radius:1px;
+    background:var(--c); vertical-align:middle; margin:0 .35em 0 .1em; }
 
   table { width:100%; border-collapse:collapse; margin:0 0 1.4em;
     font:12px/1.5 ui-monospace, SFMono-Regular, Menlo, monospace; }
@@ -476,6 +480,17 @@ estación seca de enero de 2025 y del medio seco de julio y agosto de 2024.</p>
 escena, y el espectro vivo la lee mientras suena. El espectrograma se dibujó
 desde la grabación original, que llega hasta el ultrasonido; lo que se oye es
 sólo la banda audible, así que buena parte de lo que se ve no se oye.</p>
+
+<p><strong>El anillo</strong> que acompaña al pie de cada pieza es el año de la
+reserva: empieza en enero, arriba, y gira como un reloj. Sus colores son las
+cuatro temporadas del bosque seco —<span class="est" style="--c:#f2b441"></span>la
+seca, de diciembre a marzo; <span class="est" style="--c:#5fb8a6"></span>las primeras
+lluvias, abril y mayo; <span class="est" style="--c:#e8894a"></span>el medio seco o
+veranillo, de junio a agosto; <span class="est" style="--c:#5a9fd6"></span>las segundas
+lluvias, de septiembre a noviembre—. La temporada de la pieza se ve más gruesa
+y su nombre está en el centro; la marca que cruza el anillo es el día en que se
+grabó, el punto recorre su duración, el triángulo de afuera es el día de hoy y
+el círculo blanco de adentro se llena mientras la pieza carga.</p>
 
 </div>
 
@@ -1658,16 +1673,35 @@ espectrograma sin saber todavía qué fue eso.</p>
 
 
   // ── El anillo fenológico ──────────────────────────────────────────────────
-  // El año como un círculo, el 1 de enero arriba y en el sentido del reloj.
-  // Cuatro marcas cortas por fuera donde
-  // cambian las temporadas —las del Artículo 42, las mismas que usan
-  // build_corpus.py y build_archivo.py—, una marca que cruza el trazo en la
-  // fecha de la pieza, y un punto que sale de esa fecha y da UNA vuelta en lo
-  // que dura el archivo: la vuelta completa es el clip entero. Las capturas
-  // que se repiten en bucle dan una vuelta por pasada.
+  // El año de la reserva como un círculo, el 1 de enero arriba y en el
+  // sentido del reloj, pintado con sus cuatro temporadas —las del Artículo 42,
+  // las mismas que usan el motor, build_corpus.py y build_archivo.py—:
+  // cálidos para la sequía, fríos para las lluvias. La temporada de la pieza
+  // va gruesa y a pleno color, su nombre en el centro; las otras, finas y
+  // apagadas, para que se lea dónde cae la pieza en el año del bosque.
+  //
+  // Sobre eso: una marca que cruza el trazo en la fecha de la pieza, un punto
+  // que sale de esa fecha y da UNA vuelta en lo que dura el archivo (la vuelta
+  // completa es el clip entero; las capturas en bucle dan una por pasada), un
+  // triángulo por fuera en el día de HOY —dónde está el bosque mientras se
+  // mira—, y por dentro el círculo blanco de la carga.
+  //
+  // La leyenda para quien visita está en la sección «Archivo» del texto.
   var anilloEl = document.getElementById('anillo');
   var actx = anilloEl.getContext('2d');
-  var TEMPORADAS = [91, 152, 244, 335];   // primeras lluvias, medio seco, segundas lluvias, seca
+  var ESTACIONES = [
+    { desde: 335, hasta: 90,  color: '#f2b441', nombre: ['seca'] },            // dic–mar
+    { desde: 91,  hasta: 151, color: '#5fb8a6', nombre: ['1as', 'lluvias'] },  // abr–may
+    { desde: 152, hasta: 243, color: '#e8894a', nombre: ['medio', 'seco'] },   // jun–ago (veranillo)
+    { desde: 244, hasta: 334, color: '#5a9fd6', nombre: ['2as', 'lluvias'] },  // sep–nov
+  ];
+  function estacionDe(doy) {
+    for (var i = 0; i < ESTACIONES.length; i++) {
+      var e = ESTACIONES[i];
+      if (e.desde <= e.hasta ? (doy >= e.desde && doy <= e.hasta) : (doy >= e.desde || doy <= e.hasta)) return e;
+    }
+    return null;
+  }
 
   function doyDe(fecha) {
     var m = /^(\d{4})-(\d{2})-(\d{2})/.exec(fecha || '');
@@ -1715,25 +1749,63 @@ espectrograma sin saber todavía qué fue eso.</p>
     actx.strokeStyle = actx.fillStyle = 'rgba(255,255,255,.85)';
     actx.lineWidth = dpr;
 
-    actx.beginPath();
-    actx.arc(c, c, r, 0, Math.PI * 2);
-    actx.stroke();
+    var doy = doyDe(enEscena.fecha);
+    var suya = doy ? estacionDe(doy) : null;
 
-    TEMPORADAS.forEach(function (d) {
-      var a = anguloDe(d);
+    // El año en cuatro arcos. Un respiro de ~1.5° entre temporadas marca el
+    // cambio sin necesidad de ticks. La de la pieza, gruesa y plena.
+    var hueco = 0.013;
+    ESTACIONES.forEach(function (e) {
+      var a1 = anguloDe(e.desde) + hueco;
+      var a2 = anguloDe(e.hasta + 1) - hueco;
+      if (a2 < a1) a2 += Math.PI * 2;                 // la seca cruza el 1 de enero
+      var esta = e === suya;
+      actx.globalAlpha = esta ? 1 : 0.6;
+      actx.lineWidth = esta ? 2.5 * dpr : dpr;
+      actx.strokeStyle = e.color;
       actx.beginPath();
-      actx.moveTo(c + Math.cos(a) * r, c + Math.sin(a) * r);
-      actx.lineTo(c + Math.cos(a) * (r + 4 * dpr), c + Math.sin(a) * (r + 4 * dpr));
+      actx.arc(c, c, r, a1, a2);
       actx.stroke();
     });
+    actx.globalAlpha = 1;
+    actx.lineWidth = dpr;
+    actx.strokeStyle = actx.fillStyle = 'rgba(255,255,255,.85)';
 
-    var doy = doyDe(enEscena.fecha);
+    // Hoy: un triángulo pequeño por fuera, apuntando al anillo.
+    var hoy = new Date();
+    var dh = doyDe(hoy.getFullYear() + '-' + ('0' + (hoy.getMonth() + 1)).slice(-2) + '-' + ('0' + hoy.getDate()).slice(-2));
+    if (dh) {
+      var ah = anguloDe(dh), ux = Math.cos(ah), uy = Math.sin(ah), s = 3.2 * dpr;
+      var bx = c + ux * (r + 4 * dpr), by = c + uy * (r + 4 * dpr);
+      actx.beginPath();
+      actx.moveTo(bx, by);
+      actx.lineTo(bx + ux * 2 * s - uy * s, by + uy * 2 * s + ux * s);
+      actx.lineTo(bx + ux * 2 * s + uy * s, by + uy * 2 * s - ux * s);
+      actx.closePath();
+      actx.fill();
+    }
+
+    // La fecha de la pieza: una marca que cruza el trazo.
     var a0 = doy ? anguloDe(doy) : -Math.PI / 2;
     if (doy) {
       actx.beginPath();
       actx.moveTo(c + Math.cos(a0) * (r - 5 * dpr), c + Math.sin(a0) * (r - 5 * dpr));
       actx.lineTo(c + Math.cos(a0) * (r + 5 * dpr), c + Math.sin(a0) * (r + 5 * dpr));
       actx.stroke();
+    }
+
+    // El nombre de la temporada en el centro, en su color.
+    if (suya) {
+      var fs = Math.round(lado * 0.1);
+      actx.font = '600 ' + fs + 'px ui-monospace, SFMono-Regular, Menlo, monospace';
+      actx.textAlign = 'center';
+      actx.textBaseline = 'middle';
+      actx.fillStyle = suya.color;
+      var n = suya.nombre.length;
+      suya.nombre.forEach(function (linea, i) {
+        actx.fillText(linea, c, c + (i - (n - 1) / 2) * fs * 1.15);
+      });
+      actx.fillStyle = 'rgba(255,255,255,.85)';
     }
 
     // ── La carga, por dentro ────────────────────────────────────────────────
