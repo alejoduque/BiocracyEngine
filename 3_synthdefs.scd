@@ -142,7 +142,9 @@ s.doWhenBooted({
     // PADS / BELLS — 0.65 -> 1.30 -> 0.95 -> 0.60. Reported too loud with
     // Audio Gain and Volume Out at 1.0, which is ~9 dB hotter than the 0.35
     // masterVolume every earlier calibration in this series was made against.
-    ~trimPad   = 0.60 * ~trimMaster;
+    // 0.60 -> 0.45 with the pad's band cut and sidechained (\biocratiaPad,
+    // "Making room"): it was sitting on top of every other layer.
+    ~trimPad   = 0.45 * ~trimMaster;
     ~trimKick  = 0.75 * ~trimMaster;   // KICK — pulled back from 1.10, still 6.6 dB over its old level
     // PERCUSSION — china/trash cymbal. Cut from 0.08 because the voice moved
     // its energy from under 850 Hz up into 5-13 kHz, which is the ear's most
@@ -1311,7 +1313,10 @@ s.doWhenBooted({
             // spawn so it reaches voices that are ALREADY SOUNDING — a pad
             // voice lives 43-94 s and a spawn-time pitch made the control look
             // broken for a minute and a half.
-            padPitchBus=(-1);
+            padPitchBus=(-1),
+            // The sidechain, from ~padDuckBus (5_beat_engine): 0 = nothing
+            // else speaking, 1 = a strike, a sample or the corpus is.
+            duckBus=(-1);
 
         var masterVol  = Lag.kr(Select.kr(masterVolBus >= 0, [0.28, In.kr(masterVolBus, 1)]), 0.08);
         var pShift     = Select.kr(pitchBus      >= 0, [0.0,  In.kr(pitchBus, 1)]);
@@ -1443,6 +1448,28 @@ s.doWhenBooted({
         sig = HPF.ar(sig, 28);
         sig = Compander.ar(sig, sig, 0.28, 1.0, 0.30, 0.012, 0.32);
         sig = LeakDC.ar(sig);
+
+        // ── Making room ───────────────────────────────────────────────────
+        // What a mixing engineer would do to a pad that swallows the mix,
+        // done inside the voice so it holds at every preset.
+        //
+        // 1. A static cut where the voice's signature lives: the two formant
+        //    bands of vocalSim (780 Hz, ~1.1-1.5 kHz) and the saturated saw
+        //    harmonics over them. -4 dB, wide. This is the band that masked
+        //    the bowl, the china and the corpus even when nothing moved.
+        // 2. A sidechain that splits the pad at 250 Hz. The low band — the
+        //    warmth under everything — ducks only 3 dB; the band above it
+        //    ducks up to 12 dB whenever the family, a sample or the corpus
+        //    is speaking. Fast in (40 ms), slow out (1.4 s), so it breathes
+        //    back after each strike instead of pumping.
+        // 3. The trim, 0.60 -> 0.45 (-2.5 dB): with the band cleared it no
+        //    longer needs the level to be heard.
+        sig = BPeakEQ.ar(sig, 1100, 1.4, -4.0);
+        sig = {
+            var duck = LagUD.kr(Select.kr(duckBus >= 0, [0.0, In.kr(duckBus, 1)]).clip(0, 1), 0.04, 1.4);
+            var low  = LPF.ar(LPF.ar(sig, 250), 250);
+            (low * (1 - (duck * 0.29))) + ((sig - low) * (1 - (duck * 0.75)));
+        }.value;
 
         // Level: masterVol × ~trimPad × mixPadBus (same chain as elektronBell)
         sig = sig * amp * masterVol * env * ~trimPad

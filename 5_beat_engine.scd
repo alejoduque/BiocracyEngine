@@ -557,6 +557,16 @@
 // to something other than itself.
 ~droneStrikeBus = ~droneStrikeBus ?? { Bus.control(s, 1).set(0) };
 
+// The PAD's sidechain: how much else is speaking right now, 0-1. The pad bed
+// was the one continuous voice with nothing telling it to make room, and its
+// band — saws, pulses and two formants near 780 Hz and 1.1 kHz, saturated and
+// compressed — is the same band the strikes, the dust, the samples and the
+// corpus occupy. So it sat on top of all of them at a constant density and
+// read as the whole mix. Written every tick below from the percussion and
+// kick excitation and from whether a sample or a corpus voice is sounding;
+// \biocratiaPad ducks its mid/high band against it.
+~padDuckBus = ~padDuckBus ?? { Bus.control(s, 1).set(0) };
+
 // ─── Autonomous Warm Pad Bed ─────────────────────────────────────────────────
 // Keeps 1–2 \biocratiaPad voices alive at all times, completely independent of
 // Ethereum transaction rate. Modelled on ~droneEnsemble: voices have long,
@@ -662,7 +672,8 @@
                         \pan,    1.0.rand2 * 0.65,
                         // Not in ~voiceBusArgs: that list goes to every voice and
                         // only this SynthDef declares the control.
-                        \padPitchBus, (~bidx.value(\padPitch) ? -1)
+                        \padPitchBus, (~bidx.value(\padPitch) ? -1),
+                        \duckBus, (~padDuckBus !? { |b| b.index } ? -1)
                     ] ++ (~voiceBusArgs.value ? []), targetGrp);
                     ~padVoices = (~padVoices ? []).add(syn);
                     ~padVoiceAmp[syn] = (0.22 / (1 + (rt * 0.45)))
@@ -1223,6 +1234,16 @@
             // strikes brightens and swells the drone instead of sounding on top
             // of an indifferent one.
             if(~droneStrikeBus.notNil) { ~droneStrikeBus.set(~percExcite) };
+            if(~padDuckBus.notNil) {
+                ~padDuckBus.set([
+                    (~percExcite ? 0).clip(0, 1),
+                    (~kickExcite ? 0).clip(0, 1),
+                    // Samples and corpus are long voices, not strikes: while
+                    // one sounds the pad stays partly out of the way.
+                    if((~activeSampleSynths ? []).size > 0, 0.55, 0),
+                    if((~corpusVoices ? []).any { |v| v[\retired] != true }, 0.5, 0)
+                ].maxItem);
+            };
             // Self-excite coefficient reduced 1.9 → 1.2 so PERC no longer
             // monopolises when PAD, KICK and DUST are absent or sparse.
             // Base rate 0.9 → 0.65 reduces the raw density at the crest.
