@@ -1,5 +1,9 @@
 {
-  "meta": { "engine": "BiocracyEngine", "version": 1, "saved": "2026-09-02 22:48:58" },
+  "meta": {
+    "engine": "BiocracyEngine",
+    "version": 1,
+    "saved": "2026-09-02 22:48:58"
+  },
   "params": {
     "absenceWeight": 0.3,
     "activityThreshold": 0.5,
@@ -10,6 +14,8 @@
     "bowlOn": 0.0,
     "camaraOpacity": 0.69,
     "chainProcess": 0.5,
+    "chamberMix": 0.18,
+    "chamberSize": 0.45,
     "chinaOn": 1.0,
     "corpusLevel": 0.43,
     "delayFeedback": 0.7015,
@@ -40,6 +46,8 @@
     "noiseLevel": 0.44,
     "opacityFloor": 0.05,
     "padEvery": 9.1599805356304,
+    "padMotion": 1.0,
+    "padPitch": 0.6,
     "padVoices": 3.129999935627,
     "percRate": 1.3147517017439,
     "phenoRate": 0.0167,
@@ -56,6 +64,8 @@
     "tideShort": 0.0,
     "timeDilation": 4.1330826421246,
     "transactionInfluence": 0.61,
+    "vizConsensus": 0.5,
+    "vizRotation": 1.0,
     "windowWidth": 1.0
   },
   "sample": {
