@@ -86,20 +86,26 @@
      es su propio play, y debajo de cada segmento un pie dice de dónde viene
      ese sonido y qué le hace al escenario — sin eso, «bosque» se leía como una
      sexta pista del motor. */
-  .fuentes { display:flex; justify-content:space-between; align-items:flex-start;
-    gap:18px 28px; flex-wrap:wrap; }
-  .fuente { min-width:0; }
-  .fuente-bosque { flex:0 1 380px; }
-  .fuente-motor { flex:0 1 560px; display:flex; flex-direction:column; align-items:flex-end;
-    text-align:right; }
+  /* Una rejilla de tres columnas: bosque, volumen, motor. Las dos .fuente son
+     display:contents, así que sus botones y sus pies se colocan directamente
+     en la rejilla — botones en la fila de arriba, pies debajo — y el volumen
+     queda en el centro, a la altura de los botones, justo bajo el escenario.
+     El teléfono reordena la misma rejilla (ver @media abajo). */
+  .fuentes { display:grid; grid-template-columns:minmax(0, 1fr) auto minmax(0, 1fr);
+    grid-template-areas:"b v m" "bp . mp"; column-gap:28px; align-items:center; }
+  .fuente { display:contents; }
+  .fuente-bosque .botones { grid-area:b; justify-self:start; }
+  .fuente-bosque .fuente-pie { grid-area:bp; justify-self:start; align-self:start; }
+  .fuente-motor .comps { grid-area:m; justify-self:end; }
+  .fuente-motor .fuente-pie { grid-area:mp; justify-self:end; align-self:start; text-align:right; }
   .fuente-pie { margin:8px 0 0; max-width:52ch; font-size:12px; line-height:1.5;
     color:#9a9a9a; }
   .fuente-pie strong { color:#d8d8d8; font-weight:500; }
   .botones { display:flex; }
-  .comps { display:flex; flex-wrap:wrap; gap:6px; justify-content:flex-end; }
+  .comps { display:flex; flex-wrap:wrap; gap:5px; justify-content:flex-end; }
   .comps button, .bosque {
     background:#000; color:#fff; border:1px solid rgba(255,255,255,.5);
-    padding:7px 13px; cursor:pointer; font:inherit; font-size:13px;
+    padding:5px 10px; cursor:pointer; font:inherit; font-size:12px;
     border-radius:3px; letter-spacing:.04em; white-space:nowrap;
   }
   .comps button:hover, .bosque:hover { background:#222; }
@@ -120,9 +126,9 @@
 
   /* Control de volumen: a -16 LUFS las composiciones ya se oyen, pero esto se
      escucha con auriculares tanto como en un altavoz de portátil. */
-  .vol { display:flex; align-items:center; gap:9px; margin-top:12px;
+  .vol { grid-area:v; display:flex; align-items:center; gap:9px; margin:0;
     font-size:11px; letter-spacing:.1em; color:#8a8a8a; }
-  .vol input { width:170px; accent-color:#fff; }
+  .vol input { width:150px; min-width:0; accent-color:#fff; }
 
   /* ── Tiras de video ───────────────────────────────────────────────────── */
   .strip { display:flex; flex-wrap:wrap; gap:var(--gap); padding:var(--gap); }
@@ -311,14 +317,31 @@
     .scope { padding:0 var(--gap) 4px; }
     .escena { bottom:112px; font-size:11px; gap:6px; }
     #anillo { width:78px; height:78px; }
-    /* Pistas más chicas en el teléfono: cinco botones a tamaño de escritorio
-       más el de Play/Pause no entran limpio en el ancho y se amontonan. */
-    .comps { gap:5px; }
-    .comps button, .bosque { padding:6px 10px; font-size:12px; }
-    /* En el teléfono los dos segmentos se apilan, y los dos a la izquierda:
-       uno a cada lado sólo se lee como par cuando comparten la fila. */
-    .fuente-motor { align-items:flex-start; text-align:left; }
-    .comps { justify-content:flex-start; }
+    /* En el teléfono la misma rejilla se reordena: arriba «bosque» y el
+       volumen, que se estira hasta el borde; el pie del bosque; las cinco
+       sesiones en UNA fila de cinco columnas iguales —a tamaño libre se
+       partían en dos filas desparejas—; y su pie. Todo a la izquierda: uno a
+       cada lado sólo se lee como par cuando comparten la fila. */
+    .fuentes { grid-template-columns:auto minmax(0, 1fr);
+      grid-template-areas:"b v" "bp bp" "m m" "mp mp"; column-gap:14px; }
+    .vol { justify-self:stretch; }
+    .vol input { flex:1 1 auto; width:auto; }
+    .fuente-motor .comps { justify-self:stretch; display:grid; margin-top:14px;
+      grid-template-columns:repeat(5, minmax(0, 1fr)); gap:4px; }
+    .fuente-motor .fuente-pie { justify-self:start; text-align:left; }
+    .comps button, .bosque { padding:5px 8px; font-size:11px; letter-spacing:.02em; }
+    .comps button { padding:5px 2px; text-align:center; overflow:hidden; text-overflow:ellipsis; }
+    /* La tabla de las cinco composiciones mide ~500 px —cinco columnas, dos
+       sin cortar— y en el teléfono empujaba TODA la página a desplazarse de
+       lado. Que se desplace ella, dentro de su caja. */
+    table { display:block; overflow-x:auto; -webkit-overflow-scrolling:touch; }
+  }
+  /* Teléfonos angostos (360 px): «enjambre» dejaba de caber en su quinto de
+     fila. Un punto menos de letra y sin el espacio tras el triángulo. */
+  @media (max-width: 380px) {
+    .comps button { font-size:10.5px; letter-spacing:0; }
+    .comps button::before { content:"\25B6\FE0E"; margin-right:2px; }
+    .comps button[aria-pressed="true"]::before { content:"\275A\275A"; margin-right:2px; }
   }
 </style>
 </head>
@@ -358,6 +381,9 @@
       CAM_02 y las grabadoras AudioMoth de la Reserva Manakai: suena la pieza que
       está en escena, con su propio audio, y el espectro la lee.</p>
     </div>
+    <label class="vol">VOLUMEN
+      <input id="vol" type="range" min="0" max="100" value="85" aria-label="volumen">
+    </label>
     <div class="fuente fuente-motor">
       <div class="comps" id="comps"></div>
       <p class="fuente-pie"><strong>Sesiones del motor BiocracyEngine</strong> · la
@@ -366,9 +392,6 @@
     </div>
   </div>
   <p class="nowplaying" id="now">Elige una fuente para oírla.</p>
-  <label class="vol">VOLUMEN
-    <input id="vol" type="range" min="0" max="100" value="85" aria-label="volumen">
-  </label>
 </div>
 
 <div class="text">
