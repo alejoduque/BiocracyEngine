@@ -81,41 +81,42 @@
   /* ── Transporte ───────────────────────────────────────────────────────── */
   .transport { padding:14px var(--gap) 16px; border-bottom:1px solid #1c1c1c;
     background:#070707; }
-  .transport .lede { margin:0 0 10px; font-size:12px; letter-spacing:.14em;
-    text-transform:uppercase; color:#8a8a8a; }
-  /* Debajo del video y arriba de las cinco pistas, centrado: es el control
-     principal, no uno más de la fila de composiciones. */
-  .toggle-row { display:flex; justify-content:center; margin:0 0 14px; }
-  .comps { display:flex; flex-wrap:wrap; gap:7px; }
-  .comps button {
+  /* Dos fuentes, dos segmentos en la misma fila: el bosque a la izquierda, las
+     cinco sesiones del motor a la derecha. No hay un Play general: cada botón
+     es su propio play, y debajo de cada segmento un pie dice de dónde viene
+     ese sonido y qué le hace al escenario — sin eso, «bosque» se leía como una
+     sexta pista del motor. */
+  .fuentes { display:flex; justify-content:space-between; align-items:flex-start;
+    gap:18px 28px; flex-wrap:wrap; }
+  .fuente { min-width:0; }
+  .fuente-bosque { flex:0 1 380px; }
+  .fuente-motor { flex:0 1 560px; display:flex; flex-direction:column; align-items:flex-end;
+    text-align:right; }
+  .fuente-pie { margin:8px 0 0; max-width:52ch; font-size:12px; line-height:1.5;
+    color:#9a9a9a; }
+  .fuente-pie strong { color:#d8d8d8; font-weight:500; }
+  .botones { display:flex; }
+  .comps { display:flex; flex-wrap:wrap; gap:6px; justify-content:flex-end; }
+  .comps button, .bosque {
     background:#000; color:#fff; border:1px solid rgba(255,255,255,.5);
-    padding:11px 19px; cursor:pointer; font:inherit; font-size:15px;
-    border-radius:3px; letter-spacing:.04em;
+    padding:7px 13px; cursor:pointer; font:inherit; font-size:13px;
+    border-radius:3px; letter-spacing:.04em; white-space:nowrap;
   }
-  .comps button:hover { background:#222; }
+  .comps button:hover, .bosque:hover { background:#222; }
+  /* El triángulo de play en cada botón, y dos barras cuando suena. Sale del
+     aria-pressed del propio botón, que es el que ya dice qué está sonando: el
+     ícono no puede quedar desfasado del sonido. \FE0E pide el glifo de texto
+     y no el emoji, que en iOS es un botón azul. */
+  .comps button::before, .bosque::before { content:"\25B6\FE0E\00a0"; font-size:.8em; }
+  .comps button[aria-pressed="true"]::before,
+  .bosque[aria-pressed="true"]::before { content:"\275A\275A\00a0"; }
   /* Un control accionado se invierte a negro sobre blanco — la misma regla de
      1 bit que gobierna la GUI de SuperCollider del motor. */
-  .comps button[aria-pressed="true"] { background:#fff; color:#000; }
-  /* «bosque» no es una sexta composición: es el sonido del propio escenario.
-     Va en su propia fila, centrado bajo Play y encima de las cinco, con el
-     borde punteado: otra fuente, no otra pista. */
-  .bosque { background:#000; color:#fff; border:1px dashed rgba(255,255,255,.5);
-    padding:11px 19px; cursor:pointer; font:inherit; font-size:15px;
-    border-radius:3px; letter-spacing:.04em; }
-  .bosque:hover { background:#222; }
-  .bosque[aria-pressed="true"] { background:#fff; color:#000; border-style:solid; }
-
-  /* Pausar/escuchar general, al otro lado de las cinco: no elige una
-     composición, alterna la que ya está sonando. En «escuchando» baja a un
-     tono más opaco a propósito — deja de invitar al clic porque ya no hace
-     falta pulsarlo, sólo informa de que el motor sigue activo. */
-  .toggle { background:#000; color:#fff; border:1px solid rgba(255,255,255,.5);
-    padding:11px 19px; cursor:pointer; font:inherit; font-size:15px;
-    border-radius:3px; letter-spacing:.04em; white-space:nowrap;
-    transition:opacity .2s, background .2s; }
-  .toggle:hover { background:#222; }
-  .toggle[aria-pressed="true"] { opacity:.5; }
-  .nowplaying { margin:11px 0 0; font-size:13px; color:#b4b4b4; min-height:1.4em; }
+  .comps button[aria-pressed="true"], .bosque[aria-pressed="true"] { background:#fff; color:#000; }
+  /* «bosque» con el borde punteado: otra fuente, no otra pista. */
+  .bosque { border-style:dashed; }
+  .bosque[aria-pressed="true"] { border-style:solid; }
+  .nowplaying { margin:12px 0 0; font-size:13px; color:#b4b4b4; min-height:1.4em; }
 
   /* Control de volumen: a -16 LUFS las composiciones ya se oyen, pero esto se
      escucha con auriculares tanto como en un altavoz de portátil. */
@@ -313,7 +314,11 @@
     /* Pistas más chicas en el teléfono: cinco botones a tamaño de escritorio
        más el de Play/Pause no entran limpio en el ancho y se amontonan. */
     .comps { gap:5px; }
-    .comps button, .toggle, .bosque { padding:8px 13px; font-size:13px; }
+    .comps button, .bosque { padding:6px 10px; font-size:12px; }
+    /* En el teléfono los dos segmentos se apilan, y los dos a la izquierda:
+       uno a cada lado sólo se lee como par cuando comparten la fila. */
+    .fuente-motor { align-items:flex-start; text-align:left; }
+    .comps { justify-content:flex-start; }
   }
 </style>
 </head>
@@ -344,15 +349,23 @@
 </section>
 
 <div class="transport">
-  <div class="toggle-row">
-    <button id="toggle" class="toggle" type="button" aria-pressed="false">▶ Play</button>
+  <div class="fuentes">
+    <div class="fuente fuente-bosque">
+      <div class="botones">
+        <button id="bosque" class="bosque" type="button" aria-pressed="false" data-id="bosque">bosque</button>
+      </div>
+      <p class="fuente-pie"><strong>Bosque</strong> · sonido de campo. La cámara trampa
+      CAM_02 y las grabadoras AudioMoth de la Reserva Manakai: suena la pieza que
+      está en escena, con su propio audio, y el espectro la lee.</p>
+    </div>
+    <div class="fuente fuente-motor">
+      <div class="comps" id="comps"></div>
+      <p class="fuente-pie"><strong>Sesiones del motor BiocracyEngine</strong> · la
+      cadena de bloques sonificada, grabada en vivo. Su sonido deforma la imagen
+      del escenario.</p>
+    </div>
   </div>
-  <div class="toggle-row">
-    <button id="bosque" class="bosque" type="button" aria-pressed="false" data-id="bosque">bosque</button>
-  </div>
-  <p class="lede">Sesiones del motor BiocracyEngine</p>
-  <div class="comps" id="comps"></div>
-  <p class="nowplaying" id="now">Elige una para oírla.</p>
+  <p class="nowplaying" id="now">Elige una fuente para oírla.</p>
   <label class="vol">VOLUMEN
     <input id="vol" type="range" min="0" max="100" value="85" aria-label="volumen">
   </label>
@@ -746,7 +759,6 @@ espectrograma sin saber todavía qué fue eso.</p>
   var fftCv   = document.getElementById('fft');
   var au      = document.getElementById('au');
   var compsEl = document.getElementById('comps');
-  var toggleBtn = document.getElementById('toggle');
   var nowEl   = document.getElementById('now');
   var volEl   = document.getElementById('vol');
   var scopeLbl= document.getElementById('scopelbl');
@@ -1096,12 +1108,36 @@ espectrograma sin saber todavía qué fue eso.</p>
   // piezas nuevas en vez de volver a empezar por los cuatro fijos —que es lo
   // que pasaba si el cursor ya había dado la vuelta sobre una lista de dos.
   function siguiente() {
-    if (!registros[turno].length) turno = otro(turno);
-    var lista = registros[turno];
-    var it = lista[cursor[turno] % lista.length];
-    cursor[turno]++;
-    turno = otro(turno);
+    // Con «bosque» sonando, las piezas mudas (los cuatro clips fijos) se
+    // saltan: si no, cada vuelta abriría con hasta 26 s de silencio. Sólo si
+    // existe al menos una que suena — sin archivo, el turno sigue como antes.
+    var saltarMudas = bosqueOn && hayConSonido();
+    for (var n = 0; n < 256; n++) {
+      if (!registros[turno].length) turno = otro(turno);
+      var lista = registros[turno];
+      var it = lista[cursor[turno] % lista.length];
+      cursor[turno]++;
+      turno = otro(turno);
+      if (!saltarMudas || it.sonido) return it;
+    }
     return it;
+  }
+
+  function hayConSonido() {
+    return registros.camara.concat(registros.micro).some(function (it) { return it.sonido; });
+  }
+
+  // La próxima pieza que suena en el orden del turno, sin avanzar el turno.
+  function proximaConSonido() {
+    var orden = [turno, otro(turno)];
+    for (var k = 0; k < 2; k++) {
+      var r = orden[k], lista = registros[r];
+      for (var i = 0; i < lista.length; i++) {
+        var it = lista[(cursor[r] + i) % lista.length];
+        if (it && it.sonido) return it;
+      }
+    }
+    return null;
   }
 
   // Los dos clips que vienen, en orden. Ocupan las dos fuentes que no se ven.
@@ -1109,6 +1145,10 @@ espectrograma sin saber todavía qué fue eso.</p>
   var gen = 0, holdTimer = 0, fundiendo = false, saltoPendiente = null;
   var enEscena = null;
   var bosqueOn = false;   // ¿suena el escenario? (ver Transporte)
+  // La fuente que está cargando lo que entra a escena, mientras se espera que
+  // tenga cuadro: el anillo muestra su carga ANTES de que aparezca, que es
+  // justo la espera que se nota.
+  var entrando = null;
 
   function ahora() { return (window.performance || Date).now(); }
 
@@ -1199,6 +1239,7 @@ espectrograma sin saber todavía qué fue eso.</p>
   function avanzar() {
     if (fundiendo) return;
     var g = gen, j = preparar(), it = slots[j].item;
+    entrando = slots[j];
     slots[j].ready.then(function () {
       if (g === gen && !fundiendo) cruzar(j);
     }, function () {
@@ -1207,6 +1248,7 @@ espectrograma sin saber todavía qué fue eso.</p>
       var i = cola.indexOf(it);
       if (i >= 0) cola.splice(i, 1);
       slots[j].item = null;
+      entrando = null;
       holdTimer = setTimeout(avanzar, 1000);
     });
   }
@@ -1216,6 +1258,7 @@ espectrograma sin saber todavía qué fue eso.</p>
   // disparó, no desde donde la dejó la vuelta anterior.
   function cruzar(j) {
     fundiendo = true; nxt = j;
+    entrando = null;
     var v = slots[j].v;
     try { v.currentTime = 0; } catch (e) {}
     v.muted = !bosqueOn;
@@ -1255,10 +1298,11 @@ espectrograma sin saber todavía qué fue eso.</p>
     turno = otro(r);
     cola = [item];
     var g = gen, j = preparar();
+    entrando = slots[j];
     slots[j].ready.then(function () {
       if (g === gen && !fundiendo) cruzar(j);
     }, function () {
-      if (g === gen) { cola = []; sostener(); }
+      if (g === gen) { cola = []; entrando = null; sostener(); }
     });
   }
 
@@ -1535,14 +1579,26 @@ espectrograma sin saber todavía qué fue eso.</p>
     });
     clearPressed();
     btn.setAttribute('aria-pressed', 'true');
-    estadoToggle(true);
     rotular();
+
+    // Los cuatro clips fijos del escenario se codificaron sin audio. Si uno de
+    // ellos está en escena, «bosque» dejaba a quien lo pulsó en silencio hasta
+    // 26 s, esperando la próxima pieza del archivo — y eso se oía como una
+    // carga que no terminaba. Ahora salta ya a la próxima pieza que suena (el
+    // anillo muestra cómo carga), y mientras «bosque» siga activo el turno se
+    // salta las mudas.
+    if (!enEscena || !enEscena.sonido) {
+      var p = proximaConSonido();
+      if (p) { nowEl.textContent = 'cargando · ' + p.pie; saltar(p); }
+    } else if (!fundiendo) {
+      cola = cola.filter(function (it) { return it.sonido; });
+      preparar();
+    }
   }
 
   function callarBosque() {
     bosqueOn = false;
     slots.forEach(function (s) { s.v.muted = true; });
-    estadoToggle(false);
   }
 
   // Qué dice el transporte mientras suena el escenario. Los cuatro clips fijos
@@ -1566,10 +1622,6 @@ espectrograma sin saber todavía qué fue eso.</p>
     if (bosqueOn) rotular();
   }
 
-  function estadoToggle(on) {
-    toggleBtn.setAttribute('aria-pressed', on ? 'true' : 'false');
-    toggleBtn.textContent = on ? '❚❚ Pause' : '▶ Play';
-  }
 
   // ── El anillo fenológico ──────────────────────────────────────────────────
   // El año como un círculo, el 1 de enero arriba y en el sentido del reloj.
@@ -1597,7 +1649,18 @@ espectrograma sin saber todavía qué fue eso.</p>
     return slots[cur].item === enEscena ? slots[cur].v : null;
   }
 
+  // Qué fracción del archivo ya bajó el navegador (0–1), por el final del
+  // último tramo en buffer. Sin duración todavía —ni los metadatos llegaron—
+  // es cero.
+  function fraccionCargada(v) {
+    if (!v || !(v.duration > 0) || !isFinite(v.duration)) return 0;
+    var b = v.buffered, end = 0;
+    for (var i = 0; i < b.length; i++) end = Math.max(end, b.end(i));
+    return Math.min(1, end / v.duration);
+  }
+
   var anilloDpr = 0;
+  var cargaAlpha = 0.9;
   function dibujarAnillo() {
     requestAnimationFrame(dibujarAnillo);
     if (anilloEl.hidden || !enEscena) return;
@@ -1639,6 +1702,32 @@ espectrograma sin saber todavía qué fue eso.</p>
       actx.stroke();
     }
 
+    // ── La carga, por dentro ────────────────────────────────────────────────
+    // Un segundo círculo, más grueso que el pelo del año, que se llena desde
+    // arriba y en el sentido del reloj con lo que el navegador ya bajó de la
+    // pieza: la que está ENTRANDO si hay una esperando cuadro —esa es la
+    // espera que se nota al pulsar «bosque»—, y si no, la que está en escena.
+    // Debajo, la pista vacía, tenue, para que el cero se lea como cero. Cargada
+    // del todo, se apaga a un trazo tenue: queda como señal de «listo», no
+    // como otro indicador que mirar.
+    var carga = fraccionCargada(entrando ? entrando.v : videoEnEscena());
+    var lista = !entrando && carga > 0.995;
+    cargaAlpha += ((lista ? 0.18 : 0.9) - cargaAlpha) * 0.12;
+    var ri = r - 11 * dpr;
+    actx.lineWidth = 3 * dpr;
+    actx.strokeStyle = 'rgba(255,255,255,0.12)';
+    actx.beginPath();
+    actx.arc(c, c, ri, 0, Math.PI * 2);
+    actx.stroke();
+    if (carga > 0) {
+      actx.strokeStyle = 'rgba(255,255,255,' + cargaAlpha.toFixed(3) + ')';
+      actx.beginPath();
+      actx.arc(c, c, ri, -Math.PI / 2, -Math.PI / 2 + carga * Math.PI * 2);
+      actx.stroke();
+    }
+    actx.lineWidth = dpr;
+    actx.strokeStyle = 'rgba(255,255,255,.85)';
+
     var v = videoEnEscena(), p = 0;
     if (v && v.duration > 0 && isFinite(v.duration)) p = (v.currentTime % v.duration) / v.duration;
     var a = a0 + p * Math.PI * 2;
@@ -1648,30 +1737,9 @@ espectrograma sin saber todavía qué fue eso.</p>
   }
   requestAnimationFrame(dibujarAnillo);
 
-  // Sin botón grande de invitación, el primer intento de sonar lo hace la
-  // propia carga (ver más abajo, tryAutoStartAudio). El navegador puede
-  // negarse por no haber gesto todavía —es lo normal—, y ahí el de
-  // Play/Pause queda como único punto de entrada.
-  function tryAutoStartAudio() {
-    if (active) return;    // ya se eligió algo, no reiniciar
-    choose(COMPS[0], btnFor(COMPS[0].id));
-  }
-
-  // El botón general de pausar/escuchar no elige fuente: alterna la que ya
-  // está activa —una composición o el bosque—, o arranca la primera
-  // composición si todavía no suena nada.
-  toggleBtn.addEventListener('click', function () {
-    if (active) choose(compById(active), btnFor(active));
-    else choose(COMPS[0], btnFor(COMPS[0].id));
-  });
-
-  // El estado visual del botón sigue al elemento <audio> para las
-  // composiciones —da igual si el play/pausa lo disparó un clic en él, en una
-  // de las cinco o el cambio de pestaña— y a elegirBosque/callarBosque para el
-  // escenario. La pausa de <au> que provoca pasar a «bosque» llega después,
-  // asíncrona, y no debe apagar el botón que el bosque acaba de encender.
-  au.addEventListener('play', function () { estadoToggle(true); });
-  au.addEventListener('pause', function () { if (!bosqueOn) estadoToggle(false); });
+  // No hay Play general: cada botón es su propio play/pausa, y el triángulo o
+  // las dos barras salen de su aria-pressed (ver .comps button::before en el
+  // CSS), que choose() y clearPressed() ya mantienen.
 
   au.volume = volEl.value / 100;
   volEl.addEventListener('input', function () {
