@@ -105,7 +105,7 @@
      queda en el centro, a la altura de los botones, justo bajo el escenario.
      El teléfono reordena la misma rejilla (ver @media abajo). */
   .fuentes { display:grid; grid-template-columns:minmax(0, 1fr) auto minmax(0, 1fr);
-    grid-template-areas:"b v m" "bp . mp"; column-gap:28px; align-items:center; }
+    grid-template-areas:". x ." "b v m" "bp . mp"; column-gap:28px; row-gap:10px; align-items:center; }
   .fuente { display:contents; }
   .fuente-bosque .botones { grid-area:b; justify-self:start; }
   .fuente-bosque .fuente-pie { grid-area:bp; justify-self:start; align-self:start; }
@@ -141,6 +141,16 @@
      escucha con auriculares tanto como en un altavoz de portátil. */
   .vol { grid-area:v; display:flex; align-items:center; gap:9px; margin:0;
     font-size:11px; letter-spacing:.1em; color:#8a8a8a; }
+  /* El crossfader: bosque a la izquierda, las sesiones a la derecha, como
+     los botones debajo. Sólo mezcla cuando suenan los dos a la vez (el bosque
+     encima de una sesión); con uno solo cada fuente va entera, y el fader se
+     apaga a medio tono para decirlo —su posición se guarda para la próxima
+     vez que se junten—. */
+  .xfader { grid-area:x; display:flex; align-items:center; gap:9px; margin:0;
+    justify-self:center; font-size:11px; letter-spacing:.1em; color:#b4b4b4;
+    transition:opacity .3s; }
+  .xfader input { width:150px; min-width:0; accent-color:#fff; }
+  .xfader[aria-disabled="true"] { opacity:.4; }
   .vol input { width:150px; min-width:0; accent-color:#fff; }
 
   /* ── Tiras de video ───────────────────────────────────────────────────── */
@@ -342,7 +352,9 @@
        partían en dos filas desparejas—; y su pie. Todo a la izquierda: uno a
        cada lado sólo se lee como par cuando comparten la fila. */
     .fuentes { grid-template-columns:auto minmax(0, 1fr);
-      grid-template-areas:"b v" "bp bp" "m m" "mp mp"; column-gap:14px; }
+      grid-template-areas:"x x" "b v" "bp bp" "m m" "mp mp"; column-gap:14px; }
+    .xfader { justify-self:stretch; }
+    .xfader input { flex:1 1 auto; width:auto; }
     .vol { justify-self:stretch; }
     .vol input { flex:1 1 auto; width:auto; }
     .fuente-motor .comps { justify-self:stretch; display:grid; margin-top:14px;
@@ -417,6 +429,12 @@
       CAM_02 y las grabadoras AudioMoth de la Reserva Manakai: suena la pieza que
       está en escena, con su propio audio, y el espectro la lee.</p>
     </div>
+    <label class="xfader" id="xfader" aria-disabled="true" title="con el bosque sonando encima de una sesión del motor: cuánto de cada uno">
+      <span>BOSQUE</span>
+      <input id="xf" type="range" min="0" max="100" value="50" list="xf-centro" aria-label="mezcla entre bosque y sesiones del motor">
+      <span>MOTOR</span>
+    </label>
+    <datalist id="xf-centro"><option value="50"></option></datalist>
     <label class="vol">VOLUMEN
       <input id="vol" type="range" min="0" max="100" value="85" aria-label="volumen">
     </label>
@@ -844,6 +862,8 @@ espectrograma sin saber todavía qué fue eso.</p>
   var compsEl = document.getElementById('comps');
   var nowEl   = document.getElementById('now');
   var volEl   = document.getElementById('vol');
+  var xfEl    = document.getElementById('xf');
+  var xfLbl   = document.getElementById('xfader');
   var scopeLbl= document.getElementById('scopelbl');
   var escenaEl= document.getElementById('escena');
   var strip   = Array.prototype.slice.call(document.querySelectorAll('.strip video'));
@@ -1463,8 +1483,31 @@ espectrograma sin saber todavía qué fue eso.</p>
   // seno sobre el mismo mix que cruza la imagen—: el sonido de lo que sale se
   // apaga mientras entra el de lo que llega, sin el bache de volumen que deja
   // un cruce lineal en la mitad.
+  // ── La mezcla bosque ↔ motor ──────────────────────────────────────────────
+  // Potencia constante sobre el crossfader: bosque = cos, motor = sin, así que
+  // en el centro los dos van a -3 dB y la suma se oye pareja en todo el
+  // recorrido. Sólo cuando suenan juntos (una miniatura sobre una sesión): con
+  // una fuente sola, esa fuente va entera. Reemplaza el -6 dB fijo que bajaba
+  // la sesión cada vez que entraba el bosque. Cuadro a cuadro y con constante
+  // de tiempo, así que mover el fader no hace clics.
+  var xfJuntos = null;
+  function mezcla() {
+    var juntos = bosqueOn && active && active !== BOSQUE.id && !au.paused;
+    var x = xfEl.value / 100;
+    var gB = juntos ? Math.cos(x * Math.PI / 2) : 1;
+    var gM = juntos ? Math.sin(x * Math.PI / 2) : 1;
+    var t = ac.currentTime;
+    escenario.gain.setTargetAtTime(gB * volEl.value / 100, t, 0.05);
+    compBus.gain.setTargetAtTime(gM, t, 0.05);
+    if (juntos !== xfJuntos) {
+      xfJuntos = juntos;
+      xfLbl.setAttribute('aria-disabled', String(!juntos));
+    }
+  }
+
   function gananciasEscenario() {
     if (!escenario) return;
+    mezcla();
     for (var j = 0; j < SLOTS; j++) {
       var g = 0;
       if (bosqueOn) {
@@ -1661,7 +1704,6 @@ espectrograma sin saber todavía qué fue eso.</p>
   // un clic. Después de la última vuelve la primera.
   var XF_AUTO = 5, XF_MANO = 2.5, XF_PAUSA = 0.35;
   var cruzando = false, desbloqueado = false;
-  var DUCK = 0.5;   // -6 dB: la composición cuando el bosque suena encima
 
   function otroReproductor(el) { return el === auA ? auB : auA; }
   function urlDe(c) { return 'media/audio/' + c.id + '.mp3'; }
@@ -1897,16 +1939,14 @@ espectrograma sin saber todavía qué fue eso.</p>
   function callarBosque() {
     bosqueOn = false;
     slots.forEach(function (s) { s.v.muted = true; });
-    if (compBus) compBus.gain.setTargetAtTime(1, ac.currentTime, 0.4);
   }
 
   // Una miniatura pulsada mientras suena una composición: el bosque entra
-  // ENCIMA y la composición sigue, 6 dB más abajo para que la pieza de campo
-  // se oiga. Pulsar «bosque» (que queda marcado) lo retira; pausar la
+  // ENCIMA y la composición sigue; cuánto de cada uno lo dice el crossfader
+  // (ver mezcla()). Pulsar «bosque» (que queda marcado) lo retira; pausar la
   // composición calla los dos.
   function capaBosque() {
     abrirEscenario();
-    compBus.gain.setTargetAtTime(DUCK, ac.currentTime, 0.4);
     bosqueBtn.setAttribute('aria-pressed', 'true');
     rotular();
   }
@@ -2280,7 +2320,6 @@ espectrograma sin saber todavía qué fue eso.</p>
   auA.volume = auB.volume = volEl.value / 100;
   volEl.addEventListener('input', function () {
     auA.volume = auB.volume = volEl.value / 100;
-    if (escenario) escenario.gain.value = volEl.value / 100;
   });
 
   [auA, auB].forEach(function (el) { el.addEventListener('error', function () {
