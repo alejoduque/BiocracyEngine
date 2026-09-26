@@ -135,6 +135,16 @@
     // The floor is unchanged, so the slow reading (8 min/day) is still there
     // and the whole fader now spans minute-per-day to eight-minutes-per-day.
     (name: \phenoRate,         spec: ControlSpec(0.002, 0.0167, \exp), default: 0.0167, path: "/pheno/rate",            cc: 21),
+    // How often the ring skips a silent day and goes to the next recorded
+    // one. Each unrecorded day is a coin toss at this probability, so it is
+    // how much absence is heard between recordings, not a switch: at 0 the
+    // calendar is read as it is (Art. 44, 331 of 365 days silent), at 0.5
+    // about one silent day sits between recordings, at 1 only the days the
+    // forest was recorded are heard. The skip lands on the next day that
+    // actually admits a clip under UMBRAL/VENTANA/BANCADA/OPACIDAD. It does
+    // not make audio up; it only decides how much of the waiting is heard.
+    // Default 0, so the honest calendar stays the default reading.
+    (name: \phenoSeek,         spec: ControlSpec(0, 1, \lin),       default: 0.0,  path: "/pheno/seek"),
     // Level of the field-recording layer against the synthesis. Its own fader
     // because the corpus is a fourth actor, not an effect on the other three.
     (name: \corpusLevel,       spec: ControlSpec(0, 1, \lin),       default: 0.5,  path: "/pheno/corpusLevel",       cc: 22),
@@ -473,6 +483,7 @@
     \pulseGain            -> "PULSO GAIN",
     \opacityFloor         -> "OPACIDAD",
     \phenoRate            -> "RITMO",
+    \phenoSeek            -> "BUSCAR",
     // ── Corpus ──────────────────────────────────────────────────────────
     \corpusLevel          -> "CORPUS LVL",
     \chainProcess         -> "CADENA",

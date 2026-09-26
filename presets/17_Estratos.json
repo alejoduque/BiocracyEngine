@@ -3,7 +3,7 @@
     "engine": "BiocracyEngine",
     "version": 1,
     "preset": "Estratos - Estratificacion y Tiempo Profundo",
-    "nota": "Estratificación y tiempo profundo: lo más lento del motor. Un pad de cuatro voces cada casi dos minutos, sala máxima (28 s), sin bombo ni china; los samples estirados al máximo y una octava abajo.",
+    "nota": "Estratificación y tiempo profundo: lo más lento del motor. Un pad de cuatro voces cada casi dos minutos, sala máxima (28 s), sin bombo ni china; los samples estirados al máximo y una octava abajo. BUSCAR 0.25: las grabaciones afloran como estratos, rara vez y largas.",
     "revisado": "2026-09-26"
   },
   "params": {
@@ -53,6 +53,7 @@
     "padVoices": 4.0,
     "percRate": 0.04,
     "phenoRate": 0.0167,
+    "phenoSeek": 0.25,
     "pitchShift": -5.0,
     "pulseGain": 0.8,
     "resonantBody": 0.7,

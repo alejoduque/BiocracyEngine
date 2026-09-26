@@ -277,16 +277,31 @@
 // Spawn through this and the ceiling applies wherever the voice is fired.
 // ringSecs is accepted and ignored: lifetime is now observed, not declared.
 ~percSpawn = { |args, grp, ringSecs = 14|
-    var syn;
+    var syn, pres;
     ~percSweep.value;
     if(~percLive.size >= (~percMaxLive ? 20)) {
         ~percStats[\refused] = (~percStats[\refused] ? 0) + 1;
         nil
     } {
-        // The chamber aux goes on here rather than at each of the five spawn
-        // sites: one place to add it, and no site can forget it.
+        // The family's presence: how busy DUST, PERC and KICK are, each as a
+        // ratio of its registry default, averaged. sqrt so it reads as level
+        // (a family at a quarter of its density sounds at half), capped at
+        // 1.2 so a dense config can't push the metals back over the room.
+        // At the defaults this is 1.0; Deep Listening (dust 0.12, perc 0.06,
+        // kick every 8) gives ~0.40, about -8 dB.
+        pres = [
+            (~beatParams.dustRate ? 0.52) / 0.52,
+            (~beatParams.percRate ? 0.45) / 0.45,
+            1 / (~beatParams.kickEvery ? 1).max(1)
+        ].mean.clip(0.1, 1.2).sqrt;
+        // The chamber aux, the family presence and the DUST/KICK fader buses
+        // go on here rather than at each of the five spawn sites: one place to
+        // add them, and no site can forget them. Appended last, so they win
+        // over any duplicate a site passes.
         syn = Synth(\opalPerc,
-            args ++ [\chamberAux, (~chamberAuxBus !? { |b| b.index } ? -1)],
+            args ++ [\chamberAux, (~chamberAuxBus !? { |b| b.index } ? -1),
+                \famPresence, pres,
+                \mixDustBus, ~bi.(\mixDust), \mixKickBus, ~bi.(\mixKick)],
             grp);
         ~percLive = ~percLive.add((synth: syn, at: SystemClock.seconds));
         ~percStats[\admitted] = (~percStats[\admitted] ? 0) + 1;

@@ -3,7 +3,7 @@
     "engine": "BiocracyEngine",
     "version": 1,
     "preset": "Deep Listening - Atencion Expandida y Espacio",
-    "nota": "Atención expandida (Oliveros, la cisterna de 45 s): casi nada ocurre y todo resuena. Sala al máximo razonable (~27 s), bowl solo sin china, pad cada minuto, sin bombo; el oído llena el espacio.",
+    "nota": "Atención expandida (Oliveros, la cisterna de 45 s): casi nada ocurre y todo resuena. Sala al máximo razonable (~27 s), bowl solo sin china, pad cada minuto, sin bombo; el oído llena el espacio. BUSCAR 0.4: el bosque aparece de a ratos, separado por días de ausencia que también se escuchan.",
     "revisado": "2026-09-26"
   },
   "params": {
@@ -53,6 +53,7 @@
     "padVoices": 2.0,
     "percRate": 0.06,
     "phenoRate": 0.0167,
+    "phenoSeek": 0.4,
     "pitchShift": 0.0,
     "pulseGain": 0.8,
     "resonantBody": 0.5,

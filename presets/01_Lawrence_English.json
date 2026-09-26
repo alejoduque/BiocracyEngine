@@ -3,7 +3,7 @@
     "engine": "BiocracyEngine",
     "version": 1,
     "preset": "Lawrence English - Presion y Masa Soundscape",
-    "nota": "Presión y masa: una sola masa grave que empuja el aire. Pad de cuatro voces en registro bajo y lento, sala grande (~22 s), bowl dominante; golpes escasos para que la presión no se vuelva pulso.",
+    "nota": "Presión y masa: una sola masa grave que empuja el aire. Pad de cuatro voces en registro bajo y lento, sala grande (~22 s), bowl dominante; golpes escasos para que la presión no se vuelva pulso. El corpus entra: BUSCAR 0.6 deja poco silencio entre grabaciones, el campo como masa bajo la masa.",
     "revisado": "2026-09-26"
   },
   "params": {
@@ -53,6 +53,7 @@
     "padVoices": 4.0,
     "percRate": 0.18,
     "phenoRate": 0.0167,
+    "phenoSeek": 0.6,
     "pitchShift": -2.0,
     "pulseGain": 0.8,
     "resonantBody": 0.75,

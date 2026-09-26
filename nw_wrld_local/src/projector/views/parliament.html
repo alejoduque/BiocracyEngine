@@ -1331,6 +1331,15 @@
                         data-osc="/pheno/rate">
                     <span class="ctrl-val" id="disp-pheno-rate">0.28</span>
                 </div>
+                <!-- BUSCAR: the chance that a silent day is skipped for the
+                     next recorded one. 0 reads the calendar as it is, 1 plays
+                     only the recorded days (0_parameters.scd \phenoSeek). -->
+                <div class="ctrl-row">
+                    <label>Buscar</label>
+                    <input type="range" min="0" max="1" step="0.01" value="0"
+                        data-osc="/pheno/seek">
+                    <span class="ctrl-val" id="disp-pheno-seek">0.00</span>
+                </div>
                 <!-- Art. 47 as a fader rather than a constant. Slot C projects
                      the camera trap and the spectrogram register; this decides
                      how much of it the Chamber shows. It boots at 1.0 — every

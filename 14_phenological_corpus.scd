@@ -915,6 +915,15 @@ s.waitForBoot {
     "[pheno] all corpus voices released".postln;
 };
 
+// The next recorded day after doy, wrapping the ring, that admits at least one
+// clip under the current selection. nil if none does (UMBRAL at the top with a
+// narrow VENTANA can shut every seat), so BUSCAR never lands on a silent day.
+~phenoSeekDay = { |doy|
+    var days = ~phenoRecordedDays ? [];
+    (days.select { |d| d > doy } ++ days.select { |d| d <= doy })
+        .detect { |d| ~phenoSelect.(d).size > 0 };
+};
+
 // ─── The routine ────────────────────────────────────────────────────────────
 // Its own Routine, not a branch of ~beatRoutine. The beat engine ticks every
 // 0.06-2.0 s, which is the wrong grain entirely for material measured in
@@ -948,6 +957,22 @@ s.waitForBoot {
                 gap = ~phenoGapDepth[doy] ? 365;
                 absence = ~phenoVal.(\absenceWeight, 0.3);
                 admitted = ~phenoSelect.(doy);
+
+                // BUSCAR (\phenoSeek): an unrecorded day is skipped at this
+                // probability and the ring lands on the next day that admits
+                // a clip. A coin per silent day, so 0.5 leaves about one day
+                // of absence between recordings and 1.0 leaves none. At 0
+                // nothing changes, and a preset that wants the corpus to
+                // SOUND raises it rather than the ring's speed.
+                if((admitted.size == 0) and: { ~phenoVal.(\phenoSeek, 0.0).coin }) {
+                    var dest = ~phenoSeekDay.(doy);
+                    if(dest.notNil) {
+                        ~phenoCursor = dest.asFloat;
+                        doy = dest;
+                        gap = ~phenoGapDepth[doy] ? 365;
+                        admitted = ~phenoSelect.(doy);
+                    };
+                };
 
                 ~phenoReleaseVoices.value;
 

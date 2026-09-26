@@ -51,6 +51,7 @@
     "padVoices": 3.129999935627,
     "percRate": 1.3147517017439,
     "phenoRate": 0.0167,
+    "phenoSeek": 0.0,
     "pitchShift": 17.280000686646,
     "pulseGain": 1.0,
     "resonantBody": 0.74,

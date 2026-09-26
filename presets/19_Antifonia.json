@@ -3,7 +3,7 @@
     "engine": "BiocracyEngine",
     "version": 1,
     "preset": "Antifonia - Camara Vocal y Dialogo Resonante",
-    "nota": "Cámara vocal y diálogo: llamada y respuesta. Corpus y samples adelante, el eco de los samples como respuesta al otro lado de la sala, bowl resonante; una sala generosa (~21 s) para que se oigan.",
+    "nota": "Cámara vocal y diálogo: llamada y respuesta. Corpus y samples adelante, el eco de los samples como respuesta al otro lado de la sala, bowl resonante; una sala generosa (~21 s) para que se oigan. BUSCAR 0.75: el corpus responde casi siempre a los samples; la antífona necesita a sus dos coros.",
     "revisado": "2026-09-26"
   },
   "params": {
@@ -53,6 +53,7 @@
     "padVoices": 2.0,
     "percRate": 0.2,
     "phenoRate": 0.0167,
+    "phenoSeek": 0.75,
     "pitchShift": 0.0,
     "pulseGain": 0.8,
     "resonantBody": 0.8,

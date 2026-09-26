@@ -179,7 +179,13 @@ s.doWhenBooted({
     // struck by the tide AND the chain, at ~38 concurrent, so ~38 copies sum
     // where one used to. Per-voice trim and perceived level stopped being the
     // same question when the concurrency changed.
-    ~trimPerc  = 0.055 * ~trimMaster;
+    //
+    // Halved, 0.055 -> 0.0275 (-6 dB), after listening: BOWL and CHINA were
+    // still the loudest thing in the room at every preset. Two changes land
+    // together and both lower it — this trim, and the family factor inside
+    // \opalPerc (DUST/KICK faders and the three cadences), which at the
+    // default settings is 1.0 and in a sparse config well under it.
+    ~trimPerc  = 0.0275 * ~trimMaster;
     // The bed is the ensemble now, so the ONE continuous voice steps back from
     // 8.0 to 3.2 and the partials carry the rest. Its job is the sub anchor
     // under them rather than the whole bed on its own.
@@ -698,6 +704,11 @@ s.doWhenBooted({
         bowlOnBus=(-1), chinaOnBus=(-1), bowlOn=1, chinaOn=1,
         // Where the bowl's share of the room goes, and how much of it.
         chamberAux=(-1), bowlSend=0.6, bowlLevel=0.02, chinaLevel=4.0,
+        // How present the percussion family is right now — DUST, PERC and
+        // KICK cadences — computed per strike by ~percSpawn (5_beat_engine).
+        // 1.0 at their default rates; a sparse config strikes the metals
+        // quieter as well as rarer. See "The family" below.
+        famPresence=1.0,
         // Per-strike envelope scale. timeDilation sets how long this voice
         // rings GLOBALLY; this scales one strike against that, so the same
         // instrument can be a 30 s bowl when the tide strikes it and a short
@@ -741,6 +752,18 @@ s.doWhenBooted({
         var kickLvl   = Select.kr(mixKickBus   >= 0, [1.0, In.kr(mixKickBus, 1)]);
         var sampleLvl = Select.kr(mixSampleBus >= 0, [1.0, In.kr(mixSampleBus, 1)]);
 
+        // ─── The family ───────────────────────────────────────────────────
+        // dustLvl and kickLvl above were declared under "cross-layer
+        // modulation" and then never read: the bowl and the china followed
+        // MIX PERC and nothing else, so with DUST and KICK pulled down the
+        // metals still rang out over a room that had gone quiet. They are one
+        // family — the grains, the strikes, the pulse — and the metals now
+        // answer to all three: the DUST and KICK faders here (MIX PERC still
+        // scales the whole voice at the output), and the three cadences via
+        // famPresence. Lagged so a fader move is a swell, not a step, on a
+        // bowl that rings for half a minute.
+        var family = Lag.kr(((dustLvl + kickLvl) * 0.5).clip(0, 2), 0.3)
+            * famPresence.clip(0, 1.5);
         var exciter, sig, wet, quadSig, partials, decays, inharm, damp, spread;
         var shimmer, wash, chug, modeAmps, bend, shaped, bowlFreq, bowlGate, chinaGate;
         var symp, symPresence, symDecay;
@@ -949,7 +972,7 @@ s.doWhenBooted({
         // before it was balanced against the china.
         Out.ar(chamberAux.max(0),
             bowl * bowlGate * bowlLevel.clip(0, 2)
-                * bowlSend.clip(0, 1) * 0.55 * (chamberAux >= 0));
+                * bowlSend.clip(0, 1) * 0.55 * family * (chamberAux >= 0));
 
         chinaGate = Lag.kr(
             Select.kr(chinaOnBus >= 0, [chinaOn, In.kr(chinaOnBus, 1)]).clip(0, 1), 0.4);
@@ -1035,7 +1058,7 @@ s.doWhenBooted({
         // holding a note the players never struck. Out.ar ADDS, so this is a
         // second send to the same aux the bowl already feeds.
         Out.ar(chamberAux.max(0),
-            symp * bowlSend.clip(0, 1) * 0.9 * (chamberAux >= 0));
+            symp * bowlSend.clip(0, 1) * 0.9 * family * (chamberAux >= 0));
 
         // mixPerc is still the fader for the struck voice as a whole.
         sig = (symp * 0.45)
@@ -1215,7 +1238,7 @@ s.doWhenBooted({
         // muddy — bronze reflections keep their top end.
         sig = sig + FreeVerb.ar(sig, revM * 0.85, 0.94, 0.15);
 
-        sig = sig * amp * vol * ~trimPerc
+        sig = sig * amp * vol * ~trimPerc * family
             * Lag.kr(Select.kr(mixPercBus >= 0, [1.0, In.kr(mixPercBus, 1)]), 0.08);
 
         quadSig = if(~limiterChans >= 4) {

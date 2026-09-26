@@ -49,6 +49,7 @@ const phenoParams: Record<string, number> = {
   // The corpus layer's transport and fader (14_phenological_corpus.scd).
   // rate 0.28 normalized is one ring day per minute on the exponential spec.
   rate: 0.28,
+  seek: 0,
   corpusLevel: 0.5,
   seasonalWeight: 0.5,
   activeFraction: 0,
@@ -1913,6 +1914,7 @@ async function init() {
     "/pheno/opacityFloor":      "disp-pheno-opacityFloor",
     "/pheno/bancada":           "disp-pheno-bancada",
     "/pheno/rate":              "disp-pheno-rate",
+    "/pheno/seek":              "disp-pheno-seek",
     "/pheno/corpusLevel":       "disp-pheno-corpusLevel",
     // Slot C's projection amount. Its own /camara namespace rather than
     // /pheno because it governs the visual register, not the audio ring.
