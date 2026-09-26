@@ -196,5 +196,8 @@
       ],
       "icon": "build/logo.png"
     }
+  },
+  "optionalDependencies": {
+    "node-syphon": "^1.5.1"
   }
 }

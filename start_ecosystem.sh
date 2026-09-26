@@ -125,6 +125,7 @@ pkill sclang 2>/dev/null
 pkill scsynth 2>/dev/null
 pkill -f "parliament-bridge\.js" 2>/dev/null
 pkill -f "laser-bridge\.js" 2>/dev/null
+pkill -f "dome-bridge\.js" 2>/dev/null
 pkill -f "webpack-dev-server" 2>/dev/null   # nw_wrld_local npm run serve
 pkill -f "eth_sonify\.py" 2>/dev/null
 sleep 0.5
@@ -134,13 +135,14 @@ pkill -9 sclang 2>/dev/null
 pkill -9 scsynth 2>/dev/null
 pkill -9 -f "parliament-bridge\.js" 2>/dev/null
 pkill -9 -f "laser-bridge\.js" 2>/dev/null
+pkill -9 -f "dome-bridge\.js" 2>/dev/null
 pkill -9 -f "webpack-dev-server" 2>/dev/null
 pkill -9 -f "eth_sonify\.py" 2>/dev/null
 
 # Liberar puertos específicos del ecosistema por si quedaron huérfanos
-#   3335 = endpoint DIAG del bridge; 3337 = laser-bridge WS in. Un proceso
+#   3335 = endpoint DIAG del bridge; 3337 = laser-bridge WS in; 3338 = dome-bridge. Un proceso
 #   colgado que retenga el puerto impide re-bindear al relanzar.
-for PORT in 57110 57120 3333 3334 3335 3337 9001; do
+for PORT in 57110 57120 3333 3334 3335 3337 3338 9001; do
     lsof -ti:"$PORT" | xargs kill -9 2>/dev/null
 done
 echo "   Listo. Esperando que los puertos se liberen..."
@@ -171,13 +173,14 @@ NW_PID=""
 BRIDGE_PID=""
 SC_PID=""
 LASER_PID=""
+DOME_PID=""
 
 cleanup() {
     echo ""
     echo "=============================================="
     echo "    CERRANDO ECOSISTEMA TRES-PARTES..."
     echo "=============================================="
-    for pid in $NW_PID $BRIDGE_PID $SC_PID $LASER_PID; do
+    for pid in $NW_PID $BRIDGE_PID $SC_PID $LASER_PID $DOME_PID; do
         if [ -n "$pid" ] && kill -0 "$pid" 2>/dev/null; then
             kill "$pid" 2>/dev/null
         fi
@@ -188,6 +191,7 @@ cleanup() {
     pkill scsynth 2>/dev/null
     pkill -f "parliament-bridge\.js" 2>/dev/null
     pkill -f "laser-bridge\.js" 2>/dev/null
+    pkill -f "dome-bridge\.js" 2>/dev/null
     pkill -f "webpack-dev-server" 2>/dev/null
     pkill -f "eth_sonify\.py" 2>/dev/null
     rm -f "$LOCKFILE"
@@ -259,6 +263,22 @@ if [ "$LASER" = "1" ]; then
     ( cd "$SCRIPT_DIR/nw_wrld_local" && node laser-bridge.js ) &
     LASER_PID=$!
     echo "   laser-bridge WS:3337 (PID: $LASER_PID). DAC: Helios si está presente, si no DRY RUN."
+fi
+
+# 1.7 OPCIONAL: puente de la cúpula (domemaster → Syphon) — solo si DOME=1.
+# En parliament.html: tecla D abre la cúpula, y el botón «syphon» envía el
+# domemaster a este puente, que lo publica como servidor Syphon
+# «BiocracyEngine Cúpula» para MadMapper, OBS (fuente Syphon Client),
+# Resolume… Sin node-syphon corre en DRY RUN. Si los frames se cortan, publica
+# negro: la cúpula queda oscura, no congelada.
+#   DOME=1             → lanza el puente
+#   DOME_FLIP=1|0      → invierte la imagen si un receptor la ve de cabeza
+if [ "$DOME" = "1" ]; then
+    echo ""
+    echo ">> Paso 1.7: Iniciando puente de la cúpula (domemaster → Syphon)..."
+    ( cd "$SCRIPT_DIR/nw_wrld_local" && node dome-bridge.js ) &
+    DOME_PID=$!
+    echo "   dome-bridge WS:3338 (PID: $DOME_PID). Syphon: «BiocracyEngine Cúpula»."
 fi
 
 # 2. Levantar Motor SuperCollider (Con GUI de Control)

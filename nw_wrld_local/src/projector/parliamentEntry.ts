@@ -11,6 +11,7 @@ import {
 } from "./phenology/breath";
 import { initSwitcher, getActiveThreeStage, updateSpeciesRoster } from "./visualizationSwitcher";
 import { initLaserTap } from "./laserTap";
+import { initDome } from "./dome/dome";
 import { initPulsarPlot, pushRow, setPulsarSource, type PulsarSource } from "./pulsarPlot";
 import { startVizMotion } from "./vizMotion";
 import { publishScAudio, noteVoiceOnset, tickScAudio, type ScAudio } from "./scAudio";
@@ -1170,6 +1171,11 @@ async function init() {
   // ─── Visualization switcher ───────────────────────────────────────────────
   // Keys 0–9 swap center stage. Left/right panels + spectrogram stay.
   // getActiveThreeStage() returns the live ParliamentStage when slot 0 is active.
+  //
+  // The fulldome viewport (key D) goes first: it watches the slots' own
+  // render calls to find their scenes, so its hook has to be in place before
+  // the first slot mounts. See dome/dome.ts.
+  initDome(container);
   initSwitcher(container, hudEl!, () => currentState);
 
   // ── window.__scAudio ────────────────────────────────────────────────────

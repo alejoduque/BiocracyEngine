@@ -1,0 +1,130 @@
+// domeCapture.ts — which 3-D scene is the stage showing right now?
+// ===========================================================================
+// The dome renders each slot's OWN scene through a fisheye camera. It cannot
+// ask the slots for their scenes: there are sixteen of them, written over two
+// years in three idioms (ModuleBase classes, mount functions, p5 sketches),
+// each creating its own WebGLRenderer inside its own mount. Threading a
+// "give me your scene" API through all of them would touch every slot.
+//
+// So it watches instead. Every three.js slot, whatever its idiom, ends up
+// calling WebGLRenderer.prototype.render(scene, camera) with a
+// PerspectiveCamera — directly, or through an EffectComposer's RenderPass.
+// This wraps that one method, and when the renderer doing the call is drawing
+// into a canvas inside #parliament-stage, it notes the scene and the camera.
+// The call itself is passed through untouched: the slot renders exactly as it
+// did, and the dome reads the same scene graph from its own renderer.
+//
+// What is noted alongside the scene is what the dome needs to look like the
+// slot: its clear colour (most slots paint their background with
+// setClearColor, not scene.background) and its tone mapping.
+
+import * as THREE from "three";
+
+export type CapturedView = {
+  scene: THREE.Scene;
+  camera: THREE.PerspectiveCamera;
+  clearColor: THREE.Color;
+  clearAlpha: number;
+  toneMapping: THREE.ToneMapping;
+  exposure: number;
+  /** Whether the slot's renderer encodes its output as sRGB (the default). */
+  outputSRGB: boolean;
+  /** The canvas it was drawn into: once that leaves the stage, the slot is gone. */
+  canvas: HTMLCanvasElement;
+  /** performance.now() of the last render call seen for this scene. */
+  at: number;
+};
+
+/** A capture older than this means the slot stopped rendering (or is 2-D). */
+export const CAPTURE_STALE_MS = 500;
+
+let _installed = false;
+let _stage: HTMLElement | null = null;
+const _ignore = new WeakSet<THREE.WebGLRenderer>();
+// Several scenes can be rendered per frame (a background pass, an overlay);
+// keep each one's latest sighting and pick the most substantial at read time.
+const _seen = new Map<THREE.Scene, CapturedView>();
+
+/** Renderers that must never be captured — the dome's own. */
+export function ignoreRenderer(r: THREE.WebGLRenderer) { _ignore.add(r); }
+
+function note(renderer: any, scene: any, camera: any) {
+    try {
+      if (camera && camera.isPerspectiveCamera && scene && scene.isScene
+          && !_ignore.has(renderer) && _stage && _stage.contains(renderer.domElement)) {
+        const prev = _seen.get(scene);
+        const v: CapturedView = prev ?? {
+          scene, camera, clearColor: new THREE.Color(), clearAlpha: 1,
+          toneMapping: THREE.NoToneMapping, exposure: 1, outputSRGB: true, at: 0,
+          canvas: renderer.domElement,
+        };
+        v.canvas = renderer.domElement;
+        v.camera = camera;
+        renderer.getClearColor(v.clearColor);
+        v.clearAlpha = renderer.getClearAlpha();
+        v.toneMapping = renderer.toneMapping;
+        v.exposure = renderer.toneMappingExposure;
+        v.outputSRGB = renderer.outputColorSpace === THREE.SRGBColorSpace;
+        v.at = performance.now();
+        if (!prev) _seen.set(scene, v);
+      }
+    } catch { /* capture must never break a slot's own render */ }
+}
+
+export function installDomeCapture(stage: HTMLElement) {
+  _stage = stage;
+  if (_installed) return;
+  _installed = true;
+
+  // three r159 does NOT put render() on the prototype: the constructor
+  // assigns it, `this.render = function (scene, camera) {…}`, so wrapping
+  // WebGLRenderer.prototype.render catches nothing (tried; every slot read
+  // "sin imagen"). An accessor on the prototype turns that assignment into a
+  // hook instead — assigning to an inherited setter calls the setter — and
+  // the setter installs a wrapped render() as the renderer's own property.
+  // Every renderer constructed after this point is covered, whatever module
+  // made it; nothing already built is touched.
+  const proto = THREE.WebGLRenderer.prototype as any;
+  Object.defineProperty(proto, "render", {
+    configurable: true,
+    get() { return undefined; },
+    set(fn: (scene: any, camera: any) => void) {
+      const renderer = this;
+      Object.defineProperty(renderer, "render", {
+        configurable: true, writable: true,
+        value: function (scene: any, camera: any) {
+          note(renderer, scene, camera);
+          return fn.call(this, scene, camera);
+        },
+      });
+    },
+  });
+}
+
+/**
+ * The scene the stage is showing, or null if no 3-D scene rendered recently
+ * (a p5 or 2-D canvas slot, or a switch in progress). Among fresh scenes the
+ * one with the most objects wins — a slot's world, not its HUD overlay.
+ */
+export function currentView(): CapturedView | null {
+  const now = performance.now();
+  let best: CapturedView | null = null;
+  let bestN = -1;
+  for (const [scene, v] of _seen) {
+    // A slot being switched away is torn down within the same tick its
+    // canvas leaves the stage — and a torn-down slot may already have
+    // dismantled its camera. Drop it at once rather than after the staleness
+    // window, which is exactly long enough to render a half-destroyed scene.
+    if (!_stage || !_stage.contains(v.canvas)) { _seen.delete(scene); continue; }
+    if (now - v.at > CAPTURE_STALE_MS) {
+      // Forget scenes of slots that were switched away: holding them would
+      // keep a destroyed slot's whole graph alive.
+      if (now - v.at > 5000) _seen.delete(scene);
+      continue;
+    }
+    let n = 0;
+    scene.traverse(() => { n++; });
+    if (n > bestN) { best = v; bestN = n; }
+  }
+  return best;
+}
