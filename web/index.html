@@ -517,10 +517,10 @@ el círculo blanco de adentro se llena mientras la pieza carga.</p>
 
 <section class="archivo" id="archivo" hidden>
   <h3 class="lam-sec">Lo que la cámara registró · CAM_02, agosto de 2026</h3>
-  <p class="arch-guia">Haz clic en una captura para llevarla al escenario, con el sonido que grabó la cámara.</p>
+  <p class="arch-guia">Haz clic en una captura para llevarla al escenario, con el sonido que grabó la cámara. Si suena una sesión del motor, entra encima de ella.</p>
   <div class="arch" id="arch-camara"></div>
   <h3 class="lam-sec">Lo que el micrófono capturó · una noche, de 18:00 a 05:00</h3>
-  <p class="arch-guia">Haz clic en una grabación para llevarla al escenario: su espectrograma y su minuto de audio.</p>
+  <p class="arch-guia">Haz clic en una grabación para llevarla al escenario: su espectrograma y su minuto de audio. Si suena una sesión del motor, entra encima de ella.</p>
   <div class="noche" id="arch-bosque"></div>
 </section>
 
@@ -765,6 +765,7 @@ espectrograma sin saber todavía qué fue eso.</p>
 </div>
 
 <audio id="au" preload="none" crossorigin="anonymous"></audio>
+<audio id="au2" preload="none" crossorigin="anonymous"></audio>
 
 <script src="assets/js/hydra-synth.js"></script>
 <script>
@@ -834,7 +835,12 @@ espectrograma sin saber todavía qué fue eso.</p>
   var msgBar  = document.getElementById('msgbar');
   var msgTxt  = document.getElementById('msgtxt');
   var fftCv   = document.getElementById('fft');
-  var au      = document.getElementById('au');
+  // Dos reproductores para las composiciones, para poder cruzarlas: `au` es
+  // siempre el que suena (o el que entra, durante un cruce); el otro sale o
+  // espera cargado con la pieza que viene. Ver «Cruces» en el transporte.
+  var auA     = document.getElementById('au');
+  var auB     = document.getElementById('au2');
+  var au      = auA;
   var compsEl = document.getElementById('comps');
   var nowEl   = document.getElementById('now');
   var volEl   = document.getElementById('vol');
@@ -1406,7 +1412,7 @@ espectrograma sin saber todavía qué fue eso.</p>
   // ── Análisis de audio ─────────────────────────────────────────────────────
   // createMediaElementSource sólo puede llamarse UNA vez por elemento, así que
   // el grafo se arma una sola vez y después sólo cambia el .src del <audio>.
-  var ac = null, analyser = null, freq = null, active = null, escenario = null;
+  var ac = null, analyser = null, freq = null, active = null, escenario = null, compBus = null;
 
   function initAudio() {
     if (ac) return true;
@@ -1423,7 +1429,16 @@ espectrograma sin saber todavía qué fue eso.</p>
     // lectura fiel.
     analyser.smoothingTimeConstant = 0.88;
     freq = new Uint8Array(analyser.frequencyBinCount);
-    ac.createMediaElementSource(au).connect(analyser);
+    // Cada reproductor con su ganancia —la que cruza— y los dos por un bus
+    // común, que es el que se agacha cuando el bosque suena encima.
+    compBus = ac.createGain();
+    compBus.connect(analyser);
+    [auA, auB].forEach(function (el, k) {
+      el._g = ac.createGain();
+      el._g.gain.value = k === 0 ? 1 : 0;
+      ac.createMediaElementSource(el).connect(el._g);
+      el._g.connect(compBus);
+    });
     analyser.connect(ac.destination);
 
     // El escenario entra por el MISMO analizador que las composiciones: con
@@ -1564,8 +1579,9 @@ espectrograma sin saber todavía qué fue eso.</p>
   // ── Transporte ────────────────────────────────────────────────────────────
   // «bosque» no es una sexta composición: es el sonido del propio escenario,
   // pieza por pieza, el que grabó la cámara trampa o el AudioMoth. Las cinco
-  // composiciones siguen sonando por <audio id="au">; las dos fuentes nunca
-  // suenan a la vez.
+  // composiciones suenan por sus dos <audio> (ver «Cruces»). Elegir una u otra
+  // en el transporte cambia de fuente; una miniatura del archivo pulsada
+  // mientras suena una composición pone el bosque ENCIMA (ver capaBosque).
   var BOSQUE = { id:'bosque', label:'bosque',
     nota:'el sonido del escenario: lo que grabó la cámara trampa y lo que grabó el AudioMoth, pieza por pieza' };
 
@@ -1635,15 +1651,139 @@ espectrograma sin saber todavía qué fue eso.</p>
     });
   }
 
-  // Las cinco en secuencia: al terminar una entra la siguiente, y después de
-  // la última vuelve la primera. El <audio> tenía loop, así que cada pieza se
-  // repetía sola para siempre y la línea de tiempo no tenía programa que
-  // recorrer.
-  au.addEventListener('ended', function () {
-    if (active === BOSQUE.id) return;
-    var i = COMPS.map(function (c) { return c.id; }).indexOf(active);
-    var n = COMPS[(i + 1) % COMPS.length];
-    choose(n, btnFor(n.id));
+  // ── Cruces ────────────────────────────────────────────────────────────────
+  // Las cinco en secuencia, y ninguna entra de golpe. Cuando a la que suena le
+  // quedan XF_AUTO segundos, la siguiente arranca en el otro reproductor y las
+  // dos se cruzan en potencia constante (seno que sube, coseno que baja: dos
+  // señales distintas suman su potencia, y un cruce lineal deja un bache en
+  // la mitad). Un clic en otra pieza cruza igual, más corto. Pausar y
+  // reanudar también llevan un fundido breve: un corte de la onda a cero es
+  // un clic. Después de la última vuelve la primera.
+  var XF_AUTO = 5, XF_MANO = 2.5, XF_PAUSA = 0.35;
+  var cruzando = false, desbloqueado = false;
+  var DUCK = 0.5;   // -6 dB: la composición cuando el bosque suena encima
+
+  function otro(el) { return el === auA ? auB : auA; }
+  function urlDe(c) { return 'media/audio/' + c.id + '.mp3'; }
+  function indiceDe(id) { return COMPS.map(function (c) { return c.id; }).indexOf(id); }
+  function siguienteDe(id) { return COMPS[(indiceDe(id) + 1) % COMPS.length]; }
+
+  // Lleva la ganancia de un reproductor a `hacia` en `seg`, en potencia
+  // constante, desde donde esté ahora (un cruce puede empezar en medio de otro).
+  //
+  // Dieciséis rampas lineales que siguen la curva, no setValueCurveAtTime:
+  // una curva que empieza mientras otra sigue en curso (un clic en medio de un
+  // cruce) lanza un error en varios navegadores, y cancelAndHoldAtTime, que lo
+  // evitaría, no existe en Firefox. Las rampas se cancelan limpias.
+  function fundir(el, hacia, seg) {
+    var g = el._g.gain, t0 = ac.currentTime, v0 = g.value, n = 16;
+    seg = Math.max(0.05, seg);
+    g.cancelScheduledValues(t0);
+    g.setValueAtTime(v0, t0);
+    for (var i = 1; i < n; i++) {
+      var x = i / (n - 1);
+      var v = hacia > v0 ? v0 + (hacia - v0) * Math.sin(x * Math.PI / 2)
+                         : hacia + (v0 - hacia) * Math.cos(x * Math.PI / 2);
+      g.linearRampToValueAtTime(v, t0 + seg * x);
+    }
+  }
+  function silenciar(el) {
+    el._g.gain.cancelScheduledValues(ac.currentTime);
+    el._g.gain.setValueAtTime(0, ac.currentTime);
+  }
+
+  // Poner un reproductor en una pieza y un segundo, sin recargar si ya la tiene.
+  function cargar(el, c, desde) {
+    var url = urlDe(c);
+    if (el.getAttribute('src') !== url) { el.src = url; el.preload = 'auto'; }
+    var t = desde || 0;
+    if (el.readyState >= 1) { try { el.currentTime = t; } catch (e) {} }
+    else if (t) el.addEventListener('loadedmetadata', function f() {
+      el.removeEventListener('loadedmetadata', f);
+      el.currentTime = Math.min(t, Math.max(0, el.duration - 1));
+    });
+  }
+
+  // El reproductor libre espera cargado con la pieza que sigue, para que el
+  // cruce no tenga que esperar la red. La primera vez, además, se le da play
+  // dentro del clic y se pausa: Safari sólo deja sonar después, sin gesto, a
+  // un elemento que ya sonó con uno.
+  function prepararSiguiente() {
+    if (!active || active === BOSQUE.id) return;
+    var libre = otro(au);
+    silenciar(libre);
+    cargar(libre, siguienteDe(active), 0);
+    if (!desbloqueado) {
+      desbloqueado = true;
+      var pr = libre.play();
+      if (pr && pr.then) pr.then(function () { if (libre !== au) libre.pause(); }, function () {});
+    }
+  }
+
+  function marcar(c) {
+    clearPressed();
+    var b = btnFor(c.id);
+    if (b) b.setAttribute('aria-pressed', 'true');
+    if (bosqueOn) { bosqueBtn.setAttribute('aria-pressed', 'true'); rotular(); }
+    else { nowEl.textContent = c.nota; scopeLbl.textContent = 'sonando: ' + c.label; }
+  }
+
+  function fallo(c) {
+    nowEl.textContent = 'no se pudo reproducir ' + c.label + ' — ¿falta ' + urlDe(c) + '?';
+    clearPressed();
+  }
+
+  // Arrancar desde el silencio (nada sonaba, o sonaba «bosque» solo).
+  function empezar(c, desde) {
+    active = c.id;
+    var el = au;
+    cargar(el, c, desde);
+    silenciar(otro(el));
+    otro(el).pause();
+    silenciar(el);
+    marcar(c);
+    el.play().then(function () { fundir(el, 1, XF_PAUSA); prepararSiguiente(); })
+      .catch(function () { fallo(c); });
+  }
+
+  // Cruzar de la que suena a `c`.
+  function cruzarA(c, seg, desde) {
+    var viejo = au, nuevo = otro(au);
+    cargar(nuevo, c, desde);
+    silenciar(nuevo);
+    au = nuevo; active = c.id; cruzando = true;
+    marcar(c);
+    nuevo.play().then(function () {
+      fundir(nuevo, 1, seg);
+      fundir(viejo, 0, seg);
+      setTimeout(function () {
+        if (viejo !== au) viejo.pause();
+        cruzando = false;
+        prepararSiguiente();
+      }, seg * 1000 + 120);
+    }).catch(function () { cruzando = false; fallo(c); });
+  }
+
+  // Ir a una pieza (y a un segundo de ella): cruzando si algo suena.
+  function tocar(c, desde) {
+    if (active && active !== BOSQUE.id && !au.paused) {
+      if (c.id === active) { au.currentTime = desde || 0; return; }
+      cruzarA(c, XF_MANO, desde);
+    } else empezar(c, desde);
+  }
+
+  function vigilar(ev) {
+    var el = ev.target;
+    if (el !== au || cruzando || el.paused || !active || active === BOSQUE.id) return;
+    if (!(el.duration > 0) || !isFinite(el.duration)) return;
+    if (el.duration - el.currentTime <= XF_AUTO) cruzarA(siguienteDe(active), XF_AUTO, 0);
+  }
+  [auA, auB].forEach(function (el) {
+    el.addEventListener('timeupdate', vigilar);
+    // Respaldo, si la pieza es más corta que el cruce o timeupdate no llegó.
+    el.addEventListener('ended', function () {
+      if (el === au && !cruzando && active && active !== BOSQUE.id) cruzarA(siguienteDe(active), 0.3, 0);
+    });
   });
 
   function clearPressed() {
@@ -1671,28 +1811,26 @@ espectrograma sin saber todavía qué fue eso.</p>
     if (ac.state === 'suspended') ac.resume();
 
     if (c === BOSQUE) { elegirBosque(btn); return; }
-    if (bosqueOn) callarBosque();
+    // Desde «bosque» solo, una composición lo reemplaza. Si el bosque estaba
+    // SOBRE otra composición (una miniatura), se queda encima de esta.
+    if (bosqueOn && active === BOSQUE.id) callarBosque();
 
     if (active === c.id && !au.paused) {     // segundo clic sobre la misma: pausa
-      au.pause(); clearPressed();
+      var el = au;
+      fundir(el, 0, XF_PAUSA);
+      setTimeout(function () { el.pause(); }, XF_PAUSA * 1000 + 30);
+      if (bosqueOn) callarBosque();
+      clearPressed();
       nowEl.textContent = 'en pausa — ' + c.nota;
       scopeLbl.textContent = 'en pausa';
       return;
     }
-
-    if (active !== c.id) {
-      active = c.id;
-      au.src = 'media/audio/' + c.id + '.mp3';
+    if (active === c.id && au.paused) {       // reanudar donde quedó
+      marcar(c);
+      au.play().then(function () { fundir(au, 1, XF_PAUSA); }).catch(function () { fallo(c); });
+      return;
     }
-    clearPressed();
-    btn.setAttribute('aria-pressed', 'true');
-    nowEl.textContent = c.nota;
-    au.play().then(function () {
-      scopeLbl.textContent = 'sonando: ' + c.label;
-    }).catch(function () {
-      nowEl.textContent = 'no se pudo reproducir ' + c.label + ' — ¿falta media/audio/' + c.id + '.mp3?';
-      clearPressed();
-    });
+    tocar(c, 0);
   }
 
   // Siempre llega desde un clic, así que cada play() de aquí cuenta como
@@ -1701,14 +1839,34 @@ espectrograma sin saber todavía qué fue eso.</p>
   // se les da play a los tres y no sólo al que se ve. Los que no están en
   // escena se vuelven a pausar en cuanto arrancan.
   function elegirBosque(btn) {
+    if (bosqueOn && active && active !== BOSQUE.id && !au.paused) {
+      // El bosque estaba ENCIMA de una composición: se retira sólo él.
+      callarBosque();
+      marcar(compById(active));
+      return;
+    }
     if (active === BOSQUE.id && bosqueOn) {  // segundo clic: pausa
       callarBosque(); clearPressed();
       nowEl.textContent = 'en pausa — ' + BOSQUE.nota;
       scopeLbl.textContent = 'en pausa';
       return;
     }
+    if (!au.paused) {
+      var el = au;
+      fundir(el, 0, XF_PAUSA);
+      setTimeout(function () { el.pause(); }, XF_PAUSA * 1000 + 30);
+    }
     active = BOSQUE.id;
-    if (!au.paused) au.pause();
+    abrirEscenario();
+    clearPressed();
+    btn.setAttribute('aria-pressed', 'true');
+    rotular();
+    seguirConSonido();
+  }
+
+  // Que suene el escenario: sus tres videos desmutados y en play. Siempre
+  // dentro de un clic (ver arriba, Safari).
+  function abrirEscenario() {
     bosqueOn = true;
     slots.forEach(function (s, j) {
       s.v.muted = false;
@@ -1717,10 +1875,10 @@ espectrograma sin saber todavía qué fue eso.</p>
         pr.then(function () { if (j !== cur && j !== nxt) s.v.pause(); }, function () {});
       }
     });
-    clearPressed();
-    btn.setAttribute('aria-pressed', 'true');
-    rotular();
+  }
 
+  // Si lo que está en escena no trae sonido, pasar ya a lo próximo que suena.
+  function seguirConSonido() {
     // Los cuatro clips fijos del escenario se codificaron sin audio. Si uno de
     // ellos está en escena, «bosque» dejaba a quien lo pulsó en silencio hasta
     // 26 s, esperando la próxima pieza del archivo — y eso se oía como una
@@ -1739,6 +1897,18 @@ espectrograma sin saber todavía qué fue eso.</p>
   function callarBosque() {
     bosqueOn = false;
     slots.forEach(function (s) { s.v.muted = true; });
+    if (compBus) compBus.gain.setTargetAtTime(1, ac.currentTime, 0.4);
+  }
+
+  // Una miniatura pulsada mientras suena una composición: el bosque entra
+  // ENCIMA y la composición sigue, 6 dB más abajo para que la pieza de campo
+  // se oiga. Pulsar «bosque» (que queda marcado) lo retira; pausar la
+  // composición calla los dos.
+  function capaBosque() {
+    abrirEscenario();
+    compBus.gain.setTargetAtTime(DUCK, ac.currentTime, 0.4);
+    bosqueBtn.setAttribute('aria-pressed', 'true');
+    rotular();
   }
 
   // Qué dice el transporte mientras suena el escenario. Los cuatro clips fijos
@@ -1746,9 +1916,10 @@ espectrograma sin saber todavía qué fue eso.</p>
   // el espectro plano sin explicación.
   function rotular() {
     var it = enEscena;
-    if (!it) { nowEl.textContent = BOSQUE.nota; scopeLbl.textContent = 'sonando: bosque'; return; }
-    nowEl.textContent = it.pie + (it.sonido ? '' : ' — este clip no trae sonido');
-    scopeLbl.textContent = it.sonido ? 'sonando: bosque' : 'bosque · clip sin sonido';
+    var encima = active && active !== BOSQUE.id ? compById(active).label + ' + ' : '';
+    if (!it) { nowEl.textContent = BOSQUE.nota; scopeLbl.textContent = 'sonando: ' + encima + 'bosque'; return; }
+    nowEl.textContent = (encima ? encima.replace(' + ', ' · con ') : '') + it.pie + (it.sonido ? '' : ' — este clip no trae sonido');
+    scopeLbl.textContent = it.sonido ? 'sonando: ' + encima + 'bosque' : encima + 'bosque · clip sin sonido';
   }
 
   // Lo que está en escena: el pie sobre el espectro, la pieza marcada en el
@@ -2095,12 +2266,7 @@ espectrograma sin saber todavía qué fue eso.</p>
       if (objetivo < acc + d || k === COMPS.length - 1) {
         var off = Math.max(0, objetivo - acc);
         if (k === ca.i) { au.currentTime = off; return; }
-        var x = COMPS[k];
-        au.addEventListener('loadedmetadata', function ir() {
-          au.removeEventListener('loadedmetadata', ir);
-          au.currentTime = Math.min(off, Math.max(0, au.duration - 1));
-        });
-        choose(x, btnFor(x.id));
+        tocar(COMPS[k], off);
         return;
       }
       acc += d;
@@ -2111,17 +2277,17 @@ espectrograma sin saber todavía qué fue eso.</p>
   // las dos barras salen de su aria-pressed (ver .comps button::before en el
   // CSS), que choose() y clearPressed() ya mantienen.
 
-  au.volume = volEl.value / 100;
+  auA.volume = auB.volume = volEl.value / 100;
   volEl.addEventListener('input', function () {
-    au.volume = volEl.value / 100;
+    auA.volume = auB.volume = volEl.value / 100;
     if (escenario) escenario.gain.value = volEl.value / 100;
   });
 
-  au.addEventListener('error', function () {
-    if (active === BOSQUE.id) return;
+  [auA, auB].forEach(function (el) { el.addEventListener('error', function () {
+    if (el !== au || active === BOSQUE.id) return;
     nowEl.textContent = 'falta media/audio/' + active + '.mp3 — corre ./build_media.sh';
     clearPressed();
-  });
+  }); });
 
   // ── Archivo ───────────────────────────────────────────────────────────────
   // media/archivo.json suma sus piezas al turno del escenario y arma el índice
@@ -2140,7 +2306,11 @@ espectrograma sin saber todavía qué fue eso.</p>
     b.appendChild(im); b.appendChild(sp);
     b.addEventListener('click', function () {
       // Llevarla al escenario y oírla: este clic es el gesto que el audio pide.
-      if (!bosqueOn) choose(BOSQUE, btnFor(BOSQUE.id));
+      // Si suena una composición, la pieza entra encima y la composición sigue.
+      if (active && active !== BOSQUE.id && !au.paused) {
+        if (ac && ac.state === 'suspended') ac.resume();
+        if (!bosqueOn) capaBosque();
+      } else if (!bosqueOn) choose(BOSQUE, btnFor(BOSQUE.id));
       saltar(item);
       document.querySelector('.hero').scrollIntoView({ behavior: 'smooth', block: 'start' });
     });
@@ -2258,7 +2428,7 @@ espectrograma sin saber todavía qué fue eso.</p>
     if (document.hidden) {
       slots.forEach(function (s) { s.v.pause(); });
       strip.forEach(function (v) { v.pause(); });
-      if (!au.paused) { au.pause(); clearPressed(); }
+      if (!au.paused) { auA.pause(); auB.pause(); clearPressed(); }
       if (bosqueOn) { callarBosque(); clearPressed(); }
     } else {
       all().forEach(function (v) { v.play().catch(function () {}); });
