@@ -542,7 +542,9 @@
             // is, the other how much of it is seen.
             // phenoSeek joins them: how much of the silent calendar is heard
             // between recordings is the same decision as how loud they are.
-            [\corpusLevel, \phenoSeek, \chainProcess, \camaraOpacity],
+            // corpusFx beside CADENA: both decide how much is DONE to the
+            // recordings, one by the chain, one by the sample row.
+            [\corpusLevel, \phenoSeek, \corpusFx, \chainProcess, \camaraOpacity],
             // Cadencia — how OFTEN, not how loud. The matrix mixer row below
             // sets each layer's level; these set its rate. They are the other
             // half of the same question and the reason the mix faders felt

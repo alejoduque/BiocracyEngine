@@ -3,7 +3,7 @@
     "engine": "BiocracyEngine",
     "version": 1,
     "preset": "Estratos - Estratificacion y Tiempo Profundo",
-    "nota": "Estratificación y tiempo profundo: lo más lento del motor. Un pad de cuatro voces cada casi dos minutos, sala máxima (28 s), sin bombo ni china; los samples estirados al máximo y una octava abajo. BUSCAR 0.25: las grabaciones afloran como estratos, rara vez y largas.",
+    "nota": "Estratificación y tiempo profundo: lo más lento del motor. Un pad de cuatro voces cada casi dos minutos, sala máxima (28 s), sin bombo ni china; los samples estirados al máximo y una octava abajo. BUSCAR 0.25: las grabaciones afloran como estratos, rara vez y largas. CORPUS FX 1.0: cada grabación se hunde una octava y se estira ocho veces, un estrato.",
     "revisado": "2026-09-26"
   },
   "params": {
@@ -19,6 +19,7 @@
     "chamberMix": 0.6,
     "chamberSize": 1.0,
     "chinaOn": 0.0,
+    "corpusFx": 1.0,
     "corpusLevel": 0.6,
     "delayFeedback": 0.4,
     "droneDepth": 0.95,

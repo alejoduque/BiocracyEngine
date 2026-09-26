@@ -220,9 +220,20 @@ s.waitForBoot {
             spatialSpreadBus = -1, masterVolumeBus = -1,
             // Matrix mixer: this layer's live level. Auto-wired by
             // ~phenoBusArgs, which passes every entry of ~buses.
-            mixCorpusBus = -1;
+            mixCorpusBus = -1,
+            // CORPUS FX, and the six SAMPLE-row knobs it lets through. The
+            // smp* buses are ~sampleBuses (10_sample_system), a different
+            // collection from ~buses, so ~phenoFxArgs wires them rather than
+            // ~phenoBusArgs — and prefixed so that none can collide with a
+            // ~buses name (delayFeedback exists in both, and means the drone
+            // delay in one and the sample delay in the other).
+            corpusFx = 0.6, corpusFxBus = -1,
+            smpStretchBus = -1, smpPitchBus = -1, smpGrainBus = -1,
+            smpReverbBus = -1, smpDelayBus = -1, smpDelayTimeBus = -1, smpDelayFbBus = -1;
 
         var sig, env, wet, quadSig, level, floorVal, veil, lpf, res, room, spread, master;
+        var fx, stretch, semis, grainSz, smpRev, dAmt, dTime, dFb;
+        var pitched, grains, pointer, stretchAmt, echo;
 
         level    = Select.kr(corpusLevelBus    >= 0, [corpusLevel,   In.kr(corpusLevelBus, 1)]);
         floorVal = Select.kr(opacityFloorBus   >= 0, [opacityFloor,  In.kr(opacityFloorBus, 1)]);
@@ -231,6 +242,19 @@ s.waitForBoot {
         res      = Select.kr(resonantBodyBus   >= 0, [resonantBody,  In.kr(resonantBodyBus, 1)]);
         spread   = Select.kr(spatialSpreadBus  >= 0, [spatialSpread, In.kr(spatialSpreadBus, 1)]);
         master   = Select.kr(masterVolumeBus   >= 0, [1.0,           In.kr(masterVolumeBus, 1)]);
+
+        // Every sample-row value pulled toward neutral by CORPUS FX. Stretch
+        // and pitch are interpolated in their own units (octaves, semitones)
+        // so the middle of the fader is the middle of the effect.
+        fx      = Lag.kr(Select.kr(corpusFxBus >= 0, [corpusFx, In.kr(corpusFxBus, 1)]).clip(0, 1), 0.2);
+        stretch = 2 ** (Select.kr(smpStretchBus >= 0, [1.0, In.kr(smpStretchBus, 1)])
+                    .clip(0.25, 8.0).log2 * fx);
+        semis   = Select.kr(smpPitchBus >= 0, [0.0, In.kr(smpPitchBus, 1)]).clip(-24, 24) * fx;
+        grainSz = Select.kr(smpGrainBus >= 0, [0.2, In.kr(smpGrainBus, 1)]).clip(0.05, 1.0);
+        smpRev  = Select.kr(smpReverbBus >= 0, [0.0, In.kr(smpReverbBus, 1)]).clip(0, 1) * fx;
+        dAmt    = Select.kr(smpDelayBus >= 0, [0.0, In.kr(smpDelayBus, 1)]).clip(0, 1) * fx;
+        dTime   = Select.kr(smpDelayTimeBus >= 0, [0.5, In.kr(smpDelayTimeBus, 1)]).clip(0.1, 2.0);
+        dFb     = Select.kr(smpDelayFbBus >= 0, [0.3, In.kr(smpDelayFbBus, 1)]).clip(0.05, 0.95);
 
         // Article 47 as an audible limit rather than a declaration. A clip
         // whose opacity exceeds (1 - floor) is withdrawn — it does not fade
@@ -242,8 +266,36 @@ s.waitForBoot {
             startPos: startPos.clip(0, 0.999) * BufFrames.kr(buf),
             loop: 0, doneAction: 0);
 
+        // ── The sample row, on the forest ─────────────────────────────────
+        // The recording itself keeps its own clock. The envelope was fitted
+        // to its duration at spawn (see ~phenoPlayClip), so nothing here may
+        // change how fast PlayBuf reads it — a rate change would end the
+        // recording before the envelope, the eleven-seconds-of-nothing bug
+        // that fit was written to cure.
+        //
+        // PITCH SHIFT: a time-domain shifter over the recording, faded in over
+        // the first semitone so that at 0 the path is the recording, not the
+        // recording through a shifter at ratio 1 (which still combs).
+        pitched = PitchShift.ar(sig, 0.2, semis.midiratio, 0.0, 0.01);
+        sig = XFade2.ar(sig, pitched, semis.abs.clip(0, 1).linlin(0, 1, -1, 1));
+
+        // TIME STRETCH + GRAIN SIZE: grains read the same buffer on their own
+        // head, at 1/stretch of real time and at the shifted pitch. Crossfaded
+        // in octaves of stretch, as in the sample voice, so at x1 the grains
+        // are silent and GRAIN SIZE acts only once the recording is stretched.
+        pointer = (startPos + Sweep.kr(1, 1 / (stretch.max(0.05) * BufDur.kr(buf)))
+            + LFNoise2.kr(3).range(0, grainSz / BufDur.kr(buf))).wrap(0, 1);
+        grains = GrainBuf.ar(1, Dust.kr(4 / grainSz), grainSz, buf,
+            semis.midiratio * BufRateScale.kr(buf), pointer, 2);
+        stretchAmt = stretch.log2.abs.clip(0, 1);
+        sig = XFade2.ar(sig, grains, stretchAmt.linlin(0, 1, -1, 1));
+
         sig = HPF.ar(sig, 25);
         sig = RLPF.ar(sig, lpf.clip(200, 18000), res.clip(0.1, 0.8));
+
+        // DELAY / DELAY TIME, with the sample voice's feedback, recirculating.
+        echo = CombC.ar(sig, 2.0, dTime, dTime * (0.001.log / dFb.log));
+        sig = sig + (echo * dAmt);
 
         // A long, slow envelope. hold clips to 600 s so a whole clip can sit
         // inside one node at any ring rate; the OSC path in 10_sample_system
@@ -265,7 +317,11 @@ s.waitForBoot {
             * (~trimCorpus ? 0.299)
             * Lag.kr(Select.kr(mixCorpusBus >= 0, [1.0, In.kr(mixCorpusBus, 1)]), 0.08);
 
-        wet = FreeVerb.ar(sig, room.clip(0, 0.9), 0.85, 0.25);
+        // REVERB adds to ATMOS MIX rather than replacing it: the corpus has
+        // always sat in the atmosphere's room, and the sample row can only
+        // make that room wetter, never take the corpus out of it.
+        room = (room + (smpRev * 0.6)).clip(0, 0.9);
+        wet = FreeVerb.ar(sig, room, 0.85, 0.25);
         sig = XFade2.ar(sig, wet, room.linlin(0, 0.9, -1, 0.4));
         sig = sig * master.clip(0, 1);
 
@@ -584,6 +640,23 @@ s.waitForBoot {
     args;
 };
 
+// The SAMPLE row's buses, under the smp* names \corpusVoice declares. Empty
+// until 10_sample_system has made them, and then every voice follows the six
+// knobs live, scaled by CORPUS FX inside the SynthDef.
+~phenoFxArgs = {
+    var sb = ~sampleBuses ? ();
+    var at = { |k| (sb[k] !? { |b| b.index }) ? -1 };
+    [
+        \smpStretchBus,   at.(\timeStretch),
+        \smpPitchBus,     at.(\samplePitch),
+        \smpGrainBus,     at.(\grainSize),
+        \smpReverbBus,    at.(\sampleReverb),
+        \smpDelayBus,     at.(\sampleDelay),
+        \smpDelayTimeBus, at.(\delayTime),
+        \smpDelayFbBus,   at.(\delayFeedback)
+    ];
+};
+
 ~phenoPlayClip = { |clip, holdSecs|
     ~corpusAcquire.(clip, { |buf|
         if(buf.notNil) {
@@ -623,7 +696,7 @@ s.waitForBoot {
                 \pan, 1.0.rand2 * 0.6,
                 \opacity, clip[\opacity],
                 \out, (~corpusOutBus ? 0)
-            ] ++ ~phenoBusArgs.value,
+            ] ++ ~phenoBusArgs.value ++ ~phenoFxArgs.value,
                 target: if(~defaultGroup.notNil, { ~defaultGroup }, { s.defaultGroup }));
 
             // ringDay is which position on the 365-ring admitted this voice —

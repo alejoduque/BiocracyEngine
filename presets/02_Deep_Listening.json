@@ -3,7 +3,7 @@
     "engine": "BiocracyEngine",
     "version": 1,
     "preset": "Deep Listening - Atencion Expandida y Espacio",
-    "nota": "Atención expandida (Oliveros, la cisterna de 45 s): casi nada ocurre y todo resuena. Sala al máximo razonable (~27 s), bowl solo sin china, pad cada minuto, sin bombo; el oído llena el espacio. BUSCAR 0.4: el bosque aparece de a ratos, separado por días de ausencia que también se escuchan.",
+    "nota": "Atención expandida (Oliveros, la cisterna de 45 s): casi nada ocurre y todo resuena. Sala al máximo razonable (~27 s), bowl solo sin china, pad cada minuto, sin bombo; el oído llena el espacio. BUSCAR 0.4: el bosque aparece de a ratos, separado por días de ausencia que también se escuchan. CORPUS FX 0.8: las grabaciones entran en la cisterna, estiradas y con eco largo.",
     "revisado": "2026-09-26"
   },
   "params": {
@@ -19,6 +19,7 @@
     "chamberMix": 0.7,
     "chamberSize": 0.95,
     "chinaOn": 0.0,
+    "corpusFx": 0.8,
     "corpusLevel": 0.6,
     "delayFeedback": 0.45,
     "droneDepth": 0.5,

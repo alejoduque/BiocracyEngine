@@ -69,6 +69,13 @@ s.doWhenBooted({
     
     // Sample loading and buffer management
     ~sampleBuffers = Array.newClear(~samplePaths.size);
+    // A mono copy (left channel) of every STEREO recording, for the granular
+    // path only. GrainBuf reads mono buffers and nothing else: handed a stereo
+    // one it outputs silence (checked by NRT render — peak 0.0 on aullidos,
+    // 0.18 on the same file read as one channel). Five of the seven MP3s are
+    // stereo, so for them TIME STRETCH crossfaded the voice into silence and
+    // GRAIN SIZE shaped nothing. nil for mono files: they grain from buf.
+    ~sampleGrainBuffers = Array.newClear(~samplePaths.size);
     ~loadedSamples = 0;
     
     // Load samples asynchronously
@@ -90,6 +97,9 @@ s.doWhenBooted({
                     "✓ Loaded %: % frames, % channels".format(
                         ~sampleNames[i], buf.numFrames, buf.numChannels
                     ).postln;
+                    if(buf.numChannels > 1) {
+                        ~sampleGrainBuffers[i] = Buffer.readChannel(s, fullPath, channels: [0]);
+                    };
                 } {
                     "✗ Failed to load % — that index will be silent".format(path).error;
                 };
@@ -112,6 +122,9 @@ s.doWhenBooted({
 
         SynthDef(defName, {
             arg buf=0, amp=0.7,
+            // The buffer the granular path reads: a mono copy for stereo
+            // files (see ~sampleGrainBuffers), buf itself for mono ones.
+            grainBuf=0,
             rate=1, pitch=0, loop=0,
             // ── Envolvente ──────────────────────────────────────────────
             // Esta voz era la ÚNICA del motor sin envolvente: PlayBuf iba
@@ -185,7 +198,13 @@ s.doWhenBooted({
             var sampleSpatialY = Select.kr(sampleSpatialYBus >= 0, [spatialY, In.kr(sampleSpatialYBus, 1)]);
             var roomSizeParam = Select.kr(roomSizeBus >= 0, [0.8, In.kr(roomSizeBus, 1)]);
             var distanceParam = Select.kr(distanceEffectBus >= 0, [0.5, In.kr(distanceEffectBus, 1)]);
-            var finalRate = controlRate * controlTimeStretch.reciprocal * (controlPitch / 12).midiratio;
+            // TIME STRETCH no longer divides the playback rate. It did, so it
+            // was a varispeed — slower AND lower — and PITCH SHIFT had no way
+            // to put the pitch back. Now the dry voice runs at rate x pitch and
+            // the stretch lives in the grains' read pointer (below), which is
+            // what paulstretch means: time drawn out, pitch left alone.
+            var finalRate = controlRate * (controlPitch / 12).midiratio;
+            var pointer, delayDecay;
 
             // PlayBuf with correct channel count — no mismatch.
             //
@@ -208,6 +227,18 @@ s.doWhenBooted({
                 loop: loop, doneAction: 0);
             // Ensure stereo
             sig = if(numCh == 1, { [sig, sig] }, { sig });
+
+            // The grains' read head: starts where the dry voice starts and
+            // moves at 1/stretch of it, so TIME STRETCH 4 reads the recording
+            // four times slower at its own pitch. It was LFNoise2 over the
+            // whole buffer, which is not a stretch of anything — it scattered
+            // grains from anywhere in the file. A little jitter (a grain's
+            // width) keeps the smear paulstretch has instead of a buzz.
+            // Sweep integrates, so a knob move changes speed without a jump.
+            pointer = (startPos
+                + Sweep.kr(1, controlRate / (controlTimeStretch.max(0.05) * BufDur.kr(grainBuf)))
+                + LFNoise2.kr(3).range(0, controlGrainSize.clip(0.05, 1.0) / BufDur.kr(grainBuf))
+            ).wrap(0, 1);
 
             // Granular path (stereo output)
             grains = GrainBuf.ar(
@@ -240,13 +271,16 @@ s.doWhenBooted({
                 // overlap is bounded for the same reason: it is the numerator.
                 Dust.kr(overlap.clip(1, 8) / controlGrainSize.clip(0.05, 1.0)),
                 controlGrainSize.clip(0.05, 1.0),
-                buf, finalRate,
-                LFNoise2.kr(0.1).range(0, 1),
-                2, pan: controlPan
+                grainBuf, finalRate,
+                pointer,
+                2, pan: (controlPan + LFNoise1.kr(2).range(-0.4, 0.4)).clip(-1, 1)
             );
 
-            // Crossfade normal ↔ granular
-            stretchAmount = (controlTimeStretch - 1).abs.clip(0, 1);
+            // Crossfade normal ↔ granular, in octaves of stretch so the knob
+            // is symmetric: x2 and x0.5 are both fully granular. It was
+            // |stretch - 1|, which reached full at x2 but only halfway at
+            // x0.5 — the whole lower third of the knob was half dry.
+            stretchAmount = controlTimeStretch.max(0.05).log2.abs.clip(0, 1);
             sig = XFade2.ar(sig, grains, stretchAmount.linlin(0, 1, -1, 1));
 
             // Filtering
@@ -254,8 +288,16 @@ s.doWhenBooted({
             sig = RLPF.ar(sig, controlLPF.clip(200, 8000), controlFilterRes.clip(0.1, 0.8));
 
             // Delay
-            wet = DelayC.ar(sig, 2.0, controlDelayTime.clip(0.1, 2.0), controlDelayFB.clip(0, 0.95));
-            sig = sig + (wet * controlDelay);
+            // DelayC has no feedback: its fourth argument is `mul`. So the
+            // feedback value (0.3) scaled a SINGLE echo, and DELAY at its 0.2
+            // default put that echo at 0.06 — -24 dB, which is the "very
+            // faint". CombC recirculates; its decay time is derived from the
+            // feedback so the knob keeps its meaning (echoes falling to -60 dB
+            // after log(0.001)/log(fb) repeats), and the wet sits at DELAY.
+            delayDecay = controlDelayTime.clip(0.1, 2.0)
+                * (0.001.log / controlDelayFB.clip(0.05, 0.95).log);
+            wet = CombC.ar(sig, 2.0, controlDelayTime.clip(0.1, 2.0), delayDecay);
+            sig = sig + (wet * controlDelay.clip(0, 1));
 
             // Reverb
             sig = FreeVerb2.ar(sig[0], sig[1], controlReverb, roomSizeParam.clip(0.1, 0.99), 0.3);
@@ -417,6 +459,10 @@ s.doWhenBooted({
                     { rrand(0.0, (1 - ((envSpan + 0.6) / bufSecs)).max(0.0)) });
                 synthArgs = [
                     \buf, buf,
+                    // Mono copy for stereo files; the corpus grains that
+                    // 16_corpus_calls appends past the seven are mono already
+                    // and fall through to buf.
+                    \grainBuf, (~sampleGrainBuffers !? { |g| g[index] }) ? buf,
                     \loop, ((ov[\sampleLoop] ? 0).asInteger),
                     \startPos, startFrac,
                     // Long attack and a release longer than the hold: the point

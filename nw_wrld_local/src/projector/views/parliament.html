@@ -1340,6 +1340,15 @@
                         data-osc="/pheno/seek">
                     <span class="ctrl-val" id="disp-pheno-seek">0.00</span>
                 </div>
+                <!-- CORPUS FX: how much of the sample row (time stretch,
+                     pitch, reverb, delay, delay time, grain size) reaches the
+                     field recordings. 0 = as recorded (\corpusFx). -->
+                <div class="ctrl-row">
+                    <label>Corpus FX</label>
+                    <input type="range" min="0" max="1" step="0.01" value="0.6"
+                        data-osc="/pheno/corpusFx">
+                    <span class="ctrl-val" id="disp-pheno-corpusFx">0.60</span>
+                </div>
                 <!-- Art. 47 as a fader rather than a constant. Slot C projects
                      the camera trap and the spectrogram register; this decides
                      how much of it the Chamber shows. It boots at 1.0 — every

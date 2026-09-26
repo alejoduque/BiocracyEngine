@@ -3,7 +3,7 @@
     "engine": "BiocracyEngine",
     "version": 1,
     "preset": "Dark Forest - Dosel de Sombras y Ecologia Oculta",
-    "nota": "Dosel de sombras: oscuro, grave y velado. Todo tres semitonos abajo, pad en el registro más bajo, insectos nocturnos en el polvo, la imagen de la cámara retenida a medias (opacidad). BUSCAR 0.6 en la bancada de voces nocturnas: el bosque oscuro habla desde la noche grabada.",
+    "nota": "Dosel de sombras: oscuro, grave y velado. Todo tres semitonos abajo, pad en el registro más bajo, insectos nocturnos en el polvo, la imagen de la cámara retenida a medias (opacidad). BUSCAR 0.6 en la bancada de voces nocturnas: el bosque oscuro habla desde la noche grabada. CORPUS FX 0.7: la noche grabada, cinco semitonos abajo y estirada.",
     "revisado": "2026-09-26"
   },
   "params": {
@@ -19,6 +19,7 @@
     "chamberMix": 0.45,
     "chamberSize": 0.8,
     "chinaOn": 0.05,
+    "corpusFx": 0.7,
     "corpusLevel": 0.6,
     "delayFeedback": 0.4,
     "droneDepth": 0.9,

@@ -19,6 +19,7 @@
     "chamberMix": 0.1,
     "chamberSize": 0.2,
     "chinaOn": 0.6,
+    "corpusFx": 0.4,
     "corpusLevel": 0.6,
     "delayFeedback": 0.25,
     "droneDepth": 0.5,

@@ -50,6 +50,7 @@ const phenoParams: Record<string, number> = {
   // rate 0.28 normalized is one ring day per minute on the exponential spec.
   rate: 0.28,
   seek: 0,
+  corpusFx: 0.6,
   corpusLevel: 0.5,
   seasonalWeight: 0.5,
   activeFraction: 0,
@@ -1915,6 +1916,7 @@ async function init() {
     "/pheno/bancada":           "disp-pheno-bancada",
     "/pheno/rate":              "disp-pheno-rate",
     "/pheno/seek":              "disp-pheno-seek",
+    "/pheno/corpusFx":          "disp-pheno-corpusFx",
     "/pheno/corpusLevel":       "disp-pheno-corpusLevel",
     // Slot C's projection amount. Its own /camara namespace rather than
     // /pheno because it governs the visual register, not the audio ring.

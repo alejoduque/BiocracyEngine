@@ -153,6 +153,15 @@
     // chain is doing — see 17_chain_processing.scd for why this is the shape
     // the coupling takes rather than the chain playing notes.
     (name: \chainProcess,      spec: ControlSpec(0, 1, \lin),       default: 0.45, path: "/chain/process",           cc: 23),
+    // How much of the SAMPLE row — TIME STRETCH, PITCH SHIFT, REVERB, DELAY,
+    // DELAY TIME, GRAIN SIZE — reaches the corpus. Those six knobs acted on
+    // the seven MP3s only; the field recordings played through untouched
+    // whatever the performer did. This is the same move chainProcess makes
+    // for the chain, given to the performer's hand: every one of the six is
+    // interpolated toward its neutral point by it (stretch x1, pitch 0,
+    // no echo, no added room), so 0 is the recording as recorded and 1 is
+    // the recording as the sample row would treat it.
+    (name: \corpusFx,          spec: ControlSpec(0, 1, \lin),       default: 0.6,  path: "/pheno/corpusFx"),
     // How much of the camera-trap and spectrogram register slot C actually
     // projects. This Chamber withholds nothing by default: 1.0 is every clip
     // at full opacity, felids included, and that is where the fader boots.
@@ -487,6 +496,7 @@
     // ── Corpus ──────────────────────────────────────────────────────────
     \corpusLevel          -> "CORPUS LVL",
     \chainProcess         -> "CADENA",
+    \corpusFx             -> "CORPUS FX",
     \camaraOpacity        -> "OPAC CÁM",
     // ── Cadencia · how often, not how loud ──────────────────────────────
     //

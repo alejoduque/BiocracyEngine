@@ -3,7 +3,7 @@
     "engine": "BiocracyEngine",
     "version": 1,
     "preset": "Acustemologia - Ecosistema Bosque Seco Tropical",
-    "nota": "Ecosistema del bosque seco, como música concreta: el corpus y las grabaciones adelante y casi sin tratar, a tiempo real; al aire libre, sin sala; los sintetizadores apenas sostienen. BUSCAR 1.0 y todas las bancadas: el anillo va de grabación en grabación, sin días vacíos.",
+    "nota": "Ecosistema del bosque seco, como música concreta: el corpus y las grabaciones adelante y casi sin tratar, a tiempo real; al aire libre, sin sala; los sintetizadores apenas sostienen. BUSCAR 1.0 y todas las bancadas: el anillo va de grabación en grabación, sin días vacíos. CORPUS FX 0.15: el documento casi intacto; apenas la sala.",
     "revisado": "2026-09-26"
   },
   "params": {
@@ -19,6 +19,7 @@
     "chamberMix": 0.08,
     "chamberSize": 0.25,
     "chinaOn": 0.2,
+    "corpusFx": 0.15,
     "corpusLevel": 0.8,
     "delayFeedback": 0.35,
     "droneDepth": 0.4,

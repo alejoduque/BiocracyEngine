@@ -3,7 +3,7 @@
     "engine": "BiocracyEngine",
     "version": 1,
     "preset": "Phenology - Camara Fenologica y Ciclo 365",
-    "nota": "Cámara fenológica y ciclo de 365 días: el corpus en pleno, el pulso de la cámara presente, una sala moderada; los sintetizadores callan casi todo y dejan hablar al anillo. BUSCAR 0.35, todas las bancadas: el calendario se lee con sus ausencias, pero el bosque vuelve cada pocos minutos.",
+    "nota": "Cámara fenológica y ciclo de 365 días: el corpus en pleno, el pulso de la cámara presente, una sala moderada; los sintetizadores callan casi todo y dejan hablar al anillo. BUSCAR 0.35, todas las bancadas: el calendario se lee con sus ausencias, pero el bosque vuelve cada pocos minutos. CORPUS FX 0.2: el calendario se oye como fue grabado.",
     "revisado": "2026-09-26"
   },
   "params": {
@@ -19,6 +19,7 @@
     "chamberMix": 0.3,
     "chamberSize": 0.5,
     "chinaOn": 0.2,
+    "corpusFx": 0.2,
     "corpusLevel": 1.0,
     "delayFeedback": 0.4,
     "droneDepth": 0.5,
