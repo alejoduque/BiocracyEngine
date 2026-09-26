@@ -30,12 +30,18 @@ recordings/*.wav
 # originals with tools/build_corpus.py). The manifest is small and is the
 # thing the engine actually reads, so it is tracked.
 #
-# El árbol de rutas SÍ está versionado —725 .flac vacíos generados por
-# tools/make_placeholders.py— pero por seguimiento explícito, no por excepción
-# aquí: se añadieron con `git add -f` y git los sigue aunque esta regla los
-# excluya. Así, si alguien corre build_corpus.py en este mismo directorio, los
-# archivos reales aparecen como MODIFICADOS en git status en lugar de colarse
-# en un commit: un aviso visible en vez de 4.2 GB silenciosos.
+# El árbol de rutas NO se versiona, y no debe volver a versionarse.
+#
+# Hubo un tiempo en que sí: 725 .flac vacíos, añadidos con `git add -f`, para
+# que un real apareciera como MODIFICADO en vez de colarse en un commit. Pero
+# esta regla ya impide que se cuele, y seguirlos tenía el efecto contrario y
+# grave: git trata como prescindible todo archivo ignorado, así que cambiar a
+# una rama que los sigue PISA el corpus real de 4.2 GB con archivos vacíos, sin
+# preguntar ni avisar. Pasó el 2026-09-25 y hubo que reconstruirlo desde los
+# originales AudioMoth.
+#
+# Para ver qué rutas espera el motor sin tener el corpus, en un clon limpio:
+#   python3 tools/make_placeholders.py   # crea sólo lo que falte, nunca pisa
 corpus/*
 !corpus/manifest.json
 

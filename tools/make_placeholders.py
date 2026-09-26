@@ -7,9 +7,10 @@ importan — son las que leen 14_phenological_corpus.scd, 16_corpus_calls.scd y
 web/build_media.sh — y sin ellas no hay forma de saber, leyendo el repositorio,
 qué archivos espera encontrar el motor ni cómo se llaman.
 
-Esto crea cada ruta como archivo vacío. En git cuestan sólo la entrada de
-árbol: todos los archivos vacíos comparten un único blob, así que 900
-placeholders no añaden peso real.
+Esto crea cada ruta como archivo vacío, SÓLO en el disco y sólo si falta:
+nunca pisa un archivo que ya existe. Los vacíos no se versionan (ver
+.gitignore): cuando se versionaban, cambiar a una rama que los seguía pisaba el
+corpus real con ellos, porque git trata como prescindible lo que ignora.
 
 Las rutas del corpus NO se inventan ni se leen del disco —que puede no estar
 montado— sino que salen de corpus/manifest.json, que es exactamente lo que el
