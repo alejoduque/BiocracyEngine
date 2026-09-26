@@ -513,6 +513,28 @@
     if(s.size > 0) { s.toUpper } { s };
 };
 
+// ── One caption format for every control ───────────────────────────────────
+// The name on one line and the value under it. "NAME: value" on one line did
+// not fit its own cell: a knob cell is 98 px, and "DRONE LAYER: 0.123" measured
+// 107 px in Menlo 10 — Qt clipped both ends of a dozen captions. On two lines
+// the longest name (STRIKE CHAIN) is 82 px in the 11 px bitmap face.
+//
+// Everything that writes a caption goes through this — the widget at build
+// time, ~setParam's deferred update, a preset load — or the caption flips
+// between formats depending on which surface last touched the control.
+//
+// A control whose name is already printed beside it registers its own format
+// in ~labelFormats: the mixer strips show the value alone under their layer
+// caption, and so do the sample knobs under their function label.
+~labelFormats = ~labelFormats ?? ();
+~knobText = { |name, val|
+    var f = ~labelFormats[name];
+    if(f.notNil) { f.(name, val) } {
+        (~knobLabels[name] ? ~labelCase.(name)) ++ "\n" ++ (val ? 0).round(0.001)
+    };
+};
+~valueOnly = { |name, val| (val ? 0).round(0.001).asString };
+
 // ─── The single write path ──────────────────────────────────────────────────
 // source: \midi | \osc | \gui | \code — used for the BRIDGE liveness light.
 // Value is in NATIVE units (Hz, semitones, …); use ~setParamNorm for 0–1.
@@ -572,8 +594,7 @@
                 // name, so every refresh clobbered the widget's own caption —
                 // BOWL became BOWLON and TX INFL became TRANSACTIONINFLUENCE
                 // the first time anything touched the parameter.
-                label.string = (~knobLabels[name] ? ~labelCase.(name))
-                    ++ ": " ++ val.round(0.001);
+                label.string = ~knobText.(name, val);
             };
         }.defer;
 
@@ -860,8 +881,7 @@ if(File.exists(~presetDir).not) { File.mkdir(~presetDir) };
                             ~sampleKnobViews[key].value = ~sampleControlSpecs[key].unmap(val);
                         };
                         if(~sampleControlLabels.notNil and: { ~sampleControlLabels[key].notNil }) {
-                            ~sampleControlLabels[key].string =
-                                ~labelCase.(key) ++ ": " ++ val.round(0.001);
+                            ~sampleControlLabels[key].string = ~knobText.(key, val);
                         };
                     }.defer;
                 };

@@ -55,6 +55,24 @@
         // back silently the way a missing face would.
         ~monoFont = "Menlo";
 
+        // Captions — knob and toggle labels, mixer and group headings, the
+        // title — in a monospace BITMAP face: Departure Mono (Helena Zhang,
+        // SIL OFL 1.1; the font and its licence are in fonts/, and
+        // start_ecosystem.sh installs it). A pixel face is only sharp on its
+        // own grid, 11 px and its multiple 22, so captions go to exactly those
+        // sizes and never bold: Qt fakes bold by smearing, which undoes the
+        // pixel. Buttons stay in Menlo — their widths were set for it.
+        // Without the font installed, everything falls back to Menlo at the
+        // sizes it had.
+        ~labelFont = if(Font.availableFonts.includesEqual("Departure Mono")) {
+            "Departure Mono" } { ~monoFont };
+        ~labelBitmap = (~labelFont != ~monoFont);
+        ~labelPx = if(~labelBitmap) { 11 } { 10 };
+        ~labelF = { |big = false|
+            if(~labelBitmap) { Font(~labelFont, if(big) { 22 } { 11 }) }
+                { Font(~monoFont, if(big) { 16 } { 10 }, big) }
+        };
+
         backgroundColor = mainTheme.background;
         textColor = mainTheme.foreground;
         accentColor = mainTheme.accent;
@@ -100,11 +118,11 @@
         // live somewhere that does not vanish when the laser column does.
         ~headerText = StaticText()
             .string_("BiocracyEngine")
-            .font_(Font(~monoFont, 16, true))
+            .font_(~labelF.(true))
             .align_(\center)
             .stringColor_(mainTheme.yellow);
         ~header = View().layout_(HLayout().margins_(0).spacing_(6));
-        ~header.fixedHeight_(24);
+        ~header.fixedHeight_(if(~labelBitmap) { 30 } { 24 });
 
         // Create main container views for merged controls + samples.
         //
@@ -480,12 +498,19 @@
         // is by what the control DOES, and where a boundary falls mid-row it is
         // said so rather than implied by a comment that has stopped being true.
         ~knobParameters = [
-            // Core performance, then the first two of ambient processing.
-            [\masterVolume, \pitchShift, \timeDilation, \spectralShift, \spatialSpread,
-             \textureDepth, \atmosphereMix],
-            // The rest of ambient processing, then the noise bed.
-            [\memoryFeed, \harmonicRich, \resonantBody,
-             \masterAmp, \filterCutoff, \noiseLevel, \noiseFilt],
+            // Core performance. The two loudness controls lead the surface
+            // side by side — MASTER VOL, the output level, and MASTER AMP, the
+            // gain that trims pad, drone and beats together. MASTER AMP used to
+            // sit fourth in the ambient row between RES BODY and the noise bed,
+            // so setting the level meant reaching across three timbre knobs
+            // for its other half. MIDI is unaffected: CCs map by name.
+            [\masterVolume, \masterAmp, \pitchShift, \timeDilation, \spectralShift,
+             \spatialSpread, \textureDepth],
+            // Ambient processing, then the noise bed. ATMOS MIX moved here in
+            // MASTER AMP's place and belongs here anyway: it is the reverb
+            // send, with MEM FEED, HARMONICS and RES BODY beside it.
+            [\atmosphereMix, \memoryFeed, \harmonicRich, \resonantBody,
+             \filterCutoff, \noiseLevel, \noiseFilt],
             // The drone and what bends it. beatTempo sits here because it is the
             // only other control that changes the engine's motion rather than
             // its timbre.
@@ -539,7 +564,7 @@
 
         // Enhanced knob function with oscilloscope aesthetics
         ~makeKnob = { |label, minVal, maxVal, defaultVal=0.5, mapping=\lin|
-            var container, knobContainer, spec, knob, displayStr, valueLabel, paramName, ring;
+            var container, knobContainer, spec, knob, valueLabel, paramName, ring;
 
             container = View().background_(backgroundColor);
             container.layout_(VLayout().margins_(2).spacing_(2));
@@ -601,13 +626,14 @@
             // level row for the same five layers. Overridden here rather than
             // by renaming the parameters, because the names are also the OSC
             // paths, the preset keys and the ~beatParams mirrors — renaming
-            // them would break saved configs for a cosmetic gain.
-            displayStr = ~knobLabels[label.asSymbol] ? label.asString.toUpper;
-
+            // them would break saved configs for a cosmetic gain. The
+            // caption itself — ~knobLabels first, then ALL CAPS, name over
+            // value — is built by ~knobText (0_parameters.scd), the one
+            // format every writer of a caption shares.
             valueLabel = StaticText()
-                .string_(displayStr ++ ": " ++ defaultVal.round(0.001))
+                .string_(~knobText.(label.asSymbol, defaultVal))
                 .stringColor_(Color.white)
-                .font_(Font(~monoFont, 10))  // 2px smaller
+                .font_(~labelF.())
                 .align_(\center);
 
             container.layout.add(knobContainer);
@@ -632,7 +658,7 @@
                     // Registry missing (standalone GUI use) — set the bus directly
                     if(~buses.notNil and: {~buses[paramName].notNil}) {
                         ~buses[paramName].set(mappedVal);
-                        valueLabel.string = displayStr ++ ": " ++ mappedVal.round(0.001);
+                        valueLabel.string = ~knobText.(paramName, mappedVal);
                     };
                 };
             };
@@ -663,19 +689,24 @@
         // separate-row version wastes the width: bowl and china are two knobs,
         // 264 px of an 1118 px surface, and a heading of their own above them
         // spent a further 14 px of height to say so.
+        // 58 px, not 50: in the bitmap face a character is 7 px, and AMBIENTE
+        // and CADENCIA are eight of them. 58 is also the ceiling — the core
+        // strip is 14 knobs and two of these, 1552 of the 1562 px available
+        // with the laser column collapsed. Longer captions break onto a second
+        // line in the caption itself ("BOWL/\nCHINA").
         ~inlineHead = { |caption|
             StaticText().string_(caption)
                 .stringColor_(mainTheme.accent)
-                .font_(Font(~monoFont, 9, true))
+                .font_(if(~labelBitmap) { ~labelF.() } { Font(~monoFont, 9, true) })
                 .align_(\right)
-                .fixedWidth_(50)
+                .fixedWidth_(58)
         };
 
         ~sectionHead = { |caption|
             StaticText().string_(caption)
                 .stringColor_(mainTheme.accent)
-                .font_(Font(~monoFont, 10, true))
-                .fixedHeight_(14)
+                .font_(~labelF.())
+                .fixedHeight_(16)
         };
 
         // ─── Row 6: Marea — arco de densidad ──────────────────────────────
@@ -709,10 +740,9 @@
                 // ~knobLabels first, ~labelCase only as the fallback — this read
                 // the raw key, so a toggle printed BOWLON and CHINAON while the
                 // knobs beside it had proper labels.
-                .string_((~knobLabels[key] ? ~labelCase.(key)) ++ ": "
-                    ++ (~controlValues[key] ? 0))
+                .string_(~knobText.(key, ~controlValues[key] ? 0))
                 .stringColor_(mainTheme.foreground)
-                .font_(Font(~monoFont, 9))
+                .font_(~labelF.())
                 .align_(\center);
 
             // Route through the single write path so exclusivity, the beat
@@ -819,7 +849,7 @@
             };
             if(~controlLabels[key].notNil) {
                 ~controlLabels[key].stringColor_(~phenoAmberDim);
-                ~controlLabels[key].font_(Font(~monoFont, 10, true));
+                ~controlLabels[key].font_(~labelF.());
             };
             droneRow.layout.add(knobContainer);
         };
@@ -854,7 +884,7 @@
             };
             if(~controlLabels[key].notNil) {
                 ~controlLabels[key].stringColor_(Color.white);
-                ~controlLabels[key].font_(Font(~monoFont, 10, true));
+                ~controlLabels[key].font_(~labelF.());
             };
             corpusRow.layout.add(knobContainer);
         };
@@ -863,7 +893,7 @@
         // the black filler and the stretchy ~phenoCursorLabel, both of which
         // absorb the row's slack — so the two knobs were pushed past the right
         // edge and off the surface entirely. Layout order is code order.
-        corpusRow.layout.add(~inlineHead.value("BOWL/CHINA"));
+        corpusRow.layout.add(~inlineHead.value("BOWL/\nCHINA"));
         ~knobParameters[7].do { |key|
             ~knobs[key] = ~makeKnob.value(
                 key.asString,
@@ -951,7 +981,7 @@
             strip.layout.add(
                 StaticText()
                     .string_(caption)
-                    .font_(Font(~monoFont, 10, true))
+                    .font_(~labelF.())
                     .stringColor_(Color.white)
                     .align_(\center)
                     .maxHeight_(14)
@@ -965,12 +995,15 @@
                 .knobColor_(Color.white)
                 .value_(spec.unmap(~controlValues[paramName]));
 
+            // The value alone: the layer's name is the caption at the top of
+            // the strip. Registered so ~setParam's refresh keeps it that way.
+            ~labelFormats[paramName] = ~valueOnly;
             valueLabel = StaticText()
-                .string_(~labelCase.(paramName) ++ ": " ++ ~controlValues[paramName].round(0.001))
-                .font_(Font(~monoFont, 8))
+                .string_(~knobText.(paramName, ~controlValues[paramName]))
+                .font_(~labelF.())
                 .stringColor_(Color.gray(0.6))
                 .align_(\center)
-                .maxHeight_(12);
+                .maxHeight_(16);
 
             slider.action = { |sl|
                 var mapped = spec.map(sl.value);
@@ -1284,10 +1317,12 @@
             // them would break saved configs for a cosmetic gain.
             displayStr = ~knobLabels[label.asSymbol] ? label.asString.toUpper;
 
+            // The value alone: functionLabel below already names the knob.
+            ~labelFormats[label.asSymbol] = ~valueOnly;
             valueLabel = StaticText()
-                .string_(displayStr ++ ": " ++ defaultVal.round(0.001))
+                .string_(~knobText.(label.asSymbol, defaultVal))
                 .stringColor_(Color.white)
-                .font_(Font(~monoFont, 9))
+                .font_(~labelF.())
                 .align_(\center);
 
             // Add function description label
@@ -1302,7 +1337,7 @@
                     displayStr.toUpper
                 ))
                 .stringColor_(Color.white)
-                .font_(Font(~monoFont, 8, true))
+                .font_(~labelF.())
                 .align_(\center);
 
             knobContainer.layout.add(knob);
@@ -1326,7 +1361,7 @@
                 if(~sampleBuses.notNil and: {~sampleBuses[paramName].notNil}) {
                     ~sampleBuses[paramName].set(mappedVal);
                     ~sampleControlValues[paramName] = mappedVal;
-                    valueLabel.string = displayStr ++ ": " ++ mappedVal.round(0.001);
+                    valueLabel.string = ~knobText.(paramName, mappedVal);
                     valueLabel.stringColor = Color.white;  // Keep white on updates
                 } {
                     "WARNING: Sample Bus % not found!".format(paramName).warn;
@@ -1728,7 +1763,11 @@
         //
         // The button lives OUTSIDE the collapsing view, in the header row, or
         // it would disappear along with the thing it collapses.
-        ~laserCollapsed = ~laserCollapsed ? false;
+        // Collapsed by default: the column matters only with a projector
+        // plugged in, and the surface is what the performer opens the window
+        // for. LÁSER ▸ in the header brings it back; within a session the last
+        // choice is kept (a GUI rebuild does not reopen it).
+        ~laserCollapsed = ~laserCollapsed ? true;
         ~laserToggle = Button()
             .states_([
                 ["LÁSER ▸", mainTheme.dim, backgroundColor],

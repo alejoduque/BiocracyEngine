@@ -78,6 +78,17 @@ if [ ! -f nw_wrld_local/parliament-bridge.js ]; then
     echo "❌ Falta nw_wrld_local/parliament-bridge.js"
     exit 1
 fi
+# Fuente de las etiquetas del SC GUI: Departure Mono, monoespaciada de píxel
+# (SIL OFL 1.1, en fonts/). SuperCollider sólo ve fuentes instaladas, así que se
+# copia a ~/Library/Fonts la primera vez. Sin ella el GUI usa Menlo y funciona
+# igual: por eso es un aviso y no un error.
+if [ "$(uname)" = "Darwin" ] && [ ! -f "$HOME/Library/Fonts/DepartureMono-Regular.otf" ]; then
+    if cp fonts/DepartureMono-Regular.otf "$HOME/Library/Fonts/" 2>/dev/null; then
+        echo "   · Fuente Departure Mono instalada en ~/Library/Fonts (etiquetas del GUI)."
+    else
+        echo "   ⚠ No pude instalar fonts/DepartureMono-Regular.otf — el GUI usará Menlo."
+    fi
+fi
 echo "   ✓ Todo en orden."
 echo ""
 
