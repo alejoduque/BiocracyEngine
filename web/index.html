@@ -283,9 +283,21 @@
      como una galería y nadie sabe que llevan la pieza al escenario. */
   .arch-guia { max-width:1400px; margin:-.4em auto .9em; padding:0 var(--gap);
     font-size:12px; line-height:1.5; color:#c4c4c4; letter-spacing:.03em; }
-  .arch { max-width:1400px; margin:0 auto; padding:0 var(--gap);
-    display:grid; gap:14px var(--gap);
-    grid-template-columns:repeat(auto-fill, minmax(190px, 1fr)); }
+  /* Justo bajo el transporte, y en UNA fila deslizable por registro: eran
+     dos rejillas al fondo de la página —veintidós capturas y doce filas de
+     noche— y en el teléfono quedaban a varias pantallas del escenario que
+     controlan. Así caben las dos en poco más de lo que ocupa el transporte.
+     El borde derecho se desvanece para decir que la fila sigue. */
+  .archivo { padding-bottom:6px; }
+  .archivo .lam-sec { margin-top:1.3em; }
+  .arch, .noche { max-width:1400px; margin:0 auto; padding:0 var(--gap) 8px;
+    display:flex; gap:12px; overflow-x:auto; overscroll-behavior-x:contain;
+    scroll-snap-type:x proximity; scroll-padding-left:var(--gap);
+    -webkit-mask-image:linear-gradient(to right, #000 calc(100% - 48px), transparent);
+            mask-image:linear-gradient(to right, #000 calc(100% - 48px), transparent);
+    scrollbar-width:thin; scrollbar-color:#444 transparent; }
+  .arch, .noche { position:relative; }
+  .arch .pieza, .noche .pieza { flex:0 0 200px; scroll-snap-align:start; }
   .pieza { background:none; border:0; padding:0; margin:0; color:inherit;
     font:inherit; text-align:left; cursor:pointer; display:block; width:100%; }
   .pieza img { width:100%; aspect-ratio:16/9; object-fit:cover; display:block;
@@ -298,13 +310,15 @@
   .pieza[aria-current="true"] span { color:#fff; }
   /* La noche va por horas, de 18:00 a 05:00: la hora es la fila y sus tres
      grabaciones la llenan. Es el orden en que suenan en el escenario. */
-  .noche { max-width:1400px; margin:0 auto; padding:0 var(--gap); }
-  .noche .hora { display:grid; grid-template-columns:64px repeat(3, minmax(0, 1fr));
-    gap:var(--gap); align-items:start; margin-bottom:14px; }
-  .noche .h { font-size:12px; color:#fff; letter-spacing:.06em; padding-top:3px; }
-  @media (max-width: 620px) {
-    .noche .hora { grid-template-columns:repeat(3, minmax(0, 1fr)); }
-    .noche .h { grid-column:1 / -1; padding-top:0; }
+  /* La noche sigue yendo por horas, de 18:00 a 05:00: la hora es una marca
+     angosta en la misma fila, antes de sus tres grabaciones. */
+  .noche .hora { display:contents; }
+  .noche .h { flex:0 0 auto; font-size:12px; color:#fff; letter-spacing:.06em;
+    padding:3px 0 0 6px; border-left:1px solid #333; align-self:stretch;
+    scroll-snap-align:start; }
+  @media (max-width: 700px) {
+    .arch .pieza, .noche .pieza { flex-basis:42vw; }
+    .arch-guia { font-size:11.5px; }
   }
 
   /* ── Lupa ──────────────────────────────────────────────────────────────── */
@@ -377,6 +391,20 @@
     th { -webkit-hyphens:auto; hyphens:auto; hyphenate-limit-chars:8 3 3; }
     td.n { white-space:normal; font-size:10.5px; }
     th:last-child, td:last-child { width:48%; }
+    /* La tabla de composiciones, en dos líneas por fila: arriba las cuatro
+       cifras, abajo «Lo que hace» a TODO el ancho. Con cinco columnas en 390
+       px la descripción —lo único que se lee de corrido— nunca pasaba de la
+       mitad, y las piezas largas (oleaje, cierre) quedaban en diez renglones
+       de cuatro palabras. Las cifras no pierden nada: siguen alineadas bajo
+       su encabezado. */
+    #tabla-comps, #tabla-comps tbody { display:block; }
+    #tabla-comps tr { display:grid; column-gap:8px; padding:8px 0;
+      grid-template-columns:minmax(0, .85fr) minmax(0, 1.4fr) minmax(0, .95fr) minmax(0, 1fr);
+      border-bottom:1px solid #1e1e1e; }
+    #tabla-comps th, #tabla-comps td { border:0; padding:0; width:auto; }
+    #tabla-comps th:last-child { display:none; }
+    #tabla-comps td:last-child { grid-column:1 / -1; padding-top:5px;
+      font:12.5px/1.55 Verdana, Geneva, Tahoma, sans-serif; color:#d6d6d6; }
   }
   /* Teléfonos angostos (360 px): «enjambre» dejaba de caber en su quinto de
      fila. Un punto menos de letra y sin el espacio tras el triángulo. */
@@ -447,6 +475,15 @@
   </div>
   <p class="nowplaying" id="now">Elige una fuente para oírla.</p>
 </div>
+
+<section class="archivo" id="archivo" hidden>
+  <h3 class="lam-sec">Lo que la cámara registró · CAM_02, agosto de 2026</h3>
+  <p class="arch-guia">Haz clic en una captura para llevarla al escenario, con el sonido que grabó la cámara. Suena junto con la sesión del motor si hay una: el crossfader las mezcla.</p>
+  <div class="arch" id="arch-camara"></div>
+  <h3 class="lam-sec">Lo que el micrófono capturó · una noche, de 18:00 a 05:00</h3>
+  <p class="arch-guia">Haz clic en una grabación para llevarla al escenario: su espectrograma y su minuto de audio. Suena junto con la sesión del motor si hay una: el crossfader las mezcla.</p>
+  <div class="noche" id="arch-bosque"></div>
+</section>
 
 <div class="text">
 
@@ -533,14 +570,6 @@ el círculo blanco de adentro se llena mientras la pieza carga.</p>
 
 </div>
 
-<section class="archivo" id="archivo" hidden>
-  <h3 class="lam-sec">Lo que la cámara registró · CAM_02, agosto de 2026</h3>
-  <p class="arch-guia">Haz clic en una captura para llevarla al escenario, con el sonido que grabó la cámara. Si suena una sesión del motor, entra encima de ella.</p>
-  <div class="arch" id="arch-camara"></div>
-  <h3 class="lam-sec">Lo que el micrófono capturó · una noche, de 18:00 a 05:00</h3>
-  <p class="arch-guia">Haz clic en una grabación para llevarla al escenario: su espectrograma y su minuto de audio. Si suena una sesión del motor, entra encima de ella.</p>
-  <div class="noche" id="arch-bosque"></div>
-</section>
 
 <div class="strip">
   <figure>
@@ -1492,7 +1521,7 @@ espectrograma sin saber todavía qué fue eso.</p>
   // de tiempo, así que mover el fader no hace clics.
   var xfJuntos = null;
   function mezcla() {
-    var juntos = bosqueOn && active && active !== BOSQUE.id && !au.paused;
+    var juntos = bosqueOn && !!active && !au.paused;
     var x = xfEl.value / 100;
     var gB = juntos ? Math.cos(x * Math.PI / 2) : 1;
     var gM = juntos ? Math.sin(x * Math.PI / 2) : 1;
@@ -1622,9 +1651,8 @@ espectrograma sin saber todavía qué fue eso.</p>
   // ── Transporte ────────────────────────────────────────────────────────────
   // «bosque» no es una sexta composición: es el sonido del propio escenario,
   // pieza por pieza, el que grabó la cámara trampa o el AudioMoth. Las cinco
-  // composiciones suenan por sus dos <audio> (ver «Cruces»). Elegir una u otra
-  // en el transporte cambia de fuente; una miniatura del archivo pulsada
-  // mientras suena una composición pone el bosque ENCIMA (ver capaBosque).
+  // composiciones suenan por sus dos <audio> (ver «Cruces»). Son dos fuentes
+  // independientes que pueden sonar juntas; el crossfader las mezcla.
   var BOSQUE = { id:'bosque', label:'bosque',
     nota:'el sonido del escenario: lo que grabó la cámara trampa y lo que grabó el AudioMoth, pieza por pieza' };
 
@@ -1751,7 +1779,7 @@ espectrograma sin saber todavía qué fue eso.</p>
   // dentro del clic y se pausa: Safari sólo deja sonar después, sin gesto, a
   // un elemento que ya sonó con uno.
   function prepararSiguiente() {
-    if (!active || active === BOSQUE.id) return;
+    if (!active) return;
     var libre = otroReproductor(au);
     silenciar(libre);
     cargarPieza(libre, siguienteDe(active), 0);
@@ -1762,20 +1790,36 @@ espectrograma sin saber todavía qué fue eso.</p>
     }
   }
 
-  function marcar(c) {
-    clearPressed();
-    var b = btnFor(c.id);
-    if (b) b.setAttribute('aria-pressed', 'true');
-    if (bosqueOn) { bosqueBtn.setAttribute('aria-pressed', 'true'); rotular(); }
-    else { nowEl.textContent = c.nota; scopeLbl.textContent = 'sonando: ' + c.label; }
+  // El transporte dibujado desde el estado. Son dos fuentes independientes
+  // —el bosque (bosqueOn) y la sesión del motor (active, y si su <audio>
+  // suena)— que pueden sonar juntas; el crossfader las mezcla (ver mezcla()).
+  function estado() {
+    var sesion = active ? compById(active) : null;
+    var suena = !!(sesion && !au.paused);
+    bosqueBtn.setAttribute('aria-pressed', String(bosqueOn));
+    Array.prototype.forEach.call(compsEl.children, function (b) {
+      b.setAttribute('aria-pressed', String(suena && b.dataset.id === active));
+    });
+    var it = enEscena, partes = [], rot = [];
+    if (suena) { partes.push(sesion.nota); rot.push(sesion.label); }
+    else if (sesion) partes.push('en pausa — ' + sesion.label);
+    if (bosqueOn) {
+      partes.push(it ? it.pie + (it.sonido ? '' : ' — este clip no trae sonido') : BOSQUE.nota);
+      rot.push(it && !it.sonido ? 'bosque · clip sin sonido' : 'bosque');
+    }
+    nowEl.textContent = partes.length ? partes.join('  ·  ') : 'Elige una fuente para oírla.';
+    scopeLbl.textContent = rot.length ? 'sonando: ' + rot.join(' + ')
+                                      : (sesion ? 'en pausa' : 'Espectro Vivo');
   }
+  function marcar() { estado(); }
 
   function fallo(c) {
+    active = null;
+    estado();
     nowEl.textContent = 'no se pudo reproducir ' + c.label + ' — ¿falta ' + urlDe(c) + '?';
-    clearPressed();
   }
 
-  // Arrancar desde el silencio (nada sonaba, o sonaba «bosque» solo).
+  // Arrancar desde el silencio (ninguna sesión sonaba; el bosque puede estar sonando).
   function empezar(c, desde) {
     active = c.id;
     var el = au;
@@ -1808,7 +1852,7 @@ espectrograma sin saber todavía qué fue eso.</p>
 
   // Ir a una pieza (y a un segundo de ella): cruzando si algo suena.
   function tocar(c, desde) {
-    if (active && active !== BOSQUE.id && !au.paused) {
+    if (active && !au.paused) {
       if (c.id === active) { au.currentTime = desde || 0; return; }
       cruzarA(c, XF_MANO, desde);
     } else empezar(c, desde);
@@ -1816,7 +1860,7 @@ espectrograma sin saber todavía qué fue eso.</p>
 
   function vigilar(ev) {
     var el = ev.target;
-    if (el !== au || cruzando || el.paused || !active || active === BOSQUE.id) return;
+    if (el !== au || cruzando || el.paused || !active) return;
     if (!(el.duration > 0) || !isFinite(el.duration)) return;
     if (el.duration - el.currentTime <= XF_AUTO) cruzarA(siguienteDe(active), XF_AUTO, 0);
   }
@@ -1824,16 +1868,15 @@ espectrograma sin saber todavía qué fue eso.</p>
     el.addEventListener('timeupdate', vigilar);
     // Respaldo, si la pieza es más corta que el cruce o timeupdate no llegó.
     el.addEventListener('ended', function () {
-      if (el === au && !cruzando && active && active !== BOSQUE.id) cruzarA(siguienteDe(active), 0.3, 0);
+      if (el === au && !cruzando && active) cruzarA(siguienteDe(active), 0.3, 0);
     });
+    // Los botones y el pie siguen al reproductor que suena, no al clic: una
+    // pausa llega después de su fundido, y un cruce cambia de pieza solo.
+    el.addEventListener('play', function () { if (el === au) estado(); });
+    el.addEventListener('pause', function () { if (el === au) estado(); });
   });
 
-  function clearPressed() {
-    bosqueBtn.setAttribute('aria-pressed', 'false');
-    Array.prototype.forEach.call(compsEl.children, function (b) {
-      b.setAttribute('aria-pressed', 'false');
-    });
-  }
+  function clearPressed() { estado(); }
 
   function btnFor(id) {
     if (id === BOSQUE.id) return bosqueBtn;
@@ -1852,23 +1895,18 @@ espectrograma sin saber todavía qué fue eso.</p>
     // El contexto nace suspendido hasta que hay un gesto; este clic lo es.
     if (ac.state === 'suspended') ac.resume();
 
-    if (c === BOSQUE) { elegirBosque(btn); return; }
-    // Desde «bosque» solo, una composición lo reemplaza. Si el bosque estaba
-    // SOBRE otra composición (una miniatura), se queda encima de esta.
-    if (bosqueOn && active === BOSQUE.id) callarBosque();
+    // Dos fuentes que no se excluyen: «bosque» se prende y se apaga sin tocar
+    // la sesión, y una sesión suena, se pausa o se cruza sin tocar el bosque.
+    // Con las dos sonando manda el crossfader.
+    if (c === BOSQUE) { alternarBosque(); return; }
 
     if (active === c.id && !au.paused) {     // segundo clic sobre la misma: pausa
       var el = au;
       fundir(el, 0, XF_PAUSA);
       setTimeout(function () { el.pause(); }, XF_PAUSA * 1000 + 30);
-      if (bosqueOn) callarBosque();
-      clearPressed();
-      nowEl.textContent = 'en pausa — ' + c.nota;
-      scopeLbl.textContent = 'en pausa';
       return;
     }
     if (active === c.id && au.paused) {       // reanudar donde quedó
-      marcar(c);
       au.play().then(function () { fundir(au, 1, XF_PAUSA); }).catch(function () { fallo(c); });
       return;
     }
@@ -1880,30 +1918,10 @@ espectrograma sin saber todavía qué fue eso.</p>
   // escenario, cuando el turno los recargue sin que nadie haga clic: por eso
   // se les da play a los tres y no sólo al que se ve. Los que no están en
   // escena se vuelven a pausar en cuanto arrancan.
-  function elegirBosque(btn) {
-    if (bosqueOn && active && active !== BOSQUE.id && !au.paused) {
-      // El bosque estaba ENCIMA de una composición: se retira sólo él.
-      callarBosque();
-      marcar(compById(active));
-      return;
-    }
-    if (active === BOSQUE.id && bosqueOn) {  // segundo clic: pausa
-      callarBosque(); clearPressed();
-      nowEl.textContent = 'en pausa — ' + BOSQUE.nota;
-      scopeLbl.textContent = 'en pausa';
-      return;
-    }
-    if (!au.paused) {
-      var el = au;
-      fundir(el, 0, XF_PAUSA);
-      setTimeout(function () { el.pause(); }, XF_PAUSA * 1000 + 30);
-    }
-    active = BOSQUE.id;
-    abrirEscenario();
-    clearPressed();
-    btn.setAttribute('aria-pressed', 'true');
-    rotular();
-    seguirConSonido();
+  function alternarBosque() {
+    if (bosqueOn) callarBosque();
+    else { abrirEscenario(); estado(); seguirConSonido(); }
+    estado();
   }
 
   // Que suene el escenario: sus tres videos desmutados y en play. Siempre
@@ -1941,26 +1959,11 @@ espectrograma sin saber todavía qué fue eso.</p>
     slots.forEach(function (s) { s.v.muted = true; });
   }
 
-  // Una miniatura pulsada mientras suena una composición: el bosque entra
-  // ENCIMA y la composición sigue; cuánto de cada uno lo dice el crossfader
-  // (ver mezcla()). Pulsar «bosque» (que queda marcado) lo retira; pausar la
-  // composición calla los dos.
-  function capaBosque() {
-    abrirEscenario();
-    bosqueBtn.setAttribute('aria-pressed', 'true');
-    rotular();
-  }
 
   // Qué dice el transporte mientras suena el escenario. Los cuatro clips fijos
   // se codificaron sin audio (build_media.sh, -an): se dice, en vez de dejar
   // el espectro plano sin explicación.
-  function rotular() {
-    var it = enEscena;
-    var encima = active && active !== BOSQUE.id ? compById(active).label + ' + ' : '';
-    if (!it) { nowEl.textContent = BOSQUE.nota; scopeLbl.textContent = 'sonando: ' + encima + 'bosque'; return; }
-    nowEl.textContent = (encima ? encima.replace(' + ', ' · con ') : '') + it.pie + (it.sonido ? '' : ' — este clip no trae sonido');
-    scopeLbl.textContent = it.sonido ? 'sonando: ' + encima + 'bosque' : encima + 'bosque · clip sin sonido';
-  }
+  function rotular() { estado(); }
 
   // Lo que está en escena: el pie sobre el espectro, la pieza marcada en el
   // índice y, si suena el escenario, el transporte.
@@ -1969,8 +1972,25 @@ espectrograma sin saber todavía qué fue eso.</p>
     anilloEl.hidden = !item;
     if (enEscena && enEscena.btn) enEscena.btn.removeAttribute('aria-current');
     enEscena = item;
-    if (item && item.btn) item.btn.setAttribute('aria-current', 'true');
+    if (item && item.btn) { item.btn.setAttribute('aria-current', 'true'); asomar(item.btn); }
     if (bosqueOn) rotular();
+  }
+
+  // La pieza en escena se asoma en su fila del archivo: sólo desplazamiento
+  // horizontal dentro de la fila, nunca de la página. Si alguien acaba de
+  // tocar la fila, se la deja quieta un rato para no pelear con su dedo.
+  var tocadaFila = 0;
+  ['pointerdown', 'wheel', 'touchstart'].forEach(function (ev) {
+    document.addEventListener(ev, function (e) {
+      if (e.target.closest && e.target.closest('.arch, .noche')) tocadaFila = Date.now();
+    }, { passive: true });
+  });
+  function asomar(btn) {
+    var fila = btn.closest('.arch, .noche');
+    if (!fila || Date.now() - tocadaFila < 8000) return;
+    var x = btn.offsetLeft - 16;
+    if (x < fila.scrollLeft || btn.offsetLeft + btn.offsetWidth > fila.scrollLeft + fila.clientWidth)
+      fila.scrollTo({ left: Math.max(0, x), behavior: 'smooth' });
   }
 
 
@@ -2166,7 +2186,7 @@ espectrograma sin saber todavía qué fue eso.</p>
   var lineaDpr = 0, lineaPieTxt = '';
 
   function compActiva() {
-    if (!active || active === BOSQUE.id) return null;
+    if (!active) return null;
     for (var i = 0; i < COMPS.length; i++) if (COMPS[i].id === active) return { c: COMPS[i], i: i };
     return null;
   }
@@ -2323,7 +2343,7 @@ espectrograma sin saber todavía qué fue eso.</p>
   });
 
   [auA, auB].forEach(function (el) { el.addEventListener('error', function () {
-    if (el !== au || active === BOSQUE.id) return;
+    if (el !== au || !active) return;
     nowEl.textContent = 'falta media/audio/' + active + '.mp3 — corre ./build_media.sh';
     clearPressed();
   }); });
@@ -2345,11 +2365,8 @@ espectrograma sin saber todavía qué fue eso.</p>
     b.appendChild(im); b.appendChild(sp);
     b.addEventListener('click', function () {
       // Llevarla al escenario y oírla: este clic es el gesto que el audio pide.
-      // Si suena una composición, la pieza entra encima y la composición sigue.
-      if (active && active !== BOSQUE.id && !au.paused) {
-        if (ac && ac.state === 'suspended') ac.resume();
-        if (!bosqueOn) capaBosque();
-      } else if (!bosqueOn) choose(BOSQUE, btnFor(BOSQUE.id));
+      // Prende el bosque si no sonaba; la sesión del motor, si suena, sigue.
+      if (!bosqueOn) choose(BOSQUE, bosqueBtn);
       saltar(item);
       document.querySelector('.hero').scrollIntoView({ behavior: 'smooth', block: 'start' });
     });
