@@ -527,8 +527,8 @@ mide sigue participando desde la opacidad.</p>
 
 <table id="tabla-comps">
   <tr><th>Composición</th><th>Sesión · corte</th><th>Nivel medio</th><th>Centroide</th><th>Lo que hace</th></tr>
-  <tr><td class="n">lecho</td><td class="n">11:13&nbsp;· 95–155&nbsp;s</td><td class="n">−30.8 dBFS</td><td class="n">210–280&nbsp;Hz</td><td>El drone como cama, con el motor de beat ya trabajando encima.</td></tr>
-  <tr><td class="n">enjambre</td><td class="n">11:13&nbsp;· 160–220&nbsp;s</td><td class="n">−32.4 dBFS</td><td class="n">280–350&nbsp;Hz</td><td>El flujo espectral más alto de las dos sesiones del 22 de septiembre (0.190). La cadena en su momento más denso.</td></tr>
+  <tr><td class="n">hondo</td><td class="n">18:42&nbsp;· 0–486&nbsp;s (8:06)</td><td class="n">−34.7 dBFS</td><td class="n">200–520&nbsp;Hz</td><td>La sesión del 28 de septiembre entera, sin cortes. Un minuto casi en silencio, luego cae al grave y crece durante tres minutos hasta su pico —el momento más fuerte, más oscuro y más denso, pasados los cuatro minutos—, y desde ahí desciende despacio hasta apagarse. Toma el lugar de «lecho»: el drone como cama, ahora con su arco completo.</td></tr>
+  <tr><td class="n">crecida</td><td class="n">22:39&nbsp;· 785–1210&nbsp;s (7:05)</td><td class="n">−35.6 dBFS</td><td class="n">270–660&nbsp;Hz</td><td>La segunda mitad de la sesión del 28 de septiembre por la noche, desde un valle quieto. Un solo crecimiento de seis minutos, en el registro grave, hasta el momento más fuerte y denso de la noche; de ahí cae de golpe a una cola baja que se apaga sola.</td></tr>
   <tr><td class="n">ascenso</td><td class="n">11:13&nbsp;· 285–345&nbsp;s</td><td class="n">−31.1 dBFS</td><td class="n">666&nbsp;→ 3399&nbsp;Hz</td><td>El centroide sube cinco veces mientras el nivel cae: se vuelve brillante y delgado a la vez.</td></tr>
   <tr><td class="n">oleaje</td><td class="n">21:20&nbsp;· 0–338&nbsp;s (5:38)</td><td class="n">−36.8 dBFS</td><td class="n">400–1600&nbsp;Hz</td><td>La actuación en Santa Anita de principio a fin. El brillo sube y baja en oleadas —del grave al registro medio y otra vez abajo—, hace su pico de flujo pasados los cuatro minutos y cierra con un último empuje antes de apagarse.</td></tr>
   <tr><td class="n">cierre</td><td class="n">17:31&nbsp;· 110–385&nbsp;s (4:35)</td><td class="n">−32.7 dBFS</td><td class="n">390–3630&nbsp;Hz</td><td>Salta de golpe al registro alto y lo sostiene un minuto, vuelve al grave, y termina con el minuto más denso de la sesión disolviéndose 30&nbsp;dB hasta el silencio.</td></tr>
@@ -870,8 +870,8 @@ espectrograma sin saber todavía qué fue eso.</p>
   // botones, sin perfil que dibujar.
   var COMPS_URL = 'media/audio/composiciones.json';
   var COMPS = [
-    { id:'lecho',    label:'lecho',    duracion:60,  nota:'11:13 · 95–155 s — el drone como cama, centroide 210–280 Hz' },
-    { id:'enjambre', label:'enjambre', duracion:60,  nota:'11:13 · 160–220 s — el flujo espectral más alto de las sesiones del 22/09' },
+    { id:'hondo',    label:'hondo',    duracion:486, nota:'18:42 · 0–486 s (8:06) — la sesión del 28/09 entera, un solo arco en el registro grave' },
+    { id:'crecida',  label:'crecida',  duracion:425, nota:'22:39 · 785–1210 s (7:05) — seis minutos de crecimiento en el grave, hasta el pico de la noche' },
     { id:'ascenso',  label:'ascenso',  duracion:60,  nota:'11:13 · 285–345 s — el centroide sube de 666 a 3399 Hz' },
     { id:'oleaje',   label:'oleaje',   duracion:338, nota:'21:20 · 0–338 s (5:38) — la actuación de Santa Anita entera' },
     { id:'cierre',   label:'cierre',   duracion:275, nota:'17:31 · 110–385 s (4:35) — salta al agudo, vuelve, y se disuelve hasta el silencio' }

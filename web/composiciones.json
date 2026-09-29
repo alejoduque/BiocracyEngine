@@ -2,28 +2,28 @@
   "_nota": "Las composiciones de la web. Se edita a mano; build_composiciones.py lo lee, construye media/audio/<id>.mp3 y escribe media/audio/composiciones.json, que es lo que lee la página. El orden de la lista es el orden de los botones. Para una sesión nueva: build_composiciones.py --proponer recordings/<sesion>.wav",
   "composiciones": [
     {
-      "id": "lecho",
-      "sesion": "eth_sonification_20260922_111301.wav",
-      "inicio": 95,
-      "duracion": 60,
-      "breve": "el drone como cama, centroide 210–280 Hz",
-      "hace": "El drone como cama, con el motor de beat ya trabajando encima.",
-      "cifras": {
-        "nivel_dbfs": -30.8,
-        "centroide": "210–280 Hz"
-      }
+      "id": "hondo",
+      "sesion": "eth_sonification_20260928_184234.wav",
+      "inicio": 0,
+      "duracion": 486,
+      "fundido": [
+        0,
+        0
+      ],
+      "breve": "la sesión del 28/09 entera, un solo arco en el registro grave",
+      "hace": "La sesión del 28 de septiembre entera, sin cortes. Un minuto casi en silencio, luego cae al grave y crece durante tres minutos hasta su pico —el momento más fuerte, más oscuro y más denso, pasados los cuatro minutos—, y desde ahí desciende despacio hasta apagarse. Toma el lugar de «lecho»: el drone como cama, ahora con su arco completo."
     },
     {
-      "id": "enjambre",
-      "sesion": "eth_sonification_20260922_111301.wav",
-      "inicio": 160,
-      "duracion": 60,
-      "breve": "el flujo espectral más alto de las sesiones del 22/09",
-      "hace": "El flujo espectral más alto de las dos sesiones del 22 de septiembre (0.190). La cadena en su momento más denso.",
-      "cifras": {
-        "nivel_dbfs": -32.4,
-        "centroide": "280–350 Hz"
-      }
+      "id": "crecida",
+      "sesion": "eth_sonification_20260928_223908.wav",
+      "inicio": 785,
+      "duracion": 425,
+      "fundido": [
+        2,
+        0
+      ],
+      "breve": "seis minutos de crecimiento en el grave, hasta el pico de la noche",
+      "hace": "La segunda mitad de la sesión del 28 de septiembre por la noche, desde un valle quieto. Un solo crecimiento de seis minutos, en el registro grave, hasta el momento más fuerte y denso de la noche; de ahí cae de golpe a una cola baja que se apaga sola."
     },
     {
       "id": "ascenso",
@@ -86,6 +86,19 @@
         "nivel_dbfs": -35.8,
         "centroide": "1404–2406 Hz"
       }
+    },
+    {
+      "id": "enjambre",
+      "sesion": "eth_sonification_20260922_111301.wav",
+      "inicio": 160,
+      "duracion": 60,
+      "breve": "el flujo espectral más alto de las sesiones del 22/09",
+      "hace": "El flujo espectral más alto de las dos sesiones del 22 de septiembre (0.190). La cadena en su momento más denso.",
+      "cifras": {
+        "nivel_dbfs": -32.4,
+        "centroide": "280–350 Hz"
+      },
+      "boton": false
     }
   ]
 }
