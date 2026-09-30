@@ -695,7 +695,9 @@ s.waitForBoot {
                 \startPos, 0,
                 \pan, 1.0.rand2 * 0.6,
                 \opacity, clip[\opacity],
-                \out, (~corpusOutBus ? 0)
+                // Its own stem when 17_ has placed the feeder that carries it
+                // into the chain processor; the processor's bus otherwise.
+                \out, (~corpusIn !? { ~corpusIn[\corpus] } ? ~corpusOutBus ? 0)
             ] ++ ~phenoBusArgs.value ++ ~phenoFxArgs.value,
                 target: if(~defaultGroup.notNil, { ~defaultGroup }, { s.defaultGroup }));
 
@@ -768,7 +770,7 @@ s.waitForBoot {
             \rel, xf.clip(0.3, 30),
             \pan, 1.0.rand2 * 0.8,
             \opacity, clip[\opacity],
-            \out, (~corpusOutBus ? 0)
+            \out, (~corpusIn !? { ~corpusIn[\ultra] } ? ~corpusOutBus ? 0)
         ] ++ ~phenoBusArgs.value,
             target: if(~defaultGroup.notNil, { ~defaultGroup }, { s.defaultGroup }));
         slot[\synth].onFree({ slot[\synth] = nil; slot[\key] = nil });

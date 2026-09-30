@@ -83,11 +83,16 @@
     remuestreo: \mixRemuestreo, espectro: \mixEspectro, caos: \mixCaos,
     ruptura: \mixRuptura, masa: \mixMasa
 );
+// Los faders que encienden cada motor. El remuestreo responde a dos: REMU (su
+// lecho) y SEQ (sus secuencias); con cualquiera arriba, corre.
+~motWakers = (remuestreo: [\mixRemuestreo, \mixSeq]);
 
-~motGain = { |key|
+// fader: el que gobierna esta salida si no es el del motor — las secuencias
+// del remuestreo van con SEQ (\mixSeq), su lecho con REMU.
+~motGain = { |key, fader|
     Lag.kr(~motIn.(\masterVolume, 0.3) * ~motIn.(\masterAmp, 0.7)
         * ~motTaper.(~motIn.(\mixMotor, 1.0))
-        * ~motTaper.(~motIn.(~motFaders[key], 0.0))
+        * ~motTaper.(~motIn.(fader ? ~motFaders[key], 0.0))
         * ~motCeiling, 0.1) * ~motTrim[key]
 };
 
@@ -134,12 +139,13 @@
 ~motOut = { |out, sig, gate, key, fadeIn = 3, fadeOut = 6|
     var env = EnvGen.kr(Env.asr(fadeIn, 1, fadeOut, [2, -3]), gate, doneAction: 2);
     var st = ~motSpread.(Sanitize.ar(LeakDC.ar(sig))) * env * ~motGain.(key);
-    Out.ar(out, if((~limiterChans ? 2) >= 4) { [st[0], st[1], st[1], st[0]] } { st });
+    // Its stem (3_synthdefs.scd), summed into the mix by ~stemGroupB.
+    Out.ar(~stemOut.(key), if((~limiterChans ? 2) >= 4) { [st[0], st[1], st[1], st[0]] } { st });
 };
 // Lo mismo sin gate, para voces cortas que se liberan solas.
-~motSend = { |out, sig, key|
-    var st = ~motSpread.(Sanitize.ar(sig)) * ~motGain.(key);
-    Out.ar(out, if((~limiterChans ? 2) >= 4) { [st[0], st[1], st[1], st[0]] } { st });
+~motSend = { |out, sig, key, fader, stem|
+    var st = ~motSpread.(Sanitize.ar(sig)) * ~motGain.(key, fader);
+    Out.ar(~stemOut.(stem ? key), if((~limiterChans ? 2) >= 4) { [st[0], st[1], st[1], st[0]] } { st });
 };
 
 // Trims medidos (ver cabecera). Un valor por motor. Medidos en NRT con los
@@ -275,7 +281,8 @@ SynthDef(\motRemPlay, { |out = 0, buf, bufM, rate = 1, amp = 1, dur = 1, pan = 0
     sig = ~motCrush.(sig, srate, bits);
     sig = sig + (CombC.ar(sig, 1.0, echoT.clip(0.01, 1.0), echo * 4) * echo);
     sig = LeakDC.ar(sig) * env;
-    ~motSend.(out, Balance2.ar(sig[0], sig[1], pan) * amp, \remuestreo);
+    // Fader SEQ y stem propio: las secuencias se suben y se miden aparte del lecho.
+    ~motSend.(out, Balance2.ar(sig[0], sig[1], pan) * amp, \remuestreo, \mixSeq, \seq);
 }).add;
 
 // ═════════════════════════════════════════════════════════════════════════
@@ -454,14 +461,26 @@ s.sync;
 // Después de todas las voces (el remuestreo y el espectro tienen que oírlas)
 // y antes de la sala y el limitador, que están al final del árbol.
 if(~motorGroup.notNil) { try { ~motorGroup.free } };
-~motorGroup = if(~chamberSynth.notNil and: { ~chamberSynth.isPlaying != false }) {
-    Group.before(~chamberSynth)
-} {
-    Group.after(~defaultGroup ? s.defaultGroup)
-};
+// Right after the stem sum (3_synthdefs.scd, ~stemGroupA): the voices now
+// write to stems, and only once those are summed does bus 0 hold the mix that
+// the tap copies for remuestreo and espectro. The old rule — before the room
+// if ~chamberSynth.isPlaying — never held: isPlaying is false for any node
+// without a NodeWatcher, so the group always fell back to "after the voices"
+// and, with stems, would have sat before the sum and heard only the corpus.
+~motorGroup = Group.after(~stemGroupA ? ~defaultGroup ? s.defaultGroup);
 // La derivación, justo antes del grupo: oye todas las voces y ningún motor.
 if(~motTapNode.notNil) { try { ~motTapNode.free } };
 ~motTapNode = Synth.before(~motorGroup, \motTap);
+// Cada motor escribe en su stem; aquí, después del grupo, se suman a la mezcla
+// y se miden. Antes de la sala y el limitador, como siempre.
+if(~stemGroupB.notNil) { try { ~stemGroupB.free } };
+~stemGroupB = Group.after(~motorGroup);
+if(~stems.notNil) {
+    [\remuestreo, \espectro, \caos, \ruptura, \masa, \seq].do { |n|
+        Synth.tail(~stemGroupB, \stemSum,
+            [\in, ~stems[n].index, \out, 0, \id, ~stemNames.indexOf(n)]);
+    };
+};
 
 // ─── Los cinco, como encender / transacción ──────────────────────────────
 // st es el estado de un motor encendido: nodos, rutinas y búferes que su
@@ -731,7 +750,8 @@ if(~motWatcher.notNil) { ~motWatcher.stop };
     loop {
         var now = Main.elapsedTime;
         ~motFaders.keysValuesDo { |key, fader|
-            var up = ((~controlValues ? ())[fader] ? 0) > 0.0005;
+            var up = (~motWakers[key] ? [fader]).any { |f|
+                ((~controlValues ? ())[f] ? 0) > 0.0005 };
             case
             { up and: { ~motLive[key].isNil } } {
                 ~motZeroSince[key] = nil;

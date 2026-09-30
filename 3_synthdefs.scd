@@ -269,6 +269,28 @@ s.doWhenBooted({
     // measurement of the engine — was also looking at the mix plus its own
     // fold-down. min() so a stereo rig still works.
     ~limiterChans = min(4, s.options.numOutputBusChannels);
+
+    // ─── Stems: one audio bus per layer ─────────────────────────────────
+    // Every voice used to write straight to bus 0, so the mix was the only
+    // thing that existed: no layer could be measured on its own. Now each
+    // layer writes to its own stem and a \stemSum per stem adds it to the
+    // mix — the SAME sum as before, so nothing is heard differently — and
+    // reports its level on /stem for the GUI's meters.
+    //
+    // ~stemOut falls back to bus 0 for an unknown name, so a voice can never
+    // go silent by being pointed at a stem nobody reads.
+    ~stemNames = [\drone, \pad, \kick, \perc, \dust, \sample, \corpus, \ultra,
+                  \remuestreo, \espectro, \caos, \ruptura, \masa, \seq];
+    ~stems = ~stems ?? { () };
+    ~stemNames.do { |n| if(~stems[n].isNil) { ~stems[n] = Bus.audio(s, ~limiterChans) } };
+    ~stemOut = { |name| (~stems !? { ~stems[name] } !? { |b| b.index }) ? 0 };
+    SynthDef(\stemSum, { |in = 0, out = 0, id = 0|
+        var x = In.ar(in, ~limiterChans).asArray;
+        var peak = x.collect(_.abs).reduce(\max);
+        var rms = (Lag.ar(x.collect(_.squared).sum / x.size, 0.3)).sqrt;
+        SendReply.kr(Impulse.kr(12), '/stem', [id, Amplitude.kr(peak, 0.001, 0.4), rms]);
+        Out.ar(out, x);
+    }).add;
     // ─── Master chain: glue, then weight, then safety ────────────────────
     // This was sum -> LeakDC -> Limiter and nothing else. A limiter is a safety
     // net: it can stop a mix being too loud and can do nothing whatever about a
@@ -2186,6 +2208,16 @@ s.doWhenBooted({
         Out.ar(in, wet);
     }).add;
     s.sync;
+    // The stems of the voices, summed into the mix right after the group the
+    // voices live in — before the motors' tap, the room and the limiter. The
+    // corpus and ultra stems are NOT here: they feed the chain processor, and
+    // 17_chain_processing.scd places their \stemSum just before it.
+    if(~stemGroupA.notNil) { try { ~stemGroupA.free } };
+    ~stemGroupA = Group.after(~defaultGroup ? s.defaultGroup);
+    [\drone, \pad, \kick, \perc, \dust, \sample].do { |n|
+        Synth.tail(~stemGroupA, \stemSum,
+            [\in, ~stems[n].index, \out, 0, \id, ~stemNames.indexOf(n)]);
+    };
     if(~chamberSynth.notNil) { try { ~chamberSynth.free }; ~chamberSynth = nil };
     ~chamberSynth = Synth.tail(RootNode(s), \resonantChamber, [
         \in, 0,

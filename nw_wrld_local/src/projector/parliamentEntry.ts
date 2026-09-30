@@ -1944,6 +1944,7 @@ async function init() {
     "/mix/ultra":  "disp-mix-ultra",
     "/mix/motor":  "disp-mix-motor",
     "/mix/remuestreo": "disp-mix-remuestreo",
+    "/mix/seq":        "disp-mix-seq",
     "/mix/espectro":   "disp-mix-espectro",
     "/mix/caos":       "disp-mix-caos",
     "/mix/ruptura":    "disp-mix-ruptura",

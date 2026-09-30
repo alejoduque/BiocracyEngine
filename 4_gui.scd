@@ -975,8 +975,45 @@
         // 42–49, the browser and preset loads with no special-casing.
         ~mixerStrips = ();
         ~mixerMuted = ();
+        // ─── Level meters: one per strip, fed by the stems ──────────────
+        // Each layer has its own audio bus now (3_synthdefs.scd, ~stems), and
+        // its \stemSum reports [peak, rms] on /stem twelve times a second.
+        // The meter sits beside the fader it answers to. MOTOR shows the
+        // loudest of the five motors under it.
+        ~stripStems = (
+            mixDrone: [\drone], mixPad: [\pad], mixKick: [\kick], mixPerc: [\perc],
+            mixDust: [\dust], mixSample: [\sample], mixCorpus: [\corpus], mixUltra: [\ultra],
+            mixMotor: [\remuestreo, \seq, \espectro, \caos, \ruptura, \masa],
+            mixRemuestreo: [\remuestreo], mixSeq: [\seq], mixEspectro: [\espectro], mixCaos: [\caos],
+            mixRuptura: [\ruptura], mixMasa: [\masa]
+        );
+        ~stripMeters = ();
+        ~stemLevels = ();
+        OSCdef(\stemLevel).free;
+        OSCdef(\stemLevel, { |msg|
+            var name = (~stemNames ? [])[msg[3].asInteger];
+            if(name.notNil) { ~stemLevels[name] = [msg[4], msg[5]] };
+        }, '/stem');
+        // -60..0 dBFS across the meter's height.
+        ~meterPos = { |amp| amp.max(1e-6).ampdb.linlin(-60, 0, 0, 1) };
+        if(~stemMeterRoutine.notNil) { ~stemMeterRoutine.stop };
+        ~stemMeterRoutine = Routine({
+            loop {
+                ~stripMeters.keysValuesDo { |param, meter|
+                    if(meter.notNil and: { meter.isClosed.not }) {
+                        var lv = (~stripStems[param] ? []).collect { |n| ~stemLevels[n] ? [0, 0] };
+                        if(lv.size > 0) {
+                            meter.value = ~meterPos.(lv.collect(_[1]).maxItem);
+                            meter.peakLevel = ~meterPos.(lv.collect(_[0]).maxItem);
+                        };
+                    };
+                };
+                (1/12).wait;
+            }
+        }).play(AppClock);
+
         ~makeMixStrip = { |paramName, caption|
-            var strip, slider, valueLabel, muteButton, spec;
+            var strip, slider, valueLabel, muteButton, spec, meter;
 
             spec = ~controlSpecs[paramName];
             strip = View().background_(Color.black);
@@ -1058,7 +1095,15 @@
             // below were both align_(\center) across the full strip — the
             // column read as if the fader belonged to the strip to its left.
             // HLayout(nil, …, nil) puts stretchable space on both sides.
-            strip.layout.add(HLayout(nil, slider, nil));
+            // RMS as the bar, peak as the line above it; amber from -6 dBFS,
+            // red from -1.
+            meter = LevelIndicator()
+                .maxWidth_(8)
+                .drawsPeak_(true)
+                .warning_(~meterPos.(0.5))
+                .critical_(~meterPos.(0.89));
+            ~stripMeters[paramName] = meter;
+            strip.layout.add(HLayout(nil, slider, meter, nil));
             strip.layout.add(valueLabel);
             strip.layout.add(muteButton);
 
@@ -1073,7 +1118,7 @@
 
         mixerView.layout.add(
             StaticText()
-                .string_("MATRIX\nMIXER\nCC 42-49\nMOTOR 57-62")
+                .string_("MATRIX\nMIXER\nCC 42-49\nMOTOR 57-63")
                 .font_(Font(~monoFont, 10, true))
                 .stringColor_(Color.white)
                 .align_(\left)
@@ -1086,7 +1131,7 @@
             [\mixCorpus, "CORPUS"], [\mixUltra,  "ULTRA"],
             // MOTOR is the master of the five after it (18_motores.scd).
             [\mixMotor,  "MOTOR"],
-            [\mixRemuestreo, "REMU"], [\mixEspectro, "ESPEC"], [\mixCaos, "CAOS"],
+            [\mixRemuestreo, "REMU"], [\mixSeq, "SEQ"], [\mixEspectro, "ESPEC"], [\mixCaos, "CAOS"],
             [\mixRuptura, "RUPT"], [\mixMasa, "MASA"]
         ].do { |pair|
             mixerView.layout.add(~makeMixStrip.value(pair[0], pair[1]));

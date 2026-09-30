@@ -229,6 +229,18 @@ s.waitForBoot {
                 { ~buses[pair[1]].index }, { -1 })]
         }.flatten
     );
+    // The corpus and the ultrasound each write to their own stem, and these two
+    // feeders carry both into the processor's bus — metered on the way, which
+    // is the only point where the two can still be told apart. Placed right
+    // BEFORE the processor, so they run after every voice and before it reads.
+    if(~corpusFeeders.notNil) { ~corpusFeeders.do { |n| try { n.free } } };
+    if(~stems.notNil) {
+        ~corpusFeeders = [\corpus, \ultra].collect { |n|
+            Synth.before(~chainProcSynth, \stemSum,
+                [\in, ~stems[n].index, \out, ~corpusProcBus.index, \id, ~stemNames.indexOf(n)])
+        };
+        ~corpusIn = (corpus: ~stemOut.(\corpus), ultra: ~stemOut.(\ultra));
+    };
     // The corpus analyser sits on the same bus, at the TAIL so it hears the
     // chain processing rather than the dry recordings — what the laser draws
     // should be what the room hears, not what the file contains.

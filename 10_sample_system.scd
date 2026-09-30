@@ -348,7 +348,8 @@ s.doWhenBooted({
                 // collapsing it with sig.sum, and place it with the X coord.
                 Balance2.ar(sig[0], sig[1], sampleSpatialX.clip(-1, 1))
             };
-            Out.ar(0, quadSig);
+            // Its stem, not bus 0: \stemSum adds it to the mix and meters it.
+            Out.ar(~stemOut.(\sample), quadSig);
         }).add;
     };
     

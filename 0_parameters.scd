@@ -225,6 +225,10 @@
     (name: \mixCaos,       spec: ControlSpec(0, 2, \lin), default: 0.0, path: "/mix/caos",       cc: 60),
     (name: \mixRuptura,    spec: ControlSpec(0, 2, \lin), default: 0.0, path: "/mix/ruptura",    cc: 61),
     (name: \mixMasa,       spec: ControlSpec(0, 2, \lin), default: 0.0, path: "/mix/masa",       cc: 62),
+    // SEQ: the four note sequences of remuestreo on their own, apart from its
+    // bed (REMU). Either one above 0 switches remuestreo on, so the sequences
+    // can play with no bed and the bed with no sequences.
+    (name: \mixSeq,        spec: ControlSpec(0, 2, \lin), default: 0.0, path: "/mix/seq",        cc: 63),
 
     // ── Beat engine (no control bus — lives in ~beatParams) ─────────────
     (name: \beatTempo, spec: ControlSpec(0.5, 2.0, \exp), default: 1.0, path: "/soneth/beatTempo",

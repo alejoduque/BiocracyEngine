@@ -166,6 +166,7 @@
 
     s.makeBundle(s.latency, {
         var syn = Synth(\opalDrone, [
+            \out, ~stemOut.(\drone),
             \freq, f,
             // Quiet: this is a partial over the bed, not a rival to it. The
             // engine's own drone runs amp 0.8.
@@ -326,7 +327,7 @@
                 .wrapAt((t * 6).round.asInteger);
             fire.({
                 Synth(\opalKick, [
-                    \out,  0,
+                    \out,  ~stemOut.(\kick),
                     \freq, f,
                     \amp,  trims * (0.5 + (a * 0.2)),
                     // dec is multiplied by timeDilation inside the envelope, so
@@ -344,7 +345,7 @@
             // 0.3 + density*0.35, which this was running ~39% under.
             fire.({
                 Synth(\opalDust, [
-                    \out, 0,
+                    \out, ~stemOut.(\dust),
                     \amp, trims * (0.3 + (a * 0.35)),
                     \mixDustBus, ~sbi.(\mixDust)
                 ] ++ busArgs, grp);

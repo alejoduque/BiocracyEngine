@@ -301,7 +301,10 @@
         syn = Synth(\opalPerc,
             args ++ [\chamberAux, (~chamberAuxBus !? { |b| b.index } ? -1),
                 \famPresence, pres,
-                \mixDustBus, ~bi.(\mixDust), \mixKickBus, ~bi.(\mixKick)],
+                \mixDustBus, ~bi.(\mixDust), \mixKickBus, ~bi.(\mixKick),
+                // Its stem, appended last like the rest so no site's own
+                // \out, 0 can override it.
+                \out, ~stemOut.(\perc)],
             grp);
         ~percLive = ~percLive.add((synth: syn, at: SystemClock.seconds));
         ~percStats[\admitted] = (~percStats[\admitted] ? 0) + 1;
@@ -613,7 +616,7 @@
                     var rt = padRatios[ratioIdx];
                     var targetGrp = if(~defaultGroup.notNil, { ~defaultGroup }, { s.defaultGroup });
                     var syn = Synth(\biocratiaPad, [
-                        \out,    0,
+                        \out,    ~stemOut.(\pad),
                         \gate,   1,
                         // Small random detune, different for every voice, so a
                         // returning ratio is never the same pitch twice and
@@ -764,7 +767,7 @@
                     var hold = rrand(14.0, 48.0) * tDil.linlin(0.5, 6, 0.6, 1.8) * churn;
                     var rel  = rrand(12.0, 34.0) * tDil.linlin(0.5, 6, 0.6, 1.8) * churn;
                     var syn = Synth(\dronePartial, [
-                        \out,    0,
+                        \out,    ~stemOut.(\drone),
                         \freq,   ~droneRoot,
                         \ratio,  ratio,
                         // Higher partials quieter, or the bed turns into a
@@ -1139,7 +1142,7 @@
                         (~beatParams.masterAmp * (0.5 + (density * 0.2)) * accent).clip(0, 1));
                 };
                 s.makeBundle(s.latency + jitTick, { Synth(\opalKick, [
-                    \out,         0,
+                    \out,         ~stemOut.(\kick),
                     \freq,        kickFreq,
                     \amp,         ~beatParams.masterAmp * (~beatParams.transportGain ? 1) *(0.5 + (density * 0.2)) * accent,
                     \dec,         0.9 + (transactionInfluence * 0.4),
@@ -1181,7 +1184,7 @@
                         (~beatParams.masterAmp * tideDensity * 0.6).clip(0, 1));
                 };
                 s.makeBundle(s.latency + jitTick, { Synth(\opalKick, [
-                    \out,         0,
+                    \out,         ~stemOut.(\kick),
                     \freq,        kickFreqH.clip(30, 80),
                     \amp,         ~beatParams.masterAmp * (~beatParams.transportGain ? 1)
                                   * tideDensity * 0.55,
@@ -1487,7 +1490,7 @@
                         (0.3 + (density * 0.35)).clip(0, 1));
                 };
                 s.makeBundle(s.latency + jitTick, { Synth(\opalDust, [
-                    \out,         0,
+                    \out,         ~stemOut.(\dust),
                     // Floor 0.3 -> 0.72. On an idle chain density is 0, so
                     // every grain was spawned at 30% amplitude regardless of
                     // ~trimDust — the layer could not be brought up from the
