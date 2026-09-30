@@ -1,10 +1,15 @@
 // visualizationSwitcher.ts
 // Keyboard-driven center-stage visualization switcher.
 // Keys 0–9 swap what renders inside #parliament-stage.
-//   0 → ParliamentStage    (Three.js ecological parliament)
+//   0 → ParliamentStage    (anillos fenológicos: year · day · now, nested)
 //   1 → AsteroidWaves      (p5.js amber perlin wave graph)
 //   2 → LowEarthPoint      (Three.js point cloud + Bézier lines)
 //   3–9 → reserved slots
+// Letter slots: p f b e r c a, and the two other ring layouts —
+//   o → Anillos · Referencia (one outer turn = one phenological day)
+//   t → Anillos · Taxones    (every ring the year, one lane per taxon)
+// Pressing the key of the slot already on screen resets that slot's view,
+// which is how the ring stages come back out of a deep zoom.
 //
 // #parliament-stage is position:absolute;inset:0 inside #canvas-wrap
 // (position:relative), so stageEl.offsetWidth/Height are always reliable.
@@ -138,6 +143,8 @@ export interface Viz {
   key: string;
   destroy: () => void;
   onState?: (state: ParliamentState) => void;
+  /** Called when the slot's own key is pressed while it is on screen. */
+  resetView?: () => void;
 }
 
 // ─── Module-level refs ───────────────────────────────────────────────────────
@@ -186,12 +193,22 @@ function clearStage() {
   hideStage(stageEl);
 }
 
-// ─── Mount: slot 0 — Three.js Parliament ────────────────────────────────────
+// ─── Mount: the ring stages — slot 0 (Parliament), O and T ──────────────────
+// All three extend RingStageBase and keep ParliamentStage's field contract, so
+// each becomes _activeThreeStage: applySonethToViz, the consensus bypass and
+// the Art. 47 floor reach whichever ring layout is on screen.
 async function mountParliamentStage(): Promise<Viz> {
   const { default: ParliamentStage } = await import(
     "../main/starter_modules/ParliamentStage"
   );
+  return mountRingStage(ParliamentStage, "Parliament of the Living", "0");
+}
 
+async function mountRingStage(
+  StageClass: new (el: HTMLElement) => unknown,
+  name: string,
+  key: string
+): Promise<Viz> {
   // Create a disposable wrapper div inside stageEl.
   // ModuleBase.destroy() removes this.elem from the DOM — if we passed stageEl
   // directly, destroy would rip #parliament-stage out of the document tree,
@@ -203,7 +220,7 @@ async function mountParliamentStage(): Promise<Viz> {
   showStage(stageEl);
   void wrapper.offsetWidth; // sync reflow
 
-  const stage = new ParliamentStage(wrapper) as any;
+  const stage = new StageClass(wrapper) as any;
 
   // ModuleBase constructor hides elem — restore the wrapper immediately.
   wrapper.style.visibility = "visible";
@@ -218,19 +235,22 @@ async function mountParliamentStage(): Promise<Viz> {
       if (stage.renderer) stage.renderer.setSize(w, h);
       if (stage.camera) { stage.camera.aspect = w / h; stage.camera.updateProjectionMatrix(); }
       if (stage._composer) stage._composer.setSize(w, h);
+      // The dial is fitted to the aspect, which is only final now.
+      stage.resetView?.(false);
     }
     resolve();
   }));
 
   _activeThreeStage = stage;
-  console.log("[switcher] ParliamentStage mounted, wrapper size:", wrapper.offsetWidth, "×", wrapper.offsetHeight);
+  console.log(`[switcher] ring stage [${key}] mounted, wrapper size:`, wrapper.offsetWidth, "×", wrapper.offsetHeight);
 
   return {
-    // This string is what the ticker prints for slot 0. The page header is
+    // For slot 0 this is what the ticker prints. The page header is
     // "BiocracyEngine" now — the instrument — and this is the module: the
     // chamber the instrument convenes.
-    name: "Parliament of the Living",
-    key: "0",
+    name,
+    key,
+    resetView: () => { try { stage.resetView?.(true); } catch { /* ignore */ } },
     destroy: () => {
       _activeThreeStage = null;
       try { stage.destroy(); } catch { }
@@ -1939,7 +1959,10 @@ function mountPlaceholder(key: string): Viz {
 
 // ─── Switch ──────────────────────────────────────────────────────────────────
 async function switchTo(key: string) {
-  if (key === currentKey && currentViz) return;
+  if (key === currentKey && currentViz) {
+    currentViz.resetView?.();
+    return;
+  }
 
   // Bump generation — any in-flight async mount with an older gen will be discarded
   const gen = ++_mountId;
@@ -1966,6 +1989,14 @@ async function switchTo(key: string) {
     else if (key === "r") viz = await mountRegistroSlot();
     else if (key === "c") viz = await mountCamaraSlot();
     else if (key === "a") viz = await mountAntifoniaSlot();
+    else if (key === "o") {
+      const { default: Stage } = await import("./rings/ReferenceRingsStage");
+      viz = await mountRingStage(Stage, "Anillos · Referencia", "o");
+    }
+    else if (key === "t") {
+      const { default: Stage } = await import("./rings/TaxonLanesStage");
+      viz = await mountRingStage(Stage, "Anillos · Taxones", "t");
+    }
     else viz = mountPlaceholder(key);
   } catch (e) {
     console.error("[switcher] mount failed:", e);
@@ -1991,10 +2022,11 @@ async function switchTo(key: string) {
 // ─── Keyboard ────────────────────────────────────────────────────────────────
 function onKeyDown(e: KeyboardEvent) {
   if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
-  // 'a' added with slot A (Antifonía), 'c' with slot C (Cámara). This regex is
-  // the real gate: adding a mount function without widening it produces a slot
-  // that exists, compiles, and can never be reached.
-  if (!/^[0-9pfbreac]$/.test(e.key)) return;
+  // 'a' added with slot A (Antifonía), 'c' with slot C (Cámara), 'o' and 't'
+  // with the two other ring layouts. This regex is the real gate: adding a
+  // mount function without widening it produces a slot that exists, compiles,
+  // and can never be reached.
+  if (!/^[0-9pfbreacot]$/.test(e.key)) return;
   e.preventDefault();
   switchTo(e.key);
 

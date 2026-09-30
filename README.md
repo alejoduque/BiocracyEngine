@@ -23,7 +23,7 @@
 
 # BiocracyEngine
 
-Un instrumento audiovisual en vivo y un artefacto público desplegable que acopla tres registros en un solo bucle de retroalimentación: una blockchain pública, una asamblea deliberativa (el parlamento multiespecie) y la fenología de un bosque seco tropical. Cada parámetro de control acciona simultáneamente la síntesis de audio en SuperCollider y los módulos visuales (slots 0–9, P, F, B, E, R y A) a través de un puente bidireccional OSC/WebSocket.
+Un instrumento audiovisual en vivo y un artefacto público desplegable que acopla tres registros en un solo bucle de retroalimentación: una blockchain pública, una asamblea deliberativa (el parlamento multiespecie) y la fenología de un bosque seco tropical. Cada parámetro de control acciona simultáneamente la síntesis de audio en SuperCollider y los módulos visuales (slots 0–9, P, F, B, E, R, A, O y T) a través de un puente bidireccional OSC/WebSocket.
 
 Más que "visualizar datos", el motor ejecuta un acoplamiento cibernético donde el bosque, los protocolos blockchain y las acciones humanas tienen igual condición de agentes políticos.
 
@@ -155,7 +155,7 @@ navegador Electron nw_wrld  (parliament.html)
   │
   └─ applySonethToViz(key, v)  ─────────────────────────────────────────┐
        │                                                                  │
-       ├─ Slot 0  ParliamentStage.js   (Three.js)  ámbar + fósforo        │
+       ├─ Slot 0  ParliamentStage.js   (Three.js)  relojes anidados       │
        ├─ Slot 1  AsteroidWaves        (p5.js)  → __slot1Soneth          │
        ├─ Slot 2  LowEarthPoint        (Three.js)                        │
        ├─ Slot 3  PerlinBlob           (p5.js)  → __slot3Soneth          │
@@ -176,6 +176,10 @@ navegador Electron nw_wrld  (parliament.html)
        ├─ Slot R  Registro     (canvas · campo ASCII pretext × slot 6)    │
        │          └─ inverso: buffer → /soneth/memoryfeed, consenso →     │
        │             atmospheremix                                        │
+       ├─ Slot O  Anillos · Referencia (Three.js · rings/)                │
+       │          └─ una vuelta = un día fenológico (/pheno/cursor)       │
+       ├─ Slot T  Anillos · Taxones    (Three.js · rings/)                │
+       │          └─ cinco carriles del año, cuña del bus en el cursor    │
        └─ Slot A  Antifonía            (Three.js · módulo cargado aparte)─┘
                   ├─ directo: /tide/state → densidad del coro, votos → la
                   │           sala habla, __ednaBio → peso por estrato
@@ -529,12 +533,20 @@ El balance estaba entonces mal de una segunda manera, que las mediciones de pico
 
 Estos trims siguen siendo la *estructura* del balance. Lo que la Fila 8 añade es un multiplicador en vivo sobre cada uno, para que la estructura pueda ajustarse mientras se toca sin editar constantes y reiniciar.
 
-### El slot 0 ya no es enteramente ámbar
+### Slot 0 · Anillos fenológicos (y variantes O y T)
 
-`ParliamentStage.js` renderizaba cada elemento en un solo tono, lo que hacía que la cámara se leyera como un único panel de instrumentos en vez de como una asamblea — nada podía destacarse del ámbar porque a nada se le permitía. Dos elementos arden ahora en **fósforo blanco** (`#f2fff4`, una traza de verde para que siga siendo un fósforo y no un blanco de interfaz):
+<p align="center"><img src="docs/rings/slot0.jpg" width="32%" alt="Slot 0 · relojes anidados"> <img src="docs/rings/slotO.jpg" width="32%" alt="Slot O · referencia"> <img src="docs/rings/slotT.jpg" width="32%" alt="Slot T · taxones"></p>
 
-* **el anillo de radar más exterior** — el límite de lo que el instrumento alcanza a ver. Es el único anillo con presencia real (opacidad base 0.28 frente a 0.06), así que un cambio de tono ahí se ve en lugar de inferirse.
-* **Alouatta, el aullador** — el Artículo 46 de la Cámara Fenológica le otorga el único protocolo de alerta del estatuto, que obliga a la Corporación a atender su silencio. La especie que el instrumento está obligado a escuchar es la especie que no es ámbar. Mantiene la misma rampa de actividad de tres pasos atenuado→brillante que las demás, en fósforo y no en ámbar, así que se lee como la misma máquina de estados en otra sustancia — no como un nodo atascado en un color mientras el resto de la cámara respira.
+*Slot 0 · relojes anidados — Slot O · referencia — Slot T · taxones (capturas con un feed OSC de prueba).*
+
+Los anillos son un calendario vivo, del año al segundo (`nw_wrld_local/src/projector/rings/`):
+
+* **AÑO** — cada día guarda el espectro del bus del corpus mientras el anillo SC estuvo sobre él; la mano ámbar es `/pheno/cursor`, la verde la fecha civil.
+* **DÍA** — las grabaciones AudioMoth del día como teselas en su minuto, pintadas mientras suenan (`/pheno/clip`).
+* **AHORA** — 30 s del bus maestro como espectrograma de barrido; sin señal, negro.
+* **ONDA** — nivel del bus, un nodo por golpe de voz (`/voice/*`) y arcos entre golpes.
+
+Las especies más activas del día pasan del carril de calendario al de voz (su taxón suena) o al de evento (afinidad con el rol de una grabación). El consenso las atrae al centro; el Art. 47 retira el nombre, no el cuerpo. Rueda = zoom al cursor, doble clic = volar, repetir la tecla = volver al dial. **O**: una vuelta = un día fenológico. **T**: cinco carriles del año por taxón. `\masterScope`/`\corpusScope` usan ahora 96 bandas.
 
 ### La GUI de SC es monoespaciada de 1 bit, con dos excepciones
 

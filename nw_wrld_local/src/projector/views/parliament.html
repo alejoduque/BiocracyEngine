@@ -514,6 +514,65 @@
             pointer-events: none;
         }
 
+        /* ─── RING STAGES (slots 0 · O · T) ─────────────────────────────
+           Labels are DOM text projected from world space every frame, so they
+           stay sharp at any zoom (rings/ringLabels.ts). Grey for the dial,
+           amber for the hands, green for the civil clock, taxon colour for a
+           species, dimmed and spaced out for a withheld name (Art. 47). */
+        .ring-overlay {
+            position: absolute;
+            inset: 0;
+            pointer-events: none;
+            overflow: hidden;
+        }
+        .ring-labels { position: absolute; inset: 0; }
+        .ring-label {
+            position: absolute;
+            left: 0; top: 0;
+            white-space: nowrap;
+            font-size: 10px;
+            line-height: 1.15;
+            letter-spacing: 0.4px;
+            color: rgba(196, 204, 199, 0.72);
+            text-shadow: 0 0 3px #000, 0 0 2px #000;
+            will-change: transform;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+        .ring-label.al { align-items: flex-start; }
+        .ring-label.ar { align-items: flex-end; }
+        .ring-label .rl-sub { font-size: 9px; opacity: 0.6; font-style: italic; letter-spacing: 0.2px; }
+        .ring-label.tick  { color: rgba(150, 158, 153, 0.62); font-size: 9px; }
+        .ring-label.sp    { font-style: italic; }
+        .ring-label.axis  { color: rgba(150, 158, 153, 0.7); font-size: 9px; }
+        .ring-label.month { color: rgba(214, 222, 217, 0.85); letter-spacing: 1.4px; }
+        .ring-label.season { color: rgba(140, 150, 145, 0.55); font-size: 9px; letter-spacing: 1px; }
+        .ring-label.season.on { color: rgba(242, 255, 244, 0.95); }
+        .ring-label.lane  { font-size: 9px; letter-spacing: 1.2px; opacity: 0.8; }
+        .ring-label.head  { color: var(--amber-bright); letter-spacing: 1px; font-size: 11px; }
+        .ring-label.head.small { font-size: 9px; color: rgba(255, 170, 90, 0.8); }
+        .ring-label.civil { color: rgba(141, 240, 180, 0.75); font-size: 9px; }
+        .ring-label.note  { color: rgba(120, 128, 123, 0.6); font-size: 9px; }
+        .ring-label.clip  { color: rgba(200, 210, 205, 0.7); font-size: 9px; }
+        .ring-label.clip.live { color: #ffb35c; font-size: 10px; }
+        .ring-label.orb   { font-size: 10px; letter-spacing: 0.8px; }
+        .ring-label.orb .rl-sub { color: rgba(200, 206, 202, 0.7); }
+        .ring-label.orb.live .rl-main { text-decoration: underline; text-underline-offset: 2px; }
+        .ring-label.orb.veiled { letter-spacing: 2.5px; opacity: 0.45 !important; }
+        .ring-status {
+            position: absolute;
+            left: 8px;
+            bottom: 8px;
+            font-size: 11px;
+            line-height: 1.45;
+            letter-spacing: 0.5px;
+            color: rgba(214, 222, 217, 0.7);
+            white-space: pre;
+            text-shadow: 0 0 3px #000;
+        }
+        .ring-status.stale { color: rgba(141, 240, 180, 0.6); }
+
         /* ─── FOOTER ─── */
         #footer .phase-clock { color: var(--text-bright); letter-spacing: 1px; font-size: 14px; }
         #footer .sep { color: var(--amber-dim); }
@@ -1207,7 +1266,7 @@
                 <div id="parliament-stage"></div>
                 <div id="canvas-overlay">
                     <!-- 3D-tracked species labels injected by JS -->
-                    <div id="viz-hint">0–9 · P · F · B · E · R · A · switch viz</div>
+                    <div id="viz-hint">0–9 · P · F · B · E · R · A · C · O · T · switch viz</div>
                     <div id="viz-hud">[0] Parliament of the Living</div>
                 </div>
             </div>

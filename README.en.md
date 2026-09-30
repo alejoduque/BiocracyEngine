@@ -23,7 +23,7 @@
 
 # BiocracyEngine
 
-A live audiovisual instrument and a deployable public artifact that couples three registers into a single feedback loop: a public blockchain, a deliberative assembly (the multispecies parliament), and the phenology of a tropical dry forest. Every control parameter simultaneously drives SuperCollider audio synthesis and visual modules (slots 0–9, P, F, B, E, R and A) via a bidirectional OSC/WebSocket bridge.
+A live audiovisual instrument and a deployable public artifact that couples three registers into a single feedback loop: a public blockchain, a deliberative assembly (the multispecies parliament), and the phenology of a tropical dry forest. Every control parameter simultaneously drives SuperCollider audio synthesis and visual modules (slots 0–9, P, F, B, E, R, A, O and T) via a bidirectional OSC/WebSocket bridge.
 
 Rather than "visualizing data," the engine performs a cybernetic coupling where the forest, blockchain protocols, and human actions hold equal standing as political agents.
 
@@ -155,7 +155,7 @@ nw_wrld Electron browser  (parliament.html)
   │
   └─ applySonethToViz(key, v)  ─────────────────────────────────────────┐
        │                                                                  │
-       ├─ Slot 0  ParliamentStage.js   (Three.js)  amber + phosphor      │
+       ├─ Slot 0  ParliamentStage.js   (Three.js)  nested clocks         │
        ├─ Slot 1  AsteroidWaves        (p5.js)  → __slot1Soneth          │
        ├─ Slot 2  LowEarthPoint        (Three.js)                        │
        ├─ Slot 3  PerlinBlob           (p5.js)  → __slot3Soneth          │
@@ -176,6 +176,10 @@ nw_wrld Electron browser  (parliament.html)
        ├─ Slot R  Registro     (canvas · pretext ASCII field × slot 6)    │
        │          └─ reverse: buffer → /soneth/memoryfeed, consensus →     │
        │             atmospheremix                                          │
+       ├─ Slot O  Rings · Reference    (Three.js · rings/)               │
+       │          └─ one turn = one phenological day (/pheno/cursor)     │
+       ├─ Slot T  Rings · Taxa         (Three.js · rings/)               │
+       │          └─ five year lanes, bus wedge on the cursor            │
        └─ Slot A  Antifonía            (Three.js · fetched module) ───────┘
                   ├─ forward: /tide/state → chorus density, votes → the room
                   │           speaks, __ednaBio → per-stratum weight
@@ -529,12 +533,20 @@ The balance was then wrong in a second way, which peak measurements could not se
 
 These trims remain the *structure* of the balance. What Row 8 adds is a live multiplier on each of them, so the structure can be adjusted while playing without editing constants and rebooting.
 
-### Slot 0 is no longer entirely amber
+### Slot 0 · Phenological rings (and variants O and T)
 
-`ParliamentStage.js` rendered every element in one hue, which made the chamber read as a single instrument panel rather than an assembly — nothing could stand apart from the amber because nothing was allowed to. Two elements now burn **white phosphorous** (`#f2fff4`, a trace of green so it stays a phosphor rather than a UI white):
+<p align="center"><img src="docs/rings/slot0.jpg" width="32%" alt="Slot 0 · nested clocks"> <img src="docs/rings/slotO.jpg" width="32%" alt="Slot O · reference"> <img src="docs/rings/slotT.jpg" width="32%" alt="Slot T · taxa"></p>
 
-* **the outermost radar ring** — the boundary of what the instrument can see. It is the only ring with real presence (base opacity 0.28 against 0.06), so a change of hue there is seen rather than inferred.
-* **Alouatta, the howler** — Article 46 of the Cámara Fenológica gives it the one alert protocol in the statute, obliging the Corporation to attend to its silence. The species the instrument is bound to listen for is the species that is not amber. It keeps the same three-step dim→bright activity ramp as the others, in phosphor rather than amber, so it reads as the same state machine in a different substance — not as a node stuck at one colour while the rest of the chamber breathes.
+*Slot 0 · nested clocks — Slot O · reference — Slot T · taxa (captured with a test OSC feed).*
+
+The rings are a live calendar, from the year down to the second (`nw_wrld_local/src/projector/rings/`):
+
+* **YEAR** — each day keeps the corpus-bus spectrum heard while the SC ring stood on it; amber hand = `/pheno/cursor`, green = civil date.
+* **DAY** — that day's AudioMoth recordings as tiles at their minute, painted while they sound (`/pheno/clip`).
+* **NOW** — 30 s of the master bus as a swept spectrogram; no signal, black.
+* **WAVE** — bus level, a node per voice strike (`/voice/*`) and arcs between strikes.
+
+Today's most active species move from the calendar lane to the voice lane (their taxon sounds) or the event lane (affinity with a recording's role). Consensus draws them in; Article 47 withholds the name, never the body. Wheel = zoom to cursor, double-click = fly, same key again = whole dial. **O**: one turn = one phenological day. **T**: five year lanes by taxon. `\masterScope`/`\corpusScope` now use 96 bands.
 
 ### The SC GUI is 1-bit monospace, with two exceptions
 

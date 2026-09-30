@@ -7,6 +7,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Slot 0 as a live phenological calendar; slots O and T (2026-09-30)
+
+#### Added
+- **Ring stages library** (`nw_wrld_local/src/projector/rings/`). Shared by three layouts: polar spectrogram rings (R8 `DataTexture`, polar mapping per fragment so edges stay circular at any zoom, radar-sweep or day/minute-indexed writes, absence hatching, kHz guides), a waveform ring with per-voice onset nodes and interior Bézier arcs, today's-species orbiters, pooled HTML labels with distance-based level of detail, and `RingStageBase`, which keeps `ParliamentStage`'s field contract (`_bloom`, `_afterimage`, `_smoothConsensus`, `_sonethTimeScale`…) so `applySonethToViz`, the consensus bypass and the Art. 47 floor reach every ring layout.
+- **Slot O · Anillos · Referencia** — the reference image: the outer ring is the master bus, one turn = one phenological day; the middle ring is the year as the corpus's 261 recordings; the inner one is the waveform.
+- **Slot T · Anillos · Taxones** — every ring is the year: five taxon lanes holding all 442 distinct roster species at their peak day, with a master-bus wedge on the DOY cursor.
+- **Pressing the active slot's key again resets its view** (`Viz.resetView`), which is how the ring stages come back out of a deep zoom.
+- `window.__scCorpus` (raw `/spectrum/corpus` bands), `window.__phenoClipBus` (the `/pheno/clip` events, previously only turned into a pulsar row), and `_fftSourceExternal` beside `_fftBinsExternal`, so a stage can tell the SC bus and the mic from the synthetic fallback and never paints the latter.
+
+#### Changed
+- **Slot 0 (`ParliamentStage.js`) rewritten as nested clocks.** YEAR (corpus spectrum per DOY, remembered across sessions in `localStorage`), DAY (the ring day's AudioMoth recordings as tiles at their minute, painted while they sound), NOW (30 s radar-swept master spectrogram) and WAVE rings. The five fixed seats, radar grid, season nodes and fungi lines are gone: none was driven by anything but its own defaults (SC's `~speciesPresence` sits at 0.5). In their place, the most active species on the ring's day move between calendar, voice and event lanes; consensus draws them in; Art. 47 draws veiled bodies hollow and withholds only the name. Zoom goes down to a tile (wheel toward the cursor, double-click fly-to, adaptive near plane); bloom, trails, aberration and grain fade as the camera closes in.
+- **`\masterScope` and `\corpusScope`: 48 → 96 bands**, rq 0.4 → 0.12 with `sqrt(0.4/rq)` makeup gain so broadband levels stay where the consumers are calibrated (`3_synthdefs.scd`).
+- **`/pheno/cursor` carries a sixth argument, `secsPerDay`** (`14_phenological_corpus.scd`). Readers of the first five are unaffected.
+- `applySonethToViz` no longer clamps `controls.minDistance` (spatialspread) or moves `controls.target.y` (dronespace) on a ring stage, where both would break the deep zoom.
+
+#### Fixed
+- **Slot 8's spectrum bars read only the first 16 raw bands** — the bottom few hundred hertz once `\masterScope` went to 48, and less at 96. Each bar is now the mean of its slice of the whole spectrum (`dataStructureVisuals.ts`).
+
 ### SC GUI SynthDef compilation fix & Visualization modules verification (2026-08-14)
 
 #### Fixed

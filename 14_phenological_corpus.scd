@@ -1143,8 +1143,14 @@ s.waitForBoot {
                 };
                 if(~visualsDest.notNil) {
                     ~visualsDest.sendMsg('/bio/consensus', quorum);
+                    // secsPerDay last: how long this ring day will dwell, so
+                    // the ring stages can turn once per phenological day
+                    // (slot O) without guessing it from the gaps between
+                    // cursors. Appended, so a reader of the first five is
+                    // unaffected.
                     ~visualsDest.sendMsg('/pheno/cursor',
-                        doy, ~phenoSeason.(doy), admitted.size, gap, quorum);
+                        doy, ~phenoSeason.(doy), admitted.size, gap, quorum,
+                        secsPerDay.max(0.25));
                 };
 
                 if(doy != ~phenoLastDay) {

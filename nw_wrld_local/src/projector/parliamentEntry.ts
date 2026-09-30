@@ -165,17 +165,21 @@ function connectControlWS() {
           // silence is when it admitted none, and the quorum — and those were
           // being read off the message and thrown away here, leaving the only
           // copy in the textContent of a DOM node the projector cannot see.
-          const [doy, temporada, clips, gap, quorum] =
-            args as unknown as [number, string, number, number, number];
+          // The sixth, secsPerDay, is how long this ring day lasts at the
+          // current Ring Rate. Optional — an older SC sends five — and read by
+          // the ring stages (slot O turns once per phenological day).
+          const [doy, temporada, clips, gap, quorum, secsPerDay] =
+            args as unknown as [number, string, number, number, number, number?];
           (window as unknown as {
             __phenoCursor?: {
               doy: number; temporada: string; clips: number;
-              gap: number; quorum: number; at: number;
+              gap: number; quorum: number; at: number; secsPerDay?: number;
             };
           }).__phenoCursor = {
             doy: Number(doy), temporada: String(temporada),
             clips: Number(clips) || 0, gap: Number(gap) || 0,
             quorum: Number(quorum) || 0, at: performance.now(),
+            secsPerDay: Number(secsPerDay) > 0 ? Number(secsPerDay) : undefined,
           };
         }
         const el = document.getElementById("corpus-cursor");
@@ -354,6 +358,10 @@ function connectControlWS() {
         if (bands.length >= 8) {
           lastCorpusBands = bands;
           pushRow("corpus", bands);
+          // Published raw for the ring stages, which paint the year and the
+          // day's recordings with the forest's own voice rather than the mix.
+          (window as unknown as { __scCorpus?: { bands: number[]; at: number } })
+            .__scCorpus = { bands, at: performance.now() };
         }
         return;
       }
@@ -384,6 +392,26 @@ function connectControlWS() {
         const sens = (window as unknown as { __activeSpecies?: { sensitive?: boolean } })
           .__activeSpecies;
         if (!sens?.sensitive && lastCorpusBands) pushRow("ring", lastCorpusBands);
+        // Which recording just began, for the ring stages: its tile on the day
+        // ring fills while it sounds, and species with affinity for its role
+        // move to it. Same payload order as 14_phenological_corpus.scd sends —
+        // key, role, temporada, habitat, doy, ultrasonic, confidence. Opaque
+        // clips are never sent, so they are never drawn as sounding.
+        {
+          const a = args as unknown as unknown[];
+          const w = window as unknown as {
+            __phenoClipBus?: { seq: number; events: Array<Record<string, unknown>> };
+          };
+          const bus = w.__phenoClipBus ?? (w.__phenoClipBus = { seq: 0, events: [] });
+          bus.seq += 1;
+          bus.events.push({
+            seq: bus.seq, key: String(a[0] ?? ""), role: String(a[1] ?? ""),
+            temporada: String(a[2] ?? ""), habitat: String(a[3] ?? ""),
+            doy: Number(a[4]) || 0, ultrasonic: Number(a[5]) || 0,
+            confidence: Number(a[6]) || 0, at: performance.now(),
+          });
+          if (bus.events.length > 64) bus.events.shift();
+        }
         return;
       }
       // Per-voice ONSETS. The spectrum says what is being heard; these say
@@ -1312,6 +1340,14 @@ async function init() {
   // Label tracking loop — only active when slot 0 (Three.js parliament) is live
   function updateLabels() {
     const s = getActiveThreeStage();
+    // A ring stage draws its own names in its own layer; only the five legacy
+    // seat labels go, and the overlay (HUD, hint) stays.
+    if (s?.ownsLabels) {
+      if (overlay) overlay.style.visibility = "visible";
+      for (const el of speciesLabelEls) if (el.style.display !== "none") el.style.display = "none";
+      return;
+    }
+    for (const el of speciesLabelEls) if (el.style.display === "none") el.style.display = "";
     // Hide species + eDNA labels when not on slot 0
     if (!canvasWrap || !s?.speciesGroups || !s?.camera) {
       if (overlay) overlay.style.visibility = "hidden";
@@ -1522,8 +1558,10 @@ async function init() {
           if (s._bloom) s._bloom.threshold = 0.35 - v * 0.30;
           break;
         case "spatialspread":
-          // Spatial → camera distance offset (wide=far, narrow=close)
-          if (s.controls) {
+          // Spatial → camera distance offset (wide=far, narrow=close).
+          // Not on a ring stage: its zoom goes all the way down to a day tile,
+          // and a floor of 8–16 units would put that out of reach.
+          if (s.controls && !s.ownsLabels) {
             s.controls.minDistance = 8 + v * 8;   // 8→16
             s.controls.maxDistance = 40 - v * 15;  // 40→25
           }
@@ -1582,8 +1620,10 @@ async function init() {
           if (s._ptLight) s._ptLight.color.setRGB(1.0, 0.6 + v * 0.4, 0.2 + v * 0.3);
           break;
         case "dronespace":
-          // Drone space → camera look-at elevation (vertical scene reframing)
-          if (s.controls?.target) s.controls.target.y = (v - 0.5) * 6;
+          // Drone space → camera look-at elevation (vertical scene reframing).
+          // A ring stage's target is where the performer zoomed to; a preset
+          // load must not yank it three units off the dial.
+          if (s.controls?.target && !s.ownsLabels) s.controls.target.y = (v - 0.5) * 6;
           break;
         case "dronemix":
           // Drone mix → scanline intensity (analog warmth blend)
@@ -2442,11 +2482,17 @@ async function init() {
     tickEthScaled();
     // Source priority: real engine output > microphone > synthetic fallback.
     // Same bin count as buildFftBins' default, so the renderer sees one shape.
-    const bins = scBins(256) ?? micBins(256) ?? buildFftBins(currentState, elapsed);
+    const sc = scBins(256);
+    const mic = sc ? null : micBins(256);
+    const bins = sc ?? mic ?? buildFftBins(currentState, elapsed);
     if (spectroRenderer) spectroRenderer.push(bins, performance.now());
-    // Expose bins to active Three.js stage for FFT ring animation
+    // Expose bins to the active Three.js stage, with where they came from: a
+    // ring stage paints only a real reading, never the synthetic fallback.
     const s = getActiveThreeStage();
-    if (s && s._fftBinsExternal !== undefined) s._fftBinsExternal = bins;
+    if (s && s._fftBinsExternal !== undefined) {
+      s._fftBinsExternal = bins;
+      s._fftSourceExternal = sc ? "sc" : mic ? "mic" : "synthetic";
+    }
     requestAnimationFrame(animLoop);
   })();
 

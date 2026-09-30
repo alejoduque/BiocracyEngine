@@ -3311,8 +3311,16 @@ export function mountMemoryHierarchy(stageEl: HTMLElement, getLatestState: () =>
             // One-pole per band toward the incoming frame. 20 Hz in, 60 Hz out:
             // without this the rings step three frames out of four.
             const kb = 1 - Math.exp(-(1 / 60) / 0.09);
+            // Sixteen bars over however many bands SC sends (48, now 96): each
+            // bar is the mean of its slice. Reading raw8[i] directly drew only
+            // the first sixteen bands — the bottom few hundred hertz.
+            const n8 = raw8.length || 1;
             for (let i = 0; i < band8.length; i++) {
-                band8[i] += ((raw8[i] ?? 0) - band8[i]) * kb;
+                const j0 = Math.floor((i * n8) / band8.length);
+                const j1 = Math.max(j0 + 1, Math.floor(((i + 1) * n8) / band8.length));
+                let sum = 0;
+                for (let j = j0; j < j1; j++) sum += raw8[j] ?? 0;
+                band8[i] += (sum / (j1 - j0) - band8[i]) * kb;
             }
             const bArr = Array.from(band8);
             // The rings sit behind the hierarchy and turn against it, so the

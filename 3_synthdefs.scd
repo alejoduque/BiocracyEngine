@@ -367,12 +367,26 @@ s.doWhenBooted({
     // assuming 16 — publishScAudio and bandRange in scAudio.ts both use
     // bands.length, and the spectrogram's scBins interpolates from src.length,
     // so it simply gets a better source to resample.
-    ~scopeBands = 48;
+    //
+    // 48 -> 96 for the ring stages (slots 0, O, T), which wrap this analysis
+    // round a dial and let the performer zoom onto it: at 48 bands with
+    // rq 0.4 each filter was ~0.57 octave wide against a 0.17-octave spacing,
+    // so neighbouring bands overlapped three deep and the picture was a smear.
+    // 96 bands are 1/12 octave apart; rq 0.12 makes each one about that wide.
+    // A narrower filter passes less noise energy, so the reading is lifted by
+    // sqrt(0.4 / rq) to keep broadband material — the forest, the noise beds —
+    // at the level every consumer was calibrated on (scBins' curve,
+    // publishScAudio, normLevel). A pure tone sits inside one band either way,
+    // so it now reads up to that factor (~1.8x) higher; the consumers' curves
+    // compress the top, and a partial standing out of the bed is the point.
+    ~scopeBands = 96;
+    ~scopeRq = 0.12;
     SynthDef(\masterScope, {
         var sig = Mix(In.ar(0, ~limiterChans)) / ~limiterChans.max(1);
         var bands = Array.geom(~scopeBands, 40, (10000 / 40) ** (1 / (~scopeBands - 1)));
+        var makeup = (0.4 / ~scopeRq).sqrt;
         SendReply.kr(Impulse.kr(20), '/spectrum',
-            bands.collect { |f| Amplitude.kr(BPF.ar(sig, f, 0.4), 0.01, 0.12) });
+            bands.collect { |f| Amplitude.kr(BPF.ar(sig, f, ~scopeRq), 0.01, 0.12) * makeup });
     }).add;
 
     // The same analysis over the CORPUS bus alone, so the laser can draw the
@@ -389,8 +403,9 @@ s.doWhenBooted({
         var chans = (~limiterChans ? 2);
         var sig = Mix(In.ar(in, chans)) / chans.max(1);
         var bands = Array.geom(~scopeBands, 40, (10000 / 40) ** (1 / (~scopeBands - 1)));
+        var makeup = (0.4 / ~scopeRq).sqrt;
         SendReply.kr(Impulse.kr(20), '/spectrum/corpus',
-            bands.collect { |f| Amplitude.kr(BPF.ar(sig, f, 0.4), 0.01, 0.12) });
+            bands.collect { |f| Amplitude.kr(BPF.ar(sig, f, ~scopeRq), 0.01, 0.12) * makeup });
     }).add;
 
     // Main transaction bell with MIDI control
