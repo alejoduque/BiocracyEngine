@@ -212,6 +212,19 @@
     (name: \mixSample, spec: ControlSpec(0, 2, \lin), default: 1.0, path: "/mix/sample", cc: 47),
     (name: \mixCorpus, spec: ControlSpec(0, 2, \lin), default: 1.0, path: "/mix/corpus", cc: 48),
     (name: \mixUltra,  spec: ControlSpec(0, 2, \lin), default: 1.0, path: "/mix/ultra",  cc: 49),
+    // The five motors of 18_motores.scd. MOTOR is their master; each of the
+    // five after it is one motor's own layer, and raising it from 0 switches
+    // that motor on over whatever config is playing. Same 0-2 / unity-at-mid
+    // convention as the eight above, but the five default to 0: no motor
+    // sounds until someone asks for it. CC 57-62: the LC2's eight faders are
+    // all taken, so these live on the GUI strips, the browser and any
+    // controller that sends them.
+    (name: \mixMotor,      spec: ControlSpec(0, 2, \lin), default: 1.0, path: "/mix/motor",      cc: 57),
+    (name: \mixRemuestreo, spec: ControlSpec(0, 2, \lin), default: 0.0, path: "/mix/remuestreo", cc: 58),
+    (name: \mixEspectro,   spec: ControlSpec(0, 2, \lin), default: 0.0, path: "/mix/espectro",   cc: 59),
+    (name: \mixCaos,       spec: ControlSpec(0, 2, \lin), default: 0.0, path: "/mix/caos",       cc: 60),
+    (name: \mixRuptura,    spec: ControlSpec(0, 2, \lin), default: 0.0, path: "/mix/ruptura",    cc: 61),
+    (name: \mixMasa,       spec: ControlSpec(0, 2, \lin), default: 0.0, path: "/mix/masa",       cc: 62),
 
     // ── Beat engine (no control bus — lives in ~beatParams) ─────────────
     (name: \beatTempo, spec: ControlSpec(0.5, 2.0, \exp), default: 1.0, path: "/soneth/beatTempo",
@@ -845,8 +858,13 @@ if(File.exists(~presetDir).not) { File.mkdir(~presetDir) };
                 //
                 // Not overridden — a mute can be deliberate. Just never silent.
                 block { |break|
+                    // Only layers that are ON by default: the five motor faders
+                    // rest at 0, and a config that leaves them there has not
+                    // muted anything.
                     var muted = (dict["params"] ?? ()).keys.asArray.select { |k|
+                        var def = ~paramDefsByName[k.asSymbol];
                         k.asString.beginsWith("mix")
+                            and: { def.notNil and: { def[\default] > 0 } }
                             and: { ((dict["params"][k] ? 1).asFloat) <= 0.001 }
                     }.sort;
                     if(muted.size > 0) {

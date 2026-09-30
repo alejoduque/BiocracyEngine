@@ -11,10 +11,14 @@ placeholder los habría pisado.
 
 | Archivo | Duración | Formato | Composiciones que salen de ahí |
 |---|---|---|---|
-| `eth_sonification_20260922_111301.wav` | 415 s | 4 ch · 24 bit · 48 kHz | `lecho` 95–155 s · `enjambre` 160–220 s · `ascenso` 285–345 s — **ya no está en ninguna máquina** |
+| `eth_sonification_20260922_111301.wav` | 415 s | 4 ch · 24 bit · 48 kHz | `lecho` 95–155 s (ya no es botón; `hondo` tomó su lugar) · `enjambre` 160–220 s · `ascenso` 285–345 s — **ya no está en ninguna máquina** |
 | `eth_sonification_20260922_112003.wav` | 397 s | 4 ch · 24 bit · 48 kHz | `meseta` 165–225 s · `retorno` 260–320 s — **ya no está en ninguna máquina** |
 | `eth_sonification_20260818_212001_5min_SantaAnitaPerf.wav` | 340 s | 4 ch · 24 bit · 48 kHz | `oleaje` 0–338 s, la actuación entera |
-| `eth_sonification_20260926_173107.wav` | 399 s | 2 ch · 24 bit · 48 kHz | `cierre` 110–385 s |
+| `eth_sonification_20260926_173107.wav` | 399 s | 2 ch · 24 bit · 48 kHz | `cierre` 110–385 s (ya no es botón ni pista; `destello` tomó su lugar) |
+| `eth_sonification_20260928_184234.wav` | 486 s | 4 ch · 24 bit · 48 kHz | `hondo` 0–486 s, la sesión entera (reemplaza a `lecho` como botón) |
+| `eth_sonification_20260928_223908.wav` | 1222 s | 4 ch · 24 bit · 48 kHz | `crecida` 785–1210 s (web y Bandcamp; reemplaza a `enjambre` como botón) · `vigilia` 0–785 s (sólo Bandcamp, `bandcamp/album.json`) |
+| `eth_sonification_20260929_200008.wav` | 580 s | 4 ch · 24 bit · 48 kHz | `destello` 0–580 s, la sesión entera (web y Bandcamp; reemplaza a `cierre`) |
+| `eth_sonification_20260929_211604.wav` | 626 s | 2 ch · 24 bit · 48 kHz | `FTMZD` 0–626 s, la sesión entera (sólo Bandcamp, pista 0) |
 
 Los cortes, su texto y el orden de los botones viven en `web/composiciones.json`.
 Los de un minuto son los del 22/09: sus grabaciones se perdieron y no pueden

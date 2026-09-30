@@ -1942,6 +1942,12 @@ async function init() {
     "/mix/sample": "disp-mix-sample",
     "/mix/corpus": "disp-mix-corpus",
     "/mix/ultra":  "disp-mix-ultra",
+    "/mix/motor":  "disp-mix-motor",
+    "/mix/remuestreo": "disp-mix-remuestreo",
+    "/mix/espectro":   "disp-mix-espectro",
+    "/mix/caos":       "disp-mix-caos",
+    "/mix/ruptura":    "disp-mix-ruptura",
+    "/mix/masa":       "disp-mix-masa",
   };
 
   // ─── Replica → instrument macros ───────────────────────────────────────────

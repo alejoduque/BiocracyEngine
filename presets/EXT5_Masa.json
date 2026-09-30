@@ -1,0 +1,6 @@
+{
+  "meta": { "engine": "BiocracyEngine", "version": 1, "saved": "2026-09-29 10:28:53", "addon": true },
+  "params": {
+    "mixMasa": 1.0
+  }
+}

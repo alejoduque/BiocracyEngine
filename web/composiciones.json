@@ -50,16 +50,16 @@
       "hace": "La actuación en Santa Anita de principio a fin. El brillo sube y baja en oleadas —del grave al registro medio y otra vez abajo—, hace su pico de flujo pasados los cuatro minutos y cierra con un último empuje antes de apagarse."
     },
     {
-      "id": "cierre",
-      "sesion": "eth_sonification_20260926_173107.wav",
-      "inicio": 110,
-      "duracion": 275,
+      "id": "destello",
+      "sesion": "eth_sonification_20260929_200008.wav",
+      "inicio": 0,
+      "duracion": 580,
       "fundido": [
-        2,
+        0,
         0
       ],
-      "breve": "salta al agudo, vuelve, y termina disolviéndose hasta el silencio",
-      "hace": "Salta de golpe al registro alto y lo sostiene un minuto, vuelve al grave, y termina con el minuto más denso de la sesión disolviéndose 30 dB hasta el silencio."
+      "breve": "quieta, un destello al agudo, y un largo crecimiento hasta el pico",
+      "hace": "La sesión del 29 de septiembre por la noche, entera. Tres minutos quietos en el grave; de golpe salta al registro alto —el brillo sube de 500 Hz a 5 kHz y se sostiene casi un minuto—, vuelve abajo y desde ahí crece durante cuatro minutos hasta su momento más denso, pasados los siete y medio, antes de retirarse sola."
     },
     {
       "id": "retorno",
@@ -98,6 +98,19 @@
         "nivel_dbfs": -32.4,
         "centroide": "280–350 Hz"
       },
+      "boton": false
+    },
+    {
+      "id": "cierre",
+      "sesion": "eth_sonification_20260926_173107.wav",
+      "inicio": 110,
+      "duracion": 275,
+      "fundido": [
+        2,
+        0
+      ],
+      "breve": "salta al agudo, vuelve, y termina disolviéndose hasta el silencio",
+      "hace": "Salta de golpe al registro alto y lo sostiene un minuto, vuelve al grave, y termina con el minuto más denso de la sesión disolviéndose 30 dB hasta el silencio.",
       "boton": false
     }
   ]

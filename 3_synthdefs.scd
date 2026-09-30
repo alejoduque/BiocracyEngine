@@ -570,13 +570,20 @@ s.doWhenBooted({
         // coordinate when the spatial GUI (12_spatial_gui.scd) is open, so the
         // quad branch keeps the 2-D angle; no spawn passes spatialYBus, so in
         // normal operation Y is 0 and only spatialX matters.
+        //
+        // spatialPos is SPREAD. It was read at the top of this SynthDef and
+        // then never used, and no spawn passes spatialXBus either — so the
+        // pads and bells, one of the loudest layers, sat dead centre whatever
+        // SPREAD said. It now moves them like every other voice; the spatial
+        // GUI's X still adds on top when that window is open.
+        spatialX = (spatialX + spatialPos).clip(-1, 1);
         quadSig = if(~limiterChans >= 4) {
             PanAz.ar(4, sig.sum,
                 Select.kr(spatialYBus >= 0,
-                    [spatialX.clip(-1, 1) * 0.5, spatialX.atan2(spatialY) / pi]),
+                    [spatialX * 0.5, spatialX.atan2(spatialY) / pi]),
                 1, 2, 0.5)
         } {
-            Pan2.ar(sig.sum, spatialX.clip(-1, 1))
+            Pan2.ar(sig.sum, spatialX)
         };
         
         Out.ar(out, quadSig);
@@ -766,6 +773,21 @@ s.doWhenBooted({
         // bowl that rings for half a minute.
         var family = Lag.kr(((dustLvl + kickLvl) * 0.5).clip(0, 2), 0.3)
             * famPresence.clip(0, 1.5);
+        // ── The master reaches the room too ─────────────────────────────
+        // The two chamber sends below (bowl and simpatía) used to leave this
+        // voice BEFORE amp, masterVolume and MIX PERC were applied — those sat
+        // on the dry path alone, at the very end. The dry path also carries
+        // ~trimPerc (0.003) and the sends did not, so the send was ~70 dB above
+        // the dry bowl: what was heard as BOWL was almost entirely the room,
+        // and the room ignored MASTER VOL and MASTER AMP. At 0/0 the dry voice
+        // was silent and the bowl still rang through the chamber at full level.
+        //
+        // The sends now ride the same three gains, normalised to the level
+        // they had at the registry defaults (masterAmp 0.7 x a typical strike
+        // 0.245, masterVolume 0.3, MIX PERC 1) so the calibrated room is
+        // unchanged there and follows the master everywhere else.
+        var mixPerc  = Lag.kr(Select.kr(mixPercBus >= 0, [1.0, In.kr(mixPercBus, 1)]), 0.08);
+        var sendGain = amp * vol * mixPerc / (0.7 * 0.245 * 0.3);
         var exciter, sig, wet, quadSig, partials, decays, inharm, damp, spread;
         var shimmer, wash, chug, modeAmps, bend, shaped, bowlFreq, bowlGate, chinaGate;
         var symp, symPresence, symDecay;
@@ -951,8 +973,15 @@ s.doWhenBooted({
         //
         // textureDepth still morphs between them when both are on; the
         // toggles decide whether each is in the sum at all.
+        //
+        // SQUARED: an audio taper, not a linear one. These are amplitude
+        // faders, and a linear fader spends its whole bottom half inside the
+        // first few dB — 0.1 was only -20 dB, and after the chamber's tanh loop
+        // and the master glue compressor (3:1 above 0.10, x1.5 makeup) that
+        // came out sounding like 0.5. Squared, 0.1 is -40 dB going in, 0.5 is
+        // -12 dB, and 1.0 is exactly what it was.
         bowlGate = Lag.kr(
-            Select.kr(bowlOnBus >= 0, [bowlOn, In.kr(bowlOnBus, 1)]).clip(0, 1), 0.4);
+            Select.kr(bowlOnBus >= 0, [bowlOn, In.kr(bowlOnBus, 1)]).clip(0, 1).squared, 0.4);
 
         // ── The bowl rings the room ──────────────────────────────────────
         // Sent into the chamber's aux ON TOP of the dry path, and only while
@@ -974,10 +1003,10 @@ s.doWhenBooted({
         // before it was balanced against the china.
         Out.ar(chamberAux.max(0),
             bowl * bowlGate * bowlLevel.clip(0, 2)
-                * bowlSend.clip(0, 1) * 0.55 * family * (chamberAux >= 0));
+                * bowlSend.clip(0, 1) * 0.55 * family * sendGain * (chamberAux >= 0));
 
         chinaGate = Lag.kr(
-            Select.kr(chinaOnBus >= 0, [chinaOn, In.kr(chinaOnBus, 1)]).clip(0, 1), 0.4);
+            Select.kr(chinaOnBus >= 0, [chinaOn, In.kr(chinaOnBus, 1)]).clip(0, 1).squared, 0.4);
 
         // ── Balance ──────────────────────────────────────────────────────
         // The china is scaled by fmD.linlin(0.10, 1.05) and the bowl by
@@ -1060,7 +1089,7 @@ s.doWhenBooted({
         // holding a note the players never struck. Out.ar ADDS, so this is a
         // second send to the same aux the bowl already feeds.
         Out.ar(chamberAux.max(0),
-            symp * bowlSend.clip(0, 1) * 0.9 * family * (chamberAux >= 0));
+            symp * bowlSend.clip(0, 1) * 0.9 * family * sendGain * (chamberAux >= 0));
 
         // mixPerc is still the fader for the struck voice as a whole.
         sig = (symp * 0.45)
@@ -1168,12 +1197,15 @@ s.doWhenBooted({
         // bite" and "the clangour" — they are china character by their own
         // account, and they were being applied to everything.
         //
-        // The crossfade is lerped to fully dry rather than gated on the wet
-        // side, because XFade2's pan is -1..1 and multiplying it would land at
-        // 0, which is half wet. -1 + ((p + 1) * gate) is the same value at
-        // gate 1 and fully dry at gate 0.
-        sig = XFade2.ar(sig, shaped,
-            -1 + ((fmD.linlin(0, 1, -0.4, 0.9) + 1) * chinaGate));
+        // The china gate blends LINEARLY between fully dry and the full-throw
+        // crossfade. It used to move XFade2's pan instead, and XFade2 is
+        // equal-power: at a gate of 0.1 the wet side was already at 0.21, and
+        // the wet side is a tanh — its level does not depend on the fader at
+        // all. So CHINA at 0.1 brought in a fifth of a fully saturated copy of
+        // the whole voice. Identical at gate 1, fully dry at gate 0, and
+        // proportional in between.
+        sig = (sig * (1 - chinaGate))
+            + (XFade2.ar(sig, shaped, fmD.linlin(0, 1, -0.4, 0.9)) * chinaGate);
         sig = sig + (SinOsc.ar(0, LPF.ar(sig, 5000) * fmD.linlin(0, 1, 0.7, 2.6))
             * fmD.linlin(0, 1, 0.08, 0.34) * chinaGate);
         sig = LeakDC.ar(sig);
@@ -1240,8 +1272,7 @@ s.doWhenBooted({
         // muddy — bronze reflections keep their top end.
         sig = sig + FreeVerb.ar(sig, revM * 0.85, 0.94, 0.15);
 
-        sig = sig * amp * vol * ~trimPerc * family
-            * Lag.kr(Select.kr(mixPercBus >= 0, [1.0, In.kr(mixPercBus, 1)]), 0.08);
+        sig = sig * amp * vol * ~trimPerc * family * mixPerc;
 
         quadSig = if(~limiterChans >= 4) {
             PanAz.ar(4, sig, spatialX.clip(-1, 1) * 0.5, 1, 2, 0.5)
@@ -1431,7 +1462,13 @@ s.doWhenBooted({
         // ── Slow stereo drift ─────────────────────────────────────────────────
         // Balance2 with a 0.03 Hz SinOsc slowly rotates the image rather than
         // placing the voice statically.  pan arg biases the centre position.
-        var panOsc = SinOsc.kr(0.031 * motion) * 0.4 + pan.clip(-0.5, 0.5);
+        //
+        // And SPREAD moves the centre. spatialBus was declared on this
+        // SynthDef and never read, so the pad — the widest, most sustained
+        // layer — ignored SPREAD entirely while the struck voices obeyed it.
+        var spreadPos = Lag.kr(Select.kr(spatialBus >= 0, [0.0, In.kr(spatialBus, 1)]), 0.2);
+        var panOsc = (SinOsc.kr(0.031 * motion) * 0.4 + pan.clip(-0.5, 0.5)
+            + spreadPos).clip(-1, 1);
         var sig = Balance2.ar(
             tapeSat + crackle[0],
             tapeSat + crackle[1],

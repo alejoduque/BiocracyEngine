@@ -62,3 +62,7 @@ corpus/*
 
 # Session autosave state — machine-local, not a shareable preset
 presets/_autosave.json
+
+# Masters de Bandcamp (~400 MB, reconstruibles con bandcamp/build_bandcamp.py
+# desde recordings/). album.json, el script y METADATOS.md sí se versionan.
+bandcamp/wav/

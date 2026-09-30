@@ -79,7 +79,8 @@ s.waitForBoot {
     SynthDef(\chainProcessor, {
         arg out = 0, in = 0, amount = 0.45,
             entropyBus = -1, calldataBus = -1, congestionBus = -1,
-            chainProcessBus = -1;
+            chainProcessBus = -1,
+            umbralBus = -1, ventanaBus = -1, sesgoBus = -1, opacidadBus = -1;
 
         var dry = In.ar(in, ~chainBusChans);
         var ent  = Lag.kr(Select.kr(entropyBus    >= 0, [0.0, In.kr(entropyBus, 1)]),    2.0);
@@ -87,6 +88,7 @@ s.waitForBoot {
         var cong = Lag.kr(Select.kr(congestionBus >= 0, [0.0, In.kr(congestionBus, 1)]), 3.0);
         var wetAmt = Lag.kr(Select.kr(chainProcessBus >= 0, [amount, In.kr(chainProcessBus, 1)]), 0.5);
         var sig, diffused, smeared, chainFFT, sum;
+        var umbral, ventana, sesgo, opacidad, key, bleed, bleedMix;
 
         sig = dry;
 
@@ -116,13 +118,17 @@ s.waitForBoot {
         // a null operation and the recording passes intact; a contract call
         // with kilobytes of input drags it into a band of itself.
         //
-        // Mono-summed for the transform and re-spread afterwards: one FFT
-        // rather than one per channel, and the diffusion above is what carries
-        // the image anyway.
-        sum = Mix(sig) / ~chainBusChans.max(1);
-        chainFFT = FFT(LocalBuf(2048), sum);
-        chainFFT = PV_MagSmear(chainFFT, (cd * 24).round.clip(0, 24));
-        smeared = IFFT(chainFFT).dup(~chainBusChans);
+        // One FFT PER CHANNEL. This used to sum to mono, smear once and
+        // .dup the result back out — which put the same mono signal in every
+        // channel. With the chain full of contract calls (calldata high, the
+        // normal case) up to 85% of the corpus came out mono, so SPREAD had
+        // nothing left to move and the forest lost its place in the room.
+        // Two FFTs cost little; the image is the point.
+        smeared = sig.collect { |ch|
+            chainFFT = FFT(LocalBuf(2048), ch);
+            chainFFT = PV_MagSmear(chainFFT, (cd * 24).round.clip(0, 24));
+            IFFT(chainFFT)
+        };
         sig = XFade2.ar(sig, smeared, cd.linlin(0, 1, -1, 0.85));
 
         // ── CONGESTION → pressure ──────────────────────────────────────────
@@ -147,6 +153,53 @@ s.waitForBoot {
         // has to remain reachable — the recordings are evidence before they are
         // material.
         sig = XFade2.ar(dry, sig, wetAmt.linlin(0, 1, -1, 1));
+
+        // ── LA CÁMARA SOBRE EL BUS ─────────────────────────────────────────
+        // UMBRAL, VENTANA, SESGO y OPACIDAD sólo decidían QUÉ grabación del
+        // día suena. Con un calendario todavía incompleto (331 de 365 días sin
+        // grabación) eso dejaba las cuatro perillas sin nada que tocar la
+        // mayor parte del tiempo. Ahora también actúan sobre el corpus entero,
+        // cada una haciendo al sonido lo que ya significa en la selección.
+        // Van DESPUÉS del fundido de CADENA: son del performer, no de la
+        // cadena, y actúan aunque CADENA esté en cero.
+        umbral   = Lag.kr(Select.kr(umbralBus   >= 0, [0.5, In.kr(umbralBus, 1)]), 0.3);
+        ventana  = Lag.kr(Select.kr(ventanaBus  >= 0, [1.0, In.kr(ventanaBus, 1)]), 0.3);
+        sesgo    = Lag.kr(Select.kr(sesgoBus    >= 0, [0.0, In.kr(sesgoBus, 1)]), 0.3);
+        opacidad = Lag.kr(Select.kr(opacidadBus >= 0, [0.0, In.kr(opacidadBus, 1)]), 0.3);
+
+        // UMBRAL — "por encima del umbral el escaño se enciende". Una compuerta
+        // suave (expansión 4:1 por debajo) RELATIVA al nivel reciente del
+        // propio corpus: un umbral absoluto dependía de CORPUS, de MASTER VOL
+        // y de la grabación, y casi nunca mordía. Así, en 0.20 pasa todo lo
+        // que supere un tercio del ambiente (casi todo); en 0.85 sólo lo que
+        // sobresale tres veces de él — los eventos, no el fondo.
+        key = Mix(sig) / ~chainBusChans.max(1);
+        sig = Compander.ar(sig, key,
+            (Amplitude.kr(key, 0.5, 4.0) * umbral.linexp(0.2, 0.85, 0.33, 3.0)).max(0.0005),
+            4.0, 1.0, 0.01, 0.25);
+
+        // VENTANA — el alcance en el tiempo. En 0.4 cada sonido es un punto
+        // aislado en el silencio; en 2.5 sangra sobre los huecos, como un
+        // registro oído desde varios días de distancia.
+        bleedMix = ventana.linlin(0.4, 2.5, 0.0, 0.55);
+        bleed = CombC.ar(sig, 2.0, [0.37, 0.53] * ventana.clip(0.4, 2.5),
+            ventana.linlin(0.4, 2.5, 0.5, 7.0));
+        4.do { |i|
+            bleed = AllpassC.ar(bleed, 0.1, [0.013, 0.021, 0.034, 0.047][i], 0.8);
+        };
+        // × 0.2: a 0.5 la cola acumulada subía el corpus 12 dB en el tope de
+        // la perilla. Ventana es alcance, no volumen.
+        sig = sig + (LeakDC.ar(bleed) * bleedMix * 0.2);
+
+        // SESGO — la temporada inclina el espectro. Hacia la seca (-1) más
+        // brillante y delgado; hacia la lluvia (+1) más oscuro y lleno.
+        sig = BLowShelf.ar(sig, 250, 1, sesgo * 6);
+        sig = BHiShelf.ar(sig, 4000, 1, sesgo.neg * 6);
+
+        // OPACIDAD — lo opaco se retira. Un velo: el paso bajo cae de 20 kHz a
+        // 800 Hz y el nivel baja un tercio en el tope de la perilla.
+        sig = LPF.ar(sig, opacidad.linexp(0, 0.7, 20000, 800)) * opacidad.linlin(0, 0.7, 1.0, 0.67);
+
         Out.ar(out, sig);
     }).add;
 
@@ -167,7 +220,14 @@ s.waitForBoot {
             \congestionBus,   ~chainBuses[\congestion].index,
             \chainProcessBus, if(~buses.notNil and: { ~buses[\chainProcess].notNil },
                 { ~buses[\chainProcess].index }, { -1 })
-        ]
+        ] ++ [
+            // La Cámara sobre el bus (ver el final de \chainProcessor).
+            [\umbralBus, \activityThreshold], [\ventanaBus, \windowWidth],
+            [\sesgoBus, \seasonalBias], [\opacidadBus, \opacityFloor]
+        ].collect { |pair|
+            [pair[0], if(~buses.notNil and: { ~buses[pair[1]].notNil },
+                { ~buses[pair[1]].index }, { -1 })]
+        }.flatten
     );
     // The corpus analyser sits on the same bus, at the TAIL so it hears the
     // chain processing rather than the dry recordings — what the laser draws

@@ -850,8 +850,16 @@ s.waitForBoot {
 // rather than re-triggering wholesale is what keeps a knob sweep from
 // machine-gunning the same clip — nothing restarts unless it genuinely just
 // crossed the threshold.
-~phenoSyncVoices = { |doy, holdSecs|
+//
+// reseat: true when a Cámara knob has just moved. Then "still admitted" is not
+// enough to keep sounding — the two voices must be the two BEST under the new
+// settings. Without it the knobs did nothing audible on any real day: with
+// 30-60 clips admitted, UMBRAL, VENTANA or SESGO re-ranked the list but almost
+// never pushed out the two that were playing, so the Cámara sounded identical
+// across the whole travel of every knob except its extremes.
+~phenoSyncVoices = { |doy, holdSecs, reseat = false|
     var all = ~phenoSelect.(doy);
+    var best = all[..1].collect { |c| c[\key] };
     var xfade = (~phenoXfade ? 6.0);
     var now = Main.elapsedTime;
     var candidates, needed, changed = false;
@@ -862,9 +870,13 @@ s.waitForBoot {
         (v[\retired] != true) and: { ((v[\endsAt] ? inf) - now) > xfade }
     };
 
-    // 1. Retire only clips that are no longer admitted by the filter (threshold/bancada/opacity)
+    // 1. Retire clips no longer admitted by the filter (threshold/bancada/
+    //    opacity) — and, after a knob move, clips that are no longer the best two.
     ~corpusVoices.do { |v|
-        if((v[\ringDay] == doy) and: { all.any { |c| c[\key] == v[\key] }.not }) {
+        if((v[\ringDay] == doy) and: { v[\retired] != true } and: {
+            all.any { |c| c[\key] == v[\key] }.not
+                or: { reseat and: { best.includes(v[\key]).not } }
+        }) {
             ~phenoGateOff.(v[\synth], 1.2);
             ~phenoRetire.(v, 1.2);
             changed = true;
@@ -888,10 +900,15 @@ s.waitForBoot {
     };
 
     // 2. If open voice slots exist (< 2 sounding), pick replacement(s) from eligible candidates
+    if(reseat) {
+        sounding = sounding.select { |v| best.includes(v[\key]) };
+    };
     if(sounding.size < 2 and: { all.size > 0 }) {
         candidates = all.reject { |c| sounding.any { |v| v[\key] == c[\key] } };
         if(candidates.size > 0) {
-            if(candidates.size > 1) {
+            // After a knob move the new best take the seats in rank order; the
+            // rotation is for the day left alone, so it keeps changing.
+            if(candidates.size > 1 and: { reseat.not }) {
                 ~phenoRotate = ((~phenoRotate ? 0) + 1) % candidates.size;
                 candidates = candidates.rotate(~phenoRotate.neg);
             };
@@ -937,7 +954,15 @@ s.waitForBoot {
     var sinceSync = 0.0;
     var pulseWas = ~phenoVal.(\pulseGain, 1.0);
     var jumped = false;
-    var pulseNow;
+    var pulseNow, rateNow, knobsNow, moved;
+    // The selection knobs, as one signature: when it moves, the Cámara is
+    // re-seated with the new best two instead of merely re-filtered.
+    var knobSig = {
+        [\activityThreshold, \windowWidth, \seasonalBias, \opacityFloor, \bancada]
+            .collect { |k| ~phenoVal.(k, 0) ? 0 }
+    };
+    var knobsWas = knobSig.value;
+    var rateWas = ~phenoVal.(\phenoRate, 0.0167) ? 0.0167;
 
     while { (waited < secs) and: { jumped.not } } {
         tick.wait;
@@ -951,11 +976,23 @@ s.waitForBoot {
             // Re-decide who is in the Chamber. Twice a second is far finer
             // than the ear needs and far coarser than a knob drag, so a sweep
             // produces a handful of decisions rather than hundreds.
+            // RITMO answers now, not at the next day. It used to set the
+            // length of the NEXT day only — at the slow end of the knob that
+            // was eight minutes before a turn was heard. What is left of this
+            // day is rescaled to the new speed instead.
+            rateNow = (~phenoVal.(\phenoRate, 0.0167) ? rateWas).clip(0.002, 4.0);
+            if(((rateNow / rateWas) - 1).abs > 0.03) {
+                secs = waited + ((secs - waited) * (rateWas / rateNow));
+                rateWas = rateNow;
+            };
             if(sinceSync >= 0.5) {
                 sinceSync = 0.0;
+                knobsNow = knobSig.value;
+                moved = (knobsNow - knobsWas).abs.maxItem > 0.004;
+                if(moved) { knobsWas = knobsNow };
                 // What is left of the day, floored so a clip admitted near a
                 // boundary still gets long enough to be a clip.
-                ~phenoSyncVoices.(doy, ((secs - waited) * 0.9).max(3.0));
+                ~phenoSyncVoices.(doy, ((secs - waited) * 0.9).max(3.0), moved);
             };
             // pulseGain scales how hard the forest plays the synthesiser. It
             // was also once-a-day; deadbanded here so holding still does not

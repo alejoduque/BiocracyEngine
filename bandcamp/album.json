@@ -1,0 +1,73 @@
+{
+  "_nota": "El disco para planktum.bandcamp.com. Se edita a mano; build_bandcamp.py lo lee, corta cada pista de recordings/ con el mismo corte que web/composiciones.json (por su id), la masteriza a WAV 24 bit / 48 kHz estéreo con estos metadatos incrustados, y escribe METADATOS.md con lo que hay que pegar en el formulario de Bandcamp. Una pista con \"composicion\": null es un lugar reservado: aparece en METADATOS.md como pendiente y no se construye.",
+  "album": {
+    "titulo": "BiocracyEngine",
+    "artista": "planktum",
+    "fecha_lanzamiento": "",
+    "genero": "Experimental",
+    "etiquetas": [
+      "experimental",
+      "sonification",
+      "field recording",
+      "bioacoustics",
+      "supercollider",
+      "ambient",
+      "drone",
+      "Colombia"
+    ],
+    "acerca": "Sesiones del motor BiocracyEngine: una asamblea sonora en la que las especies detectadas en el bosque seco tropical de la Reserva Manakai (Planeta Rica, Córdoba) entran por su presencia y no por su valor económico, y en la que el flujo de transacciones de la cadena de Ethereum pulsa, golpea y sostiene la sala. Cada pista es una sesión grabada del motor, tal como corrió.",
+    "creditos": "Composición, programación del motor (SuperCollider) y grabación: Alejandro Duque Jaramillo.\nCorpus bioacústico: grabadoras AudioMoth, Reserva Manakai, Planeta Rica, Córdoba. Las coordenadas de las estaciones de escucha se mantienen reservadas.\nTesis doctoral en Diseño, Arte y Ciencia, Universidad Jorge Tadeo Lozano.\nCódigo: github.com/alejoduque/BiocracyEngine",
+    "copyright": "© 2026 Alejandro Duque Jaramillo",
+    "licencia": "",
+    "portada": "../web/media/bandcamp/cover-candidato-10-espectrograma.jpg"
+  },
+  "pistas": [
+    {
+      "n": 0,
+      "titulo": "FTMZD",
+      "sesion": "eth_sonification_20260929_211604.wav",
+      "inicio": 0,
+      "duracion": 626,
+      "fundido": [
+        0,
+        0
+      ],
+      "hace": "La sesión del 29 de septiembre a las 21:16, entera. Sale del silencio durante el primer minuto y se asienta en el registro medio-grave, sin grandes saltos; hacia los siete minutos se aclara y se aquieta, a los ocho y medio sube a su punto más fuerte, y desde ahí se retira despacio hasta apagarse."
+    },
+    {
+      "n": 1,
+      "composicion": "oleaje"
+    },
+    {
+      "n": 2,
+      "composicion": "destello"
+    },
+    {
+      "n": 3,
+      "composicion": "hondo"
+    },
+    {
+      "n": 4,
+      "titulo": "vigilia",
+      "grupo": "20260928_223908",
+      "sesion": "eth_sonification_20260928_223908.wav",
+      "inicio": 0,
+      "duracion": 785,
+      "fundido": [
+        0,
+        0
+      ],
+      "hace": "Primera mitad de la sesión del 28 de septiembre por la noche. Cinco minutos casi en el umbral de lo audible —el motor en vela, apenas la sala—, luego dos oleadas que suben y vuelven a hundirse, la segunda más alta que la primera. Termina en el valle quieto donde empieza «crecida»: las dos se escuchan seguidas, sin corte."
+    },
+    {
+      "n": 5,
+      "composicion": "crecida",
+      "grupo": "20260928_223908",
+      "fundido": [
+        0,
+        0
+      ],
+      "hace": "Segunda mitad de la misma sesión, desde el valle donde terminó «vigilia». Un solo crecimiento de seis minutos, en el registro grave, hasta el momento más fuerte y denso de la noche; de ahí cae de golpe a una cola baja que se apaga sola."
+    }
+  ]
+}

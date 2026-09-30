@@ -743,6 +743,14 @@ s.doWhenBooted({
         // the live counters are in 4_gui.scd, fed from ~globalState.
 
         if(~addTrendValue.notNil) { ~addTrendValue.value(value) };
+
+        // The motor a config switched on (18_motores.scd) hears every
+        // transaction too. Last, so nothing above waits on it.
+        if(~motorTx.notNil) {
+            ~motorTx.((freq: baseFreq, note: noteNum, vel: velocity, value: value,
+                valLog: valLog, priority: priorityRatio, accent: accent,
+                hash: txHash));
+        };
     };
 
     // Handler for Python's /eth/note [note, velocity, instrument, duration]

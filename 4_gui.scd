@@ -1073,7 +1073,7 @@
 
         mixerView.layout.add(
             StaticText()
-                .string_("MATRIX\nMIXER\nCC 42-49")
+                .string_("MATRIX\nMIXER\nCC 42-49\nMOTOR 57-62")
                 .font_(Font(~monoFont, 10, true))
                 .stringColor_(Color.white)
                 .align_(\left)
@@ -1083,7 +1083,11 @@
             [\mixDrone,  "DRONE"],  [\mixPad,    "PAD"],
             [\mixKick,   "KICK"],   [\mixPerc,   "PERC"],
             [\mixDust,   "DUST"],   [\mixSample, "SAMPLE"],
-            [\mixCorpus, "CORPUS"], [\mixUltra,  "ULTRA"]
+            [\mixCorpus, "CORPUS"], [\mixUltra,  "ULTRA"],
+            // MOTOR is the master of the five after it (18_motores.scd).
+            [\mixMotor,  "MOTOR"],
+            [\mixRemuestreo, "REMU"], [\mixEspectro, "ESPEC"], [\mixCaos, "CAOS"],
+            [\mixRuptura, "RUPT"], [\mixMasa, "MASA"]
         ].do { |pair|
             mixerView.layout.add(~makeMixStrip.value(pair[0], pair[1]));
         };

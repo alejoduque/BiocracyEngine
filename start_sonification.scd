@@ -37,7 +37,10 @@
         "16_corpus_calls.scd",       // slot A answers with the corpus on /antifonia/call
         // Last: it sits ACROSS the corpus layer, so both corpus voices and the
         // buses they read have to exist before it can be placed over them.
-        "17_chain_processing.scd"    // the chain processes the forest recordings
+        "17_chain_processing.scd",   // the chain processes the forest recordings
+        // After everything that sounds: two of the motors process the whole
+        // mix, so their group is placed after every voice and before the room.
+        "18_motores.scd"             // the five motors a config can switch on
     ].do { |file|
         var path = basePath +/+ file;
         ("Loading " ++ file ++ "...").postln;
