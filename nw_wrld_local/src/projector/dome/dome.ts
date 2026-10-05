@@ -21,7 +21,7 @@
 // sends black. The clean feed ("salida limpia") fills the window with the
 // bare domemaster for screen capture — a preview route, not the deliverable.
 
-import { installDomeCapture, currentView, currentPost, currentLayers, panelKind } from "./domeCapture";
+import { installDomeCapture, currentView, currentPost, currentLayers, panelKind, setDomeEconomy } from "./domeCapture";
 import { Domemaster, DEFAULT_PARAMS, type DomeParams } from "./domemaster";
 import { RENDER_MODE } from "./renderMode";
 import { sessionEvent } from "./session";
@@ -483,6 +483,7 @@ function open() {
   _root!.classList.add("open");
   resize();
   syncLoop();
+  setDomeEconomy(true);       // the page is covered: its flat view at 30 fps, density 1
 }
 
 // Closing the viewport no longer stops an output: the performer closes it to
@@ -495,6 +496,7 @@ function close() {
   setClean(false);
   _root!.classList.remove("open");
   syncLoop();
+  setDomeEconomy(false);
 }
 
 // ── Public ──────────────────────────────────────────────────────────────────

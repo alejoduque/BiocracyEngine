@@ -21,6 +21,7 @@
 import * as THREE from "three";
 import { UnrealBloomPass } from "three/examples/jsm/postprocessing/UnrealBloomPass.js";
 import { AfterimagePass } from "three/examples/jsm/postprocessing/AfterimagePass.js";
+import { EffectComposer } from "three/examples/jsm/postprocessing/EffectComposer.js";
 
 export type CapturedView = {
   scene: THREE.Scene;
@@ -154,10 +155,76 @@ export function currentLayers(): DomeLayer[] {
   return out;
 }
 
+// ── Economy: the flat view, while the dome viewport covers it ──────────────
+// With D open the page is under the dome's viewport and nobody sees the slot's
+// flat render — yet it went on at full rate and full density, on the GPU the
+// dome is also drawing with (the dome renders the scene six times again). So
+// while the viewport is open:
+//   · the slot's renderer and its EffectComposer drop to pixel ratio 1 —
+//     a quarter of the pixels on a Retina screen, bloom and trails included
+//   · the slot's draws happen on every other frame (30 fps of 60); its
+//     animation still advances every frame, only the drawing is skipped
+// The dome reads the scene itself, so neither costs it anything. Closing the
+// viewport restores both exactly.
+const _stageRenderers = new Set<any>();
+const _composers = new Set<any>();
+const _savedRatio = new Map<any, number>();
+let _economy = false;
+let _allowDraw = true;
+
+function enterEconomy(target: any) {
+  if (_savedRatio.has(target)) return;
+  const r = target.getPixelRatio ? target.getPixelRatio() : target._pixelRatio;
+  _savedRatio.set(target, r);
+  if (r > 1) target.setPixelRatio(1);
+}
+
+/** Switch the flat view's economy on (dome viewport open) or off. */
+export function setDomeEconomy(on: boolean) {
+  if (on === _economy) return;
+  _economy = on;
+  if (on) {
+    for (const r of _stageRenderers) enterEconomy(r);
+    for (const c of _composers) enterEconomy(c);
+  } else {
+    for (const [t, ratio] of _savedRatio) { try { t.setPixelRatio(ratio); } catch { /* disposed */ } }
+    _savedRatio.clear();
+    _allowDraw = true;
+  }
+}
+
+function prune() {
+  for (const r of _stageRenderers) if (!r.domElement?.isConnected) { _stageRenderers.delete(r); _savedRatio.delete(r); }
+  for (const c of _composers) if (!c.renderer?.domElement?.isConnected) { _composers.delete(c); _savedRatio.delete(c); }
+}
+
 export function installDomeCapture(stage: HTMLElement) {
   _stage = stage;
   if (_installed) return;
   _installed = true;
+
+  // One flag per frame, set before any slot's callback runs: this loop is
+  // registered first, and rAF keeps callbacks in registration order.
+  let parity = 0;
+  const tick = () => {
+    parity ^= 1;
+    _allowDraw = !_economy || parity === 0;
+    if (parity === 0) prune();
+    requestAnimationFrame(tick);
+  };
+  requestAnimationFrame(tick);
+
+  const composerRender = EffectComposer.prototype.render;
+  EffectComposer.prototype.render = function (this: any, ...rest: any[]) {
+    try {
+      if (onStage(this.renderer) && !_composers.has(this)) {
+        _composers.add(this);
+        if (_economy) enterEconomy(this);
+      }
+    } catch { /* never cost the slot its frame */ }
+    if (_economy && !_allowDraw && onStage(this.renderer)) return;   // the skipped frame
+    return (composerRender as any).apply(this, rest);
+  };
 
   // Post passes are ordinary prototype methods, so a plain wrapper does.
   const bloomRender = UnrealBloomPass.prototype.render;
@@ -206,6 +273,13 @@ export function installDomeCapture(stage: HTMLElement) {
       Object.defineProperty(renderer, "render", {
         configurable: true, writable: true,
         value: function (scene: any, camera: any) {
+          if (onStage(renderer)) {
+            if (!_stageRenderers.has(renderer)) {
+              _stageRenderers.add(renderer);
+              if (_economy) enterEconomy(renderer);
+            }
+            if (_economy && !_allowDraw) return;          // the skipped frame
+          }
           note(renderer, scene, camera);
           return fn.call(this, scene, camera);
         },
