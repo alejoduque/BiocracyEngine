@@ -53,30 +53,23 @@ Los huecos se fijan por aquello *para lo que sirve* la voz, no por gusto: `drone
 
 Cada slot lee **su propio registro**, normalizado contra su propio pico reciente — un visual de bombo no debe iluminarse porque sonó una campana, y medido sobre un motor en vivo la banda grave corre unas 40× más caliente que la aguda, así que una lectura cruda deja los slots de agudos con aspecto de muertos mientras trabajan.
 
-## Slots 4 y 5 · espacios de mezcla (pilotos)
+## Slots 4–9 · el espacio de mezcla
 
-Las ranuras 4 y 5 se están rehaciendo como **mezclas conceptuales** (Fauconnier y Turner). Cada una tiene:
-- dos **espacios de entrada**: *neuronal · bosque* (la capa CORPUS, las especies, el año fenológico) y *silicio · cadena* (Ethereum mainnet por `eth_sonify.py` → SC → bridge);
-- el **espacio genérico** que comparten;
-- la **mezcla**, donde se proyectan juntos.
+Cada ranura instrumento (4–9) conserva su mundo entero: estructuras, estelas, constelaciones, ticker. En la misma escena, `blend/blendLayer.ts` agrega una **mezcla conceptual** (Fauconnier y Turner) de los dos espacios de entrada del motor: *neuronal · bosque* (la capa CORPUS, las especies) y *silicio · cadena* (Ethereum mainnet). Como vive en la escena de la ranura, la cúpula, el NDI y el render 4K la llevan, con el brillo y las estelas propios de la ranura.
 
-Las fórmulas están a la vista, escritas y transformadas en el **lenguaje visual de manim** (3b1b), en vivo en three.js (`src/projector/manim/`). Todo el mundo está armado sobre el domo, alrededor del público (`src/projector/blend/BlendStage.ts`), así que el domemaster, el NDI y el render 4K lo muestran como fue compuesto:
-- las entradas a izquierda y derecha (az ∓62°, el 26°);
-- el genérico cerca del cenit (el 72°);
-- la mezcla al frente (el 32°).
+- **Fórmulas en vuelo.** Una oleada del bosque escribe en el aire la ley neuronal de la ranura, que entra volando por un lado. Un bloque de la cadena manda la ley de silicio por el otro. Cada una lleva un número en vivo. Cuando las dos llegan al frente **se transforman una en otra** (TransformMatchingParts de manim) y se vuelven la mezcla, o la estructura genérica que comparten; sube y se disuelve. Una fórmula que no encuentra a nadie sigue de largo y se desescribe.
+- **La superficie de mezcla.** Una malla bajo la estructura cuya forma es la mezcla: `h = (1−λ)·membrana + λ·retícula`. La membrana son oleadas suaves en las especies, que respiran con el bosque. La retícula son terrazas que levantan las transacciones, la forma escalonada de un libro contable. λ es la parte de la actividad que es de la cadena. La superficie gira despacio y su color se inclina al verde o al ámbar según qué mundo la levanta.
 
-La pantalla plana muestra el mismo mundo como un diagrama.
-
-| Ranura | Neuronal · bosque | Silicio · cadena | Mezcla |
+| Ranura | Ley neuronal | Ley de silicio | Se encuentran como |
 |---|---|---|---|
-| **4 · Umbral** (drone) | τ dV/dt = −V + R·I(t), V ≥ θ ⇒ disparo; I = la capa CORPUS | G_{n+1} = G_n + g_tx, G ≥ G_max ⇒ sello; desde `EthLive.depth` / `blockPulse` | τ dU/dt = −(1−λ)U + (1−λ)I_bosque + λ g_cadena. Lo que separa a una neurona de un bloque es la fuga: una membrana olvida, una cadena no |
-| **5 · Redes** (pad) | Hebb en la micorriza: Δw_ij = η x_i x_j | valor movido entre identidades de dirección: Δw_ab = v_{a→b} | vínculos especie–dirección, y el BioToken con cada factor en vivo; se señala el factor que frena el producto |
+| 4 | τ dV/dt = −V + R I(t) | G_{n+1} = G_n + g_tx | τ dU/dt = −(1−λ)U + (1−λ)I + λ g: la fuga es la diferencia |
+| 5 | Δw_ij = η x_i x_j (Hebb) | Δw_ab = v_{a→b} | Δw = (1−λ)η x_i x_j + λ v_{a→b} |
+| 6 | Δw = η r_pre r_post − γ w | lema de acceso splay | el costo ↓ cuanto más se usa x |
+| 7 | curva de sintonía r(θ) | celda de Voronoi | espacio → regiones de respuesta |
+| 8 | R(t) = e^{−t/S} | AMAT = hit + m·miss | capacidad ↔ demora |
+| 9 | h(x) = WTA_k(Mx) (olfato de la mosca) | keccak256 | señal → huella corta |
 
-**λ** es la parte de la actividad que es de la cadena. Al pasar ⅓ o ⅔, la fórmula de la mezcla se transforma (TransformMatchingParts) en su forma neuronal o de silicio. Un disparo o un vínculo nuevo toca la voz propia de la ranura.
-
-- Todas las fórmulas viven en `src/projector/manim/formulas.json`, incluidas las propuestas para las ranuras 3 y 6–9.
-- SC envía al navegador el nivel de cada capa del mezclador como `/stems` (10 Hz), así el lado bosque lee la capa CORPUS misma.
-- Las ranuras 4 y 5 anteriores siguen en `dataStructureVisuals.ts` hasta que los pilotos se aprueben.
+Las fórmulas se escriben en el **lenguaje visual de manim**, en vivo en three.js (`src/projector/manim/`): MathJax → trazos SVG, Write / Transform / Indicate / Flash, números en vivo. Todas están en `src/projector/manim/formulas.json`. El TeX que se muestra debe ser ASCII: los acentos se escriben `\acute{a}`, `\tilde{n}`. SC envía al navegador el nivel de cada capa del mezclador como `/stems` (10 Hz); el lado bosque lee la capa CORPUS.
 
 ## Autorrotación en reposo · ROTATION SPD
 

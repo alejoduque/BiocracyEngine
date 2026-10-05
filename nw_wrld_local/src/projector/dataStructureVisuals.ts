@@ -23,6 +23,7 @@ import {
     SPECIES_ROSTER,
 } from "./visualizationSwitcher";
 import { mountSlotTicker } from "./slotTicker";
+import { attachBlendLayer } from "./blend/blendLayer";
 import {
     makeNodeField,
     makeTubeLinks,
@@ -501,6 +502,10 @@ export function mountTimeTravel(stageEl: HTMLElement, getLatestState: () => Parl
     // depth simulated by draw order. Now a real perspective camera the viewer
     // can orbit, and which the shared idle drift turns on its own.
     const camera = make3D(stageEl, Math.max(W, H) * 0.95);
+    // The blended space (blend/blendLayer.ts): formulas from the forest and
+    // the chain flying in and blending, over a surface shaped by both — in
+    // this scene, so the dome and NDI carry it with everything else.
+    const blend4 = attachBlendLayer("s4", scene, camera, Math.max(W, H) * 0.95);
     const controls = attachOrbit(camera, renderer.domElement, Math.max(W, H) * 0.95);
     // Instrumental identity. Six slots, six voices of the engine, no
     // repeats — this one is mountTimeTravel. The name was drawn into the scene as
@@ -937,6 +942,7 @@ export function mountTimeTravel(stageEl: HTMLElement, getLatestState: () => Parl
     return {
         name: "Time Travel", key: "4",
         destroy: () => {
+            blend4.destroy();
             destroyed = true;
             cancelAnimationFrame(rafId);
             marks4.dispose(); motes4.dispose(); tags4.dispose();
@@ -1007,6 +1013,10 @@ export function mountDynamicGraphs(stageEl: HTMLElement, getLatestState: () => P
     // correctly at exactly one window size and crops or strands it at every
     // other — which is what "off centred" looked like on a wide display.
     const camera = make3D(stageEl, Math.max(W, H) * 0.95);
+    // The blended space (blend/blendLayer.ts): formulas from the forest and
+    // the chain flying in and blending, over a surface shaped by both — in
+    // this scene, so the dome and NDI carry it with everything else.
+    const blend5 = attachBlendLayer("s5", scene, camera, Math.max(W, H) * 0.95);
     const controls = attachOrbit(camera, renderer.domElement, Math.max(W, H) * 0.95);
     // Instrumental identity. Six slots, six voices of the engine, no
     // repeats — this one is mountDynamicGraphs. The name was drawn into the scene as
@@ -1577,6 +1587,7 @@ export function mountDynamicGraphs(stageEl: HTMLElement, getLatestState: () => P
     return {
         name: "Dynamic Graphs", key: "5",
         destroy: () => {
+            blend5.destroy();
             cfield.destroy();
             destroyed = true; cancelAnimationFrame(rafId);
             pick5.dispose();
@@ -1636,6 +1647,10 @@ export function mountDynamicOptimality(stageEl: HTMLElement, getLatestState: () 
     // depth simulated by draw order. Now a real perspective camera the viewer
     // can orbit, and which the shared idle drift turns on its own.
     const camera = make3D(stageEl, Math.max(W, H) * 0.95);
+    // The blended space (blend/blendLayer.ts): formulas from the forest and
+    // the chain flying in and blending, over a surface shaped by both — in
+    // this scene, so the dome and NDI carry it with everything else.
+    const blend6 = attachBlendLayer("s6", scene, camera, Math.max(W, H) * 0.95);
     const controls = attachOrbit(camera, renderer.domElement, Math.max(W, H) * 0.95);
     // Instrumental identity. Six slots, six voices of the engine, no
     // repeats — this one is mountDynamicOptimality. The name was drawn into the scene as
@@ -2174,6 +2189,7 @@ export function mountDynamicOptimality(stageEl: HTMLElement, getLatestState: () 
     return {
         name: "Dynamic Optimality", key: "6",
         destroy: () => {
+            blend6.destroy();
             destroyed = true; cancelAnimationFrame(rafId);
             pick6.dispose();
             boxes6.dispose(); cores6.dispose(); branches6.dispose(); floor6.dispose();
@@ -2232,6 +2248,10 @@ export function mountGeometry(stageEl: HTMLElement, getLatestState: () => Parlia
     // depth simulated by draw order. Now a real perspective camera the viewer
     // can orbit, and which the shared idle drift turns on its own.
     const camera = make3D(stageEl, Math.max(W, H) * 0.95);
+    // The blended space (blend/blendLayer.ts): formulas from the forest and
+    // the chain flying in and blending, over a surface shaped by both — in
+    // this scene, so the dome and NDI carry it with everything else.
+    const blend7 = attachBlendLayer("s7", scene, camera, Math.max(W, H) * 0.95);
     const controls = attachOrbit(camera, renderer.domElement, Math.max(W, H) * 0.95);
     // Instrumental identity. Six slots, six voices of the engine, no
     // repeats — this one is mountGeometry. The name was drawn into the scene as
@@ -2732,6 +2752,7 @@ export function mountGeometry(stageEl: HTMLElement, getLatestState: () => Parlia
     return {
         name: "Geometry", key: "7",
         destroy: () => {
+            blend7.destroy();
             destroyed = true; cancelAnimationFrame(rafId);
             pick7.dispose();
             rays7.dispose(); marks7.dispose(); floor7.dispose();
@@ -2791,6 +2812,10 @@ export function mountMemoryHierarchy(stageEl: HTMLElement, getLatestState: () =>
     // depth simulated by draw order. Now a real perspective camera the viewer
     // can orbit, and which the shared idle drift turns on its own.
     const camera = make3D(stageEl, Math.max(W, H) * 0.95);
+    // The blended space (blend/blendLayer.ts): formulas from the forest and
+    // the chain flying in and blending, over a surface shaped by both — in
+    // this scene, so the dome and NDI carry it with everything else.
+    const blend8 = attachBlendLayer("s8", scene, camera, Math.max(W, H) * 0.95);
     const controls = attachOrbit(camera, renderer.domElement, Math.max(W, H) * 0.95);
     // Instrumental identity. Six slots, six voices of the engine, no
     // repeats — this one is mountMemoryHierarchy. The name was drawn into the scene as
@@ -3415,6 +3440,7 @@ export function mountMemoryHierarchy(stageEl: HTMLElement, getLatestState: () =>
     return {
         name: "Memory Hierarchy", key: "8",
         destroy: () => {
+            blend8.destroy();
             destroyed = true; cancelAnimationFrame(rafId);
             pick8.dispose();
             blocks8.dispose(); drops8.dispose();
@@ -3478,6 +3504,10 @@ export function mountHashing(stageEl: HTMLElement, getLatestState: () => Parliam
     // depth simulated by draw order. Now a real perspective camera the viewer
     // can orbit, and which the shared idle drift turns on its own.
     const camera = make3D(stageEl, Math.max(W, H) * 0.95);
+    // The blended space (blend/blendLayer.ts): formulas from the forest and
+    // the chain flying in and blending, over a surface shaped by both — in
+    // this scene, so the dome and NDI carry it with everything else.
+    const blend9 = attachBlendLayer("s9", scene, camera, Math.max(W, H) * 0.95);
     const controls = attachOrbit(camera, renderer.domElement, Math.max(W, H) * 0.95);
     // Instrumental identity. Six slots, six voices of the engine, no
     // repeats — this one is mountHashing. The name was drawn into the scene as
@@ -3986,6 +4016,7 @@ export function mountHashing(stageEl: HTMLElement, getLatestState: () => Parliam
     return {
         name: "Hashing", key: "9",
         destroy: () => {
+            blend9.destroy();
             cfield.destroy();
             destroyed = true; cancelAnimationFrame(rafId);
             pick9.dispose();

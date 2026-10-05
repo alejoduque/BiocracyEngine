@@ -1,5 +1,5 @@
 {
-  "_": "Single source of every formula on the blended slots (src/projector/blend/) and in the ManimGL prototypes (tools/manim/). Conceptual blending after Fauconnier & Turner: two input spaces (neuronal / forest, silicon / chain), the generic space they share, and the blend. \\class{key}{…} names the parts that TransformMatchingParts matches between formulas.",
+  "_": "Single source of every formula on the blended slots (src/projector/blend/) and in the ManimGL prototypes (tools/manim/). Conceptual blending after Fauconnier & Turner: two input spaces (neuronal / forest, silicon / chain), the generic space they share, and the blend. \\class{key}{…} names the parts that TransformMatchingParts matches between formulas. Keep every displayed formula ASCII: MathJax draws a non-ASCII letter inside \\text{} as an SVG <text> node, which SVGLoader drops — write accents as \\acute{a}, \\tilde{n}, \\acute{\\imath}.",
 
   "s4": {
     "title": "Umbral",
@@ -58,9 +58,9 @@
   "s6": {
     "title": "Uso",
     "idea": "Estructuras que se reorganizan hacia lo que se usa: la dendrita que se potencia, el árbol splay que sube lo consultado a la raíz.",
-    "generic": "\\text{costo}(x) \\downarrow \\text{ cuanto más se usa } x",
+    "generic": "\\text{costo}(x) \\downarrow \\text{ cuanto m}\\acute{a}\\text{s se usa } x",
     "neuronal": { "label": "DENDRITA \\cdot BOSQUE", "law": "\\Delta w = \\eta\\, r_{\\text{pre}}\\, r_{\\text{post}} - \\gamma\\, w" },
-    "silicon": { "label": "SPLAY \\cdot CADENA", "law": "\\hat{c}(x) \\leq 3\\,(r(\\text{raíz}) - r(x)) + 1" }
+    "silicon": { "label": "SPLAY \\cdot CADENA", "law": "\\hat{c}(x) \\leq 3\\,(r(\\text{ra}\\acute{\\imath}\\text{z}) - r(x)) + 1" }
   },
   "s7": {
     "title": "Campos",
@@ -79,7 +79,7 @@
   "s9": {
     "title": "Huella",
     "idea": "El circuito olfativo de la mosca es un hash sensible a la localidad (Dasgupta et al., 2017); la cadena firma con keccak256.",
-    "generic": "h : \\text{señal} \\to \\text{huella corta}",
+    "generic": "h : \\text{se}\\tilde{n}\\text{al} \\to \\text{huella corta}",
     "neuronal": { "label": "OLFATO \\cdot BOSQUE", "law": "h(x) = \\mathrm{WTA}_k(Mx)" },
     "silicon": { "label": "KECCAK \\cdot CADENA", "law": "h(x) = \\mathrm{keccak256}(x)" }
   }

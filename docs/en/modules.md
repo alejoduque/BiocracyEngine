@@ -53,30 +53,23 @@ Gaps are set by what the voice is *for*, not by taste: `drone` 6 s (a re-pitch i
 
 Each slot reads **its own register**, normalised against its own recent peak — a kick visual must not brighten because a bell rang, and measured on a live engine the low band runs ~40× hotter than the high one, so a raw reading leaves the treble slots looking dead while they work.
 
-## Slots 4 and 5 · blended spaces (pilots)
+## Slots 4–9 · the blended space
 
-Slots 4 and 5 are being rebuilt as **conceptual blends** (Fauconnier & Turner). Each one has:
-- two **input spaces**: *neuronal · bosque* (the CORPUS layer, the species, the phenological year) and *silicio · cadena* (Ethereum mainnet via `eth_sonify.py` → SC → bridge);
-- the **generic space** they share;
-- the **blend**, where they are projected together.
+Every instrument slot (4–9) keeps its whole world: structures, trails, constellations, ticker. Into the same scene, `blend/blendLayer.ts` adds a **conceptual blend** (Fauconnier & Turner) of the engine's two input spaces: *neuronal · bosque* (the CORPUS layer, the species) and *silicio · cadena* (Ethereum mainnet). Because it lives in the slot's scene, the dome, NDI and the 4K render carry it, with the slot's own bloom and trails.
 
-The formulas are on screen, written and transformed in **manim's visual language** (3b1b), live in three.js (`src/projector/manim/`). The whole world is laid out on the dome around the audience (`src/projector/blend/BlendStage.ts`), so the domemaster, NDI and the 4K render show it as authored:
-- inputs left and right (az ∓62°, el 26°);
-- generic space near the zenith (el 72°);
-- blend at the front (el 32°).
+- **Formulas in flight.** A swell in the forest writes the slot's neuronal law in mid-air, and it flies in from one side. A block on the chain sends the silicon law in from the other. Each carries a live number. When both reach the front they **transform into each other** (manim's TransformMatchingParts) and become the blend, or the generic structure both share; it rises and dissolves. A formula that meets nobody flies on through and unwrites itself.
+- **The blend surface.** A mesh under the structure whose shape is the blend: `h = (1−λ)·membrane + λ·lattice`. The membrane is smooth swells at the species, breathing with the forest. The lattice is terraces raised by the transactions, the stepped shape of a ledger. λ is the chain's share of current activity. The surface turns slowly and its colour leans green or amber with whichever world is raising it.
 
-The flat screen shows the same world as a diagram.
-
-| Slot | Neuronal · bosque | Silicio · cadena | Blend |
+| Slot | Neuronal law | Silicon law | They meet as |
 |---|---|---|---|
-| **4 · Umbral** (drone) | τ dV/dt = −V + R·I(t), V ≥ θ ⇒ spike; I = the CORPUS layer | G_{n+1} = G_n + g_tx, G ≥ G_max ⇒ seal; from `EthLive.depth` / `blockPulse` | τ dU/dt = −(1−λ)U + (1−λ)I_bosque + λ g_cadena. The difference is the leak: a membrane forgets, a chain does not |
-| **5 · Redes** (pad) | Hebb in the mycorrhiza: Δw_ij = η x_i x_j | value moved between address identities: Δw_ab = v_{a→b} | species–address bonds, and the BioToken with each factor live; the factor holding the product down is indicated |
+| 4 | τ dV/dt = −V + R I(t) | G_{n+1} = G_n + g_tx | τ dU/dt = −(1−λ)U + (1−λ)I + λ g: the leak is the difference |
+| 5 | Δw_ij = η x_i x_j (Hebb) | Δw_ab = v_{a→b} | Δw = (1−λ)η x_i x_j + λ v_{a→b} |
+| 6 | Δw = η r_pre r_post − γ w | splay access lemma | cost ↓ the more x is used |
+| 7 | tuning curve r(θ) | Voronoi cell | space → response regions |
+| 8 | R(t) = e^{−t/S} | AMAT = hit + m·miss | capacity ↔ latency |
+| 9 | h(x) = WTA_k(Mx) (fly olfaction) | keccak256 | signal → short fingerprint |
 
-**λ** is the chain's share of the current activity. As it passes ⅓ or ⅔, the blend's formula transforms (TransformMatchingParts) into its neuronal or silicon form. A spike or a new bond plays the slot's own voice.
-
-- Every formula lives in `src/projector/manim/formulas.json`, including the proposals for slots 3 and 6–9.
-- SC sends each mixer layer's level to the browser as `/stems` (10 Hz), so the forest side reads the CORPUS layer itself.
-- The previous slots 4 and 5 stay in `dataStructureVisuals.ts` until the pilots are approved.
+Formulas are written in **manim's visual language**, live in three.js (`src/projector/manim/`): MathJax → SVG paths, Write / Transform / Indicate / Flash, live DecimalNumbers. All of them are in `src/projector/manim/formulas.json`. Keep displayed TeX ASCII: write accents as `\acute{a}`, `\tilde{n}`. SC sends each mixer layer's level to the browser as `/stems` (10 Hz); the forest side reads the CORPUS layer.
 
 ## Idle auto-rotation · ROTATION SPD
 
