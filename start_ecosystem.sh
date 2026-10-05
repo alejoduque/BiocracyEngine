@@ -273,6 +273,14 @@ fi
 # negro: la cúpula queda oscura, no congelada.
 #   DOME=1             → lanza el puente
 #   DOME_FLIP=1|0      → invierte la imagen si un receptor la ve de cabeza
+#   DOME_AUDIO=1       → sonido para la consola de la sala: con la MOTU, las
+#                        salidas analógicas 3-6 llevan el cuadrafónico en
+#                        cuatro canales limpios, L R Ls Rs (sin la mezcla
+#                        estéreo del estudio). Lo lee 1_server_config.scd.
+#
+# Cada grabación de SC deja además un .session.jsonl junto al WAV (lo escribe
+# el bridge): con él, `npm run dome:render -- --session <archivo>` renderiza
+# esa sesión a 4096 (ver nw_wrld_local/dome-render.js).
 if [ "$DOME" = "1" ]; then
     echo ""
     echo ">> Paso 1.7: Iniciando puente de la cúpula (domemaster → Syphon)..."

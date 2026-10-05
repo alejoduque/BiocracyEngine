@@ -2345,15 +2345,32 @@ s.doWhenBooted({
         // Also send rear quad channels to outBus + 2 (buses 6 & 7 -> MOTU Analog 5 & 6)
         Out.ar(outBus + 2, [quad[2], quad[3]]);
     }).add;
+
+    // The dome (DOME_AUDIO=1, 1_server_config.scd): the venue's console takes
+    // the quad mix as four discrete channels and does its own spatialisation,
+    // so nothing is folded. The ring is put in console order — L R Ls Rs —
+    // from PanAz's 0 FL, 1 FR, 2 RR, 3 RL. The master limiter has already
+    // capped every channel, and with no sum there is nothing to limit again.
+    SynthDef(\motuRouterDome, {
+        arg inBus = 0, outBus = 4;
+        var quad = InFeedback.ar(inBus, 4);
+        Out.ar(outBus, [quad[0], quad[1], quad[3], quad[2]]);
+    }).add;
     s.sync;
     if(~motuRouterSynth.notNil) { try { ~motuRouterSynth.free }; ~motuRouterSynth = nil };
     if((~motuOutOffset ? 0) > 0) {
-        ~motuRouterSynth = Synth.tail(RootNode(s), \motuRouter, [
+        ~motuRouterSynth = Synth.tail(RootNode(s),
+            if(~domeAudio == true) { \motuRouterDome } { \motuRouter }, [
             \inBus,  0,
             \outBus, ~motuOutOffset
         ]);
-        "MOTU router active: SC bus 0..3 → bus % (analog out 3-4 stereo folddown + analog 5-6 rears)."
-            .format(~motuOutOffset).postln;
+        if(~domeAudio == true) {
+            "MOTU router active (DOME): SC bus 0..3 → bus %..% = analog out 3-6 as L R Ls Rs, no fold-down."
+                .format(~motuOutOffset, ~motuOutOffset + 3).postln;
+        } {
+            "MOTU router active: SC bus 0..3 → bus % (analog out 3-4 stereo folddown + analog 5-6 rears)."
+                .format(~motuOutOffset).postln;
+        };
     } {
         "MOTU router inactive (motuOutOffset = 0 — speakers on Main Out).".postln;
     };

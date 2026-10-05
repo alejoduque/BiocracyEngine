@@ -9,6 +9,10 @@
 // Force sclang OSC receive port to 57120 BEFORE anything else claims the port.
 thisProcess.openUDPPort(57120);
 
+// Dome show: DOME_AUDIO=1 in the environment (start_ecosystem.sh passes it
+// through), unless ~domeAudio was already set by hand. See the MOTU router.
+~domeAudio = ~domeAudio ?? { "DOME_AUDIO".getenv == "1" };
+
 // --- DYNAMIC DEVICE DETECTION ---
 // MOTU 828x → 4-channel spatial mode at 48000 Hz (native MOTU rate)
 // No MOTU → the system default output (built-in, headphones…) → 2-channel stereo
@@ -91,6 +95,9 @@ thisProcess.openUDPPort(57120);
         ~motuOutOffset = 4;
         ~audioMode = \motu;
         "  Speaker offset: Out.ar(%) → MOTU analog 3-4".format(~motuOutOffset).postln;
+        if(~domeAudio == true) {
+            "  DOME_AUDIO: 4 discrete channels for the venue console → MOTU analog 3-6 = L R Ls Rs".postln;
+        };
     } {
         if(def.name.notNil and: { isMotu.(def.name) }) {
             // Not in PortAudio's list, but macOS says the default output IS
@@ -250,6 +257,14 @@ Server.default.options.hardwareBufferSize = 2048;
     ~controlBuses.transactionVolume.set(~audioParams.transactionVolume);
     ~controlBuses.beatVolume.set(~audioParams.beatVolume);
     
+    // Dome / venue console (DOME_AUDIO=1, or ~domeAudio = true before boot):
+    // the MOTU router in 3_synthdefs.scd hands the quad mix over as four clean
+    // channels instead of the studio's stereo fold-down + rears. Only means
+    // something with the MOTU; on stereo there is nothing to hand over.
+    if(~domeAudio == true and: { (~motuOutOffset ? 0) == 0 }) {
+        "DOME_AUDIO is on but there is no MOTU router (stereo output) — it has no effect.".warn;
+    };
+
     // Setup OSC
     ~visualsDest = NetAddr("127.0.0.1", 3333);
     "sclang OSC receive port: %".format(NetAddr.langPort).postln;
