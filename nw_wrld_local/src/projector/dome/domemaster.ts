@@ -220,10 +220,27 @@ void main() {
 
 // The live output's copy of the domemaster, flipped so that a readback (which
 // WebGL returns bottom row first) comes out top row first, as NDI wants it.
+//
+// With uAlpha on, the output carries an alpha channel for layering over the
+// planetarium's own media: black is transparent. alpha = the brightest of
+// r, g, b, and the colour is divided by it (NDI's alpha is straight, not
+// premultiplied), so that a receiver compositing it "over" a clip gives
+// exactly  ours + clip · (1 − alpha)  — every pixel of ours as it was, and
+// the clip showing through wherever ours is dark.
 const FLIP_FS = /* glsl */ `
 uniform sampler2D tDome;
+uniform float uAlpha;
 varying vec2 vUv;
-void main() { gl_FragColor = vec4(texture2D(tDome, vec2(vUv.x, 1.0 - vUv.y)).rgb, 1.0); }
+void main() {
+  vec3 c = texture2D(tDome, vec2(vUv.x, 1.0 - vUv.y)).rgb;
+  if (uAlpha < 0.5) { gl_FragColor = vec4(c, 1.0); return; }
+  float m = max(c.r, max(c.g, c.b));
+  // The slots' backgrounds are not pure black (#000804, ~3 %): below that
+  // floor counts as transparent, or the whole circle would lay a faint green
+  // veil over the venue's clip.
+  float a = clamp((m - 0.035) / 0.965, 0.0, 1.0);
+  gl_FragColor = a > 0.0 ? vec4(c / m, a) : vec4(0.0);
+}
 `;
 
 // The inside of the dome, textured with the domemaster. The hemisphere is in
@@ -466,7 +483,7 @@ export class Domemaster {
 
     this.flipMat = new THREE.ShaderMaterial({
       vertexShader: QUAD_VS, fragmentShader: FLIP_FS, depthTest: false, depthWrite: false,
-      uniforms: { tDome: { value: null } },
+      uniforms: { tDome: { value: null }, uAlpha: { value: 0 } },
     });
     this.flipScene = quad(this.flipMat);
 
@@ -874,6 +891,9 @@ export class Domemaster {
     const gl = this.renderer.getContext();
     return typeof WebGL2RenderingContext !== "undefined" && gl instanceof WebGL2RenderingContext ? gl : null;
   }
+
+  /** Output with black as transparency (an NDI layer over the venue's media), or opaque. */
+  setOutputAlpha(on: boolean) { this.flipMat.uniforms.uAlpha.value = on ? 1 : 0; }
 
   /** Queue the current domemaster for readback. False if every buffer is still in flight. */
   beginOutput(): boolean {

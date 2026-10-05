@@ -6,8 +6,10 @@
 // straight to the NDI sender, with no copy and no IPC. Measured at 2048 on
 // the M5, IPC alone cost ~35 ms a frame; NDI's own send costs ~10.
 //
-// Frames go out as RGBX (no alpha): NDI then compresses to UYVY, without the
-// alpha plane RGBA would make it carry.
+// Frames go out as RGBX (no alpha) — NDI then compresses to UYVY, without the
+// alpha plane RGBA would make it carry. With the page's "alfa" output they go
+// as RGBA (UYVA on the wire): black transparent, for a layer over the venue's
+// own clips (the alpha is made on the GPU, domemaster.ts FLIP_FS).
 //
 // Dead-man, as with the laser and Syphon: if the page stops sending (output
 // off, a crash, a frozen loop) receivers get black after DEADMAN_MS, and keep
@@ -18,6 +20,7 @@
 const NAME = process.env.DOME_NDI_NAME || "BiocracyEngine Cúpula";
 const DEADMAN_MS = parseInt(process.env.DOME_DEADMAN_MS || "1000", 10);
 const RGBX = 1480738642;   // NDIlib_FourCC_video_type_RGBX
+const RGBA = 1094862674;   // NDIlib_FourCC_video_type_RGBA — with the page's "alfa" output
 
 let grandiose = null;
 try {
@@ -39,10 +42,10 @@ let blackOn = false;
 let blackBuf = null;
 let sending = false;
 
-function videoFrame(buf, w, h) {
+function videoFrame(buf, w, h, alpha = false) {
   return {
     xres: w, yres: h, frameRateN: 30000, frameRateD: 1000,
-    fourCC: RGBX, pictureAspectRatio: 1, frameFormatType: 1,   // progressive
+    fourCC: alpha ? RGBA : RGBX, pictureAspectRatio: 1, frameFormatType: 1,   // progressive
     lineStrideBytes: w * 4, data: buf,
   };
 }
@@ -60,13 +63,13 @@ async function sendBlack() {
 
 window.__domeOut = {
   name: NAME,
-  async frame(data, w, h) {
+  async frame(data, w, h, alpha = false) {
     lastAt = Date.now();
     lastW = w; lastH = h;
     if (dark && !blackOn) { dark = false; console.log("[dome-live] frames again"); }
     if (!sender || blackOn || sending) return;
     sending = true;
-    try { await sender.video(videoFrame(Buffer.from(data.buffer, data.byteOffset, data.byteLength), w, h)); }
+    try { await sender.video(videoFrame(Buffer.from(data.buffer, data.byteOffset, data.byteLength), w, h, alpha)); }
     finally { sending = false; }
   },
   black(on) {

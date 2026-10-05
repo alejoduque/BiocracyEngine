@@ -32,7 +32,7 @@ type Output = "none" | "syphon" | "ndi";
 /** What dome-live-preload.js puts on the window (absent in a browser). */
 type DomeOut = {
   name: string;
-  frame: (data: Uint8Array, width: number, height: number) => Promise<void>;
+  frame: (data: Uint8Array, width: number, height: number, alpha?: boolean) => Promise<void>;
   black: (on: boolean) => void;
   connections: () => number;
 };
@@ -43,6 +43,12 @@ type Settings = DomeParams & {
   guides: boolean;
   /** Where the domemaster goes besides the screen. */
   output: Output;
+  /**
+   * The output with an alpha channel — black transparent — so the venue can
+   * lay the live feed OVER a clip that is already playing (a layer in
+   * Digistar) instead of replacing it.
+   */
+  outAlpha: boolean;
   maxFps: 30 | 60;
   simYaw: number;
   simPitch: number;
@@ -56,6 +62,7 @@ const DEFAULTS: Settings = {
   mode: "master",
   guides: true,
   output: "none",
+  outAlpha: false,
   maxFps: 30,
   simYaw: 0,
   simPitch: 30,
@@ -138,7 +145,7 @@ function outFrame() {
         _ndiBusy = true;
         _ndiTurn ^= 1;
         _outSent++;
-        out.frame(buf, N, N).catch(() => { /* a dropped frame */ }).finally(() => { _ndiBusy = false; });
+        out.frame(buf, N, N, _s.outAlpha).catch(() => { /* a dropped frame */ }).finally(() => { _ndiBusy = false; });
       }
     }
   } else {
@@ -444,6 +451,10 @@ function build() {
     segmented("salida: NDI (dome-live.js) o Syphon (dome-bridge.js); sigue con la vista cerrada",
       [["none", "sin salida"], ["ndi", "ndi"], ["syphon", "syphon"]],
       () => _s.output, (v) => setOutput(v as Output)),
+    segmented("salida con alfa: el negro transparente, para ir como capa sobre un clip de la sala",
+      [["off", "opaca"], ["on", "alfa"]],
+      () => (_s.outAlpha ? "on" : "off"),
+      (v) => { _s.outAlpha = v === "on"; _dome?.setOutputAlpha(_s.outAlpha); }),
     (() => {
       const b = el("button", { type: "button", class: "negro", "aria-pressed": "false",
         title: "envía negro a la salida, sin apagarla" }, "negro") as HTMLButtonElement;
@@ -505,7 +516,7 @@ let _badge: HTMLDivElement | null = null;
 
 function ensureBuilt() {
   if (!_root) build();
-  if (!_dome) _dome = new Domemaster(_canvas!, _s);
+  if (!_dome) { _dome = new Domemaster(_canvas!, _s); _dome.setOutputAlpha(_s.outAlpha); }
   if (!_badge) {
     _badge = el("div", { id: "dome-live-badge" }) as HTMLDivElement;
     _badge.hidden = true;

@@ -12,7 +12,7 @@
 //   recordings/eth_sonification_….session.jsonl   ← the bridge
 //        │
 //        ▼  npm run dome:render -- --session recordings/….session.jsonl
-//   renders/<name>_4096/frame_00000.png …  +  audio.wav (same span, same channels)
+//   renders/<name>_4096/<name>_4096_hapq_30fps.mov (or frames)  +  <name>_4096_LRLsRs.wav  +  <name>_4096_5.1.wav
 //
 // The page must be served (npm run serve → http://localhost:9001); SC and the
 // bridge need not be running.
@@ -29,6 +29,11 @@
 //   --warmup <s>         virtual seconds the page runs before time zero (default 3)
 //   --window <WxH>       page size, i.e. the resolution of the 2-D slots (default 1920x1080)
 //   --audio-offset <ms>  shift the audio against the picture (default 0)
+//   --lfe-hz <Hz>        crossover of the 5.1 file's LFE channel (default 100)
+//
+// Audio: two WAVs at 48 kHz / 24 bit beside the video — <name>_LRLsRs.wav
+// (four channels, console order) and <name>_5.1.wav (L R C LFE Ls Rs, the
+// centre silent, the LFE the low end of the mix) — see cutAudio().
 //   --url <url>          default http://localhost:9001/parliament.html
 //
 // Run: npx electron dome-render.js --session …   (or npm run dome:render -- …)
@@ -73,6 +78,7 @@ if (FORMAT === "hapq" && !fs.existsSync(FFMPEG)) {
 const WARMUP_MS = (args.warmup !== undefined ? Number(args.warmup) : 3) * 1000;
 const [WIN_W, WIN_H] = String(args.window || "1920x1080").split("x").map(Number);
 const AUDIO_OFFSET_MS = Number(args["audio-offset"]) || 0;
+const LFE_HZ = Number(args["lfe-hz"]) || 100;
 const URL_BASE = args.url || "http://localhost:9001/parliament.html";
 const NAME = path.basename(SESSION).replace(/\.session\.jsonl$/, "");
 const OUT = path.resolve(args.out || path.join(__dirname, "..", "renders", `${NAME}_${SIZE}`));
@@ -145,20 +151,44 @@ function cutAudio() {
   if (!src) { console.log(`[dome-render] (no audio: ${header.wav} not found)`); return; }
   const start = Math.max(0, (FROM_MS + AUDIO_OFFSET_MS) / 1000);
   const dur = N_FRAMES / FPS;
-  // The planetarium's playback wants WAV at 48 kHz / 24 bit, and four
-  // channels in console order: L R Ls Rs. SC records the quad ring in PanAz
-  // order — 0 FL, 1 FR, 2 RR, 3 RL — so the rears are swapped here.
+  const base = path.join(OUT, `${NAME}_${SIZE}`);
   const chans = Number(spawnSync("ffprobe", ["-v", "error", "-select_streams", "a:0", "-show_entries",
     "stream=channels", "-of", "csv=p=0", src]).stdout.toString().trim()) || 0;
-  // channelmap, not pan: pan between these layouts remixes instead of
-  // reordering (measured). quad = FL FR BL BR = L R Ls Rs.
-  const reorder = chans === 4 ? ["-af", "channelmap=map=0|1|3|2:channel_layout=quad"] : [];
-  const r = spawnSync("ffmpeg", ["-hide_banner", "-loglevel", "error", "-y",
-    "-ss", start.toFixed(4), "-t", dur.toFixed(4), "-i", src, ...reorder,
-    "-ar", "48000", "-c:a", "pcm_s24le",
-    path.join(OUT, "audio.wav")], { stdio: "inherit" });
-  if (r.status === 0) console.log(`[dome-render] audio.wav  ${dur.toFixed(2)} s from ${start.toFixed(2)} s of ${path.basename(src)}` +
-    `  · 48 kHz / 24 bit${chans === 4 ? " · L R Ls Rs" : ` · ${chans} ch`}`);
+  const cut = ["-hide_banner", "-loglevel", "error", "-y", "-ss", start.toFixed(4), "-t", dur.toFixed(4), "-i", src];
+  const out24 = ["-ar", "48000", "-c:a", "pcm_s24le"];
+  const say = (file, what) => console.log(`[dome-render] ${path.basename(file)}  ${dur.toFixed(2)} s from ${start.toFixed(2)} s of ${path.basename(src)} · 48 kHz / 24 bit · ${what}`);
+
+  if (chans !== 4) {
+    // a stereo session (no MOTU when it was recorded): passed on as it is
+    const f = `${base}_${chans}ch.wav`;
+    if (spawnSync("ffmpeg", [...cut, ...out24, f], { stdio: "inherit" }).status === 0) say(f, `${chans} ch`);
+    return;
+  }
+
+  // The planetarium plays WAV at 48 kHz / 24 bit. Two files per clip:
+  //
+  //   _LRLsRs.wav  the four channels in console order, L R Ls Rs. SC records
+  //                the quad ring in PanAz order (0 FL, 1 FR, 2 RR, 3 RL), so
+  //                the rears are swapped — channelmap, not pan: pan between
+  //                these layouts remixes instead of reordering (measured).
+  //   _5.1.wav     the same four plus a silent centre and an LFE: the four
+  //                summed, low-passed at 100 Hz (24 dB/oct). Their native
+  //                5.1 track — the room's six subwoofers get their own channel
+  //                and the show needs no interface of ours at all.
+  const quad = `${base}_LRLsRs.wav`;
+  if (spawnSync("ffmpeg", [...cut, "-af", "channelmap=map=0|1|3|2:channel_layout=quad", ...out24, quad], { stdio: "inherit" }).status === 0) {
+    say(quad, "L R Ls Rs");
+  }
+  const five = `${base}_5.1.wav`;
+  const graph = "[0:a]aresample=48000,asplit=2[m][s];" +
+    "[m]channelmap=map=0|1|3|2:channel_layout=quad,channelsplit=channel_layout=quad[L][R][Ls][Rs];" +
+    `[s]pan=mono|c0=0.25*c0+0.25*c1+0.25*c2+0.25*c3,lowpass=f=${LFE_HZ},lowpass=f=${LFE_HZ}[lfe];` +
+    "anullsrc=channel_layout=mono:sample_rate=48000[c];" +
+    "[L][R][c][lfe][Ls][Rs]join=inputs=6:channel_layout=5.1:map=0.0-FL|1.0-FR|2.0-FC|3.0-LFE|4.0-BL|5.0-BR[out]";
+  if (spawnSync("ffmpeg", [...cut, "-filter_complex", graph, "-map", "[out]", "-t", dur.toFixed(4), "-c:a", "pcm_s24le", five],
+    { stdio: "inherit" }).status === 0) {
+    say(five, `5.1 · L R C LFE Ls Rs · LFE < ${LFE_HZ} Hz`);
+  }
 }
 
 // ── The page ────────────────────────────────────────────────────────────────
