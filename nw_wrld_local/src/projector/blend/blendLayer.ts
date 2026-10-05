@@ -28,6 +28,16 @@
 //             back slowly — the stepped, discrete shape of a ledger
 // λ is the chain's share of what is happening now. The surface turns slowly.
 //
+// THE GROVE (slots 6 and 9, instead of the surface, so the same ground does
+// not repeat on all six). Each tree is two real trees on one topology:
+//   neuronal  a dendrite: irregular branching in 3-D, tapering lengths
+//   silicon   a Merkle tree: binary, symmetric, straight — the tree that
+//             commits every Ethereum block
+// and its shape is their blend, morphing with λ. Signals run along it: a
+// swell of the forest sends a green pulse from a branch tip to the root (a
+// dendritic potential to the soma); a block sends an amber pulse from a leaf
+// to the root — the path of a Merkle proof.
+//
 // Scale comes from the slot's own camera distance, so the same layer sits
 // right in all six worlds. Formulas are typeset once (manim/tex.ts, cached).
 
@@ -43,6 +53,50 @@ type SlotKey = "s4" | "s5" | "s6" | "s7" | "s8" | "s9";
 type Side = "neuronal" | "silicon";
 
 const INK = { neuronal: 0x7fd6b0, silicon: 0xffa040, blend: 0xf2efe6, accent: 0xffe680 };
+
+/** Which ground each slot stands on. */
+const GROUND: Record<SlotKey, "surface" | "grove"> = {
+  s4: "surface", s5: "surface", s6: "grove", s7: "surface", s8: "surface", s9: "grove",
+};
+
+// ── The grove ────────────────────────────────────────────────────────────────
+const TREE_DEPTH = 7;                         // 2^7 − 1 = 127 nodes, 126 branches
+const NODES = (1 << TREE_DEPTH) - 1;
+
+/** Deterministic pseudo-random, so a tree keeps its shape for the whole show. */
+function rng(seed: number) {
+  let x = seed >>> 0 || 1;
+  return () => { x ^= x << 13; x ^= x >>> 17; x ^= x << 5; return ((x >>> 0) % 1e6) / 1e6; };
+}
+
+/** Node positions of one tree in both forms, heap-indexed (children of i: 2i+1, 2i+2). */
+function treeForms(height: number, seed: number) {
+  const organic: THREE.Vector3[] = [];
+  const merkle: THREE.Vector3[] = [];
+  const r = rng(seed);
+  const dirs: THREE.Vector3[] = [];
+  const lens: number[] = [];
+  for (let i = 0; i < NODES; i++) {
+    const level = Math.floor(Math.log2(i + 1));
+    const k = i + 1 - (1 << level);
+    // Merkle: the root at the ground, each level a row, leaves in a line at the top
+    const w = height * 0.9;
+    merkle.push(new THREE.Vector3(((k + 0.5) / (1 << level) - 0.5) * w * (level === 0 ? 0 : 1), (level / (TREE_DEPTH - 1)) * height, 0));
+    // Dendrite: grown from the root, each branch turned off its parent's line
+    if (i === 0) { organic.push(new THREE.Vector3()); dirs.push(new THREE.Vector3(0, 1, 0)); lens.push(height * 0.24); continue; }
+    const p = (i - 1) >> 1;
+    const side = i % 2 === 1 ? 1 : -1;
+    const turn = 0.35 + r() * 0.45;
+    const d = dirs[p].clone()
+      .applyAxisAngle(new THREE.Vector3(0, 0, 1), side * turn)
+      .applyAxisAngle(new THREE.Vector3(0, 1, 0), (r() - 0.5) * 2.4)
+      .normalize();
+    const len = lens[p] * (0.68 + r() * 0.22);
+    dirs.push(d); lens.push(len);
+    organic.push(organic[p].clone().addScaledVector(d, len));
+  }
+  return { organic, merkle };
+}
 
 /** The two laws and what they meet as, for each slot (manim/formulas.json). */
 function lawsFor(slot: SlotKey): { neuronal: string; silicon: string; meet: string } {
@@ -103,6 +157,96 @@ export function attachBlendLayer(slot: SlotKey, scene: THREE.Scene, camera: THRE
   surface.frustumCulled = false;
   surface.position.y = FLOOR;
   root.add(surface);
+  surface.visible = GROUND[slot] === "surface";
+
+  // the grove: four trees on a ring, each its own seed
+  const TREES = GROUND[slot] === "grove" ? 4 : 0;
+  const groveForms = Array.from({ length: TREES }, (_, t) => treeForms(dist * 0.4, 1009 * (t + 1) + slot.charCodeAt(1)));
+  const grovePos = new Float32Array(TREES * (NODES - 1) * 2 * 3);
+  const groveCol = new Float32Array(TREES * (NODES - 1) * 2 * 3);
+  const groveGeo = new THREE.BufferGeometry();
+  groveGeo.setAttribute("position", new THREE.BufferAttribute(grovePos, 3));
+  groveGeo.setAttribute("color", new THREE.BufferAttribute(groveCol, 3));
+  const groveMat = new THREE.LineBasicMaterial({ vertexColors: true, transparent: true, opacity: 0, depthWrite: false });
+  const grove = new THREE.LineSegments(groveGeo, groveMat);
+  grove.frustumCulled = false;
+  grove.position.y = FLOOR;
+  root.add(grove);
+  const treeAt = Array.from({ length: TREES }, (_, t) => {
+    // round the structure's flanks and behind it, never in front of it
+    const a = Math.PI * (0.05 + (t / Math.max(1, TREES - 1)) * 0.9) + Math.PI;
+    return new THREE.Vector3(Math.cos(a) * dist * 0.72, 0, Math.sin(a) * dist * 0.5 - dist * 0.15);
+  });
+  /** Pulses running from a tip to the root: which tree, which leaf, when, what colour. */
+  const pulses: { tree: number; leaf: number; t0: number; color: THREE.Color }[] = [];
+  const firstLeaf = (1 << (TREE_DEPTH - 1)) - 1;
+  const PULSE_S = 1.6;                       // tip to root
+  const lit = new Float32Array(NODES);
+
+  // scratch objects: nothing is allocated per frame (garbage reaches the audio)
+  const gBase = new THREE.Color(), gTint = new THREE.Color(), gC = new THREE.Color();
+  const gN = new THREE.Color(INK.neuronal), gS = new THREE.Color(INK.silicon);
+  const gA = new THREE.Vector3(), gB = new THREE.Vector3();
+
+  function nodeAt(tr: number, n: number, lamNow: number, t: number, out: THREE.Vector3) {
+    const { organic, merkle } = groveForms[tr];
+    out.copy(organic[n]).lerp(merkle[n], lamNow);
+    // the dendrite sways a little; the ledger does not
+    if (n > 0) out.x += Math.sin(t * 0.7 + n * 0.37) * dist * 0.004 * (1 - lamNow);
+    return out.add(treeAt[tr]);
+  }
+
+  function updateGrove(lamNow: number, t: number, forest: number, chain: number) {
+    if (!TREES) return;
+    let o = 0;
+    gBase.copy(gN).lerp(gS, lamNow);
+    const glow = 0.25 + 0.35 * Math.max(forest, chain);
+    for (let tr = 0; tr < TREES; tr++) {
+      // which nodes a pulse is passing now (leaf first, root last)
+      lit.fill(0);
+      gTint.setRGB(0, 0, 0);
+      for (const p of pulses) {
+        if (p.tree !== tr) continue;
+        const u = (t - p.t0) / PULSE_S;
+        if (u < 0 || u > 1.15) continue;
+        let n = p.leaf;
+        for (let L = TREE_DEPTH - 1; L >= 0 && n >= 0; L--) {
+          const k = Math.max(0, 1 - Math.abs(u - (1 - L / (TREE_DEPTH - 1))) * 5);
+          if (k > lit[n]) lit[n] = k;
+          n = (n - 1) >> 1;
+        }
+        gTint.copy(p.color);
+      }
+      for (let i = 1; i < NODES; i++) {
+        const p = (i - 1) >> 1;
+        nodeAt(tr, p, lamNow, t, gA);
+        nodeAt(tr, i, lamNow, t, gB);
+        const j = o * 6;
+        grovePos[j] = gA.x; grovePos[j + 1] = gA.y; grovePos[j + 2] = gA.z;
+        grovePos[j + 3] = gB.x; grovePos[j + 4] = gB.y; grovePos[j + 5] = gB.z;
+        const level = Math.floor(Math.log2(i + 1));
+        const fade = glow * (0.55 + 0.45 * (1 - level / TREE_DEPTH));
+        gC.copy(gBase).multiplyScalar(fade).lerp(gTint, Math.min(1, lit[p]));
+        groveCol[j] = gC.r; groveCol[j + 1] = gC.g; groveCol[j + 2] = gC.b;
+        gC.copy(gBase).multiplyScalar(fade).lerp(gTint, Math.min(1, lit[i]));
+        groveCol[j + 3] = gC.r; groveCol[j + 4] = gC.g; groveCol[j + 5] = gC.b;
+        o++;
+      }
+    }
+    groveGeo.attributes.position.needsUpdate = true;
+    groveGeo.attributes.color.needsUpdate = true;
+    for (let i = pulses.length - 1; i >= 0; i--) if (t - pulses[i].t0 > PULSE_S * 1.2) pulses.splice(i, 1);
+  }
+
+  function pulse(color: number) {
+    if (!TREES) return;
+    pulses.push({
+      tree: Math.floor(Math.random() * TREES),
+      leaf: firstLeaf + Math.floor(Math.random() * (NODES - firstLeaf)),
+      t0: performance.now() / 1000,
+      color: new THREE.Color(color),
+    });
+  }
 
   // the lattice: 8 × 8 terraces, each transaction raises one
   const LAT = 8;
@@ -221,18 +365,29 @@ export function attachBlendLayer(slot: SlotKey, scene: THREE.Scene, camera: THRE
     // transactions raise terraces; terraces settle
     if (eth.live && eth.pulse > 0.95) terrace[Math.min(LAT * LAT - 1, Math.floor(eth.addr * LAT * LAT))] += 0.25 * (0.3 + eth.value);
     for (let i = 0; i < terrace.length; i++) terrace[i] = Math.min(1.4, terrace[i] * (1 - 0.06 / 60));
-    updateSurface(lam, now, forest, act);
-    surfMat.opacity = Math.min(0.3, surfMat.opacity + 0.004);   // under the structure, never over it
-    surface.rotation.y += 0.0009;
+    if (GROUND[slot] === "surface") {
+      updateSurface(lam, now, forest, act);
+      surfMat.opacity = Math.min(0.3, surfMat.opacity + 0.004);   // under the structure, never over it
+      surface.rotation.y += 0.0009;
+    } else {
+      updateGrove(lam, now, forest, chain);
+      groveMat.opacity = Math.min(0.55, groveMat.opacity + 0.006);   // beside the structure, not over it
+      grove.rotation.y += 0.0006;
+      // the forest's small events reach the trees too, not only the launches
+      if (Math.random() < forest * 0.02) pulse(INK.neuronal);
+      if (eth.live && eth.pulse > 0.95 && Math.random() < 0.15) pulse(INK.silicon);
+    }
 
     // launches: a swell in the forest, a block on the chain
     if (forest > 0.72 && forestArmed && now - lastForestLaunch > 5) {
       forestArmed = false; lastForestLaunch = now;
       void launch("neuronal", () => forest);
+      pulse(INK.neuronal);
     } else if (forest < 0.5) forestArmed = true;
     if (eth.blockPulse > 0.95 && lastBlockPulse <= 0.95 && now - lastChainLaunch > 5) {
       lastChainLaunch = now;
       void launch("silicon", () => eth.depth);
+      pulse(INK.silicon); pulse(INK.silicon);
     }
     lastBlockPulse = eth.blockPulse;
 

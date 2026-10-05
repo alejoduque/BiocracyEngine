@@ -39,11 +39,16 @@ const TICKER_SPEED = 16;
  */
 export function mountSlotTicker(
     host: HTMLElement, tail: string, ink = "rgba(255,200,120,",
+    opts: { domeOnly?: boolean } = {},
 ): SlotTicker {
     const canvas = document.createElement("canvas");
+    // domeOnly: for slots whose flat screen already prints the ticker inside
+    // another canvas (the constellation field on 5 and 9) — this one is kept
+    // out of sight and exists only to become the dome's rings of text.
     canvas.style.cssText =
         "position:absolute;left:0;right:0;bottom:0;width:100%;height:34px;"
-        + "pointer-events:none;z-index:3;mix-blend-mode:screen;";
+        + "pointer-events:none;z-index:3;mix-blend-mode:screen;"
+        + (opts.domeOnly ? "visibility:hidden;" : "");
     host.appendChild(canvas);
     // On the dome: a strip low around the front (dome/domeCapture.ts).
     registerDomeLayer(canvas, { mode: "band", blend: "screen" });

@@ -165,11 +165,11 @@ void main() {
   // laid over the domemaster like a star chart: its bottom edge at the front.
   if (hasSky > 0.5) {
     vec2 su = 0.5 + p * uSkyScale;
+    su.y = 1.0 - su.y;                // the feed's bitmap is top row first
     if (su.x >= 0.0 && su.x <= 1.0 && su.y >= 0.0 && su.y <= 1.0) {
-      // The canvas is transparent where nothing is drawn, and three uploads it
-      // unpremultiplied: what the page screens over the scene is rgb · alpha.
-      vec4 sk = texture2D(tSky, su);
-      vec3 sky = sk.rgb * sk.a;
+      // Premultiplied (see CanvasFeed): rgb is already what the page screens
+      // over the scene — light where something is drawn, nothing elsewhere.
+      vec3 sky = texture2D(tSky, su).rgb;
       col = vec3(1.0) - (vec3(1.0) - col) * (vec3(1.0) - sky);
     }
   }
@@ -248,7 +248,71 @@ void main() {
 }
 `;
 
+// The ticker's rings: elevation (deg), turn (deg/s, sign = direction), opacity.
+// Clear of the slot title, which sits at 12°.
+const RING_SPECS = [
+  { el: 5, turn: 1.2, opacity: 0.95 },
+  { el: 24, turn: -0.8, opacity: 0.6 },
+  { el: 44, turn: 0.5, opacity: 0.38 },
+];
+const RING_REPEAT = 3;
+
 // ── Helpers ─────────────────────────────────────────────────────────────────
+
+/**
+ * A live 2-D canvas as a texture, taken through an ImageBitmap.
+ *
+ * Uploading the canvas itself every frame (CanvasTexture + needsUpdate) leaks
+ * in this Chromium: measured with the dome open, ~4 MB of heap per 90 s for
+ * the ticker and ~8 MB for the constellation sky, never returned by gc. The
+ * bitmap route copies the canvas off the main path, uploads that, and closes
+ * the previous bitmap the moment it is replaced — nothing is left behind.
+ * One copy in flight at a time: if the GPU is busy the texture simply shows
+ * the last frame.
+ *
+ * The bitmap is taken as the canvas holds it — premultiplied, top row first —
+ * because asking for it flipped or unpremultiplied makes the browser read the
+ * canvas back and convert it on the CPU (it halved the NDI frame rate). The
+ * users of a feed flip v (repeat.y = −1, or 1 − v in a shader) and treat the
+ * colour as premultiplied.
+ *
+ * Storage is allocated at the first upload, so a canvas that changes size
+ * needs a new feed (the callers key on width × height).
+ */
+class CanvasFeed {
+  readonly texture = new THREE.Texture();
+  private busy = false;
+  private alive = true;
+
+  constructor(colorSpace: THREE.ColorSpace) {
+    this.texture.flipY = false;                 // ignored for bitmaps anyway: v is flipped where it is sampled
+    this.texture.premultiplyAlpha = true;
+    this.texture.colorSpace = colorSpace;
+    this.texture.generateMipmaps = false;
+    this.texture.minFilter = THREE.LinearFilter;
+  }
+
+  pull(canvas: HTMLCanvasElement) {
+    if (this.busy || !canvas.width || !canvas.height) return;
+    this.busy = true;
+    createImageBitmap(canvas, { premultiplyAlpha: "premultiply" }).then((bmp) => {
+      this.busy = false;
+      if (!this.alive) { bmp.close(); return; }
+      const old = this.texture.image as ImageBitmap | null;
+      this.texture.image = bmp;
+      this.texture.needsUpdate = true;
+      old?.close?.();
+    }).catch(() => { this.busy = false; });
+  }
+
+  get ready() { return !!this.texture.image; }
+
+  dispose() {
+    this.alive = false;
+    (this.texture.image as ImageBitmap | null)?.close?.();
+    this.texture.dispose();
+  }
+}
 
 function quad(material: THREE.ShaderMaterial): THREE.Scene {
   const s = new THREE.Scene();
@@ -301,13 +365,13 @@ export class Domemaster {
   private afterScene: THREE.Scene | null = null;
 
   // 2-D layers: the sky (constellation field) and a band (the ticker)
-  private skyTex: THREE.CanvasTexture | null = null;
+  private skyFeed: CanvasFeed | null = null;
   private skySource: HTMLCanvasElement | null = null;
   private skyKey = "";
-  private bandTex: THREE.CanvasTexture | null = null;
+  private bandFeed: CanvasFeed | null = null;
   private bandSource: HTMLCanvasElement | null = null;
   private bandKey = "";
-  private bandMesh: THREE.Mesh;
+  private bandRings: THREE.Mesh[] = [];
 
   private fisheyeMat: THREE.ShaderMaterial;
   private fisheyeScene: THREE.Scene;
@@ -333,7 +397,7 @@ export class Domemaster {
   private textMesh: THREE.Mesh;
   private textValue = "";
   private textFontPx = 0;
-  private panelTex: THREE.CanvasTexture | null = null;
+  private panelFeed: CanvasFeed | null = null;
   private panelMesh: THREE.Mesh;
   private panelSource: HTMLCanvasElement | null = null;
   private panelKey = "";
@@ -370,16 +434,20 @@ export class Domemaster {
     this.finalScene = quad(this.finalMat);
     this.bloom = new UnrealBloomPass(new THREE.Vector2(256, 256), 0, 0, 0);
     this.after = new AfterimagePass(0.9);
-    // The ticker's band: a strip of a cylinder around the front, built in
-    // dome-local axes (front −Z, zenith +Y) and oriented by the basis each
-    // frame. 120° wide; its height is set from the canvas's aspect.
-    const bandGeo = new THREE.CylinderGeometry(10, 10, 1, 96, 1, true, Math.PI - Math.PI / 3, (2 * Math.PI) / 3);
-    this.bandMesh = new THREE.Mesh(bandGeo, new THREE.MeshBasicMaterial({
-      transparent: true, depthTest: false, depthWrite: false, side: THREE.DoubleSide,
-    }));
-    this.bandMesh.matrixAutoUpdate = false;
-    this.bandMesh.renderOrder = 2;
-    this.bandMesh.visible = false;
+    // The ticker, as RINGS of text around the dome: full circles of a
+    // cylinder at three elevations, the ticker's canvas repeated round each,
+    // turning slowly, alternate rings the other way. On a flat screen it is a
+    // line along the foot; on a dome a line is a scrap, a ring is a horizon.
+    const ringGeo = new THREE.CylinderGeometry(10, 10, 1, 192, 1, true);
+    for (const r of RING_SPECS) {
+      const ring = new THREE.Mesh(ringGeo, new THREE.MeshBasicMaterial({
+        transparent: true, opacity: r.opacity, depthTest: false, depthWrite: false, side: THREE.DoubleSide,
+      }));
+      ring.matrixAutoUpdate = false;
+      ring.renderOrder = 2;
+      ring.visible = false;
+      this.bandRings.push(ring);
+    }
 
     this.displayMat = new THREE.ShaderMaterial({
       vertexShader: QUAD_VS, fragmentShader: DISPLAY_FS, depthTest: false, depthWrite: false,
@@ -417,7 +485,7 @@ export class Domemaster {
     );
     this.panelMesh.renderOrder = 0;
     this.textMesh.renderOrder = 1;
-    this.overScene.add(this.panelMesh, this.textMesh, this.bandMesh);
+    this.overScene.add(this.panelMesh, this.textMesh, ...this.bandRings);
 
     this.build();
   }
@@ -600,50 +668,64 @@ export class Domemaster {
       const key = `${panel.width}x${panel.height}`;
       if (this.panelSource !== panel || this.panelKey !== key) {
         this.panelKey = key;
-        this.panelTex?.dispose();
-        this.panelTex = new THREE.CanvasTexture(panel);
-        this.panelTex.colorSpace = THREE.SRGBColorSpace;
-        (this.panelMesh.material as THREE.MeshBasicMaterial).map = this.panelTex;
+        this.panelFeed?.dispose();
+        this.panelFeed = new CanvasFeed(THREE.SRGBColorSpace);
+        this.panelFeed.texture.repeat.y = -1;
+        this.panelFeed.texture.offset.y = 1;
+        (this.panelMesh.material as THREE.MeshBasicMaterial).premultipliedAlpha = true;
+        (this.panelMesh.material as THREE.MeshBasicMaterial).map = this.panelFeed.texture;
         (this.panelMesh.material as THREE.MeshBasicMaterial).needsUpdate = true;
         this.panelSource = panel;
       }
-      this.panelTex!.needsUpdate = true;
+      this.panelFeed!.pull(panel);
       this.place(this.panelMesh, 0, P.frontElevation, P.panelDeg, panel.width / panel.height);
-      this.panelMesh.visible = true;
+      this.panelMesh.visible = this.panelFeed!.ready;
     } else {
       this.panelMesh.visible = false;
     }
 
-    // The band layer (the ticker), on its strip low around the front.
+    // The band layer (the ticker), as rings of text round the dome.
     const band = layers.find((l) => l.mode === "band");
     if (band) {
       const c = band.canvas;
       const key = `${c.width}x${c.height}`;
       if (this.bandSource !== c || this.bandKey !== key) {
         this.bandKey = key;
-        this.bandTex?.dispose();
-        this.bandTex = new THREE.CanvasTexture(c);
-        this.bandTex.colorSpace = THREE.SRGBColorSpace;
-        // CylinderGeometry runs theta the other way round from azimuth: flip u
-        // so the text reads left to right from inside.
-        this.bandTex.repeat.x = -1;
-        this.bandTex.offset.x = 1;
-        (this.bandMesh.material as THREE.MeshBasicMaterial).map = this.bandTex;
-        (this.bandMesh.material as THREE.MeshBasicMaterial).needsUpdate = true;
+        this.bandFeed?.dispose();
+        this.bandFeed = new CanvasFeed(THREE.SRGBColorSpace);
+        // Repeated three times round (each copy spans 120°, the width at
+        // which the ticker's text stands about 2.5° tall). CylinderGeometry
+        // runs theta against azimuth: a negative repeat reads left to right
+        // from inside.
+        this.bandFeed.texture.wrapS = THREE.RepeatWrapping;
+        this.bandFeed.texture.repeat.set(-RING_REPEAT, -1);
+        this.bandFeed.texture.offset.y = 1;
+        for (const ring of this.bandRings) {
+          (ring.material as THREE.MeshBasicMaterial).premultipliedAlpha = true;
+          (ring.material as THREE.MeshBasicMaterial).map = this.bandFeed.texture;
+          (ring.material as THREE.MeshBasicMaterial).needsUpdate = true;
+        }
         this.bandSource = c;
       }
-      this.bandTex!.needsUpdate = true;
-      // 120° of arc at radius 10; the strip is as tall as the canvas's aspect allows.
-      const arc = 10 * (2 * Math.PI) / 3;
+      this.bandFeed!.pull(c);
+      const arc = (10 * 2 * Math.PI) / RING_REPEAT;
       const h = arc * (c.height / c.width);
-      const m = new THREE.Matrix4().makeBasis(this.right, this.zen, this.front.clone().negate());
-      m.multiply(new THREE.Matrix4().compose(
-        new THREE.Vector3(0, 10 * Math.tan(4 * DEG), 0), new THREE.Quaternion(), new THREE.Vector3(1, h, 1)));
-      this.bandMesh.matrix.copy(m);
-      this.bandMesh.matrixWorld.copy(m);
-      this.bandMesh.visible = true;
+      const now = performance.now() / 1000;
+      const basis = new THREE.Matrix4().makeBasis(this.right, this.zen, this.front.clone().negate());
+      RING_SPECS.forEach((r, i) => {
+        // farther rings stand farther away: keep their text the same angular size
+        const lift = 10 * Math.tan(r.el * DEG);
+        const grow = 1 / Math.cos(r.el * DEG);
+        const m = basis.clone().multiply(new THREE.Matrix4().compose(
+          new THREE.Vector3(0, lift, 0),
+          new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), now * r.turn * DEG),
+          new THREE.Vector3(1, h * grow, 1)));
+        this.bandRings[i].matrix.copy(m);
+        this.bandRings[i].matrixWorld.copy(m);
+        this.bandRings[i].visible = this.bandFeed!.ready;
+      });
     } else {
-      this.bandMesh.visible = false;
+      for (const ring of this.bandRings) ring.visible = false;
     }
 
     R.setClearColor(0x000000, 0);
@@ -700,16 +782,16 @@ export class Domemaster {
       const key = `${c.width}x${c.height}`;
       if (this.skySource !== c || this.skyKey !== key) {
         this.skyKey = key;
-        this.skyTex?.dispose();
-        this.skyTex = new THREE.CanvasTexture(c);   // raw display values, as the page shows them
+        this.skyFeed?.dispose();
+        this.skyFeed = new CanvasFeed(THREE.NoColorSpace);   // raw display values, as the page shows them
         this.skySource = c;
       }
-      this.skyTex!.needsUpdate = true;
+      this.skyFeed!.pull(c);
       // Cover the circle: the canvas's short side spans the diameter.
       const a = c.width / c.height;
       f.uSkyScale.value.set(a >= 1 ? 0.5 / a : 0.5, a >= 1 ? 0.5 : 0.5 * a);
-      f.tSky.value = this.skyTex;
-      f.hasSky.value = 1;
+      f.tSky.value = this.skyFeed!.texture;
+      f.hasSky.value = this.skyFeed!.ready ? 1 : 0;
     } else {
       f.hasSky.value = 0;
     }
@@ -853,9 +935,9 @@ export class Domemaster {
     this.flipMat.dispose();
     this.finalMat.dispose(); this.bloom.dispose(); this.after.dispose();
     this.hdrA.dispose(); this.hdrB.dispose();
-    this.skyTex?.dispose(); this.bandTex?.dispose();
+    this.skyFeed?.dispose(); this.bandFeed?.dispose();
     this.sceneCube.dispose(); this.overCube.dispose(); this.domeRT.dispose();
-    this.textTex.dispose(); this.panelTex?.dispose();
+    this.textTex.dispose(); this.panelFeed?.dispose();
     this.fisheyeMat.dispose(); this.displayMat.dispose(); this.simMat.dispose();
     this.renderer.dispose();
   }

@@ -235,7 +235,14 @@ function mountSlotField(
     // depend on the slot threading a value through.
     let lastEnv = 0;
 
-    const onResize = () => field.resize();
+    // The field prints the ticker inside its own canvas on the flat screen.
+    // On the dome that would be a scrap of text at the rim of the star chart,
+    // so a ticker of its own, out of sight on the flat screen, becomes the
+    // dome's rings of text like on slots 6-8 (slotTicker.ts, domemaster.ts).
+    const domeTicker = mountSlotTicker(stageEl,
+        `${inst.label} · ${inst.sub} · ${inst.hint.toUpperCase()}`, undefined, { domeOnly: true });
+
+    const onResize = () => { field.resize(); domeTicker.resize(); };
     window.addEventListener("resize", onResize);
 
     return {
@@ -354,11 +361,13 @@ function mountSlotField(
             // being removed. Only the sky stops answering — field.pulse and
             // field.strike are no-ops on a non-reactive field, guarded inside
             // the field itself.
+            domeTicker.draw(1);
             return onset;
         },
         destroy() {
             window.removeEventListener("resize", onResize);
             field.destroy();
+            domeTicker.destroy();
         },
     };
 }

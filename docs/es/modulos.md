@@ -60,6 +60,12 @@ Cada ranura instrumento (4–9) conserva su mundo entero: estructuras, estelas, 
 - **Fórmulas en vuelo.** Una oleada del bosque escribe en el aire la ley neuronal de la ranura, que entra volando por un lado. Un bloque de la cadena manda la ley de silicio por el otro. Cada una lleva un número en vivo. Cuando las dos llegan al frente **se transforman una en otra** (TransformMatchingParts de manim) y se vuelven la mezcla, o la estructura genérica que comparten; sube y se disuelve. Una fórmula que no encuentra a nadie sigue de largo y se desescribe.
 - **La superficie de mezcla.** Una malla bajo la estructura cuya forma es la mezcla: `h = (1−λ)·membrana + λ·retícula`. La membrana son oleadas suaves en las especies, que respiran con el bosque. La retícula son terrazas que levantan las transacciones, la forma escalonada de un libro contable. λ es la parte de la actividad que es de la cadena. La superficie gira despacio y su color se inclina al verde o al ámbar según qué mundo la levanta.
 
+- **La arboleda (ranuras 6 y 9, en lugar de la superficie).** Cuatro árboles, cada uno la mezcla de dos árboles reales sobre una misma topología: una **dendrita** (irregular, en 3D, con largos decrecientes) y un **árbol de Merkle** (binario, simétrico, recto: el árbol que compromete cada bloque de Ethereum). La forma se transforma con λ. Una oleada del bosque manda un pulso verde desde la punta de una rama hasta la raíz; un bloque manda un pulso ámbar desde una hoja hasta la raíz, el camino de una prueba de Merkle.
+
+**En la cúpula:**
+- El ticker de las ranuras 4–9 se vuelve **tres anillos de texto** alrededor del domo (elevaciones 5°, 24°, 44°), que giran despacio, alternando el sentido.
+- La ranura 1 (Shan Shui) **envuelve al público** (`dome/domeBend.ts`). La frecuencia da la vuelta completa, la cordillera en vivo rodea el horizonte y el pasado sube hacia el cenit. La pantalla plana no cambia, y su encuadre ahora llena el ancho.
+
 | Ranura | Ley neuronal | Ley de silicio | Se encuentran como |
 |---|---|---|---|
 | 4 | τ dV/dt = −V + R I(t) | G_{n+1} = G_n + g_tx | τ dU/dt = −(1−λ)U + (1−λ)I + λ g: la fuga es la diferencia |

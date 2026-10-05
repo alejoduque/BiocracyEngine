@@ -60,6 +60,12 @@ Every instrument slot (4–9) keeps its whole world: structures, trails, constel
 - **Formulas in flight.** A swell in the forest writes the slot's neuronal law in mid-air, and it flies in from one side. A block on the chain sends the silicon law in from the other. Each carries a live number. When both reach the front they **transform into each other** (manim's TransformMatchingParts) and become the blend, or the generic structure both share; it rises and dissolves. A formula that meets nobody flies on through and unwrites itself.
 - **The blend surface.** A mesh under the structure whose shape is the blend: `h = (1−λ)·membrane + λ·lattice`. The membrane is smooth swells at the species, breathing with the forest. The lattice is terraces raised by the transactions, the stepped shape of a ledger. λ is the chain's share of current activity. The surface turns slowly and its colour leans green or amber with whichever world is raising it.
 
+- **The grove (slots 6 and 9, instead of the surface).** Four trees, each the blend of two real trees on one topology: a **dendrite** (irregular, 3-D, tapering) and a **Merkle tree** (binary, symmetric, straight: the tree that commits every Ethereum block). The shape morphs with λ. A swell of the forest sends a green pulse from a branch tip to the root; a block sends an amber pulse from a leaf to the root, the path of a Merkle proof.
+
+**On the dome:**
+- The ticker of slots 4–9 becomes **three rings of text** around the dome (elevations 5°, 24°, 44°), turning slowly, alternate rings the other way.
+- Slot 1 (Shan Shui) **wraps around the audience** (`dome/domeBend.ts`). Frequency goes all the way round, the live range circles the horizon, and the past rises toward the zenith. The flat screen is unchanged and reframed to fill the width.
+
 | Slot | Neuronal law | Silicon law | They meet as |
 |---|---|---|---|
 | 4 | τ dV/dt = −V + R I(t) | G_{n+1} = G_n + g_tx | τ dU/dt = −(1−λ)U + (1−λ)I + λ g: the leak is the difference |
