@@ -98,6 +98,7 @@ El motor está listo cuando `sclang_log.txt` muestra `=== CONTROL BUS SETUP COMP
 - [Módulos visuales](docs/es/modulos.md) — instrumentos 4–9, Antifonía, anillos fenológicos
 - [Controles y sonido](docs/es/controles.md) — matriz de control, corpus, mezcla, GUI de SC
 - [Proyección láser](docs/es/laser.md) — gráfico de púlsar, límites del escáner, seguridad
+- [Cúpula](docs/es/cupula.md) — domo de planetario: vista D, grabar y renderizar a 4096, sonido en 4 canales
 - [Arranque y diagnóstico](docs/es/diagnostico.md) — requisitos, monitor en vivo
 - [CHANGELOG](CHANGELOG.md)
 

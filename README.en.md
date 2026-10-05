@@ -98,6 +98,7 @@ The engine is ready when `sclang_log.txt` shows `=== CONTROL BUS SETUP COMPLETE 
 - [Visual modules](docs/en/modules.md) — instruments 4–9, Antifonía, phenological rings
 - [Controls and sound](docs/en/controls.md) — control matrix, corpus, mixing, SC GUI
 - [Laser projection](docs/en/laser.md) — pulsar plot, scanner limits, safety
+- [Dome](docs/en/dome.md) — planetarium dome: key D, record and render at 4096, 4-channel sound
 - [Setup and diagnostics](docs/en/diagnostics.md) — requirements, live monitor
 - [CHANGELOG](CHANGELOG.md)
 
