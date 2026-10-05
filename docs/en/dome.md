@@ -11,7 +11,7 @@ A dome takes a **domemaster**: a square fisheye image with the zenith at the cen
 | Half | Resolution | How | Status |
 |---|---|---|---|
 | **Pre-rendered** | 4096 × 4096 | Recorded sessions rendered offline; Digistar plays the files | ✅ ready |
-| **Live** | ~2048 × 2048 | The instrument running, sent to Digistar over NDI | ⏳ to do |
+| **Live** | 2048 × 2048 | The instrument running, sent to Digistar over NDI at 30 fps | ✅ ready |
 | **Sound** | 4 channels | The MOTU goes to the venue console: L R Ls Rs | ✅ ready |
 
 The 4K half is rendered offline so the M5 is never pushed to 4K in real time.
@@ -30,6 +30,8 @@ In `parliament.html`, **D** opens **CÚPULA** over the page. The slots keep runn
 | inclinación | dome tilt, simulation only |
 | texto · letra · altura texto | the slot title drawn natively on the dome (size and height in degrees) |
 | guías | elevation rings every 15° and a front tick |
+| salida: sin salida / ndi / syphon | where the domemaster goes besides the screen. **ndi** only works in the live window (section 4). The output keeps running with the view closed |
+| negro | sends black to the output without turning it off |
 | salida limpia | the bare domemaster full screen (Esc to return). For screen capture only, not the 4K deliverable |
 
 Each slot reaches the dome one of two ways:
@@ -86,7 +88,31 @@ npm run dome:render -- --session ../recordings/<name>.session.jsonl --size 2048 
 
 How it works: the page runs on a virtual clock (`src/projector/dome/renderMode.ts`), and the log is played into it at its logged times. Every frame therefore lands exactly where it belongs against the WAV, however slowly it renders. `--from` plays everything before that point without rendering it, so the page arrives in the state the performance left it.
 
-## 4. Sound for the venue console
+## 4. Live over NDI
+
+The page runs in its own window (Electron) whose sender publishes the NDI source **BiocracyEngine Cúpula**. Only that window can send NDI; a browser cannot.
+
+```bash
+DOME_LIVE=1 DOME_AUDIO=1 ./start_ecosystem.sh    # everything, with the live window instead of the browser
+# or, with the page already served:
+cd nw_wrld_local && npm run dome:live
+```
+
+In the window:
+1. **D** opens CÚPULA. Choose **2048** and **salida: ndi**.
+2. **D** again closes the view. The dome keeps receiving, and a badge in the bottom-right corner shows `CÚPULA · ndi 30 fps · 1 receptor`.
+3. **negro** sends black without stopping the output. **sin salida** stops it.
+
+Safety: if the page stops sending (output off, a frozen page), receivers get **black within 1 s** and keep getting it, so the dome goes dark rather than freezing on the last image. If the window crashes, it reloads, and an NDI output that was on comes back on by itself.
+
+Measured on the M5 with a separate NDI receiver: **2048 × 2048 at 30 fps**, arriving as UYVY with no alpha, image the right way round (front at the bottom).
+
+- The first `npm install` in `nw_wrld_local` downloads the NDI 6 SDK and builds the sender (`@stagetimerio/grandiose`, an optional dependency). It needs the Xcode Command Line Tools.
+- Use a wired gigabit network to Digistar. A 2048 NDI feed is a few hundred Mbit/s.
+- To check the feed before the venue: *NDI Studio Monitor* (free NDI Tools) on any machine on the same network should list **BiocracyEngine Cúpula**.
+- Keep the live feed at 2048. 4096 is for the pre-rendered clips.
+
+## 5. Sound for the venue console
 
 Bring the **MOTU** and start with:
 
@@ -109,7 +135,7 @@ The SC boot log confirms the mode: `MOTU router active (DOME): … L R Ls Rs`.
 
 The pre-rendered clips' `audio.wav` is 4 channels in the engine's own ring order: FL, FR, RR, RL. Tell the venue, or reorder it to L R Ls Rs when you prepare the files.
 
-## 5. Delivery checklist
+## 6. Delivery checklist
 
 Ask the venue:
 1. Which file format do they want: PNG/TIFF sequence, ProRes, HAP? At what fps?
@@ -129,7 +155,7 @@ Bring: the M5, the MOTU and its cables (4 × balanced line), the renders on a fa
 
 ## Pending
 
-- **Live NDI:** needs the NDI SDK and a Node binding installed on the M5. The current browser → WebSocket → Syphon route (`DOME=1`, `dome-bridge.js`) works but measured only about 8 fps at 2048.
+- **Live NDI on Digistar itself:** tested here against an NDI receiver on the same Mac, not yet against Digistar. Confirm resolution, frame rate and network with the venue (checklist, question 2).
 - **Bloom/glow** from slots that use it is not carried into the dome yet.
 
 ## Files
@@ -141,6 +167,8 @@ Bring: the M5, the MOTU and its cables (4 × balanced line), the renders on a fa
 | `src/projector/dome/domeCapture.ts` | finds each slot's scene and canvas without touching the slots |
 | `src/projector/dome/session.ts` | keys, slot and dome settings → the session log |
 | `src/projector/dome/renderMode.ts` | the virtual clock and replay, under `?render=1` |
+| `nw_wrld_local/dome-live.js` | the live window (Electron) |
+| `nw_wrld_local/dome-live-preload.js` | the NDI sender and its black dead-man |
 | `nw_wrld_local/dome-render.js` | the offline renderer (Electron + ffmpeg) |
 | `nw_wrld_local/parliament-bridge.js` | writes the `.session.jsonl` while SC records |
 | `11_recording_system.scd` | sends `/rec/started` and `/rec/stopped` |

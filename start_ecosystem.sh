@@ -126,6 +126,7 @@ pkill scsynth 2>/dev/null
 pkill -f "parliament-bridge\.js" 2>/dev/null
 pkill -f "laser-bridge\.js" 2>/dev/null
 pkill -f "dome-bridge\.js" 2>/dev/null
+pkill -f "dome-live\.js" 2>/dev/null
 pkill -f "webpack-dev-server" 2>/dev/null   # nw_wrld_local npm run serve
 pkill -f "eth_sonify\.py" 2>/dev/null
 sleep 0.5
@@ -136,6 +137,7 @@ pkill -9 scsynth 2>/dev/null
 pkill -9 -f "parliament-bridge\.js" 2>/dev/null
 pkill -9 -f "laser-bridge\.js" 2>/dev/null
 pkill -9 -f "dome-bridge\.js" 2>/dev/null
+pkill -9 -f "dome-live\.js" 2>/dev/null
 pkill -9 -f "webpack-dev-server" 2>/dev/null
 pkill -9 -f "eth_sonify\.py" 2>/dev/null
 
@@ -174,13 +176,14 @@ BRIDGE_PID=""
 SC_PID=""
 LASER_PID=""
 DOME_PID=""
+DOME_LIVE_PID=""
 
 cleanup() {
     echo ""
     echo "=============================================="
     echo "    CERRANDO ECOSISTEMA TRES-PARTES..."
     echo "=============================================="
-    for pid in $NW_PID $BRIDGE_PID $SC_PID $LASER_PID $DOME_PID; do
+    for pid in $NW_PID $BRIDGE_PID $SC_PID $LASER_PID $DOME_PID $DOME_LIVE_PID; do
         if [ -n "$pid" ] && kill -0 "$pid" 2>/dev/null; then
             kill "$pid" 2>/dev/null
         fi
@@ -192,6 +195,7 @@ cleanup() {
     pkill -f "parliament-bridge\.js" 2>/dev/null
     pkill -f "laser-bridge\.js" 2>/dev/null
     pkill -f "dome-bridge\.js" 2>/dev/null
+    pkill -f "dome-live\.js" 2>/dev/null
     pkill -f "webpack-dev-server" 2>/dev/null
     pkill -f "eth_sonify\.py" 2>/dev/null
     rm -f "$LOCKFILE"
@@ -273,6 +277,8 @@ fi
 # negro: la cúpula queda oscura, no congelada.
 #   DOME=1             → lanza el puente
 #   DOME_FLIP=1|0      → invierte la imagen si un receptor la ve de cabeza
+#   DOME_LIVE=1        → la página abre en la ventana de cúpula en vivo
+#                        (Electron) con salida NDI, en vez del navegador.
 #   DOME_AUDIO=1       → sonido para la consola de la sala: con la MOTU, las
 #                        salidas analógicas 3-6 llevan el cuadrafónico en
 #                        cuatro canales limpios, L R Ls Rs (sin la mezcla
@@ -327,6 +333,14 @@ fi
 # Si se desea integrar, debe hacerse dentro de sonETH/0_loader.scd.
 
 echo ""
+# DOME_LIVE=1: la página se abre en la ventana de la cúpula en vivo (Electron,
+# nw_wrld_local/dome-live.js) en vez del navegador: es la única que puede
+# enviar NDI. En la página: D → CÚPULA → salida «ndi».
+if [ "$DOME_LIVE" = "1" ]; then
+    echo "   Abriendo Parliament en la ventana de cúpula en vivo (NDI «BiocracyEngine Cúpula»)..."
+    ( cd "$SCRIPT_DIR/nw_wrld_local" && npx electron dome-live.js ) &
+    DOME_LIVE_PID=$!
+else
 echo "   Abriendo Parliament en http://localhost:9001/parliament.html ..."
 # `open` es de macOS; en Linux el equivalente es xdg-open. Si no hay ninguno
 # (sesión headless / SSH), no es fatal: la URL ya está impresa arriba.
@@ -336,6 +350,7 @@ elif command -v open &>/dev/null; then
     open http://localhost:9001/parliament.html
 else
     echo "   (sin xdg-open/open — ábrela a mano)"
+fi
 fi
 
 # 3. Levantar el Scraper Python de Ethereum (En Foreground)

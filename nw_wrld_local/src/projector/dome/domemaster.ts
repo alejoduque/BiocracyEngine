@@ -167,6 +167,14 @@ void main() {
 }
 `;
 
+// The live output's copy of the domemaster, flipped so that a readback (which
+// WebGL returns bottom row first) comes out top row first, as NDI wants it.
+const FLIP_FS = /* glsl */ `
+uniform sampler2D tDome;
+varying vec2 vUv;
+void main() { gl_FragColor = vec4(texture2D(tDome, vec2(vUv.x, 1.0 - vUv.y)).rgb, 1.0); }
+`;
+
 // The inside of the dome, textured with the domemaster. The hemisphere is in
 // dome-local coordinates: +Y the zenith, -Z the front, +X the right.
 const SIM_VS = /* glsl */ `
@@ -246,6 +254,13 @@ export class Domemaster {
   readonly simCamera: THREE.PerspectiveCamera;
   private quadCam = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1);
 
+  // live output: flipped copy + pixel-pack buffers read back a frame or two late
+  private outRT: THREE.WebGLRenderTarget | null = null;
+  private flipMat: THREE.ShaderMaterial;
+  private flipScene: THREE.Scene;
+  private pbos: { buf: WebGLBuffer; fence: WebGLSync | null; size: number }[] = [];
+  private pboNext = 0;
+
   // overlay: dome-native text + a flat panel for 2-D slots
   private overScene = new THREE.Scene();
   private textCanvas = document.createElement("canvas");
@@ -288,6 +303,12 @@ export class Domemaster {
       },
     });
     this.displayScene = quad(this.displayMat);
+
+    this.flipMat = new THREE.ShaderMaterial({
+      vertexShader: QUAD_VS, fragmentShader: FLIP_FS, depthTest: false, depthWrite: false,
+      uniforms: { tDome: { value: null } },
+    });
+    this.flipScene = quad(this.flipMat);
 
     this.simMat = new THREE.ShaderMaterial({
       vertexShader: SIM_VS, fragmentShader: SIM_FS, side: THREE.BackSide,
@@ -339,6 +360,8 @@ export class Domemaster {
     this.fisheyeMat.uniforms.uSize.value = N;
     this.displayMat.uniforms.tDome.value = this.domeRT.texture;
     this.simMat.uniforms.tDome.value = this.domeRT.texture;
+    this.flipMat.uniforms.tDome.value = this.domeRT.texture;
+    this.disposeOutput();   // sized to the domemaster; rebuilt on the next readback
     this.builtSize = N;
   }
 
@@ -543,7 +566,94 @@ export class Domemaster {
     this.renderer.readRenderTargetPixels(this.domeRT, 0, 0, N, N, data);
   }
 
+  // ── Live output (NDI) ───────────────────────────────────────────────────
+  // readPixels straight from domeRT stalls the page until the GPU has drawn
+  // the frame and copied it back: ~50 ms at 2048 on the M5, the whole frame
+  // budget. Instead each frame is flipped into outRT and read into one of
+  // three pixel-pack buffers with a fence; collectOutput() takes the oldest
+  // one once its fence has passed. The GPU works while the page goes on, and
+  // the output runs a frame or two behind the screen.
+
+  private gl2(): WebGL2RenderingContext | null {
+    const gl = this.renderer.getContext();
+    return typeof WebGL2RenderingContext !== "undefined" && gl instanceof WebGL2RenderingContext ? gl : null;
+  }
+
+  /** Queue the current domemaster for readback. False if every buffer is still in flight. */
+  beginOutput(): boolean {
+    const gl = this.gl2();
+    if (!gl) return false;
+    const N = this.params.size;
+    const bytes = N * N * 4;
+    if (!this.outRT) {
+      this.outRT = new THREE.WebGLRenderTarget(N, N, {
+        type: THREE.UnsignedByteType, generateMipmaps: false, depthBuffer: false,
+      });
+    }
+    if (this.pbos.length === 0) {
+      for (let i = 0; i < 3; i++) {
+        const buf = gl.createBuffer()!;
+        gl.bindBuffer(gl.PIXEL_PACK_BUFFER, buf);
+        gl.bufferData(gl.PIXEL_PACK_BUFFER, bytes, gl.STREAM_READ);
+        this.pbos.push({ buf, fence: null, size: bytes });
+      }
+      gl.bindBuffer(gl.PIXEL_PACK_BUFFER, null);
+    }
+    const slot = this.pbos[this.pboNext];
+    if (slot.fence) return false;              // the oldest has not been collected: drop this frame
+
+    const R = this.renderer;
+    R.setRenderTarget(this.outRT);
+    R.render(this.flipScene, this.quadCam);    // leaves outRT bound for the read
+    gl.bindBuffer(gl.PIXEL_PACK_BUFFER, slot.buf);
+    gl.readPixels(0, 0, N, N, gl.RGBA, gl.UNSIGNED_BYTE, 0);
+    gl.bindBuffer(gl.PIXEL_PACK_BUFFER, null);
+    R.setRenderTarget(null);
+    slot.fence = gl.fenceSync(gl.SYNC_GPU_COMMANDS_COMPLETE, 0);
+    gl.flush();
+    this.pboNext = (this.pboNext + 1) % this.pbos.length;
+    return true;
+  }
+
+  /**
+   * Copy the oldest finished readback into `dst` (N·N·4 bytes, RGBA, top row
+   * first). False when none is ready yet — never waits.
+   */
+  collectOutput(dst: Uint8Array): boolean {
+    const gl = this.gl2();
+    if (!gl || this.pbos.length === 0) return false;
+    // the oldest in flight is the one after the newest, going round
+    for (let k = 0; k < this.pbos.length; k++) {
+      const slot = this.pbos[(this.pboNext + k) % this.pbos.length];
+      if (!slot.fence) continue;
+      const st = gl.clientWaitSync(slot.fence, 0, 0);
+      if (st === gl.TIMEOUT_EXPIRED) return false;
+      gl.deleteSync(slot.fence);
+      slot.fence = null;
+      if (st === gl.WAIT_FAILED || dst.length !== slot.size) return false;
+      gl.bindBuffer(gl.PIXEL_PACK_BUFFER, slot.buf);
+      gl.getBufferSubData(gl.PIXEL_PACK_BUFFER, 0, dst);
+      gl.bindBuffer(gl.PIXEL_PACK_BUFFER, null);
+      return true;
+    }
+    return false;
+  }
+
+  /** Free the output targets (size change, output off). */
+  disposeOutput() {
+    const gl = this.gl2();
+    if (gl) {
+      for (const p of this.pbos) { if (p.fence) gl.deleteSync(p.fence); gl.deleteBuffer(p.buf); }
+    }
+    this.pbos = [];
+    this.pboNext = 0;
+    this.outRT?.dispose();
+    this.outRT = null;
+  }
+
   dispose() {
+    this.disposeOutput();
+    this.flipMat.dispose();
     this.sceneCube.dispose(); this.overCube.dispose(); this.domeRT.dispose();
     this.textTex.dispose(); this.panelTex?.dispose();
     this.fisheyeMat.dispose(); this.displayMat.dispose(); this.simMat.dispose();

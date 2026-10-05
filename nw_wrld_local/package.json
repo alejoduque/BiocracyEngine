@@ -8,6 +8,7 @@
     "start": "npm run build:runtime && concurrently -k \"npm run serve\" \"wait-on http://localhost:9001 && electron src\"",
     "serve": "webpack serve --mode development",
     "dome:render": "electron dome-render.js",
+    "dome:live": "electron dome-live.js",
     "build": "webpack --mode production",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "typecheck:core": "tsc -p tsconfig.core.json --noEmit",
@@ -199,6 +200,7 @@
     }
   },
   "optionalDependencies": {
+    "@stagetimerio/grandiose": "^0.2.0",
     "node-syphon": "^1.5.1"
   }
 }

@@ -10,12 +10,16 @@
 // P F B E R A C works with the dome open — so this is a view of the
 // instrument, not a second instrument.
 //
-// Routes out of the browser (Syphon, MadMapper, OBS, NDI) read the same
-// pixels the screen shows: Domemaster.readPixels(), exposed below as
-// window.__domeFrame for a bridge. The clean feed ("salida limpia") is the
-// capture route that needs nothing installed: it fills the window with the
-// bare domemaster for OBS / MadMapper screen capture — at screen resolution,
-// which is why it is a preview route, not the 4096 deliverable.
+// Routes out ("salida"), read back asynchronously from the same domemaster
+// the screen shows (Domemaster.beginOutput / collectOutput):
+//   ndi     — the page runs in dome-live.js (Electron), whose preload sends
+//             each frame as the NDI source "BiocracyEngine Cúpula". This is
+//             the live feed for the planetarium (Digistar takes NDI).
+//   syphon  — dome-bridge.js (DOME=1) over WebSocket, for MadMapper / OBS.
+// While a route is on the dome keeps rendering with the viewport closed, so
+// the performer can work the page while the dome receives the image. NEGRO
+// sends black. The clean feed ("salida limpia") fills the window with the
+// bare domemaster for screen capture — a preview route, not the deliverable.
 
 import { installDomeCapture, currentView, panelKind } from "./domeCapture";
 import { Domemaster, DEFAULT_PARAMS, type DomeParams } from "./domemaster";
@@ -23,12 +27,22 @@ import { RENDER_MODE } from "./renderMode";
 import { sessionEvent } from "./session";
 
 type ViewMode = "master" | "sim";
+type Output = "none" | "syphon" | "ndi";
+
+/** What dome-live-preload.js puts on the window (absent in a browser). */
+type DomeOut = {
+  name: string;
+  frame: (data: Uint8Array, width: number, height: number) => Promise<void>;
+  black: (on: boolean) => void;
+  connections: () => number;
+};
+const domeOut = (): DomeOut | null => (window as any).__domeOut ?? null;
 
 type Settings = DomeParams & {
   mode: ViewMode;
   guides: boolean;
-  /** Send the domemaster to dome-bridge.js → Syphon. */
-  syphon: boolean;
+  /** Where the domemaster goes besides the screen. */
+  output: Output;
   maxFps: 30 | 60;
   simYaw: number;
   simPitch: number;
@@ -41,7 +55,7 @@ const DEFAULTS: Settings = {
   ...DEFAULT_PARAMS,
   mode: "master",
   guides: true,
-  syphon: false,
+  output: "none",
   maxFps: 30,
   simYaw: 0,
   simPitch: 30,
@@ -52,7 +66,9 @@ let _stage: HTMLElement | null = null;
 let _root: HTMLDivElement | null = null;
 let _canvas: HTMLCanvasElement | null = null;
 let _dome: Domemaster | null = null;
-let _open = false;
+let _open = false;        // the viewport is showing
+let _running = false;     // the loop is on: viewport showing, or an output on
+let _black = false;
 let _clean = false;
 let _raf = 0;
 let _last = 0;
@@ -62,12 +78,13 @@ let _lastWarn = -Infinity;
 let _s: Settings = { ...DEFAULTS };
 const _ui: Record<string, HTMLElement> = {};
 
-// ── Out: the domemaster to dome-bridge.js (Syphon) ─────────────────────────
-// Same shape as laserTap: a WebSocket that retries quietly and never throws,
-// so the dome works identically with or without the bridge running. A frame
-// is only sent when the previous one has left the socket — under load frames
-// are DROPPED, never queued, so the dome stays live and the output simply runs
-// at whatever rate the machine can carry.
+// ── Out ─────────────────────────────────────────────────────────────────────
+// Both routes take frames from the asynchronous readback, at most one in
+// flight: under load frames are DROPPED, never queued, so the dome stays live
+// and the output runs at whatever rate the machine carries.
+
+// Syphon: dome-bridge.js over a WebSocket that retries quietly and never
+// throws, so the dome works the same with or without the bridge running.
 const OUT_URL = "ws://localhost:3338";
 const OUT_HEADER = 16;
 let _out: WebSocket | null = null;
@@ -77,7 +94,7 @@ let _outBuf: ArrayBuffer | null = null;
 let _outSent = 0;
 
 function outConnect() {
-  if (_out || !_s.syphon || !_open) return;
+  if (_out || _s.output !== "syphon") return;
   try {
     const ws = new WebSocket(OUT_URL);
     ws.binaryType = "arraybuffer";
@@ -85,7 +102,7 @@ function outConnect() {
     ws.onopen = () => { _outReady = true; };
     ws.onclose = () => {
       _out = null; _outReady = false;
-      if (_s.syphon && _open && !_outRetry) {
+      if (_s.output === "syphon" && !_outRetry) {
         _outRetry = setTimeout(() => { _outRetry = null; outConnect(); }, 2000);
       }
     };
@@ -99,26 +116,76 @@ function outClose() {
   _out = null; _outReady = false;
 }
 
-function outSend() {
-  if (!_dome || !_out || !_outReady || _out.bufferedAmount > 0) return;
+// NDI: two buffers taking turns, so the one NDI is still sending is never
+// the one the next readback is written into.
+const _ndiBufs: Uint8Array[] = [];
+let _ndiTurn = 0;
+let _ndiBusy = false;
+
+function outFrame() {
+  if (!_dome || _s.output === "none" || _black) return;
   const N = _dome.params.size;
-  const bytes = OUT_HEADER + N * N * 4;
-  if (!_outBuf || _outBuf.byteLength !== bytes) {
-    _outBuf = new ArrayBuffer(bytes);
-    const h = new DataView(_outBuf);
-    h.setUint8(0, 0x44); h.setUint8(1, 0x4f); h.setUint8(2, 0x4d); h.setUint8(3, 0x31); // "DOM1"
-    h.setUint32(4, N, true); h.setUint32(8, N, true);
-    h.setUint32(12, 1, true);                                   // bottom-up rows (WebGL)
+  if (_s.output === "ndi") {
+    const out = domeOut();
+    if (!out) return;
+    if (!_ndiBusy) {
+      if (!_ndiBufs[0] || _ndiBufs[0].length !== N * N * 4) {
+        _ndiBufs[0] = new Uint8Array(N * N * 4);
+        _ndiBufs[1] = new Uint8Array(N * N * 4);
+      }
+      const buf = _ndiBufs[_ndiTurn];
+      if (_dome.collectOutput(buf)) {
+        _ndiBusy = true;
+        _ndiTurn ^= 1;
+        _outSent++;
+        out.frame(buf, N, N).catch(() => { /* a dropped frame */ }).finally(() => { _ndiBusy = false; });
+      }
+    }
+  } else {
+    if (!_out || !_outReady) return;
+    if (_out.bufferedAmount === 0) {
+      const bytes = OUT_HEADER + N * N * 4;
+      if (!_outBuf || _outBuf.byteLength !== bytes) {
+        _outBuf = new ArrayBuffer(bytes);
+        const h = new DataView(_outBuf);
+        h.setUint8(0, 0x44); h.setUint8(1, 0x4f); h.setUint8(2, 0x4d); h.setUint8(3, 0x31); // "DOM1"
+        h.setUint32(4, N, true); h.setUint32(8, N, true);
+        h.setUint32(12, 0, true);                               // top row first (flipped on the GPU)
+      }
+      if (_dome.collectOutput(new Uint8Array(_outBuf, OUT_HEADER))) { _out.send(_outBuf); _outSent++; }
+    }
   }
-  _dome.readPixelsInto(new Uint8Array(_outBuf, OUT_HEADER));
-  _out.send(_outBuf);
-  _outSent++;
+  _dome.beginOutput();
+}
+
+function setOutput(o: Output) {
+  _s.output = o;
+  if (o === "syphon") outConnect(); else outClose();
+  if (o === "none") _dome?.disposeOutput();
+  setBlack(false);
+  syncLoop();
+}
+
+function setBlack(on: boolean) {
+  _black = on;
+  domeOut()?.black(on);
+  _root?.classList.toggle("black", on);
+  if (_ui.black) _ui.black.setAttribute("aria-pressed", String(on));
 }
 
 function load(): Settings {
   try {
     const raw = localStorage.getItem(STORE_KEY);
-    if (raw) return { ...DEFAULTS, ...JSON.parse(raw) };
+    if (raw) {
+      const saved = JSON.parse(raw);
+      // older settings had `syphon: true` instead of an output route
+      if (saved.output === undefined && saved.syphon) saved.output = "syphon";
+      delete saved.syphon;
+      const s: Settings = { ...DEFAULTS, ...saved };
+      // NDI only exists inside dome-live.js; in a browser it falls back to none
+      if (s.output === "ndi" && !domeOut()) s.output = "none";
+      return s;
+    }
   } catch { /* private window, blocked storage */ }
   return { ...DEFAULTS };
 }
@@ -184,18 +251,21 @@ function frame(t: number) {
     // frame, not the loop. Warn once per burst, not sixty times a second.
     if (t - _lastWarn > 5000) { console.warn("[dome] frame skipped:", e); _lastWarn = t; }
   }
-  if (_s.mode === "sim" && !_clean) _dome.presentSim(_s.simYaw, _s.simPitch, _s.simFov);
-  else _dome.presentMaster(_s.guides && !_clean);
-  if (_s.syphon) outSend();
+  // Drawn to the screen only while the viewport shows; with it closed the
+  // loop is here for the output alone.
+  if (_open) {
+    if (_s.mode === "sim" && !_clean) _dome.presentSim(_s.simYaw, _s.simPitch, _s.simFov);
+    else _dome.presentMaster(_s.guides && !_clean);
+  }
+  outFrame();
 
   _fpsN++;
   if (t - _fpsT >= 1000) {
     const secs = (t - _fpsT) / 1000;
     const fps = Math.round(_fpsN / secs);
-    if (_ui.out) {
-      _ui.out.textContent = !_s.syphon ? "" : _outReady
-        ? `syphon ${Math.round(_outSent / secs)} fps` : "syphon: sin puente (DOME=1)";
-    }
+    const status = outStatus(Math.round(_outSent / secs));
+    if (_ui.out) _ui.out.textContent = status;
+    if (_badge) { _badge.textContent = `CÚPULA · ${status}`; _badge.hidden = _open || _s.output === "none"; }
     _outSent = 0;
     _fpsT = t; _fpsN = 0;
     if (_ui.fps) _ui.fps.textContent = `${fps} fps`;
@@ -203,6 +273,18 @@ function frame(t: number) {
       _ui.src.textContent = view ? "escena 3D (fisheye)" : panel ? "panel 2D" : "sin imagen";
     }
   }
+}
+
+function outStatus(fps: number): string {
+  if (_s.output === "none") return "";
+  if (_black) return `${_s.output} · NEGRO`;
+  if (_s.output === "ndi") {
+    const out = domeOut();
+    if (!out) return "ndi: solo en dome:live";
+    const n = out.connections();
+    return `ndi ${fps} fps · ${n} receptor${n === 1 ? "" : "es"}`;
+  }
+  return _outReady ? `syphon ${fps} fps` : "syphon: sin puente (DOME=1)";
 }
 
 // ── UI ──────────────────────────────────────────────────────────────────────
@@ -226,6 +308,11 @@ const CSS = `
 #dome-bar select { background:#000; color:inherit; border:1px solid rgba(255,136,0,.35); font:inherit; }
 #dome-bar .ro { color:rgba(255,136,0,.5); }
 #dome-help { position:absolute; left:12px; bottom:8px; color:rgba(255,136,0,.45); pointer-events:none; }
+#dome-view.black canvas { opacity:.15; }
+#dome-bar button.negro[aria-pressed="true"] { background:#c00; border-color:#c00; color:#fff; }
+#dome-live-badge { position:fixed; right:12px; bottom:12px; z-index:8999; padding:4px 10px;
+  font:11px/1.4 ui-monospace, Menlo, monospace; color:#000; background:rgba(255,136,0,.9);
+  letter-spacing:.06em; pointer-events:none; }
 `;
 
 function el<K extends keyof HTMLElementTagNameMap>(tag: K, attrs: Record<string, string> = {}, text = "") {
@@ -297,9 +384,16 @@ function build() {
     slider("altura texto", 0, 60, 1, () => _s.textElevation, (v) => { _s.textElevation = v; apply(); }),
     segmented("guías", [["on", "guías"], ["off", "sin guías"]], () => (_s.guides ? "on" : "off"), (v) => { _s.guides = v === "on"; }),
     segmented("fps", [["30", "30 fps"], ["60", "60 fps"]], () => String(_s.maxFps), (v) => { _s.maxFps = +v as 30 | 60; }),
-    segmented("salida Syphon (dome-bridge.js)", [["on", "syphon"], ["off", "sin syphon"]],
-      () => (_s.syphon ? "on" : "off"),
-      (v) => { _s.syphon = v === "on"; if (_s.syphon) outConnect(); else outClose(); }),
+    segmented("salida: NDI (dome-live.js) o Syphon (dome-bridge.js); sigue con la vista cerrada",
+      [["none", "sin salida"], ["ndi", "ndi"], ["syphon", "syphon"]],
+      () => _s.output, (v) => setOutput(v as Output)),
+    (() => {
+      const b = el("button", { type: "button", class: "negro", "aria-pressed": "false",
+        title: "envía negro a la salida, sin apagarla" }, "negro") as HTMLButtonElement;
+      b.addEventListener("click", () => { b.blur(); setBlack(!_black); });
+      _ui.black = b;
+      return b;
+    })(),
     (_ui.out = el("span", { class: "ro" }, "")),
     (() => {
       const b = el("button", { type: "button" }, "salida limpia") as HTMLButtonElement;
@@ -349,27 +443,52 @@ function setClean(on: boolean) {
   requestAnimationFrame(resize);
 }
 
-function open() {
-  if (_open) return;
+let _badge: HTMLDivElement | null = null;
+
+function ensureBuilt() {
   if (!_root) build();
   if (!_dome) _dome = new Domemaster(_canvas!, _s);
+  if (!_badge) {
+    _badge = el("div", { id: "dome-live-badge" }) as HTMLDivElement;
+    _badge.hidden = true;
+    document.body.appendChild(_badge);
+  }
+}
+
+/** Run the loop while there is something to draw for: the viewport, or an output. */
+function syncLoop() {
+  const want = _open || _s.output !== "none";
+  if (want && !_running) {
+    ensureBuilt();
+    _running = true;
+    _last = 0; _fpsT = performance.now(); _fpsN = 0;
+    _raf = requestAnimationFrame(frame);
+  } else if (!want && _running) {
+    _running = false;
+    cancelAnimationFrame(_raf);
+  }
+  if (_badge && (_open || _s.output === "none")) _badge.hidden = true;
+}
+
+function open() {
+  if (_open) return;
+  ensureBuilt();
   _open = true;
   _root!.classList.add("open");
   resize();
-  _last = 0; _fpsT = performance.now(); _fpsN = 0;
-  _raf = requestAnimationFrame(frame);
-  if (_s.syphon) outConnect();
+  syncLoop();
 }
 
+// Closing the viewport no longer stops an output: the performer closes it to
+// reach the page while the dome keeps receiving. Turning the output to
+// "sin salida" stops it, and then the receivers go dark — NDI by the preload's
+// black frame, Syphon by dome-bridge.js's dead-man.
 function close() {
   if (!_open) return;
   _open = false;
-  // Closing the dome stops the feed; the bridge's dead-man then publishes
-  // black, so the dome goes dark instead of holding the last frame.
-  outClose();
   setClean(false);
-  cancelAnimationFrame(_raf);
   _root!.classList.remove("open");
+  syncLoop();
 }
 
 // ── Public ──────────────────────────────────────────────────────────────────
@@ -379,6 +498,9 @@ export function initDome(stage: HTMLElement) {
   installDomeCapture(stage);
   if (RENDER_MODE) { initRender(); return; }
   _s = load();
+  // Inside dome-live.js an NDI output left on comes back on by itself: a
+  // window reopened mid-show resumes the feed without anyone touching it.
+  if (_s.output === "ndi") syncLoop();
 
   window.addEventListener("keydown", (e) => {
     if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement
@@ -403,7 +525,7 @@ export function initDome(stage: HTMLElement) {
 function initRender() {
   const q = new URLSearchParams(location.search);
   const size = (q.get("dome") === "2048" ? 2048 : 4096) as 2048 | 4096;
-  _s = { ...DEFAULTS, size, syphon: false };
+  _s = { ...DEFAULTS, size, output: "none" };
   build();
   _dome = new Domemaster(_canvas!, _s);
   _dome.renderer.setPixelRatio(1);

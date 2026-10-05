@@ -11,7 +11,7 @@ Un domo recibe un **domemaster**: una imagen cuadrada en ojo de pez, con el ceni
 | Mitad | Resolución | Cómo | Estado |
 |---|---|---|---|
 | **Pre-renderizada** | 4096 × 4096 | Sesiones grabadas, renderizadas fuera de tiempo real; Digistar reproduce los archivos | ✅ lista |
-| **En vivo** | ~2048 × 2048 | El instrumento corriendo, enviado a Digistar por NDI | ⏳ pendiente |
+| **En vivo** | 2048 × 2048 | El instrumento corriendo, enviado a Digistar por NDI a 30 fps | ✅ lista |
 | **Sonido** | 4 canales | La MOTU va a la consola de la sala: L R Ls Rs | ✅ listo |
 
 La mitad 4K se renderiza fuera de tiempo real para no exigirle al M5 4K en vivo.
@@ -30,6 +30,8 @@ En `parliament.html`, la **D** abre **CÚPULA** sobre la página. Las ranuras si
 | inclinación | inclinación del domo, solo en la simulación |
 | texto · letra · altura texto | el título de la ranura dibujado en la cúpula (tamaño y altura en grados) |
 | guías | anillos de elevación cada 15° y una marca al frente |
+| salida: sin salida / ndi / syphon | adónde va el domemaster además de la pantalla. **ndi** solo funciona en la ventana en vivo (sección 4). La salida sigue con la vista cerrada |
+| negro | envía negro a la salida sin apagarla |
 | salida limpia | el domemaster solo, a pantalla completa (Esc para volver). Sirve solo para captura de pantalla, no es la entrega 4K |
 
 Cada ranura llega a la cúpula por una de dos vías:
@@ -86,7 +88,31 @@ npm run dome:render -- --session ../recordings/<nombre>.session.jsonl --size 204
 
 Cómo funciona: la página corre con un reloj virtual (`src/projector/dome/renderMode.ts`) y el log se le entrega en sus tiempos. Así cada cuadro cae exactamente donde le corresponde frente al WAV, por lento que se renderice. `--from` reproduce todo lo anterior sin renderizarlo, para que la página llegue a ese punto en el estado en que la dejó la función.
 
-## 4. Sonido para la consola de la sala
+## 4. En vivo por NDI
+
+La página corre en su propia ventana (Electron), cuyo emisor publica la fuente NDI **BiocracyEngine Cúpula**. Solo esa ventana puede enviar NDI; un navegador no.
+
+```bash
+DOME_LIVE=1 DOME_AUDIO=1 ./start_ecosystem.sh    # todo, con la ventana en vivo en vez del navegador
+# o, con la página ya servida:
+cd nw_wrld_local && npm run dome:live
+```
+
+En la ventana:
+1. **D** abre CÚPULA. Elige **2048** y **salida: ndi**.
+2. **D** otra vez cierra la vista. El domo sigue recibiendo, y una etiqueta abajo a la derecha muestra `CÚPULA · ndi 30 fps · 1 receptor`.
+3. **negro** envía negro sin detener la salida. **sin salida** la detiene.
+
+Seguridad: si la página deja de enviar (salida apagada, página congelada), los receptores reciben **negro en menos de 1 s** y lo siguen recibiendo, así que el domo queda oscuro en vez de congelado en la última imagen. Si la ventana se cae, se recarga, y una salida NDI que estaba encendida vuelve sola.
+
+Medido en el M5 con un receptor NDI aparte: **2048 × 2048 a 30 fps**, llega en UYVY sin alfa, con la imagen al derecho (el frente abajo).
+
+- La primera vez, `npm install` en `nw_wrld_local` descarga el SDK de NDI 6 y compila el emisor (`@stagetimerio/grandiose`, dependencia opcional). Necesita las Command Line Tools de Xcode.
+- Usa red cableada gigabit hacia Digistar. Una señal NDI de 2048 ocupa unos cientos de Mbit/s.
+- Para revisar la señal antes de llegar a la sala: *NDI Studio Monitor* (NDI Tools, gratis) en cualquier equipo de la misma red debería mostrar **BiocracyEngine Cúpula**.
+- Deja la señal en vivo en 2048. El 4096 es para los clips pre-renderizados.
+
+## 5. Sonido para la consola de la sala
 
 Lleva la **MOTU** y arranca con:
 
@@ -109,7 +135,7 @@ El log de arranque de SC confirma el modo: `MOTU router active (DOME): … L R L
 
 El `audio.wav` de los clips pre-renderizados es de 4 canales en el orden del anillo del motor: FL, FR, RR, RL. Avísale a la sala, o reordénalo a L R Ls Rs al preparar los archivos.
 
-## 5. Lista de entrega
+## 6. Lista de entrega
 
 Preguntar a la sala:
 1. ¿Qué formato de archivo quieren: secuencia PNG/TIFF, ProRes, HAP? ¿A cuántos fps?
@@ -129,7 +155,7 @@ Llevar: el M5, la MOTU y sus cables (4 × línea balanceada), los renders en un 
 
 ## Pendiente
 
-- **NDI en vivo:** requiere instalar en el M5 el SDK de NDI y un binding de Node. La ruta actual navegador → WebSocket → Syphon (`DOME=1`, `dome-bridge.js`) funciona, pero se midió en solo unos 8 fps a 2048.
+- **NDI en vivo en el propio Digistar:** probado aquí contra un receptor NDI en el mismo Mac, todavía no contra Digistar. Confirmar con la sala resolución, fps y red (lista de entrega, pregunta 2).
 - **El bloom/brillo** de las ranuras que lo usan todavía no pasa a la cúpula.
 
 ## Archivos
@@ -141,6 +167,8 @@ Llevar: el M5, la MOTU y sus cables (4 × línea balanceada), los renders en un 
 | `src/projector/dome/domeCapture.ts` | encuentra la escena y el canvas de cada ranura sin tocar las ranuras |
 | `src/projector/dome/session.ts` | teclas, ranura y ajustes de la cúpula → el log de sesión |
 | `src/projector/dome/renderMode.ts` | el reloj virtual y la reproducción, bajo `?render=1` |
+| `nw_wrld_local/dome-live.js` | la ventana en vivo (Electron) |
+| `nw_wrld_local/dome-live-preload.js` | el emisor NDI y su negro de seguridad |
 | `nw_wrld_local/dome-render.js` | el renderizador fuera de tiempo real (Electron + ffmpeg) |
 | `nw_wrld_local/parliament-bridge.js` | escribe el `.session.jsonl` mientras SC graba |
 | `11_recording_system.scd` | envía `/rec/started` y `/rec/stopped` |
