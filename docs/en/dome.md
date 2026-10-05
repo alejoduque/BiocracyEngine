@@ -72,7 +72,7 @@ Output in `renders/<name>_4096/`: `frame_00000.png …` plus `audio.wav`. The au
 | `--size 4096\|2048` | 4096 | domemaster size |
 | `--fps <n>` | 30 | |
 | `--from <s> --to <s>` | whole session | stretch to render, in seconds into the recording |
-| `--format png\|prores` | png | PNG sequence, or one ProRes 4444 `.mov` |
+| `--format png\|prores\|hapq` | png | PNG sequence, one ProRes 4444 `.mov`, or one **HAP Q `.mov`**, the planetarium's format (build its ffmpeg once: `tools/ffmpeg-hap/build.sh`) |
 | `--out <dir>` | `renders/<name>_<size>` | |
 | `--warmup <s>` | 3 | time the page runs before time zero so slots can mount |
 | `--window <WxH>` | 1920x1080 | page size, which sets the resolution of the 2-D panel slots |
@@ -133,18 +133,23 @@ The SC boot log confirms the mode: `MOTU router active (DOME): … L R Ls Rs`.
 
 **Fallback, if the console only takes stereo:** start **without** `DOME_AUDIO=1`. Analog 3-4 then carry the studio stereo mix (front + rear folded in).
 
-The pre-rendered clips' `audio.wav` is 4 channels in the engine's own ring order: FL, FR, RR, RL. Tell the venue, or reorder it to L R Ls Rs when you prepare the files.
+The pre-rendered clips' `audio.wav` comes out as the venue asks: WAV at 48 kHz / 24 bit, 4 channels in console order **L R Ls Rs**.
 
-## 6. Delivery checklist
+## 6. What the venue confirmed
 
-Ask the venue:
-1. Which file format do they want: PNG/TIFF sequence, ProRes, HAP? At what fps?
-2. NDI live input: what resolution and frame rate? Is the network wired, gigabit?
-3. Is the dome **flat or tilted**? Where is the "front" for the seating? (Set *frente* and *inclinación* accordingly.)
-4. Audio inputs at the console: 4 line inputs available? Analog, Dante, MADI?
-5. How much technical rehearsal time is there in the dome?
+| | |
+|---|---|
+| **Domemaster** | 4096 × 4096, 1:1, inscribed circle, equidistant 180°. Bottom = south (front), left = east, right = west, top = north (back). Our domemaster already uses this orientation. |
+| **Their grid** | "Dome Master 4k Pattern v3.jpg": load it with **grilla sala** in the CÚPULA view to check alignment. It shows on screen only, never in the output. |
+| **Clips** | `.MOV` with **HAP** at 30 or 60 fps, or DDS image sequences (stating the fps). We deliver **HAP Q at 30 fps**: `npm run dome:render -- --session … --format hapq`. |
+| **Delivery** | USB 3.0 hard drive or stick, formatted **NTFS**. macOS cannot write NTFS on its own, so a driver is needed (Paragon NTFS / Tuxera, or macFUSE + ntfs-3g), or format and copy on a Windows machine. |
+| **Size** | HAP Q at 4096, 30 fps: measured ~3 GB per minute on a dark scene (1.7 MB per frame). Busier scenes compress less; render one minute first and check. Rendering runs at ~2.7 fps at 4096. |
+| **NDI** | Sender with a dedicated GPU and **RJ45 at ≥1 Gb/s**. The M5 needs a USB-C/Thunderbolt Ethernet adapter. Live goes at 2048: a 4096 NDI feed does not fit in 1 Gb/s, and Digistar scales it. |
+| **Audio** | 7.1 / 5.1 system. Our **4 discrete lines (L R Ls Rs)** are confirmed; they map them at the console. Native files: WAV 48 kHz / 24 bit. Ring C is gone; there are now 6 subwoofers (bass management at their console). |
+| **Schedule** | **21 October, 2:00–8:00 p.m. only**: setup, tests, rehearsal and show in the same window. No earlier access. |
+| **Table** | A wide table with power. Station position, HDMI and XLR runs to be agreed beforehand. |
 
-Bring: the M5, the MOTU and its cables (4 × balanced line), the renders on a fast drive, and their audio files.
+Bring: the M5, a USB-C → RJ45 gigabit adapter, the MOTU and its cables (4 × balanced line, XLR), HDMI, and the HAP Q clips with their WAVs on an NTFS USB 3.0 drive.
 
 ## Design notes for a 23 m dome
 
@@ -155,8 +160,7 @@ Bring: the M5, the MOTU and its cables (4 × balanced line), the renders on a fa
 
 ## Pending
 
-- **Live NDI on Digistar itself:** tested here against an NDI receiver on the same Mac, not yet against Digistar. Confirm resolution, frame rate and network with the venue (checklist, question 2).
-- **Bloom/glow** from slots that use it is not carried into the dome yet.
+- **Live NDI on Digistar itself:** tested here against an NDI receiver on the same Mac, not yet against Digistar. It will be tested on the day, within the 2–8 p.m. window.
 
 ## Files
 

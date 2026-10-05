@@ -70,3 +70,7 @@ presets/_autosave.json
 # Masters de Bandcamp (~400 MB, reconstruibles con bandcamp/build_bandcamp.py
 # desde recordings/). album.json, el script y METADATOS.md sí se versionan.
 bandcamp/wav/
+
+# ffmpeg con HAP compilado localmente (tools/ffmpeg-hap/build.sh): fuentes y binarios.
+tools/ffmpeg-hap/*
+!tools/ffmpeg-hap/build.sh

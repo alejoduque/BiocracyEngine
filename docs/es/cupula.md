@@ -72,7 +72,7 @@ Sale en `renders/<nombre>_4096/`: `frame_00000.png …` y `audio.wav`. El audio 
 | `--size 4096\|2048` | 4096 | tamaño del domemaster |
 | `--fps <n>` | 30 | |
 | `--from <s> --to <s>` | toda la sesión | tramo a renderizar, en segundos desde el inicio de la grabación |
-| `--format png\|prores` | png | secuencia PNG, o un solo `.mov` ProRes 4444 |
+| `--format png\|prores\|hapq` | png | secuencia PNG, un `.mov` ProRes 4444, o un **`.mov` HAP Q**, el formato de la sala (su ffmpeg se compila una vez: `tools/ffmpeg-hap/build.sh`) |
 | `--out <dir>` | `renders/<nombre>_<size>` | |
 | `--warmup <s>` | 3 | tiempo que corre la página antes del cero, para que las ranuras monten |
 | `--window <AxA>` | 1920x1080 | tamaño de la página, que fija la resolución de las ranuras en panel 2D |
@@ -133,18 +133,23 @@ El log de arranque de SC confirma el modo: `MOTU router active (DOME): … L R L
 
 **Respaldo, si la consola solo recibe estéreo:** arranca **sin** `DOME_AUDIO=1`. Las analógicas 3-4 llevan entonces la mezcla estéreo del estudio (frente + traseros doblados).
 
-El `audio.wav` de los clips pre-renderizados es de 4 canales en el orden del anillo del motor: FL, FR, RR, RL. Avísale a la sala, o reordénalo a L R Ls Rs al preparar los archivos.
+El `audio.wav` de los clips pre-renderizados sale como lo pide la sala: WAV a 48 kHz / 24 bits, 4 canales en orden de consola **L R Ls Rs**.
 
-## 6. Lista de entrega
+## 6. Lo que confirmó la sala
 
-Preguntar a la sala:
-1. ¿Qué formato de archivo quieren: secuencia PNG/TIFF, ProRes, HAP? ¿A cuántos fps?
-2. Entrada NDI en vivo: ¿qué resolución y fps? ¿La red es cableada, gigabit?
-3. ¿El domo es **plano o inclinado**? ¿Dónde queda el "frente" para las butacas? (Ajustar *frente* e *inclinación* según eso.)
-4. Entradas de audio en la consola: ¿hay 4 entradas de línea? ¿Analógicas, Dante, MADI?
-5. ¿Cuánto tiempo de ensayo técnico hay en el domo?
+| | |
+|---|---|
+| **Domemaster** | 4096 × 4096, 1:1, círculo inscrito, equidistante a 180°. Abajo = sur (frente), izquierda = este, derecha = oeste, arriba = norte (espalda). Nuestro domemaster ya usa esa orientación. |
+| **Su grilla** | "Dome Master 4k Pattern v3.jpg": se carga con **grilla sala** en la vista CÚPULA para revisar la alineación. Solo se ve en pantalla, nunca en la salida. |
+| **Clips** | `.MOV` con **HAP** a 30 o 60 fps, o secuencias DDS (indicando los fps). Entregamos **HAP Q a 30 fps**: `npm run dome:render -- --session … --format hapq`. |
+| **Entrega** | Disco duro o memoria USB 3.0 en formato **NTFS**. macOS no escribe NTFS por sí solo, así que hace falta un driver (Paragon NTFS / Tuxera, o macFUSE + ntfs-3g), o formatear y copiar desde un equipo Windows. |
+| **Tamaño** | HAP Q a 4096 y 30 fps: medido ~3 GB por minuto en una escena oscura (1,7 MB por cuadro). Las escenas más cargadas comprimen menos; renderizar un minuto primero y revisar. El render va a ~2,7 fps a 4096. |
+| **NDI** | Emisor con GPU dedicada y **RJ45 de ≥1 Gb/s**. El M5 necesita un adaptador USB-C/Thunderbolt a Ethernet. En vivo va a 2048: una señal NDI de 4096 no cabe en 1 Gb/s, y Digistar la escala. |
+| **Audio** | Sistema 7.1 / 5.1. Nuestras **4 líneas discretas (L R Ls Rs)** están confirmadas; las mapean en la consola. Archivos nativos: WAV 48 kHz / 24 bits. El anillo C ya no está; ahora hay 6 subwoofers (el manejo de graves lo hace su consola). |
+| **Horario** | **Solo el 21 de octubre, de 2:00 a 8:00 p. m.**: montaje, pruebas, ensayo y función en la misma franja. No hay acceso antes. |
+| **Mesa** | Mesa amplia con tomas eléctricas. La ubicación de la estación y los tiros de HDMI y XLR se acuerdan antes. |
 
-Llevar: el M5, la MOTU y sus cables (4 × línea balanceada), los renders en un disco rápido y su audio.
+Llevar: el M5, un adaptador USB-C → RJ45 gigabit, la MOTU y sus cables (4 × línea balanceada, XLR), HDMI, y los clips HAP Q con sus WAV en un disco USB 3.0 en NTFS.
 
 ## Notas de diseño para un domo de 23 m
 
@@ -155,8 +160,7 @@ Llevar: el M5, la MOTU y sus cables (4 × línea balanceada), los renders en un 
 
 ## Pendiente
 
-- **NDI en vivo en el propio Digistar:** probado aquí contra un receptor NDI en el mismo Mac, todavía no contra Digistar. Confirmar con la sala resolución, fps y red (lista de entrega, pregunta 2).
-- **El bloom/brillo** de las ranuras que lo usan todavía no pasa a la cúpula.
+- **NDI en vivo en el propio Digistar:** probado aquí contra un receptor NDI en el mismo Mac, todavía no contra Digistar. Se prueba el mismo día, dentro de la franja de 2 a 8 p. m.
 
 ## Archivos
 

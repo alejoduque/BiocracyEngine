@@ -23,7 +23,9 @@
 //   --size 4096|2048     domemaster size (default 4096)
 //   --fps <n>            default 30
 //   --from <s> --to <s>  span to render, seconds into the recording (default: all)
-//   --format png|prores  PNG sequence (default) or one ProRes 4444 .mov
+//   --format png|prores|hapq  PNG sequence (default), one ProRes 4444 .mov, or
+//                        one HAP Q .mov — the planetarium's format (needs the
+//                        ffmpeg built by tools/ffmpeg-hap/build.sh)
 //   --warmup <s>         virtual seconds the page runs before time zero (default 3)
 //   --window <WxH>       page size, i.e. the resolution of the 2-D slots (default 1920x1080)
 //   --audio-offset <ms>  shift the audio against the picture (default 0)
@@ -61,7 +63,13 @@ if (!args.session) fail("--session <file.session.jsonl> is required");
 const SESSION = path.resolve(args.session);
 const SIZE = args.size === "2048" ? 2048 : 4096;
 const FPS = Number(args.fps) || 30;
-const FORMAT = args.format === "prores" ? "prores" : "png";
+const FORMAT = ["prores", "hapq"].includes(args.format) ? args.format : "png";
+// HAP needs an ffmpeg built with libsnappy; Homebrew's is not.
+const HAP_FFMPEG = process.env.DOME_FFMPEG || path.join(__dirname, "..", "tools", "ffmpeg-hap", "bin", "ffmpeg");
+const FFMPEG = FORMAT === "hapq" ? HAP_FFMPEG : "ffmpeg";
+if (FORMAT === "hapq" && !fs.existsSync(FFMPEG)) {
+  fail(`--format hapq needs ${FFMPEG} — build it once with tools/ffmpeg-hap/build.sh`);
+}
 const WARMUP_MS = (args.warmup !== undefined ? Number(args.warmup) : 3) * 1000;
 const [WIN_W, WIN_H] = String(args.window || "1920x1080").split("x").map(Number);
 const AUDIO_OFFSET_MS = Number(args["audio-offset"]) || 0;
@@ -96,6 +104,7 @@ const N_FRAMES = Math.floor(((TO_MS - FROM_MS) / 1000) * FPS);
 // Raw RGBA in, rows bottom-up as WebGL reads them (vflip).
 let ff = null;
 let ffDone = null;
+let ffEnding = false;
 
 function startFfmpeg(w, h) {
   fs.mkdirSync(OUT, { recursive: true });
@@ -105,10 +114,18 @@ function startFfmpeg(w, h) {
   const output = FORMAT === "prores"
     ? ["-c:v", "prores_ks", "-profile:v", "4", "-pix_fmt", "yuv444p10le", "-vendor", "apl0",
        path.join(OUT, `${NAME}_${SIZE}.mov`)]
+    : FORMAT === "hapq"
+    // HAP Q: the planetarium's playback codec (.MOV, 30 or 60 fps). Q keeps
+    // the dark gradients these scenes live in from banding.
+    ? ["-c:v", "hap", "-format", "hap_q", path.join(OUT, `${NAME}_${SIZE}_hapq_${FPS}fps.mov`)]
     : ["-c:v", "png", "-compression_level", "3", "-pix_fmt", "rgb24", "-start_number", "0",
        path.join(OUT, "frame_%05d.png")];
-  ff = spawn("ffmpeg", [...input, ...output], { stdio: ["pipe", "inherit", "inherit"] });
+  ff = spawn(FFMPEG, [...input, ...output], { stdio: ["pipe", "inherit", "inherit"] });
   ffDone = new Promise((res) => ff.on("close", res));
+  // ffmpeg gone before we closed its input is a failure, not a slow encoder:
+  // without this the render waits on a pipe nobody reads, forever.
+  ff.on("close", (code) => { if (!ffEnding) fail(`ffmpeg stopped early (exit ${code}) — see its message above`); });
+  ff.stdin.on("error", () => { /* reported by the close handler */ });
   ff.on("error", (e) => fail(`ffmpeg: ${e.message} (is it installed? brew install ffmpeg)`));
 }
 
@@ -231,7 +248,7 @@ async function run() {
   }
   process.stdout.write("\n");
 
-  if (ff) { ff.stdin.end(); await ffDone; }
+  if (ff) { ffEnding = true; ff.stdin.end(); await ffDone; }
   win.destroy();
   cutAudio();
   console.log(`[dome-render] done in ${fmt((Date.now() - t0) / 1000)} → ${OUT}`);
