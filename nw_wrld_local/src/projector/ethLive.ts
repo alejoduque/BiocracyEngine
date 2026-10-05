@@ -80,8 +80,46 @@ export function getEthLive(): EthLive {
     return eth;
 }
 
+// ── The chain's own numbers ─────────────────────────────────────────────────
+// A short log of what arrived, in the chain's units, for modules that print it
+// (slot 1's data nodes). SC appends the raw fields after the normalised ones
+// (6_osc_handlers.scd); an older SC sends only the normalised nine, and then
+// value and gas are recovered by inverting SC's own log mapping exactly — the
+// numbers are the same, only the clipping at the ends of the range is lost.
+export type EthTxRaw = {
+    kind: "tx"; at: number; eth: number; gwei: number; hash: string | null;
+    nonce: number | null; calldata: number | null; index: number | null; gasNorm: number; valueNorm: number;
+};
+export type EthBlockRaw = {
+    kind: "block"; at: number; number: number | null; txCount: number | null;
+    baseFee: number | null; hash: string | null; fullness: number;
+};
+const TX_LOG_MAX = 256;
+const txLog: EthTxRaw[] = [];
+const blockLog: EthBlockRaw[] = [];
+let txSeq = 0;
+let blockSeq = 0;
+
+/** Recent transactions, oldest first, and a count that only ever grows. */
+export function getEthTxLog(): { seq: number; items: EthTxRaw[] } { return { seq: txSeq, items: txLog }; }
+export function getEthBlockLog(): { seq: number; items: EthBlockRaw[] } { return { seq: blockSeq, items: blockLog }; }
+
+const num = (v: unknown): number | null => (typeof v === "number" && isFinite(v) ? v : null);
+const str = (v: unknown): string | null => (typeof v === "string" && v.length ? v : null);
+
 /** From the /eth/live handler in parliamentEntry. */
 export function pushEthTx(a: number[]): void {
+    const r = a as unknown[];
+    const vN = num(r[0]) ?? eth.value, gN = num(r[2]) ?? eth.gas;
+    txLog.push({
+        kind: "tx", at: now(),
+        eth: num(r[9]) ?? Math.pow(10, vN * 8 - 6),
+        gwei: num(r[10]) ?? Math.pow(10, gN * 3.7 - 1),
+        hash: str(r[11]), nonce: num(r[12]), calldata: num(r[13]), index: num(r[14]),
+        gasNorm: gN, valueNorm: vN,
+    });
+    if (txLog.length > TX_LOG_MAX) txLog.shift();
+    txSeq++;
     const n = (i: number, d: number) =>
         (typeof a[i] === "number" && isFinite(a[i])) ? Math.max(0, Math.min(1, a[i])) : d;
     eth.value = n(0, eth.value);
@@ -101,6 +139,15 @@ export function pushEthTx(a: number[]): void {
 
 /** From the /eth/block/live handler. */
 export function pushEthBlock(a: number[]): void {
+    const r = a as unknown[];
+    const bN = num(r[2]);
+    blockLog.push({
+        kind: "block", at: now(), number: num(r[5]), txCount: num(r[6]),
+        baseFee: num(r[7]) ?? (bN !== null ? Math.pow(10, bN * 3.7 - 1) : null),
+        hash: str(r[8]), fullness: num(r[1]) ?? 0,
+    });
+    if (blockLog.length > 64) blockLog.shift();
+    blockSeq++;
     const n = (i: number, d: number) =>
         (typeof a[i] === "number" && isFinite(a[i])) ? Math.max(0, Math.min(1, a[i])) : d;
     eth.parity = n(0, eth.parity);

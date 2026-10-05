@@ -229,11 +229,14 @@ s.waitForBoot {
             // delay in one and the sample delay in the other).
             corpusFx = 0.6, corpusFxBus = -1,
             smpStretchBus = -1, smpPitchBus = -1, smpGrainBus = -1,
-            smpReverbBus = -1, smpDelayBus = -1, smpDelayTimeBus = -1, smpDelayFbBus = -1;
+            smpReverbBus = -1, smpDelayBus = -1, smpDelayTimeBus = -1, smpDelayFbBus = -1,
+            // CRUDO (0_parameters.scd): the file with none of the processing.
+            corpusCrudoBus = -1;
 
         var sig, env, wet, quadSig, level, floorVal, veil, lpf, res, room, spread, master;
         var fx, stretch, semis, grainSz, smpRev, dAmt, dTime, dFb;
         var pitched, grains, pointer, stretchAmt, echo;
+        var raw, crudo;
 
         level    = Select.kr(corpusLevelBus    >= 0, [corpusLevel,   In.kr(corpusLevelBus, 1)]);
         floorVal = Select.kr(opacityFloorBus   >= 0, [opacityFloor,  In.kr(opacityFloorBus, 1)]);
@@ -265,6 +268,7 @@ s.waitForBoot {
         sig = PlayBuf.ar(1, buf, rate * BufRateScale.kr(buf),
             startPos: startPos.clip(0, 0.999) * BufFrames.kr(buf),
             loop: 0, doneAction: 0);
+        raw = sig;   // the file as recorded, for CRUDO
 
         // ── The sample row, on the forest ─────────────────────────────────
         // The recording itself keeps its own clock. The envelope was fitted
@@ -291,7 +295,13 @@ s.waitForBoot {
         sig = XFade2.ar(sig, grains, stretchAmt.linlin(0, 1, -1, 1));
 
         sig = HPF.ar(sig, 25);
-        sig = RLPF.ar(sig, lpf.clip(200, 18000), res.clip(0.1, 0.8));
+        // spectralShift only reaches 2400 Hz, and this used it as the cutoff
+        // directly — so the forest was ALWAYS low-passed under 2.4 kHz (under
+        // 1 kHz at the default), while most insects and birds sit at 3-8 kHz.
+        // That was much of the corpus's weakness and its distant, muffled
+        // sound. Mapped now: 80-2400 → 1.5-18 kHz, still a darkening control,
+        // never one that hides the recording.
+        sig = RLPF.ar(sig, lpf.explin(80, 2400, 1500, 18000), res.clip(0.1, 0.8));
 
         // DELAY / DELAY TIME, with the sample voice's feedback, recirculating.
         echo = CombC.ar(sig, 2.0, dTime, dTime * (0.001.log / dFb.log));
@@ -323,6 +333,12 @@ s.waitForBoot {
         room = (room + (smpRev * 0.6)).clip(0, 0.9);
         wet = FreeVerb.ar(sig, room, 0.85, 0.25);
         sig = XFade2.ar(sig, wet, room.linlin(0, 0.9, -1, 0.4));
+        // CRUDO: the same gains, none of the processing above.
+        crudo = Lag.kr(Select.kr(corpusCrudoBus >= 0, [0, In.kr(corpusCrudoBus, 1)]).clip(0, 1), 0.15);
+        raw = raw * env * amp.clip(0, 1) * level.clip(0, 1) * veil
+            * (~trimCorpus ? 0.299)
+            * Lag.kr(Select.kr(mixCorpusBus >= 0, [1.0, In.kr(mixCorpusBus, 1)]), 0.08);
+        sig = XFade2.ar(sig, raw, crudo.linlin(0, 1, -1, 1));
         sig = sig * master.clip(0, 1);
 
         quadSig = if((~limiterChans ? s.options.numOutputBusChannels) >= 4) {
@@ -354,9 +370,9 @@ s.waitForBoot {
             // Matrix mixer. The absence voice gets its own fader rather than
             // sharing mixCorpus: it is the layer most likely to want muting
             // outright, being the one that plays when nothing was recorded.
-            mixUltraBus = -1;
+            mixUltraBus = -1, corpusCrudoBus = -1;
 
-        var sig, env, quadSig, weight, level, floorVal, veil, lpf, room, master;
+        var sig, env, quadSig, weight, level, floorVal, veil, lpf, room, master, crudo;
 
         weight   = Select.kr(absenceWeightBus  >= 0, [absenceWeight, In.kr(absenceWeightBus, 1)]);
         level    = Select.kr(corpusLevelBus    >= 0, [corpusLevel,   In.kr(corpusLevelBus, 1)]);
@@ -379,7 +395,10 @@ s.waitForBoot {
         sig = DiskIn.ar(1, buf, loop: 0);
 
         sig = HPF.ar(sig, 80);
-        sig = LPF.ar(sig, lpf.clip(200, 18000));
+        // Same mapping as \corpusVoice: the ×8-expanded calls live at
+        // 2.5-12 kHz and a 2.4 kHz ceiling removed most of them. CRUDO skips it.
+        crudo = Lag.kr(Select.kr(corpusCrudoBus >= 0, [0, In.kr(corpusCrudoBus, 1)]).clip(0, 1), 0.15);
+        sig = XFade2.ar(LPF.ar(sig, lpf.explin(80, 2400, 1500, 18000)), sig, crudo.linlin(0, 1, -1, 1));
 
         env = EnvGen.kr(
             Env.new([0, 1, 1, 0],
@@ -399,7 +418,7 @@ s.waitForBoot {
             * level.clip(0, 1) * veil * (~trimUltra ? 4.60)
             * Lag.kr(Select.kr(mixUltraBus >= 0, [1.0, In.kr(mixUltraBus, 1)]), 0.08);
 
-        sig = sig + (FreeVerb.ar(sig, room.clip(0, 0.9), 0.95, 0.4) * room);
+        sig = sig + (FreeVerb.ar(sig, room.clip(0, 0.9), 0.95, 0.4) * room * (1 - crudo));
         sig = sig * master.clip(0, 1);
 
         quadSig = if((~limiterChans ? s.options.numOutputBusChannels) >= 4) {

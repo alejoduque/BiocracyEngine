@@ -75,6 +75,7 @@ This document outlines the full MIDI CC mapping for the **Faderfox LC2 MicroModu
 | **Fader 8** | `CC 49` | `mixUltra` | `\corpusUltrasonic` | Capa Ultrasónica de murciélagos (×8) |
 | — (sin fader en el LC2) | `CC 57` | `mixMotor` | `18_motores.scd` | MOTOR: maestro de los cinco motores |
 | — | `CC 58` | `mixRemuestreo` | `\motRemRec` | Remuestreo: su lecho (EXT1) — en 0 está apagado |
+| — | `CC 64` | `corpusCrudo` | corpus | CRUDO: las grabaciones del día sin procesar (toggle) |
 | — | `CC 63` | `mixSeq` | `\motRemPlay` | Remuestreo: sus cuatro secuencias de notas (SEQ) |
 | — | `CC 59` | `mixEspectro` | `\motSpec` | Motor espectro (EXT2) |
 | — | `CC 60` | `mixCaos` | `\motCaos` | Motor caos (EXT3) |

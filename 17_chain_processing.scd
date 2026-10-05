@@ -62,6 +62,8 @@
 ~chainBusChans = (~limiterChans ? 2);
 ~corpusProcBus = ~corpusProcBus ?? { Bus.audio(s, ~chainBusChans) };
 ~corpusOutBus  = ~corpusProcBus.index;
+// CRUDO's way around the room and the tape (see the end of \chainProcessor).
+~crudoBus = ~crudoBus ?? { Bus.audio(s, ~chainBusChans) };
 
 // The three chain readings, as control buses so the processor reads them live
 // rather than being respawned. All three are normalised 0–1 here, at the one
@@ -80,7 +82,8 @@ s.waitForBoot {
         arg out = 0, in = 0, amount = 0.45,
             entropyBus = -1, calldataBus = -1, congestionBus = -1,
             chainProcessBus = -1,
-            umbralBus = -1, ventanaBus = -1, sesgoBus = -1, opacidadBus = -1;
+            umbralBus = -1, ventanaBus = -1, sesgoBus = -1, opacidadBus = -1,
+            crudoBus = -1, crudoOut = -1;
 
         var dry = In.ar(in, ~chainBusChans);
         var ent  = Lag.kr(Select.kr(entropyBus    >= 0, [0.0, In.kr(entropyBus, 1)]),    2.0);
@@ -88,7 +91,7 @@ s.waitForBoot {
         var cong = Lag.kr(Select.kr(congestionBus >= 0, [0.0, In.kr(congestionBus, 1)]), 3.0);
         var wetAmt = Lag.kr(Select.kr(chainProcessBus >= 0, [amount, In.kr(chainProcessBus, 1)]), 0.5);
         var sig, diffused, smeared, chainFFT, sum;
-        var umbral, ventana, sesgo, opacidad, key, bleed, bleedMix;
+        var umbral, ventana, sesgo, opacidad, key, bleed, bleedMix, crudo;
 
         sig = dry;
 
@@ -170,12 +173,12 @@ s.waitForBoot {
         // UMBRAL — "por encima del umbral el escaño se enciende". Una compuerta
         // suave (expansión 4:1 por debajo) RELATIVA al nivel reciente del
         // propio corpus: un umbral absoluto dependía de CORPUS, de MASTER VOL
-        // y de la grabación, y casi nunca mordía. Así, en 0.20 pasa todo lo
-        // que supere un tercio del ambiente (casi todo); en 0.85 sólo lo que
-        // sobresale tres veces de él — los eventos, no el fondo.
+        // y de la grabación, y casi nunca mordía. Transparente hasta 0.6 —
+        // donde viven los valores habituales —; de ahí a 0.85 sube hasta tres
+        // veces el ambiente: sólo pasan los eventos, no el fondo.
         key = Mix(sig) / ~chainBusChans.max(1);
         sig = Compander.ar(sig, key,
-            (Amplitude.kr(key, 0.5, 4.0) * umbral.linexp(0.2, 0.85, 0.33, 3.0)).max(0.0005),
+            (Amplitude.kr(key, 0.5, 4.0) * umbral.linlin(0.6, 0.85, 0.0, 3.0)).max(0.0005),
             4.0, 1.0, 0.01, 0.25);
 
         // VENTANA — el alcance en el tiempo. En 0.4 cada sonido es un punto
@@ -196,11 +199,23 @@ s.waitForBoot {
         sig = BLowShelf.ar(sig, 250, 1, sesgo * 6);
         sig = BHiShelf.ar(sig, 4000, 1, sesgo.neg * 6);
 
-        // OPACIDAD — lo opaco se retira. Un velo: el paso bajo cae de 20 kHz a
-        // 800 Hz y el nivel baja un tercio en el tope de la perilla.
-        sig = LPF.ar(sig, opacidad.linexp(0, 0.7, 20000, 800)) * opacidad.linlin(0, 0.7, 1.0, 0.67);
+        // OPACIDAD ya no vela el corpus aquí. Medido con una grabación real: a
+        // 0.25 el paso bajo caía sobre la banda donde viven insectos y aves y
+        // el corpus perdía 10 dB — por eso las grabaciones del día dejaron de
+        // oírse. Su forma sonora ahora es la CINTA, sobre la mezcla entera y
+        // sólo desde 0.1 (18_motores.scd); aquí sigue decidiendo qué
+        // grabaciones son elegibles (Art. 47), y nada más.
 
-        Out.ar(out, sig);
+        // CRUDO: none of the above, and not into bus 0 either — into
+        // ~crudoBus, which \crudoSum adds to the mix AFTER the room and the
+        // tape, so the recordings reach the output as they were captured.
+        crudo = Lag.kr(Select.kr(crudoBus >= 0, [0, In.kr(crudoBus, 1)]).clip(0, 1), 0.15);
+        Out.ar(out, sig * (1 - crudo));
+        Out.ar(crudoOut.max(0), dry * crudo * (crudoOut >= 0));
+    }).add;
+
+    SynthDef(\crudoSum, { |in = 0|
+        Out.ar(0, In.ar(in, ~chainBusChans));
     }).add;
 
     s.sync;
@@ -227,8 +242,20 @@ s.waitForBoot {
         ].collect { |pair|
             [pair[0], if(~buses.notNil and: { ~buses[pair[1]].notNil },
                 { ~buses[pair[1]].index }, { -1 })]
-        }.flatten
+        }.flatten ++ [
+            \crudoBus, if(~buses.notNil and: { ~buses[\corpusCrudo].notNil },
+                { ~buses[\corpusCrudo].index }, { -1 }),
+            \crudoOut, ~crudoBus.index
+        ]
     );
+    // Right after the room (and so after the tape, which sits before it) and
+    // before the master limiter.
+    if(~crudoSumSynth.notNil) { try { ~crudoSumSynth.free } };
+    ~crudoSumSynth = if(~chamberSynth.notNil) {
+        Synth.after(~chamberSynth, \crudoSum, [\in, ~crudoBus.index])
+    } {
+        Synth.tail(RootNode(s), \crudoSum, [\in, ~crudoBus.index])
+    };
     // The corpus and the ultrasound each write to their own stem, and these two
     // feeders carry both into the processor's bus — metered on the way, which
     // is the only point where the two can still be told apart. Placed right
@@ -236,8 +263,9 @@ s.waitForBoot {
     if(~corpusFeeders.notNil) { ~corpusFeeders.do { |n| try { n.free } } };
     if(~stems.notNil) {
         ~corpusFeeders = [\corpus, \ultra].collect { |n|
-            Synth.before(~chainProcSynth, \stemSum,
-                [\in, ~stems[n].index, \out, ~corpusProcBus.index, \id, ~stemNames.indexOf(n)])
+            ~stemNodes[n] = Synth.before(~chainProcSynth, \stemSum,
+                [\in, ~stems[n].index, \out, ~corpusProcBus.index, \id, ~stemNames.indexOf(n)]
+                ++ (~stemPanArgs !? { ~stemPanArgs.(n) } ? []))
         };
         ~corpusIn = (corpus: ~stemOut.(\corpus), ultra: ~stemOut.(\ultra));
     };

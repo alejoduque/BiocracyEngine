@@ -284,13 +284,48 @@ s.doWhenBooted({
     ~stems = ~stems ?? { () };
     ~stemNames.do { |n| if(~stems[n].isNil) { ~stems[n] = Bus.audio(s, ~limiterChans) } };
     ~stemOut = { |name| (~stems !? { ~stems[name] } !? { |b| b.index }) ? 0 };
-    SynthDef(\stemSum, { |in = 0, out = 0, id = 0|
+    // pan / auto: each strip's own place in the stereo field (4_gui.scd).
+    // AUTO off: pan is the position. AUTO on: the layer travels between both
+    // sides at its own slow rate, and |pan| is how far it reaches — at centre
+    // it stays still. A BALANCE law, not equal-power: at pan 0 both sides are
+    // exactly unity, so adding this changed nothing until a knob moves (Pan2
+    // or Balance2 would have dropped every layer 3 dB at centre).
+    SynthDef(\stemSum, { |in = 0, out = 0, id = 0, pan = 0, auto = 0, rate = 0.012, phase = 0|
         var x = In.ar(in, ~limiterChans).asArray;
         var peak = x.collect(_.abs).reduce(\max);
         var rms = (Lag.ar(x.collect(_.squared).sum / x.size, 0.3)).sqrt;
+        var pos = Lag.kr(Select.kr(auto > 0.5, [pan, SinOsc.kr(rate, phase) * pan.abs]), 0.6).clip(-1, 1);
+        var gl = (1 - pos).clip(0, 1), gr = (1 + pos).clip(0, 1);
         SendReply.kr(Impulse.kr(12), '/stem', [id, Amplitude.kr(peak, 0.001, 0.4), rms]);
+        // PanAz(4) order: 0 front-left, 1 front-right, 2 rear-right, 3 rear-left.
+        x = case
+            { x.size >= 4 } { [x[0] * gl, x[1] * gr, x[2] * gr, x[3] * gl] }
+            { x.size == 2 } { [x[0] * gl, x[1] * gr] }
+            { x };
         Out.ar(out, x);
     }).add;
+    // Where each stem's \stemSum lives, and its pan state — kept here so the
+    // three places that create them (below, 17_ and 18_) and the GUI agree.
+    ~stemNodes = ();
+    ~stemPan = ~stemPan ?? { () };
+    // A crossing every 20-60 s, different and fixed for each layer (from its
+    // name), so moving layers never travel together.
+    ~stemPanArgs = { |name|
+        var st = ~stemPan[name] ? (pan: 0, auto: 0);
+        var h = name.asString.hash.abs;
+        [\pan, st[\pan] ? 0, \auto, st[\auto] ? 0,
+         \rate, 1 / (40 + ((h % 1000) / 1000 * 80)), \phase, (h % 628) / 100]
+    };
+    ~stemPanSet = { |name, pan, auto|
+        var st = ~stemPan[name] ?? { (pan: 0, auto: 0) };
+        if(pan.notNil) { st[\pan] = pan.clip(-1, 1) };
+        if(auto.notNil) { st[\auto] = auto.clip(0, 1) };
+        ~stemPan[name] = st;
+        ~stemNodes[name] !? { |n| n.set(\pan, st[\pan], \auto, st[\auto]) };
+        ~stateDirty = true;
+        // Every surface that shows it follows (the GUI strip, after a config).
+        { ~stemPanViews !? { |v| v[name] !? { |pv| pv.(st) } } }.defer;
+    };
     // ─── Master chain: glue, then weight, then safety ────────────────────
     // This was sum -> LeakDC -> Limiter and nothing else. A limiter is a safety
     // net: it can stop a mix being too loud and can do nothing whatever about a
@@ -314,8 +349,16 @@ s.doWhenBooted({
     // Both default modest rather than off, so an untouched boot is warmer and
     // fuller rather than differently balanced. drive 0 is the clean path
     // exactly, so the stage can be removed entirely.
-    SynthDef(\masterLimiter, { |ceiling = 0.92, glue = 0.55, drive = 0.40|
-        var sig = In.ar(0, ~limiterChans);
+    // makeup: the whole mix into the glue compressor. The trims above keep
+    // the limiter out of the compressor regime by running every layer low,
+    // and they did their job — gr sat at 1.0 — but the cost was a quiet
+    // instrument: a full session measured -19.7 LUFS with peaks at -2 dBFS,
+    // MASTER VOL at the top. Measured on a real pre-limiter mix through this
+    // def: x1.0 -17.0 LUFS (LRA 5.6), x1.5 -14.2 (LRA 4.6), x2.0 -12.5 (LRA
+    // 4.0). 1.5 reaches streaming level for one LU of dynamics; above 2 the
+    // compressor starts flattening the arcs the piece is made of.
+    SynthDef(\masterLimiter, { |ceiling = 0.92, glue = 0.55, drive = 0.40, makeup = 1.5|
+        var sig = In.ar(0, ~limiterChans) * makeup;
         var clean = LeakDC.ar(sig);
         var key = Mix(clean) / ~limiterChans.max(1);
         var comped, sat, lim, mono;
@@ -2230,8 +2273,8 @@ s.doWhenBooted({
     if(~stemGroupA.notNil) { try { ~stemGroupA.free } };
     ~stemGroupA = Group.after(~defaultGroup ? s.defaultGroup);
     [\drone, \pad, \kick, \perc, \dust, \sample].do { |n|
-        Synth.tail(~stemGroupA, \stemSum,
-            [\in, ~stems[n].index, \out, 0, \id, ~stemNames.indexOf(n)]);
+        ~stemNodes[n] = Synth.tail(~stemGroupA, \stemSum,
+            [\in, ~stems[n].index, \out, 0, \id, ~stemNames.indexOf(n)] ++ ~stemPanArgs.(n));
     };
     if(~chamberSynth.notNil) { try { ~chamberSynth.free }; ~chamberSynth = nil };
     ~chamberSynth = Synth.tail(RootNode(s), \resonantChamber, [
@@ -2251,7 +2294,9 @@ s.doWhenBooted({
         try { ~masterLimiterSynth.free };
         ~masterLimiterSynth = nil;
     };
-    ~masterLimiterSynth = Synth.tail(RootNode(s), \masterLimiter, [\ceiling, 0.92]);
+    ~masterMakeup = ~masterMakeup ? 1.5;
+    ~masterLimiterSynth = Synth.tail(RootNode(s), \masterLimiter,
+        [\ceiling, 0.92, \makeup, ~masterMakeup]);
     // Scope sits AFTER the limiter so it reports what actually leaves the box.
     if(~masterScopeSynth.notNil) { try { ~masterScopeSynth.free }; ~masterScopeSynth = nil };
     ~masterScopeSynth = Synth.tail(RootNode(s), \masterScope);

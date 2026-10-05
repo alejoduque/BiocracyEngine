@@ -987,7 +987,8 @@
             tideDensity = tide.linlin(0, 1, 0.42, 1.0);
             // The previous tick's interval is the tick length; jitter is scaled
             // to it so it stays musical whether the chain is fast or slow.
-            jitTick = ~tideJitter.(~beatParams.lastInterval ? 0.5);
+            // Y con la cinta los golpes caen más tarde y más sueltos.
+            jitTick = ~tideJitter.(~beatParams.lastInterval ? 0.5) * (1 + ((~tapeAmt ? 0) * 0.8));
             // A block boundary is the only place the kick may land. blockAt is
             // the arrival timestamp maintained by the /eth/block handler, so
             // this is true exactly once per block regardless of tick rate.
@@ -1580,6 +1581,11 @@
                            (1 - (transactionInfluence * 0.1));
             };
             interval = interval.clip(0.06, 2.0);
+            // CINTA (18_motores.scd): la cinta pierde tensión y el pulso con
+            // ella. ~tapeDrift vaga con Pbrown entre 0.85 y 1.15, con
+            // profundidad = cantidad de cinta (OPACIDAD desde 0.1); en 0 vale
+            // exactamente 1 y el beat es el de siempre.
+            interval = (interval * (~tapeDrift ? 1.0)).clip(0.06, 2.3);
             ~beatParams.lastInterval = interval;   // surfaced on [MON] as int:
 
             if(step.odd) { interval = interval * rrand(1.0, 1.12) }; // swing

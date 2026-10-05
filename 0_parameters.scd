@@ -112,6 +112,9 @@
     (name: \windowWidth,       spec: ControlSpec(0.4, 2.5, \lin),   default: 1.0,  path: "/pheno/windowWidth",       cc: 11),
     (name: \seasonalBias,      spec: ControlSpec(-1.0, 1.0, \lin),  default: 0.0,  path: "/pheno/seasonalBias",      cc: 12),
     (name: \absenceWeight,     spec: ControlSpec(0, 1, \lin),       default: 0.3,  path: "/pheno/absenceWeight",     cc: 13),
+    // pulseGain 1.0 → 2.0 is also CORO's level, and opacityFloor from 0.1 is
+    // also CINTA (18_motores.scd, Fogata). Below those points both do only
+    // what they always did, so every config saved before still sounds the same.
     (name: \pulseGain,         spec: ControlSpec(0.0, 2.0, \lin),   default: 1.0,  path: "/pheno/pulseGain",         cc: 14),
     (name: \opacityFloor,      spec: ControlSpec(0.0, 0.7, \lin),   default: 0.0,  path: "/pheno/opacityFloor",      cc: 15),
     // Five positions: 0 = todas, then one per ecological role the AudioMoth
@@ -174,6 +177,13 @@
     // (build_cameratrap.py) — the two felids first, insects and rain last, so
     // at 0.0 the ring still shows that something was recorded even where it no
     // longer shows what. Absence stays legible as absence.
+    // CRUDO: the day's recordings exactly as they were captured. Bypasses every
+    // layer that processes them — pitch, grains, filter, echo and the reverbs
+    // inside both corpus voices, the chain processor and the Cámara stage —
+    // and adds them to the mix AFTER the room and the tape. Level, the corpus
+    // fader, SPREAD and MASTER still apply; the master limiter stays as the
+    // safety net. A toggle, so a stepped spec (see the note on \bancada).
+    (name: \corpusCrudo,       spec: ControlSpec(0, 1, \lin, 1),     default: 0,    path: "/pheno/crudo",            cc: 64),
     (name: \camaraOpacity,     spec: ControlSpec(0, 1, \lin),       default: 1.0,  path: "/camara/opacity",          cc: 24),
 
     // ── The two VIZ controls, no longer strangers to this registry ───────
@@ -506,8 +516,9 @@
     \windowWidth          -> "VENTANA",
     \seasonalBias         -> "SESGO EST",
     \absenceWeight        -> "AUSENCIA",
-    \pulseGain            -> "PULSO GAIN",
-    \opacityFloor         -> "OPACIDAD",
+    \pulseGain            -> "PULSO·CORO",
+    \opacityFloor         -> "OPAC·CINTA",
+    \corpusCrudo          -> "CRUDO",
     \phenoRate            -> "RITMO",
     \phenoSeek            -> "BUSCAR",
     // ── Corpus ──────────────────────────────────────────────────────────
@@ -752,6 +763,16 @@ if(File.exists(~presetDir).not) { File.mkdir(~presetDir) };
     if(~sampleControlValues.notNil) {
         sections.add(jsonSection.(\sample, ~sampleControlValues));
     };
+    // Each stem's pan and auto-pan (3_synthdefs.scd, ~stemPan), as
+    // "<stem>_pan" / "<stem>_auto". Written only for layers that were moved.
+    if(~stemPan.notNil and: { ~stemPan.size > 0 }) {
+        var st = ();
+        ~stemPan.keysValuesDo { |name, v|
+            st[(name ++ "_pan").asSymbol] = v[\pan] ? 0;
+            st[(name ++ "_auto").asSymbol] = v[\auto] ? 0;
+        };
+        sections.add(jsonSection.(\stems, st));
+    };
     if(~buses.notNil) {
         var spatial = ();
         #[\spatialX, \spatialY, \roomSize, \distanceEffect].do { |k|
@@ -927,6 +948,18 @@ if(File.exists(~presetDir).not) { File.mkdir(~presetDir) };
                             ~sampleControlLabels[key].string = ~knobText.(key, val);
                         };
                     }.defer;
+                };
+                // Stem pans. A config without them leaves the panning where it
+                // is, like the motor faders an old config does not mention.
+                if(~stemPanSet.notNil) {
+                    (dict["stems"] ?? ()).keysValuesDo { |k, v|
+                        var parts = k.asString.split($_);
+                        if(parts.size == 2) {
+                            var name = parts[0].asSymbol;
+                            if(parts[1] == "pan") { ~stemPanSet.(name, v.asFloat, nil) };
+                            if(parts[1] == "auto") { ~stemPanSet.(name, nil, v.asFloat) };
+                        };
+                    };
                 };
                 (dict["spatial"] ?? ()).keysValuesDo { |k, v|
                     if(~buses.notNil and: { ~buses[k.asSymbol].notNil }) {

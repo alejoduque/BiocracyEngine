@@ -1509,7 +1509,7 @@ async function init() {
       }
     }
 
-    // Notify all subscribers (ParliamentStage, AsteroidWaves, telemetry panel)
+    // Notify all subscribers (ParliamentStage, telemetry panel)
     parliamentStore.notifyListeners();
   }
 
@@ -1521,18 +1521,18 @@ async function init() {
   //
   // CONTROL MATRIX (10 params × 4 slots = 40 visual bindings):
   //
-  //   PARAM            │ SLOT 0 Parliament      │ SLOT 1 AsteroidWaves   │ SLOT 2 LowEarthPoint    │ SLOT 3 PerlinBlob
+  //   PARAM            │ SLOT 0 Parliament      │ SLOT 1 Shan Shui       │ SLOT 2 LowEarthPoint    │ SLOT 3 PerlinBlob
   //   ─────────────────┼────────────────────────┼────────────────────────┼─────────────────────────┼─────────────────────
-  //   volume           │ point light intensity  │ wave stroke alpha      │ white cloud opacity     │ stroke opacity
-  //   pitchShift       │ species Z amplitude    │ lane X offset          │ white cloud Y-stretch   │ noise intensity
-  //   timeDilation     │ orbit speed multiplier │ noise X zoom           │ rotation damping         │ cycle frames
-  //   spectralShift    │ bloom threshold        │ amber→cyan tint        │ line hue shift           │ layer compression
-  //   spatialSpread    │ camera distance        │ lane spread override   │ white lines XY spread    │ blob X/Y offset
-  //   textureDepth     │ film grain intensity   │ grid line density      │ white point size         │ stroke weight range
-  //   atmosphereMix    │ afterimage damp        │ background ghosting    │ red cloud opacity        │ layer count
-  //   memoryFeed       │ bloom strength offset  │ ghost trail alpha      │ red lines opacity        │ ghost alpha
-  //   harmonicRich     │ lissajous complexity   │ wave harmonic overlay  │ red Bézier Z-scale       │ hue drift
-  //   resonantBody     │ chroma aberration      │ peak dot glow size     │ red cloud scale          │ inner layer weight
+  //   volume           │ point light intensity  │ ink density            │ white cloud opacity     │ stroke opacity
+  //   pitchShift       │ species Z amplitude    │ —                      │ white cloud Y-stretch   │ noise intensity
+  //   timeDilation     │ orbit speed multiplier │ scroll pace (slower)   │ rotation damping         │ cycle frames
+  //   spectralShift    │ bloom threshold        │ —                      │ line hue shift           │ layer compression
+  //   spatialSpread    │ camera distance        │ —                      │ white lines XY spread    │ blob X/Y offset
+  //   textureDepth     │ film grain intensity   │ contour stroke count   │ white point size         │ stroke weight range
+  //   atmosphereMix    │ afterimage damp        │ horizon mist           │ red cloud opacity        │ layer count
+  //   memoryFeed       │ bloom strength offset  │ —                      │ red lines opacity        │ ghost alpha
+  //   harmonicRich     │ lissajous complexity   │ rim foliage growth     │ red Bézier Z-scale       │ hue drift
+  //   resonantBody     │ chroma aberration      │ —                      │ red cloud scale          │ inner layer weight
 
   function applySonethToViz(key: string, v: number) {
 
@@ -1654,7 +1654,7 @@ async function init() {
       }
     }
 
-    // ── SLOT 1 — AsteroidWaves (p5.js): write to window global, draw() reads ─
+    // ── SLOT 1 — Shan Shui 3D: a ring stage, so the block above reaches it too ─
     if (!(window as any).__slot1Soneth) (window as any).__slot1Soneth = {};
     (window as any).__slot1Soneth[key] = v;
 
@@ -1773,7 +1773,7 @@ async function init() {
       "beatTempo", "txInfluence",
     ];
     const ALL_PARAMS = [...CORE_PARAMS, ...EXTRA_PARAMS];
-    const SLOTS = ["S0:Parliament", "S1:Asteroid", "S2:LowEarth", "S3:Perlin", "S4:Module", "S5:Module", "S6:Module", "S7:Module", "S8:Module", "S9:Module"];
+    const SLOTS = ["S0:Parliament", "S1:ShanShui", "S2:LowEarth", "S3:Perlin", "S4:Module", "S5:Module", "S6:Module", "S7:Module", "S8:Module", "S9:Module"];
 
     const lastSeen: Record<string, number> = {};
     let overlay: HTMLDivElement | null = null;

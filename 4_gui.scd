@@ -183,8 +183,10 @@
         cadenceRow = View().background_(backgroundColor.blend(mainTheme.accent, 0.05))
             .layout_(HLayout().margins_(4).spacing_(4));
 
+        // Strips packed close: each now carries its pan knob and AUTO beside
+        // the fader, so the gaps between strips came down instead.
         mixerView = View().background_(Color.black)
-            .layout_(HLayout().margins_(4).spacing_(6));
+            .layout_(HLayout().margins_(3).spacing_(2));
 
         // Create sample views
         sampleView = View().background_(backgroundColor.blend(mainTheme.accent, 0.04))
@@ -897,6 +899,9 @@
         // the black filler and the stretchy ~phenoCursorLabel, both of which
         // absorb the row's slack — so the two knobs were pushed past the right
         // edge and off the surface entirely. Layout order is code order.
+        // CRUDO: the day's recordings with no processing at all.
+        ~knobs[\corpusCrudo] = ~makeToggle.value(\corpusCrudo, "CRUDO");
+        corpusRow.layout.add(~knobs[\corpusCrudo]);
         corpusRow.layout.add(~inlineHead.value("BOWL/\nCHINA"));
         ~knobParameters[7].do { |key|
             ~knobs[key] = ~makeKnob.value(
@@ -988,6 +993,7 @@
             mixRuptura: [\ruptura], mixMasa: [\masa]
         );
         ~stripMeters = ();
+        ~stemPanViews = ();
         ~stemLevels = ();
         OSCdef(\stemLevel).free;
         OSCdef(\stemLevel, { |msg|
@@ -1017,7 +1023,7 @@
 
             spec = ~controlSpecs[paramName];
             strip = View().background_(Color.black);
-            strip.layout_(VLayout().margins_(4).spacing_(3));
+            strip.layout_(VLayout().margins_(2).spacing_(2));
 
             strip.layout.add(
                 StaticText()
@@ -1103,7 +1109,41 @@
                 .warning_(~meterPos.(0.5))
                 .critical_(~meterPos.(0.89));
             ~stripMeters[paramName] = meter;
-            strip.layout.add(HLayout(nil, slider, meter, nil));
+            // ── Pan, and AUTO — BESIDE the fader, never under it ─────────
+            // Under it they shortened the fader and the meter. Only on strips
+            // that are one layer (MOTOR is a master over five). AUTO off: the
+            // knob is the position. AUTO on: the layer travels between both
+            // sides at its own slow rate and the knob is how far — at centre
+            // it stays still. State: ~stemPan (3_synthdefs.scd).
+            if((~stripStems[paramName] ? []).size == 1) {
+                var stemName = ~stripStems[paramName][0];
+                var st = (~stemPan ? ())[stemName] ? (pan: 0, auto: 0);
+                var panKnob = Knob()
+                    .centered_(true)
+                    .mode_(\vert)
+                    .fixedSize_(Size(20, 20))
+                    .value_(((st[\pan] ? 0) + 1) / 2)
+                    .action_({ |k| ~stemPanSet.(stemName, (k.value * 2) - 1, nil) });
+                var autoBtn = Button()
+                    .states_([
+                        ["A", mainTheme.dim, backgroundColor],
+                        ["A", Color.black, Color.white]
+                    ])
+                    .font_(Font(~monoFont, 8, true))
+                    .fixedSize_(Size(20, 14))
+                    .value_((st[\auto] ? 0).round.asInteger)
+                    .action_({ |b| ~stemPanSet.(stemName, nil, b.value) });
+                autoBtn.toolTip_("AUTO: el canal viaja entre los dos lados; la perilla es cuánto");
+                panKnob.toolTip_("PAN (con AUTO: el ancho del recorrido)");
+                ~stemPanViews[stemName] = { |s|
+                    panKnob.value = ((s[\pan] ? 0) + 1) / 2;
+                    autoBtn.value = (s[\auto] ? 0).round.asInteger;
+                };
+                strip.layout.add(HLayout(nil, slider, meter,
+                    VLayout(panKnob, autoBtn, nil).spacing_(2), nil).spacing_(2));
+            } {
+                strip.layout.add(HLayout(nil, slider, meter, nil).spacing_(2));
+            };
             strip.layout.add(valueLabel);
             strip.layout.add(muteButton);
 
@@ -1460,6 +1500,61 @@
         recordingView.fixedHeight = 38;
         
         // Recording status indicator
+        // ─── How long this recording has been running ──────────────────
+        // A 1-bit counter: every digit drawn pixel by pixel from a 5×7
+        // bitmap, smoothing off — two colours, no antialiasing, no dither.
+        // White on black at rest; INVERTED while recording, so the state reads
+        // without a third colour. After STOP it holds the last time, so the
+        // length of the session stays on screen.
+        ~recGlyphs = Dictionary[
+            $0 -> [" ### ", "#   #", "#  ##", "# # #", "##  #", "#   #", " ### "],
+            $1 -> ["  #  ", " ##  ", "  #  ", "  #  ", "  #  ", "  #  ", " ### "],
+            $2 -> [" ### ", "#   #", "    #", "   # ", "  #  ", " #   ", "#####"],
+            $3 -> ["#####", "   # ", "  #  ", "   # ", "    #", "#   #", " ### "],
+            $4 -> ["   # ", "  ## ", " # # ", "#  # ", "#####", "   # ", "   # "],
+            $5 -> ["#####", "#    ", "#### ", "    #", "    #", "#   #", " ### "],
+            $6 -> ["  ## ", " #   ", "#    ", "#### ", "#   #", "#   #", " ### "],
+            $7 -> ["#####", "    #", "   # ", "  #  ", " #   ", " #   ", " #   "],
+            $8 -> [" ### ", "#   #", "#   #", " ### ", "#   #", "#   #", " ### "],
+            $9 -> [" ### ", "#   #", "#   #", " ####", "    #", "   # ", " ##  "],
+            $: -> ["     ", "  #  ", "  #  ", "     ", "  #  ", "  #  ", "     "]
+        ];
+        ~recTimerHold = 0;
+        ~recTimerText = { |secs|
+            var t = secs.asInteger.max(0);
+            "%:%:%".format((t div: 3600).asString.padLeft(2, "0"),
+                ((t div: 60) % 60).asString.padLeft(2, "0"), (t % 60).asString.padLeft(2, "0"))
+        };
+        ~recTimerView = UserView()
+            .fixedSize_(Size(8 * 6 * 3 + 6, 7 * 3 + 6))
+            .drawFunc_({ |v|
+                var px = 3, rec = (~recordingParams !? { ~recordingParams.isRecording }) == true;
+                var fg = if(rec, Color.black, Color.white), bg = if(rec, Color.white, Color.black);
+                var text;
+                if(rec) { ~recTimerHold = ~recordingParams.recordingDuration ? 0 };
+                text = ~recTimerText.(~recTimerHold);
+                Pen.smoothing = false;
+                Pen.fillColor = bg;
+                Pen.fillRect(Rect(0, 0, v.bounds.width, v.bounds.height));
+                Pen.fillColor = fg;
+                text.do { |ch, i|
+                    (~recGlyphs[ch] ? []).do { |row, y|
+                        row.do { |bit, x|
+                            if(bit == $#) {
+                                Pen.fillRect(Rect(3 + (((i * 6) + x) * px), 3 + (y * px), px, px));
+                            };
+                        };
+                    };
+                };
+            });
+        if(~recTimerRoutine.notNil) { ~recTimerRoutine.stop };
+        ~recTimerRoutine = Routine({
+            loop {
+                if(~recTimerView.notNil and: { ~recTimerView.isClosed.not }) { ~recTimerView.refresh };
+                0.25.wait;
+            }
+        }).play(AppClock);
+
         ~recordingStatus = StaticText()
             .string_("REC: READY")
             .stringColor_(mainTheme.green)
@@ -1553,6 +1648,7 @@
             });
         
         recordingView.layout.add(~recordingStatus);
+        recordingView.layout.add(~recTimerView);
         recordingView.layout.add(~recordButton);
         recordingView.layout.add(~quickRecButton);
         recordingView.layout.add(~spatialGuiButton);

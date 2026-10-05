@@ -89,10 +89,21 @@ s.doWhenBooted({
                 // Wait for buffer creation with defer
                 {
                     // Start simple recording synth
-                    ~recordingSynth = Synth(\simpleRecorder, [
-                        \recordBuf, ~recordingBuffer.bufnum,
-                        \gate, 1
-                    ], ~defaultGroup, \addToTail);
+                    // Right AFTER the master limiter: the mix exactly as it is
+                    // heard — every layer, the motors, the room and the
+                    // limiter. It used to sit at the tail of ~defaultGroup,
+                    // which was always before the motors, the room and the
+                    // limiter, and since the stems (3_synthdefs.scd) is also
+                    // before the voices are summed into bus 0: it recorded
+                    // the corpus alone, near-silent tracks. Before the MOTU
+                    // router, which moves the mix to other outputs.
+                    ~recordingSynth = if(~masterLimiterSynth.notNil) {
+                        Synth.after(~masterLimiterSynth, \simpleRecorder, [
+                            \recordBuf, ~recordingBuffer.bufnum, \gate, 1])
+                    } {
+                        Synth.tail(RootNode(s), \simpleRecorder, [
+                            \recordBuf, ~recordingBuffer.bufnum, \gate, 1])
+                    };
                     
                     "✓ %-channel recording started successfully".format(~recordingParams.channels).postln;
                 }.defer(0.1);

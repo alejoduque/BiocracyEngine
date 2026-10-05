@@ -81,6 +81,9 @@ export class RingStageBase extends BaseThreeJsModule {
   overlayEl: HTMLDivElement | null = null;
   statusEl: HTMLDivElement | null = null;
   defaultView: ViewSpec = { fitRadius: 9.8, polarDeg: 10, azimuthDeg: 0 };
+  /** Where the default view looks. The dials look at their centre; slot 1's
+   *  landscape looks into its middle distance. */
+  viewTarget = new THREE.Vector3(0, 0, 0);
 
   voteFlash = 0;
   voteAlarm = false;
@@ -228,12 +231,12 @@ export class RingStageBase extends BaseThreeJsModule {
     const half = Math.tan(((this.camera.fov / 2) * Math.PI) / 180);
     const dist = (v.fitRadius / half / Math.min(1, this.camera.aspect || 1)) * 1.03;
     const ph = (v.polarDeg * Math.PI) / 180, th = (v.azimuthDeg * Math.PI) / 180;
+    const toTgt = this.viewTarget.clone();
     const toPos = new THREE.Vector3(
       dist * Math.sin(ph) * Math.sin(th),
       dist * Math.cos(ph),
       dist * Math.sin(ph) * Math.cos(th)
-    );
-    const toTgt = new THREE.Vector3(0, 0, 0);
+    ).add(toTgt);
     if (!animate) {
       this.camera.position.copy(toPos);
       this.controls.target.copy(toTgt);

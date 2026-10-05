@@ -494,7 +494,13 @@ s.doWhenBooted({
                 //   same number for everyone who sees this block
                 ((hash.asString.asList.collect(_.digit ? 0).sum % 997) / 997).asFloat,
                 // 4 measured block period, 0..1 over 4..30 s
-                (((~rhythmState[\blockPeriod] ? 12) - 4) / 26).clip(0, 1)
+                (((~rhythmState[\blockPeriod] ? 12) - 4) / 26).clip(0, 1),
+                // 5-8 RAW, appended: block number, transactions in it, base
+                // fee in gwei, hash (short). For slot 1's data nodes.
+                ~rhythmState[\blockNum].asInteger,
+                ~rhythmState[\blockTxCount].asInteger,
+                ~rhythmState[\blockBaseFee].asFloat,
+                hash.asString.keep(10)
             );
         };
         // Let the beat engine know a bar boundary just happened
@@ -847,7 +853,16 @@ s.doWhenBooted({
                 // 7 entropy of recent inter-arrivals
                 (~rhythmState[\entropy] ? 0.5).clip(0, 1),
                 // 8 transactions so far in this block, 0..1 over 300
-                (((~rhythmState[\txSinceBlock] ? 0) / 300)).clip(0, 1)
+                (((~rhythmState[\txSinceBlock] ? 0) / 300)).clip(0, 1),
+                // 9-14 RAW, appended so a reader of the first nine is
+                // unaffected: slot 1 prints the chain's own numbers beside
+                // the mountains instead of a normalised shadow of them.
+                // 9 ETH moved, 10 gas price in gwei, 11 tx hash (short),
+                // 12 sender nonce, 13 calldata bytes, 14 index in block
+                value.asFloat, gasPrice.asFloat, txHash.asString.keep(10),
+                (~rhythmState[\nonce] ? 0).asInteger,
+                (~rhythmState[\calldataLen] ? 0).asInteger,
+                (~rhythmState[\txIndex] ? 0).asInteger
             );
         };
     }, '/eth/tx_info');

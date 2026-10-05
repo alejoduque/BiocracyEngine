@@ -87,6 +87,27 @@
 // lecho) y SEQ (sus secuencias); con cualquiera arriba, corre.
 ~motWakers = (remuestreo: [\mixRemuestreo, \mixSeq]);
 
+// ─── Fogata (Burial · Beachfires) ───────────────────────────────────────
+// Tres capas sin fader propio, colgadas de controles que ya existían:
+//   ARCO   el drone tectónico dentro de MASA, cuya forma es el arco de la
+//          Marea (LARGA / MEDIA / CORTA) — ~tideBus.
+//   CORO   la mitad alta de PULSO GAIN (1.0 → 2.0): coro fantasma de las
+//          grabaciones del bosque. Todas las configs guardadas tienen ≤ 1.0.
+//   CINTA  OPACIDAD desde 0.1: la mezcla entera en una cinta que pierde
+//          tensión, y el tempo del beat con ella (~tapeDrift).
+// El coro responde a una regla propia, no a "fader > 0".
+~motFaders[\coro] = \pulseGain;
+~motWakeIf = (coro: { ((~controlValues ? ())[\pulseGain] ? 1.0) > 1.001 });
+~tideBus = ~tideBus ?? { Bus.control(s, 1).set(0.65) };
+// Cuánto pesa el drone de Beachfires dentro de masa (textura; el arco en sí
+// lo hace la Marea sobre masa entera, después de la saturación).
+~arcoGain = 0.8;
+~coroAmt = { |pg| ((pg ? 1.0) - 1.0).clip(0, 1) };
+~cintaAmt = { |op| (op ? 0).linlin(0.1, 0.7, 0, 1) };
+~tapeDriftStream = Pbrown(0.85, 1.15, 0.01, inf).asStream;
+~tapeDrift = 1.0;
+~tapeAmt = 0.0;
+
 // fader: el que gobierna esta salida si no es el del motor — las secuencias
 // del remuestreo van con SEQ (\mixSeq), su lecho con REMU.
 ~motGain = { |key, fader|
@@ -155,7 +176,8 @@
 // masa -21.4 dBFS RMS — un abanico de 31 dB que el fader no habría podido
 // cubrir. Con estos cinco números todos quedan en -26.
 ~motTrim = (
-    remuestreo: 22.0, espectro: 6.0, caos: 0.44, ruptura: 0.83, masa: 0.59
+    remuestreo: 22.0, espectro: 6.0, caos: 0.44, ruptura: 0.83, masa: 0.75,
+    coro: 0.6
 );
 
 // ═════════════════════════════════════════════════════════════════════════
@@ -435,7 +457,7 @@ SynthDef(\motMasa, { |out = 0, gate = 1, f0 = 30, t_bloom = 0|
     var tilt    = ~motIn.(\filterCutoff, 0.6).linlin(0, 1, -1.8, -0.5);
     var tStr    = ~motIn.(\timeDilation, 2.0);
     var bloom   = EnvGen.kr(Env.perc(tStr, tStr * 4, 1, -2), t_bloom);
-    var parts, sub, body, sig;
+    var parts, sub, body, sig, tide, deep;
     parts = 32.collect { |i|
         var n = i + 1;
         var f = (fund * (n ** stretch)).clip(18, 12000);
@@ -448,11 +470,91 @@ SynthDef(\motMasa, { |out = 0, gate = 1, f0 = 30, t_bloom = 0|
     sub  = sub + (RLPF.ar(Saw.ar(fund * [1, 1.003]), fund * 4, 0.3) * 0.25);
     body = DynKlank.ar(`[[1, 2.01, 3.03, 4.98, 7.1], nil, [4, 3, 2.5, 2, 1.5] * tStr],
         BrownNoise.ar([0.002, 0.002]), fund);
-    sig  = HPF.ar(parts * 0.35 + sub + (body * 0.5), 16);
-    ~motOut.(out, (sig * 1.2).tanh, gate, \masa, 8, 12);
+    // ── ARCO: el drone de Beachfires, con la forma de la Marea ─────────
+    // Cluster de sierras desafinadas (35 / 35.5 / 70 / 71.2 respecto de
+    // 35) + su sub, rumor de ruido marrón, saturación de cinta, y un MoogFF
+    // cuyo corte y nivel siguen el arco de la Marea: el sonido sale del
+    // fondo en la cresta y se sumerge en el valle. Con LARGA el arco dura
+    // minutos; con CORTA es una respiración. Plana: un nivel medio fijo.
+    tide = Lag.kr(In.kr(~tideBus.index, 1), 2.0);
+    deep = Mix(Saw.ar(fund * [1, 1.0143, 2, 2.0343]) * [0.4, 0.4, 0.2, 0.2])
+        + Mix(SinOsc.ar(fund * 0.5 * [1, 1.0143]) * 0.6)
+        + BrownNoise.ar(0.1);
+    deep = MoogFF.ar((deep * 1.5).tanh,
+        (tide.linexp(0, 1, 50, 400) * (fund / 35).clip(0.5, 3)
+            * LFNoise2.kr(0.05).exprange(0.8, 1.25)).clip(30, 4000), 2.5);
+    deep = deep * tide.linlin(0, 1, 0.12, 1.0);
+    deep = [deep, DelayC.ar(deep, 0.02, 0.015)];
+    sig  = HPF.ar(parts * 0.35 + sub + (body * 0.5) + (deep * ~arcoGain), 16);
+    sig  = (sig * 1.2).tanh;
+    // El arco actúa DESPUÉS de la saturación: antes, la tanh se comía la
+    // diferencia y masa sonaba igual en la cresta que en el valle. Ahora la
+    // Marea abre y cierra el paso bajo (300 Hz → 6 kHz) y el nivel (-9 dB en
+    // el valle): masa entera sale del fondo y vuelve a hundirse.
+    sig  = LPF.ar(sig, tide.linexp(0, 1, 300, 6000)) * tide.linlin(0, 1, 0.35, 1.0);
+    ~motOut.(out, sig, gate, \masa, 8, 12);
 }).add;
 
 s.sync;
+
+// ═════════════════════════════════════════════════════════════════════════
+// CORO — el bosque como coro fantasma (mitad alta de PULSO GAIN)
+// ═════════════════════════════════════════════════════════════════════════
+// Una frase: Warp1 sobre una grabación real del bosque, con el puntero
+// arrastrándose ~100 s a lo largo del clip, la altura bajada (0.5-0.7 ×
+// pitchShift) sin cambiar la velocidad, ventanas grandes y superpuestas
+// (8) con un poco de azar: la textura de coro de Beachfires, hecha de
+// insectos y aves. Wow y arrastre de cinta en la altura; oscura (LPF 2500,
+// +3 dB a 400 Hz) y mandada fuerte a la sala, la catedral.
+//
+// Sale por el stem del CORPUS: pasa por \chainProcessor (CADENA y la Cámara
+// le afectan) y se mide en la tira CORPUS. Su nivel: la mitad alta de PULSO
+// GAIN, en ley de audio, por MASTER y por el fader CORPUS.
+SynthDef(\motCoro, { |buf, atk = 2, sus = 2, rel = 4, ratio = 0.6, amp = 1|
+    var env  = EnvGen.kr(Env.linen(atk, sus, rel, 1, \sine), doneAction: 2);
+    var wow  = LFNoise2.kr(0.3).range(0.97, 1.02);
+    var drag = (1 - (Decay2.kr(Dust.kr(0.08), 0.6, 3.0) * 0.35)).clip(0.5, 1);
+    var ptr  = LFSaw.kr(Rand(0.008, 0.012), Rand(0, 2)).range(0.1, 0.9);
+    var sig  = Warp1.ar(1, buf, ptr,
+        ratio * wow * drag * ~motIn.(\pitchShift, 0).midiratio,
+        0.2, -1, 8, 0.15, 4);
+    var lvl  = Lag.kr(~motIn.(\masterVolume, 0.3) * ~motIn.(\masterAmp, 0.7)
+        * (~motIn.(\pulseGain, 1.0) - 1).clip(0, 1).squared
+        * ~motIn.(\mixCorpus, 1.0), 0.2) * ~motTrim[\coro];
+    var st;
+    sig = BPeakEQ.ar(LPF.ar(sig, 2500), 400, 1, 3);
+    st  = ~motSpread.([sig, DelayC.ar(sig, 0.03, LFNoise1.kr(0.2).range(0.011, 0.021))])
+        * env * lvl * amp;
+    Out.ar(~stemOut.(\corpus), if((~limiterChans ? 2) >= 4) { [st[0], st[1], st[1], st[0]] } { st });
+    Out.ar(~chamberAuxBus.index, Mix(st) * 0.6);
+}).add;
+
+// ═════════════════════════════════════════════════════════════════════════
+// CINTA — la mezcla entera en una cinta que pierde tensión (OPACIDAD ≥ 0.1)
+// ═════════════════════════════════════════════════════════════════════════
+// Un inserto sobre el bus 0, después de todas las capas y los motores y antes
+// de la sala. DelayC con tiempo modulado: wow (0.3 Hz), flutter (6-9 Hz,
+// leve) y arrastre (de vez en cuando la cinta se frena y se recupera); un
+// poco de saturación; el paso bajo cerrándose despacio; crackle, polvo y
+// soplido de cinta; y cortes. En 0 la salida es la mezcla seca, sin retardo:
+// el paso de seco a cinta ocurre en el primer décimo de la cantidad.
+SynthDef(\cinta, {
+    var chans = ~limiterChans ? 2;
+    var amt  = Lag.kr(~motIn.(\opacityFloor, 0.0).linlin(0.1, 0.7, 0, 1), 0.3);
+    var dry  = In.ar(0, chans);
+    var wow  = LFNoise2.kr(0.3) * 0.004;
+    var flut = SinOsc.kr(LFNoise1.kr(0.2).range(6, 9)) * 0.0004;
+    var drag = Decay2.kr(Dust.kr(0.1), 1.0, 4.0) * 0.02;
+    var wet  = DelayC.ar(dry, 0.15, (0.03 + ((wow + flut + drag) * amt)).clip(0.005, 0.12));
+    var crack, drop;
+    wet  = (wet * 1.2).tanh * 0.85;
+    wet  = LPF.ar(wet, amt.linexp(0, 1, 18000, 3500));
+    crack = Dust2.ar(LFNoise1.kr(0.5).range(2, 10)) + Crackle.ar(1.95, 0.1) + PinkNoise.ar(0.05);
+    crack = LPF.ar(HPF.ar(crack, 800), 6000) * 0.012 * amt;
+    drop = 1 - ((1 - LFNoise0.kr(0.2).range(0.2, 1.0)) * amt * 0.7);
+    wet  = (wet * Lag.kr(drop, 0.05)) + (crack ! chans);
+    ReplaceOut.ar(0, XFade2.ar(dry, wet, amt.linlin(0, 0.1, -1, 1)));
+}).add;
 
 SynthDef(\motTap, { Out.ar(~motTapBus.index, In.ar(0, ~limiterChans ? 2)) }).add;
 s.sync;
@@ -475,10 +577,13 @@ if(~motTapNode.notNil) { try { ~motTapNode.free } };
 // y se miden. Antes de la sala y el limitador, como siempre.
 if(~stemGroupB.notNil) { try { ~stemGroupB.free } };
 ~stemGroupB = Group.after(~motorGroup);
+// La cinta, después de que todo se sumó y antes de la sala.
+if(~cintaNode.notNil) { try { ~cintaNode.free } };
+fork { s.sync; ~cintaNode = Synth.after(~stemGroupB, \cinta) };
 if(~stems.notNil) {
     [\remuestreo, \espectro, \caos, \ruptura, \masa, \seq].do { |n|
-        Synth.tail(~stemGroupB, \stemSum,
-            [\in, ~stems[n].index, \out, 0, \id, ~stemNames.indexOf(n)]);
+        ~stemNodes[n] = Synth.tail(~stemGroupB, \stemSum,
+            [\in, ~stems[n].index, \out, 0, \id, ~stemNames.indexOf(n)] ++ ~stemPanArgs.(n));
     };
 };
 
@@ -686,6 +791,42 @@ if(~stems.notNil) {
         }
     ),
 
+    coro: (
+        // El secuenciador que respira: la espera entre frases vaga con
+        // Pbrown entre 4 y 9 s (× timeDilation/2), y cada frase dura más de lo
+        // que espera — atk 0.4, rel 0.8 de la espera —, así que se solapan.
+        // Cada una lee su propio búfer: una grabación del día si la Cámara
+        // admite alguna, si no una cualquiera del corpus.
+        start: { |st|
+            st[\nodes] = [];
+            st[\loop] = Routine({
+                var waits = Pbrown(4.0, 9.0, 0.5, inf).asStream;
+                loop {
+                    var wait = waits.next * ~motTempo.value;
+                    var pool = if(~phenoSelect.notNil and: { ~phenoCursor.notNil }) {
+                        try { ~phenoSelect.(~phenoCursor.floor.asInteger.clip(1, 365)) } { [] }
+                    } { [] };
+                    var clip = (pool.size > 0).if({ pool.choose }, { (~corpusClips ? []).choose });
+                    if(clip.notNil and: { clip[\audible].notNil } and: { (st[\live] ? 0) < 3 }) {
+                        Buffer.read(s, clip[\audible], action: { |b|
+                            var syn;
+                            st[\live] = (st[\live] ? 0) + 1;
+                            syn = Synth(\motCoro, [\buf, b, \atk, wait * 0.4,
+                                \sus, wait * 0.6, \rel, wait * 0.8,
+                                \ratio, rrand(0.5, 0.7)],
+                                // Con las voces, no con los motores: escribe en el
+                                // stem del corpus, que se lee ANTES del procesador.
+                                ~defaultGroup ? s.defaultGroup);
+                            syn.onFree({ b.free; st[\live] = (st[\live] ? 1) - 1 });
+                        });
+                    };
+                    wait.wait;
+                };
+            }).play(SystemClock);
+        },
+        stop: { |st| st[\loop].stop }
+    ),
+
     masa: (
         start: { |st|
             st[\syn] = Synth(\motMasa, nil, ~motorGroup);
@@ -749,9 +890,14 @@ if(~motWatcher.notNil) { ~motWatcher.stop };
 ~motWatcher = Routine({
     loop {
         var now = Main.elapsedTime;
+        var cv = ~controlValues ? ();
+        // La Marea para el ARCO de masa, y la cinta para el tempo del beat.
+        ~tideBus.set((~beatParams !? { ~beatParams.tideValue }) ? 0.65);
+        ~tapeAmt = ~cintaAmt.(cv[\opacityFloor]);
+        ~tapeDrift = 1 + ((~tapeDriftStream.next - 1) * ~tapeAmt);
         ~motFaders.keysValuesDo { |key, fader|
-            var up = (~motWakers[key] ? [fader]).any { |f|
-                ((~controlValues ? ())[f] ? 0) > 0.0005 };
+            var up = if(~motWakeIf[key].notNil) { ~motWakeIf[key].value } {
+                (~motWakers[key] ? [fader]).any { |f| (cv[f] ? 0) > 0.0005 } };
             case
             { up and: { ~motLive[key].isNil } } {
                 ~motZeroSince[key] = nil;
