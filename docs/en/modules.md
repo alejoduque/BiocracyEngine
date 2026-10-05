@@ -53,6 +53,31 @@ Gaps are set by what the voice is *for*, not by taste: `drone` 6 s (a re-pitch i
 
 Each slot reads **its own register**, normalised against its own recent peak — a kick visual must not brighten because a bell rang, and measured on a live engine the low band runs ~40× hotter than the high one, so a raw reading leaves the treble slots looking dead while they work.
 
+## Slots 4 and 5 · blended spaces (pilots)
+
+Slots 4 and 5 are being rebuilt as **conceptual blends** (Fauconnier & Turner). Each one has:
+- two **input spaces**: *neuronal · bosque* (the CORPUS layer, the species, the phenological year) and *silicio · cadena* (Ethereum mainnet via `eth_sonify.py` → SC → bridge);
+- the **generic space** they share;
+- the **blend**, where they are projected together.
+
+The formulas are on screen, written and transformed in **manim's visual language** (3b1b), live in three.js (`src/projector/manim/`). The whole world is laid out on the dome around the audience (`src/projector/blend/BlendStage.ts`), so the domemaster, NDI and the 4K render show it as authored:
+- inputs left and right (az ∓62°, el 26°);
+- generic space near the zenith (el 72°);
+- blend at the front (el 32°).
+
+The flat screen shows the same world as a diagram.
+
+| Slot | Neuronal · bosque | Silicio · cadena | Blend |
+|---|---|---|---|
+| **4 · Umbral** (drone) | τ dV/dt = −V + R·I(t), V ≥ θ ⇒ spike; I = the CORPUS layer | G_{n+1} = G_n + g_tx, G ≥ G_max ⇒ seal; from `EthLive.depth` / `blockPulse` | τ dU/dt = −(1−λ)U + (1−λ)I_bosque + λ g_cadena. The difference is the leak: a membrane forgets, a chain does not |
+| **5 · Redes** (pad) | Hebb in the mycorrhiza: Δw_ij = η x_i x_j | value moved between address identities: Δw_ab = v_{a→b} | species–address bonds, and the BioToken with each factor live; the factor holding the product down is indicated |
+
+**λ** is the chain's share of the current activity. As it passes ⅓ or ⅔, the blend's formula transforms (TransformMatchingParts) into its neuronal or silicon form. A spike or a new bond plays the slot's own voice.
+
+- Every formula lives in `src/projector/manim/formulas.json`, including the proposals for slots 3 and 6–9.
+- SC sends each mixer layer's level to the browser as `/stems` (10 Hz), so the forest side reads the CORPUS layer itself.
+- The previous slots 4 and 5 stay in `dataStructureVisuals.ts` until the pilots are approved.
+
 ## Idle auto-rotation · ROTATION SPD
 
 The slider reaches **all sixteen slots** now. It reached exactly one before — the phenological calendar, where it sets the year-sweep rate, not any rotation.

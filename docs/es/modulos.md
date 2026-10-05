@@ -53,6 +53,31 @@ Los huecos se fijan por aquello *para lo que sirve* la voz, no por gusto: `drone
 
 Cada slot lee **su propio registro**, normalizado contra su propio pico reciente — un visual de bombo no debe iluminarse porque sonó una campana, y medido sobre un motor en vivo la banda grave corre unas 40× más caliente que la aguda, así que una lectura cruda deja los slots de agudos con aspecto de muertos mientras trabajan.
 
+## Slots 4 y 5 · espacios de mezcla (pilotos)
+
+Las ranuras 4 y 5 se están rehaciendo como **mezclas conceptuales** (Fauconnier y Turner). Cada una tiene:
+- dos **espacios de entrada**: *neuronal · bosque* (la capa CORPUS, las especies, el año fenológico) y *silicio · cadena* (Ethereum mainnet por `eth_sonify.py` → SC → bridge);
+- el **espacio genérico** que comparten;
+- la **mezcla**, donde se proyectan juntos.
+
+Las fórmulas están a la vista, escritas y transformadas en el **lenguaje visual de manim** (3b1b), en vivo en three.js (`src/projector/manim/`). Todo el mundo está armado sobre el domo, alrededor del público (`src/projector/blend/BlendStage.ts`), así que el domemaster, el NDI y el render 4K lo muestran como fue compuesto:
+- las entradas a izquierda y derecha (az ∓62°, el 26°);
+- el genérico cerca del cenit (el 72°);
+- la mezcla al frente (el 32°).
+
+La pantalla plana muestra el mismo mundo como un diagrama.
+
+| Ranura | Neuronal · bosque | Silicio · cadena | Mezcla |
+|---|---|---|---|
+| **4 · Umbral** (drone) | τ dV/dt = −V + R·I(t), V ≥ θ ⇒ disparo; I = la capa CORPUS | G_{n+1} = G_n + g_tx, G ≥ G_max ⇒ sello; desde `EthLive.depth` / `blockPulse` | τ dU/dt = −(1−λ)U + (1−λ)I_bosque + λ g_cadena. Lo que separa a una neurona de un bloque es la fuga: una membrana olvida, una cadena no |
+| **5 · Redes** (pad) | Hebb en la micorriza: Δw_ij = η x_i x_j | valor movido entre identidades de dirección: Δw_ab = v_{a→b} | vínculos especie–dirección, y el BioToken con cada factor en vivo; se señala el factor que frena el producto |
+
+**λ** es la parte de la actividad que es de la cadena. Al pasar ⅓ o ⅔, la fórmula de la mezcla se transforma (TransformMatchingParts) en su forma neuronal o de silicio. Un disparo o un vínculo nuevo toca la voz propia de la ranura.
+
+- Todas las fórmulas viven en `src/projector/manim/formulas.json`, incluidas las propuestas para las ranuras 3 y 6–9.
+- SC envía al navegador el nivel de cada capa del mezclador como `/stems` (10 Hz), así el lado bosque lee la capa CORPUS misma.
+- Las ranuras 4 y 5 anteriores siguen en `dataStructureVisuals.ts` hasta que los pilotos se aprueben.
+
 ## Autorrotación en reposo · ROTATION SPD
 
 El slider alcanza ahora **los dieciséis slots**. Antes llegaba exactamente a uno: el calendario fenológico, donde fija la tasa de barrido del año, que no es ninguna rotación.
