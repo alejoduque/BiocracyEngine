@@ -37,7 +37,7 @@ const DEG = Math.PI / 180;
 
 export type DomeParams = {
   /** Output size of the domemaster, px (square). */
-  size: 2048 | 4096;
+  size: 1536 | 2048 | 4096;
   /** Full fisheye aperture, degrees. 180 = a hemisphere. */
   aperture: number;
   /** Elevation above the horizon where the slot camera's forward lands. */

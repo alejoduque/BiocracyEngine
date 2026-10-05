@@ -184,6 +184,8 @@ function load(): Settings {
       const s: Settings = { ...DEFAULTS, ...saved };
       // NDI only exists inside dome-live.js; in a browser it falls back to none
       if (s.output === "ndi" && !domeOut()) s.output = "none";
+      // a size saved before the live cap
+      if (s.size > 2048) s.size = 2048;
       return s;
     }
   } catch { /* private window, blocked storage */ }
@@ -366,7 +368,11 @@ function build() {
   bar.append(
     el("span", { class: "t" }, "CÚPULA"),
     segmented("vista", [["master", "Domemaster"], ["sim", "Simulación"]], () => _s.mode, (v) => { _s.mode = v as ViewMode; }),
-    segmented("resolución", [["2048", "2048"], ["4096", "4096"]], () => String(_s.size), (v) => { _s.size = +v as 2048 | 4096; apply(); }),
+    // Live, the dome is 2048. At 4096 it holds ~1.75 GB more of the memory the
+    // M5's CPU and GPU share — measured, alongside a browser that has been
+    // open for days, it is what takes the page down (Chromium's sad face) and
+    // what reaches the sound card. 4096 is for dome-render.js, offline.
+    segmented("resolución", [["1536", "1536"], ["2048", "2048"]], () => String(_s.size), (v) => { _s.size = +v as DomeParams["size"]; apply(); }),
     slider("frente", 0, 90, 1, () => _s.frontElevation, (v) => { _s.frontElevation = v; apply(); }),
     slider("inmersión", 0, 95, 5, () => Math.round(_s.immersion * 100), (v) => { _s.immersion = v / 100; apply(); }, "%"),
     (() => {

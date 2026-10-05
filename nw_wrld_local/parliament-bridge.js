@@ -92,16 +92,23 @@ function trackMsg(dir, address, val) {
 //   {"t":12.3,"m":{…}}                               a broadcast, verbatim
 //   {"t":40.1,"s":{…}}                               a page event
 const fs = require("fs");
+const nodePath = require("path");
 let session = null;   // { out: WriteStream, t0: bigint, path }
 
 function sessionT() {
   return Number(process.hrtime.bigint() - session.t0) / 1e6;
 }
 
-function sessionOpen(wavPath) {
+function sessionOpen(wavArg) {
   sessionClose();
-  const path = String(wavPath).replace(/\.wav$/i, "") + ".session.jsonl";
+  // SC sends the path as it built it — "./recordings/…" when sclang was
+  // started from the repo root (start_ecosystem.sh does). This process runs in
+  // nw_wrld_local, so a relative path is taken against the repo root, not
+  // here; the header carries the absolute one for dome-render.js.
+  const wavPath = nodePath.resolve(nodePath.join(__dirname, ".."), String(wavArg));
+  const path = wavPath.replace(/\.wav$/i, "") + ".session.jsonl";
   try {
+    fs.mkdirSync(nodePath.dirname(path), { recursive: true });
     const out = fs.createWriteStream(path);
     out.on("error", (e) => { console.warn(`[bridge] session log failed: ${e.message}`); session = null; });
     session = { out, t0: process.hrtime.bigint(), path };
