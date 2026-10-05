@@ -19,6 +19,8 @@
 // setClearColor, not scene.background) and its tone mapping.
 
 import * as THREE from "three";
+import { UnrealBloomPass } from "three/examples/jsm/postprocessing/UnrealBloomPass.js";
+import { AfterimagePass } from "three/examples/jsm/postprocessing/AfterimagePass.js";
 
 export type CapturedView = {
   scene: THREE.Scene;
@@ -29,6 +31,13 @@ export type CapturedView = {
   exposure: number;
   /** Whether the slot's renderer encodes its output as sRGB (the default). */
   outputSRGB: boolean;
+  /**
+   * The scene was drawn into a render target, i.e. through an EffectComposer.
+   * Every composer slot here ends on a pass straight to the screen with no
+   * OutputPass, so what the audience sees is linear light shown as display
+   * values — no sRGB encoding. The dome must do the same or it reads washed out.
+   */
+  intoTarget: boolean;
   /** The canvas it was drawn into: once that leaves the stage, the slot is gone. */
   canvas: HTMLCanvasElement;
   /** performance.now() of the last render call seen for this scene. */
@@ -75,7 +84,7 @@ function note(renderer: any, scene: any, camera: any) {
         const prev = _seen.get(scene);
         const v: CapturedView = prev ?? {
           scene, camera, clearColor: new THREE.Color(), clearAlpha: 1,
-          toneMapping: THREE.NoToneMapping, exposure: 1, outputSRGB: true, at: 0,
+          toneMapping: THREE.NoToneMapping, exposure: 1, outputSRGB: true, intoTarget: false, at: 0,
           canvas: renderer.domElement,
         };
         v.canvas = renderer.domElement;
@@ -85,16 +94,90 @@ function note(renderer: any, scene: any, camera: any) {
         v.toneMapping = renderer.toneMapping;
         v.exposure = renderer.toneMappingExposure;
         v.outputSRGB = renderer.outputColorSpace === THREE.SRGBColorSpace;
+        v.intoTarget = renderer.getRenderTarget() !== null;
         v.at = performance.now();
         if (!prev) _seen.set(scene, v);
       }
     } catch { /* capture must never break a slot's own render */ }
 }
 
+// ── The slot's post-processing ─────────────────────────────────────────────
+// Bloom and afterimage are passes of the slot's own EffectComposer, applied to
+// its flat frame: the dome's cube camera never sees them. Their settings are
+// read here, as the slot's composer runs them, and the domemaster applies the
+// same two passes to the fisheye. Chromatic aberration and film grain are
+// screen-space effects of a flat lens and are deliberately not carried over.
+export type CapturedPost = {
+  bloom: { strength: number; radius: number; threshold: number; at: number } | null;
+  afterimage: { damp: number; at: number } | null;
+};
+const _post: CapturedPost = { bloom: null, afterimage: null };
+
+function onStage(renderer: any): boolean {
+  return !!(_stage && renderer && !_ignore.has(renderer) && _stage.contains(renderer.domElement));
+}
+
+/** The slot's bloom and afterimage, if its composer ran them recently. */
+export function currentPost(): CapturedPost {
+  const now = performance.now();
+  return {
+    bloom: _post.bloom && now - _post.bloom.at < CAPTURE_STALE_MS ? _post.bloom : null,
+    afterimage: _post.afterimage && now - _post.afterimage.at < CAPTURE_STALE_MS ? _post.afterimage : null,
+  };
+}
+
+// ── 2-D layers a slot puts over its WebGL canvas ───────────────────────────
+// A canvas composited over the scene in the page (the constellation field,
+// the ticker) is invisible to the cube camera. Such a canvas registers itself
+// with how it belongs on a dome:
+//   "sky"   the whole hemisphere — laid over the domemaster like a star chart
+//   "band"  a strip low around the front, where a reader's eye rests
+// and the domemaster composites it as the page does ("screen", or "over").
+export type DomeLayerMode = "sky" | "band";
+export type DomeLayer = { canvas: HTMLCanvasElement; mode: DomeLayerMode; blend: "screen" | "over" };
+const _layers = new Set<DomeLayer>();
+
+/** Declare a 2-D canvas as part of the slot's image on the dome. Returns an unregister function. */
+export function registerDomeLayer(canvas: HTMLCanvasElement, opts: { mode: DomeLayerMode; blend?: "screen" | "over" }): () => void {
+  const layer: DomeLayer = { canvas, mode: opts.mode, blend: opts.blend ?? "screen" };
+  _layers.add(layer);
+  return () => { _layers.delete(layer); };
+}
+
+/** The registered layers still on the stage. */
+export function currentLayers(): DomeLayer[] {
+  const out: DomeLayer[] = [];
+  for (const l of _layers) {
+    if (!l.canvas.isConnected) { _layers.delete(l); continue; }
+    if (_stage && _stage.contains(l.canvas) && l.canvas.width > 0 && l.canvas.height > 0) out.push(l);
+  }
+  return out;
+}
+
 export function installDomeCapture(stage: HTMLElement) {
   _stage = stage;
   if (_installed) return;
   _installed = true;
+
+  // Post passes are ordinary prototype methods, so a plain wrapper does.
+  const bloomRender = UnrealBloomPass.prototype.render;
+  UnrealBloomPass.prototype.render = function (this: UnrealBloomPass, renderer: any, ...rest: any[]) {
+    try {
+      if (onStage(renderer) && this.enabled) {
+        _post.bloom = { strength: this.strength, radius: this.radius, threshold: this.threshold, at: performance.now() };
+      }
+    } catch { /* never cost the slot its frame */ }
+    return (bloomRender as any).call(this, renderer, ...rest);
+  };
+  const afterRender = AfterimagePass.prototype.render;
+  AfterimagePass.prototype.render = function (this: AfterimagePass, renderer: any, ...rest: any[]) {
+    try {
+      if (onStage(renderer) && this.enabled) {
+        _post.afterimage = { damp: (this as any).uniforms?.damp?.value ?? 0.96, at: performance.now() };
+      }
+    } catch { /* never cost the slot its frame */ }
+    return (afterRender as any).call(this, renderer, ...rest);
+  };
 
   // three r159 does NOT put render() on the prototype: the constructor
   // assigns it, `this.render = function (scene, camera) {…}`, so wrapping

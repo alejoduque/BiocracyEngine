@@ -28,7 +28,9 @@
 // (Syphon, NDI, a recorder) would read back from it.
 
 import * as THREE from "three";
-import type { CapturedView } from "./domeCapture";
+import { UnrealBloomPass } from "three/examples/jsm/postprocessing/UnrealBloomPass.js";
+import { AfterimagePass } from "three/examples/jsm/postprocessing/AfterimagePass.js";
+import type { CapturedView, CapturedPost, DomeLayer } from "./domeCapture";
 import { ignoreRenderer } from "./domeCapture";
 
 const DEG = Math.PI / 180;
@@ -76,19 +78,48 @@ varying vec2 vUv;
 void main() { vUv = uv; gl_Position = vec4(position.xy, 0.0, 1.0); }
 `;
 
-const FISHEYE_FS = /* glsl */ `
-uniform samplerCube tScene;
-uniform samplerCube tOver;
-uniform float hasScene;
+// The domemaster pixel → the direction on the dome it shows. Equidistant:
+// radius linear in the angle from the zenith; front at the bottom.
+const DOME_DIR = /* glsl */ `
 uniform vec3 uZen;
 uniform vec3 uFront;
 uniform vec3 uRight;
 uniform float uHalfAperture;   // radians, centre → rim
+vec3 domeDir(vec2 p) {
+  float phi = length(p) * uHalfAperture;  // angle from the zenith
+  float a = atan(p.x, -p.y);              // 0 = front (bottom), +pi/2 = right
+  vec3 hor = cos(a) * uFront + sin(a) * uRight;
+  return normalize(cos(phi) * uZen + sin(phi) * hor);
+}
+`;
+
+// Pass 1: the scene as linear light, untouched — bloom and afterimage are
+// applied to this, as the slot's composer applies them to its flat frame.
+const FISHEYE_FS = /* glsl */ `
+uniform samplerCube tScene;
+uniform float hasScene;
+varying vec2 vUv;
+${DOME_DIR}
+void main() {
+  vec2 p = vUv * 2.0 - 1.0;
+  if (length(p) > 1.0 || hasScene < 0.5) { gl_FragColor = vec4(0.0, 0.0, 0.0, 1.0); return; }
+  gl_FragColor = vec4(textureCube(tScene, domeDir(p)).rgb, 1.0);
+}
+`;
+
+// Pass 3: to display values, then the layers the page puts over the scene.
+const FINAL_FS = /* glsl */ `
+uniform sampler2D tHdr;
+uniform samplerCube tOver;
+uniform sampler2D tSky;
+uniform float hasSky;
+uniform vec2 uSkyScale;
 uniform int uTone;             // three.js ToneMapping enum
 uniform float uExposure;
 uniform float uSRGB;
 uniform float uSize;
 varying vec2 vUv;
+${DOME_DIR}
 
 vec3 RRTAndODTFit(vec3 v) {
   vec3 a = v * (v + 0.0245786) - 0.000090537;
@@ -105,7 +136,7 @@ vec3 toneMap(vec3 c) {
   if (uTone == 1) return clamp(c * uExposure, 0.0, 1.0);                  // Linear
   if (uTone == 2) { c *= uExposure; return clamp(c / (vec3(1.0) + c), 0.0, 1.0); } // Reinhard
   if (uTone == 4) return acesFilmic(c);                                   // ACESFilmic
-  return c;                                                               // None (and the rest)
+  return clamp(c, 0.0, 1.0);                                              // None (and the rest)
 }
 vec3 linearToSRGB(vec3 c) {
   c = clamp(c, 0.0, 1.0);
@@ -116,18 +147,33 @@ void main() {
   vec2 p = vUv * 2.0 - 1.0;
   float r = length(p);
   if (r > 1.0) { gl_FragColor = vec4(0.0, 0.0, 0.0, 1.0); return; }
-  float phi = r * uHalfAperture;          // angle from the zenith
-  float a = atan(p.x, -p.y);              // 0 = front (bottom), +pi/2 = right
-  vec3 hor = cos(a) * uFront + sin(a) * uRight;
-  vec3 dir = normalize(cos(phi) * uZen + sin(phi) * hor);
 
-  vec3 col = hasScene > 0.5 ? toneMap(textureCube(tScene, dir).rgb) : vec3(0.0);
-  // The overlay cube holds PREMULTIPLIED colour: three's normal blending onto a
-  // transparent clear writes rgb·a into the buffer. Composite it as such, or
-  // every text edge gets a dark fringe.
-  vec4 ov = textureCube(tOver, dir);
-  col = col * (1.0 - clamp(ov.a, 0.0, 1.0)) + ov.rgb;
+  // The scene, in the values the page shows: sRGB-encoded, or — for a slot
+  // whose composer writes linear light straight to the screen — not.
+  vec3 col = toneMap(texture2D(tHdr, vUv).rgb);
   if (uSRGB > 0.5) col = linearToSRGB(col);
+
+  // Text and panels: the overlay cube holds PREMULTIPLIED linear colour
+  // (three's normal blending onto a transparent clear). Composited in display
+  // values, or every text edge gets a dark fringe.
+  vec4 ov = textureCube(tOver, domeDir(p));
+  float oa = clamp(ov.a, 0.0, 1.0);
+  vec3 ovd = oa > 0.0001 ? linearToSRGB(ov.rgb / oa) * oa : vec3(0.0);
+  col = col * (1.0 - oa) + ovd;
+
+  // The sky layer (the constellation field), screen-blended as in the page,
+  // laid over the domemaster like a star chart: its bottom edge at the front.
+  if (hasSky > 0.5) {
+    vec2 su = 0.5 + p * uSkyScale;
+    if (su.x >= 0.0 && su.x <= 1.0 && su.y >= 0.0 && su.y <= 1.0) {
+      // The canvas is transparent where nothing is drawn, and three uploads it
+      // unpremultiplied: what the page screens over the scene is rgb · alpha.
+      vec4 sk = texture2D(tSky, su);
+      vec3 sky = sk.rgb * sk.a;
+      col = vec3(1.0) - (vec3(1.0) - col) * (vec3(1.0) - sky);
+    }
+  }
+
   // Anti-aliased rim: one output pixel of fade instead of a stair-stepped edge.
   col *= 1.0 - smoothstep(1.0 - 2.0 / uSize, 1.0, r);
   gl_FragColor = vec4(col, 1.0);
@@ -242,7 +288,26 @@ export class Domemaster {
   private sceneCam!: THREE.CubeCamera;
   private overCam!: THREE.CubeCamera;
   private domeRT!: THREE.WebGLRenderTarget;
+  // linear light before tone mapping: the fisheye lands in hdrA, the
+  // afterimage writes hdrB, and the final pass reads whichever holds the result
+  private hdrA!: THREE.WebGLRenderTarget;
+  private hdrB!: THREE.WebGLRenderTarget;
   private builtSize = 0;
+
+  private finalMat: THREE.ShaderMaterial;
+  private finalScene: THREE.Scene;
+  private bloom: UnrealBloomPass;
+  private after: AfterimagePass;
+  private afterScene: THREE.Scene | null = null;
+
+  // 2-D layers: the sky (constellation field) and a band (the ticker)
+  private skyTex: THREE.CanvasTexture | null = null;
+  private skySource: HTMLCanvasElement | null = null;
+  private skyKey = "";
+  private bandTex: THREE.CanvasTexture | null = null;
+  private bandSource: HTMLCanvasElement | null = null;
+  private bandKey = "";
+  private bandMesh: THREE.Mesh;
 
   private fisheyeMat: THREE.ShaderMaterial;
   private fisheyeScene: THREE.Scene;
@@ -284,16 +349,37 @@ export class Domemaster {
     this.renderer.autoClear = true;
     ignoreRenderer(this.renderer);
 
+    const dirUniforms = () => ({
+      uZen: { value: this.zen }, uFront: { value: this.front }, uRight: { value: this.right },
+      uHalfAperture: { value: 90 * DEG },
+    });
     this.fisheyeMat = new THREE.ShaderMaterial({
       vertexShader: QUAD_VS, fragmentShader: FISHEYE_FS, depthTest: false, depthWrite: false,
-      uniforms: {
-        tScene: { value: null }, tOver: { value: null }, hasScene: { value: 0 },
-        uZen: { value: this.zen }, uFront: { value: this.front }, uRight: { value: this.right },
-        uHalfAperture: { value: 90 * DEG }, uTone: { value: 0 }, uExposure: { value: 1 },
-        uSRGB: { value: 1 }, uSize: { value: 2048 },
-      },
+      uniforms: { tScene: { value: null }, hasScene: { value: 0 }, ...dirUniforms() },
     });
     this.fisheyeScene = quad(this.fisheyeMat);
+    this.finalMat = new THREE.ShaderMaterial({
+      vertexShader: QUAD_VS, fragmentShader: FINAL_FS, depthTest: false, depthWrite: false,
+      uniforms: {
+        tHdr: { value: null }, tOver: { value: null }, tSky: { value: null }, hasSky: { value: 0 },
+        uSkyScale: { value: new THREE.Vector2(0.5, 0.5) },
+        uTone: { value: 0 }, uExposure: { value: 1 }, uSRGB: { value: 1 }, uSize: { value: 2048 },
+        ...dirUniforms(),
+      },
+    });
+    this.finalScene = quad(this.finalMat);
+    this.bloom = new UnrealBloomPass(new THREE.Vector2(256, 256), 0, 0, 0);
+    this.after = new AfterimagePass(0.9);
+    // The ticker's band: a strip of a cylinder around the front, built in
+    // dome-local axes (front −Z, zenith +Y) and oriented by the basis each
+    // frame. 120° wide; its height is set from the canvas's aspect.
+    const bandGeo = new THREE.CylinderGeometry(10, 10, 1, 96, 1, true, Math.PI - Math.PI / 3, (2 * Math.PI) / 3);
+    this.bandMesh = new THREE.Mesh(bandGeo, new THREE.MeshBasicMaterial({
+      transparent: true, depthTest: false, depthWrite: false, side: THREE.DoubleSide,
+    }));
+    this.bandMesh.matrixAutoUpdate = false;
+    this.bandMesh.renderOrder = 2;
+    this.bandMesh.visible = false;
 
     this.displayMat = new THREE.ShaderMaterial({
       vertexShader: QUAD_VS, fragmentShader: DISPLAY_FS, depthTest: false, depthWrite: false,
@@ -331,7 +417,7 @@ export class Domemaster {
     );
     this.panelMesh.renderOrder = 0;
     this.textMesh.renderOrder = 1;
-    this.overScene.add(this.panelMesh, this.textMesh);
+    this.overScene.add(this.panelMesh, this.textMesh, this.bandMesh);
 
     this.build();
   }
@@ -341,6 +427,7 @@ export class Domemaster {
     const N = this.params.size;
     if (this.builtSize === N) return;
     this.sceneCube?.dispose(); this.overCube?.dispose(); this.domeRT?.dispose();
+    this.afterScene = null;
     // A cube face spans 90°; the domemaster spends N/2 px on 90° of radius.
     const face = N / 2;
     this.sceneCube = new THREE.WebGLCubeRenderTarget(face, {
@@ -355,9 +442,15 @@ export class Domemaster {
       type: THREE.UnsignedByteType, generateMipmaps: false, minFilter: THREE.LinearFilter,
       depthBuffer: false,
     });
+    this.hdrA?.dispose(); this.hdrB?.dispose();
+    const hdrOpts = { type: THREE.HalfFloatType, generateMipmaps: false, minFilter: THREE.LinearFilter, depthBuffer: false };
+    this.hdrA = new THREE.WebGLRenderTarget(N, N, hdrOpts);
+    this.hdrB = new THREE.WebGLRenderTarget(N, N, hdrOpts);
+    this.bloom.setSize(N, N);
+    this.after.setSize(N, N);
     this.fisheyeMat.uniforms.tScene.value = this.sceneCube.texture;
-    this.fisheyeMat.uniforms.tOver.value = this.overCube.texture;
-    this.fisheyeMat.uniforms.uSize.value = N;
+    this.finalMat.uniforms.tOver.value = this.overCube.texture;
+    this.finalMat.uniforms.uSize.value = N;
     this.displayMat.uniforms.tDome.value = this.domeRT.texture;
     this.simMat.uniforms.tDome.value = this.domeRT.texture;
     this.flipMat.uniforms.tDome.value = this.domeRT.texture;
@@ -417,6 +510,16 @@ export class Domemaster {
     } catch { return null; }
   }
 
+  /** Dome coordinates are world coordinates: +Y the zenith, `forward` (horizontal) the front. */
+  private setBasisWorld(forward?: THREE.Vector3) {
+    this.zen.set(0, 1, 0);
+    this.front.copy(forward && (forward as any).isVector3 ? forward : new THREE.Vector3(0, 0, -1));
+    this.front.y = 0;
+    if (this.front.lengthSq() < 1e-6) this.front.set(0, 0, -1);
+    this.front.normalize();
+    this.right.crossVectors(this.front, this.zen).normalize();
+  }
+
   private setBasisFrom(camera: THREE.PerspectiveCamera | null) {
     const f = new THREE.Vector3(0, 0, -1), u = new THREE.Vector3(0, 1, 0), r = new THREE.Vector3(1, 0, 0);
     if (camera) {
@@ -438,18 +541,26 @@ export class Domemaster {
    * `panel`: the slot's 2-D canvas when there is no 3-D scene.
    * `title`: the dome-native text line.
    */
-  renderFrame(view: CapturedView | null, panel: HTMLCanvasElement | null, title: string) {
+  renderFrame(
+    view: CapturedView | null, panel: HTMLCanvasElement | null, title: string,
+    post: CapturedPost = { bloom: null, afterimage: null }, layers: DomeLayer[] = [],
+  ) {
     const R = this.renderer;
     const P = this.params;
-    this.setBasisFrom(view ? view.camera : null);
+    // A slot built around its audience names the seat itself: scene.userData
+    // .domeEye (and optionally .domeForward). Its world is then authored in
+    // dome coordinates — +Y the zenith — and is not re-aimed or moved in.
+    const eye: THREE.Vector3 | undefined = view?.scene.userData?.domeEye;
+    if (view && eye && (eye as any).isVector3) this.setBasisWorld(view.scene.userData.domeForward);
+    else this.setBasisFrom(view ? view.camera : null);
 
     // 1. the slot's scene into the cube, from the slot camera's position
     if (view) {
       const cam = view.camera;
-      this.sceneCam.position.copy(this._pos);          // from setBasisFrom's decompose
+      this.sceneCam.position.copy(eye && (eye as any).isVector3 ? eye : this._pos);
       // Immersion: slide along the camera's line of sight toward the scene's
       // middle — only forward, and never past it.
-      const centre = P.immersion > 0 ? this.sceneCentre(view.scene) : null;
+      const centre = !eye && P.immersion > 0 ? this.sceneCentre(view.scene) : null;
       if (centre) {
         const fwd = new THREE.Vector3(0, 0, -1).applyQuaternion(this._quat);
         const d = centre.clone().sub(this._pos).dot(fwd);
@@ -503,21 +614,107 @@ export class Domemaster {
       this.panelMesh.visible = false;
     }
 
+    // The band layer (the ticker), on its strip low around the front.
+    const band = layers.find((l) => l.mode === "band");
+    if (band) {
+      const c = band.canvas;
+      const key = `${c.width}x${c.height}`;
+      if (this.bandSource !== c || this.bandKey !== key) {
+        this.bandKey = key;
+        this.bandTex?.dispose();
+        this.bandTex = new THREE.CanvasTexture(c);
+        this.bandTex.colorSpace = THREE.SRGBColorSpace;
+        // CylinderGeometry runs theta the other way round from azimuth: flip u
+        // so the text reads left to right from inside.
+        this.bandTex.repeat.x = -1;
+        this.bandTex.offset.x = 1;
+        (this.bandMesh.material as THREE.MeshBasicMaterial).map = this.bandTex;
+        (this.bandMesh.material as THREE.MeshBasicMaterial).needsUpdate = true;
+        this.bandSource = c;
+      }
+      this.bandTex!.needsUpdate = true;
+      // 120° of arc at radius 10; the strip is as tall as the canvas's aspect allows.
+      const arc = 10 * (2 * Math.PI) / 3;
+      const h = arc * (c.height / c.width);
+      const m = new THREE.Matrix4().makeBasis(this.right, this.zen, this.front.clone().negate());
+      m.multiply(new THREE.Matrix4().compose(
+        new THREE.Vector3(0, 10 * Math.tan(4 * DEG), 0), new THREE.Quaternion(), new THREE.Vector3(1, h, 1)));
+      this.bandMesh.matrix.copy(m);
+      this.bandMesh.matrixWorld.copy(m);
+      this.bandMesh.visible = true;
+    } else {
+      this.bandMesh.visible = false;
+    }
+
     R.setClearColor(0x000000, 0);
     this.overCam.position.set(0, 0, 0);
     this.overCam.updateMatrixWorld();
     this.overCam.update(R, this.overScene);
 
-    // 3. fisheye into the domemaster
+    // 3. fisheye, as linear light
+    const half = (P.aperture / 2) * DEG;
     const u = this.fisheyeMat.uniforms;
     u.hasScene.value = view ? 1 : 0;
-    u.uHalfAperture.value = (P.aperture / 2) * DEG;
-    u.uTone.value = view ? view.toneMapping : 0;
-    u.uExposure.value = view ? view.exposure : 1;
-    u.uSRGB.value = !view || view.outputSRGB ? 1 : 0;
-    R.setRenderTarget(this.domeRT);
+    u.uHalfAperture.value = half;
+    R.setRenderTarget(this.hdrA);
     R.setClearColor(0x000000, 1);
     R.render(this.fisheyeScene, this.quadCam);
+
+    // 4. the slot's own post, in the order its composer runs it: bloom
+    //    (blended back into hdrA), then the afterimage (hdrA → hdrB)
+    let hdr = this.hdrA;
+    if (view && post.bloom && post.bloom.strength > 0) {
+      this.bloom.strength = post.bloom.strength;
+      this.bloom.radius = post.bloom.radius;
+      this.bloom.threshold = post.bloom.threshold;
+      this.bloom.render(R, this.hdrB, this.hdrA, 0, false);
+    }
+    if (view && post.afterimage) {
+      // Each slot mounts its own composer, so its trails start from nothing.
+      // The dome keeps one history for every slot: drop it when the scene
+      // changes, or a new slot opens with the last one's ghost.
+      if (this.afterScene !== view.scene) {
+        R.setRenderTarget((this.after as any).textureOld);
+        R.setClearColor(0x000000, 1);
+        R.clear();
+        this.afterScene = view.scene;
+      }
+      (this.after as any).uniforms.damp.value = post.afterimage.damp;
+      this.after.render(R, this.hdrB, this.hdrA, 0, false);
+      hdr = this.hdrB;
+    } else {
+      this.afterScene = null;
+    }
+
+    // 5. display values, text and panels, and the sky
+    const f = this.finalMat.uniforms;
+    f.tHdr.value = hdr.texture;
+    f.uHalfAperture.value = half;
+    f.uTone.value = view ? view.toneMapping : 0;
+    f.uExposure.value = view ? view.exposure : 1;
+    // A composer slot shows linear light as it is (see CapturedView.intoTarget).
+    f.uSRGB.value = !view || (view.outputSRGB && !view.intoTarget) ? 1 : 0;
+    const sky = view ? layers.find((l) => l.mode === "sky") : undefined;
+    if (sky) {
+      const c = sky.canvas;
+      const key = `${c.width}x${c.height}`;
+      if (this.skySource !== c || this.skyKey !== key) {
+        this.skyKey = key;
+        this.skyTex?.dispose();
+        this.skyTex = new THREE.CanvasTexture(c);   // raw display values, as the page shows them
+        this.skySource = c;
+      }
+      this.skyTex!.needsUpdate = true;
+      // Cover the circle: the canvas's short side spans the diameter.
+      const a = c.width / c.height;
+      f.uSkyScale.value.set(a >= 1 ? 0.5 / a : 0.5, a >= 1 ? 0.5 : 0.5 * a);
+      f.tSky.value = this.skyTex;
+      f.hasSky.value = 1;
+    } else {
+      f.hasSky.value = 0;
+    }
+    R.setRenderTarget(this.domeRT);
+    R.render(this.finalScene, this.quadCam);
     R.setRenderTarget(null);
   }
 
@@ -654,6 +851,9 @@ export class Domemaster {
   dispose() {
     this.disposeOutput();
     this.flipMat.dispose();
+    this.finalMat.dispose(); this.bloom.dispose(); this.after.dispose();
+    this.hdrA.dispose(); this.hdrB.dispose();
+    this.skyTex?.dispose(); this.bandTex?.dispose();
     this.sceneCube.dispose(); this.overCube.dispose(); this.domeRT.dispose();
     this.textTex.dispose(); this.panelTex?.dispose();
     this.fisheyeMat.dispose(); this.displayMat.dispose(); this.simMat.dispose();

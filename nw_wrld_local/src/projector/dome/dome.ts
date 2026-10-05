@@ -21,7 +21,7 @@
 // sends black. The clean feed ("salida limpia") fills the window with the
 // bare domemaster for screen capture — a preview route, not the deliverable.
 
-import { installDomeCapture, currentView, panelKind } from "./domeCapture";
+import { installDomeCapture, currentView, currentPost, currentLayers, panelKind } from "./domeCapture";
 import { Domemaster, DEFAULT_PARAMS, type DomeParams } from "./domemaster";
 import { RENDER_MODE } from "./renderMode";
 import { sessionEvent } from "./session";
@@ -245,7 +245,7 @@ function frame(t: number) {
   const view = currentView();
   const panel = view ? null : panelCanvas();
   try {
-    _dome.renderFrame(view, panel, slotTitle());
+    _dome.renderFrame(view, panel, slotTitle(), currentPost(), currentLayers());
   } catch (e) {
     // A slot's objects are not ours: one that breaks mid-switch costs this
     // frame, not the loop. Warn once per burst, not sixty times a second.
@@ -540,7 +540,7 @@ function initRender() {
     renderOnce() {
       if (!_dome) return;
       const view = currentView();
-      _dome.renderFrame(view, view ? null : panelCanvas(), slotTitle());
+      _dome.renderFrame(view, view ? null : panelCanvas(), slotTitle(), currentPost(), currentLayers());
     },
     read() {
       const N = _dome!.params.size;

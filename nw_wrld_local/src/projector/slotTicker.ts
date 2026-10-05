@@ -20,6 +20,8 @@
 // Slow on purpose: 16 px/s is about a word every two seconds. It is there to be
 // caught sideways over a long sitting, not read.
 
+import { registerDomeLayer } from "./dome/domeCapture";
+
 export type SlotTicker = {
     /** Call once per frame. `alpha` scales the whole thing with the slot. */
     draw(alpha: number): void;
@@ -43,6 +45,8 @@ export function mountSlotTicker(
         "position:absolute;left:0;right:0;bottom:0;width:100%;height:34px;"
         + "pointer-events:none;z-index:3;mix-blend-mode:screen;";
     host.appendChild(canvas);
+    // On the dome: a strip low around the front (dome/domeCapture.ts).
+    registerDomeLayer(canvas, { mode: "band", blend: "screen" });
     const ctx = canvas.getContext("2d");
 
     let w = 0, h = 0;

@@ -32,6 +32,7 @@
 // pulse()  an onset — the engine's attacks brighten the stars and widen the
 //          reach, so the whole field gathers on a note.
 
+import { registerDomeLayer } from "../dome/domeCapture";
 import { ANIMALS, type Animal } from "./animals";
 
 export type ConstellationMode = "dark" | "light";
@@ -202,6 +203,9 @@ export function mountConstellationField(
     "position:absolute;inset:0;width:100%;height:100%;z-index:2;" +
     "pointer-events:auto;mix-blend-mode:screen;";
   host.appendChild(canvas);
+  // On the dome it is the sky: laid over the whole hemisphere, screen-blended
+  // as here (dome/domeCapture.ts). Unregistered when the canvas leaves.
+  registerDomeLayer(canvas, { mode: "sky", blend: "screen" });
 
   // The pointer is the survey instrument, so it reads as one. Set on the host
   // rather than the canvas because the canvas takes no pointer events at all.
