@@ -128,10 +128,20 @@ function cutAudio() {
   if (!src) { console.log(`[dome-render] (no audio: ${header.wav} not found)`); return; }
   const start = Math.max(0, (FROM_MS + AUDIO_OFFSET_MS) / 1000);
   const dur = N_FRAMES / FPS;
+  // The planetarium's playback wants WAV at 48 kHz / 24 bit, and four
+  // channels in console order: L R Ls Rs. SC records the quad ring in PanAz
+  // order — 0 FL, 1 FR, 2 RR, 3 RL — so the rears are swapped here.
+  const chans = Number(spawnSync("ffprobe", ["-v", "error", "-select_streams", "a:0", "-show_entries",
+    "stream=channels", "-of", "csv=p=0", src]).stdout.toString().trim()) || 0;
+  // channelmap, not pan: pan between these layouts remixes instead of
+  // reordering (measured). quad = FL FR BL BR = L R Ls Rs.
+  const reorder = chans === 4 ? ["-af", "channelmap=map=0|1|3|2:channel_layout=quad"] : [];
   const r = spawnSync("ffmpeg", ["-hide_banner", "-loglevel", "error", "-y",
-    "-ss", start.toFixed(4), "-t", dur.toFixed(4), "-i", src, "-c:a", "pcm_s24le",
+    "-ss", start.toFixed(4), "-t", dur.toFixed(4), "-i", src, ...reorder,
+    "-ar", "48000", "-c:a", "pcm_s24le",
     path.join(OUT, "audio.wav")], { stdio: "inherit" });
-  if (r.status === 0) console.log(`[dome-render] audio.wav  ${dur.toFixed(2)} s from ${start.toFixed(2)} s of ${path.basename(src)}`);
+  if (r.status === 0) console.log(`[dome-render] audio.wav  ${dur.toFixed(2)} s from ${start.toFixed(2)} s of ${path.basename(src)}` +
+    `  · 48 kHz / 24 bit${chans === 4 ? " · L R Ls Rs" : ` · ${chans} ch`}`);
 }
 
 // ── The page ────────────────────────────────────────────────────────────────

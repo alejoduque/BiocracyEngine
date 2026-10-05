@@ -231,11 +231,36 @@ function slotTitle(): string {
 
 // ── Loop ────────────────────────────────────────────────────────────────────
 
+// The cardinal points of the venue's orientation, around the domemaster view:
+// south (front) at the bottom, north (back) at the top, east left, west right.
+const _compass: HTMLSpanElement[] = [];
+function placeCompass() {
+  if (!_canvas || !_root) return;
+  if (!_compass.length) {
+    for (const t of ["S · FRENTE", "N · ESPALDA", "E", "O"]) {
+      const c = el("span", { class: "compass" }, t) as HTMLSpanElement;
+      _root.appendChild(c);
+      _compass.push(c);
+    }
+  }
+  const show = _s.guides && _s.mode === "master" && !_clean;
+  const r = _canvas.getBoundingClientRect();
+  const side = Math.min(r.width, r.height);
+  const cx = r.left + r.width / 2, cy = r.top + r.height / 2;
+  const at: [number, number][] = [[cx, cy + side / 2 - 14], [cx, cy - side / 2 + 4], [cx - side / 2 + 10, cy], [cx + side / 2 - 10, cy]];
+  _compass.forEach((c, i) => {
+    c.hidden = !show;
+    c.style.left = `${at[i][0]}px`;
+    c.style.top = `${at[i][1]}px`;
+  });
+}
+
 function resize() {
   if (!_canvas || !_dome) return;
   const r = _canvas.getBoundingClientRect();
   _dome.renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
   _dome.renderer.setSize(Math.max(1, r.width), Math.max(1, r.height), false);
+  placeCompass();
 }
 
 function frame(t: number) {
@@ -310,6 +335,8 @@ const CSS = `
 #dome-bar select { background:#000; color:inherit; border:1px solid rgba(255,136,0,.35); font:inherit; }
 #dome-bar .ro { color:rgba(255,136,0,.5); }
 #dome-help { position:absolute; left:12px; bottom:8px; color:rgba(255,136,0,.45); pointer-events:none; }
+#dome-view .compass { position:fixed; transform:translate(-50%,0); font:11px/1 ui-monospace, Menlo, monospace;
+  color:rgba(255,136,0,.75); letter-spacing:.08em; pointer-events:none; }
 #dome-view.black canvas { opacity:.15; }
 #dome-bar button.negro[aria-pressed="true"] { background:#c00; border-color:#c00; color:#fff; }
 #dome-live-badge { position:fixed; right:12px; bottom:12px; z-index:8999; padding:4px 10px;
@@ -367,7 +394,7 @@ function build() {
 
   bar.append(
     el("span", { class: "t" }, "CÚPULA"),
-    segmented("vista", [["master", "Domemaster"], ["sim", "Simulación"]], () => _s.mode, (v) => { _s.mode = v as ViewMode; }),
+    segmented("vista", [["master", "Domemaster"], ["sim", "Simulación"]], () => _s.mode, (v) => { _s.mode = v as ViewMode; placeCompass(); }),
     // Live, the dome is 2048. At 4096 it holds ~1.75 GB more of the memory the
     // M5's CPU and GPU share — measured, alongside a browser that has been
     // open for days, it is what takes the page down (Chromium's sad face) and
@@ -388,7 +415,31 @@ function build() {
     segmented("texto", [["on", "texto"], ["off", "sin texto"]], () => (_s.showText ? "on" : "off"), (v) => { _s.showText = v === "on"; apply(); }),
     slider("letra", 1, 6, 0.5, () => _s.textDeg, (v) => { _s.textDeg = v; apply(); }),
     slider("altura texto", 0, 60, 1, () => _s.textElevation, (v) => { _s.textElevation = v; apply(); }),
-    segmented("guías", [["on", "guías"], ["off", "sin guías"]], () => (_s.guides ? "on" : "off"), (v) => { _s.guides = v === "on"; }),
+    segmented("guías", [["on", "guías"], ["off", "sin guías"]], () => (_s.guides ? "on" : "off"), (v) => { _s.guides = v === "on"; placeCompass(); }),
+    (() => {
+      // The planetarium's grid (their "Dome Master 4k Pattern"), from a file:
+      // shown over the domemaster on this screen to check orientation —
+      // front/south at the bottom, east left, west right — never sent out.
+      const b = el("button", { type: "button", "aria-pressed": "false", title: "superpone la grilla de la sala (JPG/PNG) sobre el domemaster, solo en pantalla" }, "grilla sala") as HTMLButtonElement;
+      const input = el("input", { type: "file", accept: "image/*", style: "display:none" }) as HTMLInputElement;
+      let on = false;
+      b.addEventListener("click", () => {
+        b.blur();
+        if (on) { on = false; _dome?.setPattern(null); b.setAttribute("aria-pressed", "false"); return; }
+        input.click();
+      });
+      input.addEventListener("change", () => {
+        const f = input.files?.[0];
+        if (!f) return;
+        const img = new Image();
+        img.onload = () => { _dome?.setPattern(img, 0.5); on = true; b.setAttribute("aria-pressed", "true"); URL.revokeObjectURL(img.src); };
+        img.src = URL.createObjectURL(f);
+        input.value = "";
+      });
+      const wrap = el("span");
+      wrap.append(b, input);
+      return wrap;
+    })(),
     segmented("fps", [["30", "30 fps"], ["60", "60 fps"]], () => String(_s.maxFps), (v) => { _s.maxFps = +v as 30 | 60; }),
     segmented("salida: NDI (dome-live.js) o Syphon (dome-bridge.js); sigue con la vista cerrada",
       [["none", "sin salida"], ["ndi", "ndi"], ["syphon", "syphon"]],
@@ -444,6 +495,7 @@ function setClean(on: boolean) {
   if (!_root) return;
   _clean = on;
   _root.classList.toggle("clean", on);
+  placeCompass();
   if (on) { _root.requestFullscreen?.().catch(() => { /* not allowed: still clean in-window */ }); }
   else if (document.fullscreenElement) { document.exitFullscreen().catch(() => {}); }
   requestAnimationFrame(resize);

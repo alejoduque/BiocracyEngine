@@ -187,6 +187,8 @@ uniform sampler2D tDome;
 uniform vec2 uView;            // viewport px
 uniform float uGuides;
 uniform float uHalfAperture;
+uniform sampler2D tPattern;
+uniform float uPattern;        // opacity of the venue's grid over the domemaster, 0 = off
 varying vec2 vUv;
 void main() {
   vec2 px = vUv * uView;
@@ -195,6 +197,9 @@ void main() {
   vec2 q = (px - o) / side;                 // 0..1 inside the square
   if (q.x < 0.0 || q.y < 0.0 || q.x > 1.0 || q.y > 1.0) { gl_FragColor = vec4(0.0, 0.0, 0.0, 1.0); return; }
   vec3 col = texture2D(tDome, q).rgb;
+  // The venue's own grid ("Dome Master 4k Pattern"), laid over ours to check
+  // the orientation and the circle before anything is rendered for them.
+  if (uPattern > 0.0) col = mix(col, texture2D(tPattern, q).rgb, uPattern);
   if (uGuides > 0.5) {
     vec2 p = q * 2.0 - 1.0;
     float r = length(p);
@@ -454,6 +459,7 @@ export class Domemaster {
       uniforms: {
         tDome: { value: null }, uView: { value: new THREE.Vector2(1, 1) },
         uGuides: { value: 1 }, uHalfAperture: { value: 90 * DEG },
+        tPattern: { value: null }, uPattern: { value: 0 },
       },
     });
     this.displayScene = quad(this.displayMat);
@@ -798,6 +804,17 @@ export class Domemaster {
     R.setRenderTarget(this.domeRT);
     R.render(this.finalScene, this.quadCam);
     R.setRenderTarget(null);
+  }
+
+  private patternTex: THREE.Texture | null = null;
+
+  /** The venue's grid image over the domemaster view (screen only — never in the output). */
+  setPattern(img: HTMLImageElement | null, opacity = 0.5) {
+    this.patternTex?.dispose();
+    this.patternTex = img ? new THREE.Texture(img) : null;
+    if (this.patternTex) { this.patternTex.colorSpace = THREE.NoColorSpace; this.patternTex.needsUpdate = true; }
+    this.displayMat.uniforms.tPattern.value = this.patternTex;
+    this.displayMat.uniforms.uPattern.value = img ? opacity : 0;
   }
 
   /** Show the domemaster in the screen canvas (letterboxed square). */
