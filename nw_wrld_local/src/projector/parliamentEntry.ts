@@ -3,15 +3,20 @@
 // Spectrogram canvas + reactive FFT from live state data
 // Visualization switcher: keys 0–9 swap center stage
 
+// First, before any module can read the time or open a socket: under
+// ?render=1 (dome-render.js) this swaps the page's clocks and the bridge
+// socket for a recorded session's. Otherwise it does nothing.
+import "./dome/renderMode";
 import parliamentStore, { ParliamentState } from "./parliament/parliamentStore";
 import {
   notifyBeatTempo as notifyPhenoBeatTempo,
   applyPhenoControl,
   jumpToPhenoSeason,
 } from "./phenology/breath";
-import { initSwitcher, getActiveThreeStage, updateSpeciesRoster } from "./visualizationSwitcher";
+import { initSwitcher, getActiveThreeStage, getCurrentSlot, updateSpeciesRoster } from "./visualizationSwitcher";
 import { initLaserTap } from "./laserTap";
-import { initDome } from "./dome/dome";
+import { initDome, domeParams } from "./dome/dome";
+import { initSession, setSessionSink, setSessionSnapshot, sessionRecordingStarted } from "./dome/session";
 import { initPulsarPlot, pushRow, setPulsarSource, type PulsarSource } from "./pulsarPlot";
 import { startVizMotion } from "./vizMotion";
 import { publishScAudio, noteVoiceOnset, tickScAudio, type ScAudio } from "./scAudio";
@@ -133,6 +138,10 @@ function connectControlWS() {
 
       // CONFIGS dropdown: SC broadcasts the preset list (comma-separated
       // string) after boot, saves, and /preset/list requests
+      // SC's recorder started: the bridge is now logging the session, and
+      // what the page looks like at time zero goes in with it.
+      if (address === "/rec/started") { sessionRecordingStarted(); return; }
+
       if (address === "/preset/names") {
         const names = String(args[0] ?? "").split(",").filter(Boolean);
         const sel = document.getElementById("preset-select") as HTMLSelectElement | null;
@@ -1176,6 +1185,13 @@ async function init() {
   // render calls to find their scenes, so its hook has to be in place before
   // the first slot mounts. See dome/dome.ts.
   initDome(container);
+  // Session events (keys, the slot on stage, dome settings) travel on the
+  // control socket; the bridge only keeps them while SC is recording.
+  initSession();
+  setSessionSink((event) => {
+    if (controlWS && controlWsReady) controlWS.send(JSON.stringify({ direction: "session", event }));
+  });
+  setSessionSnapshot(() => ({ slot: getCurrentSlot(), dome: domeParams() }));
   initSwitcher(container, hudEl!, () => currentState);
 
   // ── window.__scAudio ────────────────────────────────────────────────────

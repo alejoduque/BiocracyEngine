@@ -75,6 +75,51 @@ function trackMsg(dir, address, val) {
   bucket[address].lastTime = Date.now();
 }
 
+// ─── Session log (for the offline dome renderer) ────────────────────────────
+// Everything the page is sent is everything a slot can react to: SC's whole
+// OSC stream comes through broadcast() below, and nothing else reaches the
+// stage. So while SC is recording, the bridge writes each broadcast to a
+// .session.jsonl next to the WAV, timed from the moment the recorder started.
+// dome-render.js replays that file into the page on a virtual clock and
+// renders the dome at 4096, in sync with the recording — the performance
+// becomes a high-resolution clip without being performed again.
+//
+// SC announces the recorder with /rec/started <wav path> and /rec/stopped
+// (11_recording_system.scd). The page adds what only it knows — keys pressed,
+// the slot showing, the dome's settings — as {direction:"session"} messages.
+//
+//   {"t":0,"h":{"v":1,"wav":"…","started":"ISO"}}   header
+//   {"t":12.3,"m":{…}}                               a broadcast, verbatim
+//   {"t":40.1,"s":{…}}                               a page event
+const fs = require("fs");
+let session = null;   // { out: WriteStream, t0: bigint, path }
+
+function sessionT() {
+  return Number(process.hrtime.bigint() - session.t0) / 1e6;
+}
+
+function sessionOpen(wavPath) {
+  sessionClose();
+  const path = String(wavPath).replace(/\.wav$/i, "") + ".session.jsonl";
+  try {
+    const out = fs.createWriteStream(path);
+    out.on("error", (e) => { console.warn(`[bridge] session log failed: ${e.message}`); session = null; });
+    session = { out, t0: process.hrtime.bigint(), path };
+    out.write(JSON.stringify({ t: 0, h: { v: 1, wav: String(wavPath), started: new Date().toISOString() } }) + "\n");
+    console.log(`[bridge] ● session log → ${path}`);
+  } catch (e) {
+    console.warn(`[bridge] session log not opened: ${e.message}`);
+    session = null;
+  }
+}
+
+function sessionClose() {
+  if (!session) return;
+  session.out.end();
+  console.log(`[bridge] ■ session log closed (${(sessionT() / 1000).toFixed(1)} s)`);
+  session = null;
+}
+
 // WebSocket server (nw_wrld connects here)
 const wss = new WebSocketServer({ port: WS_PORT });
 const clients = new Set();
@@ -106,6 +151,8 @@ wss.on("connection", (ws) => {
         scPort.send({ address: msg.address, args: oscArgs });
         trackMsg("b2sc", msg.address, msg.args?.[0] ?? null);
         if (DEBUG) console.log(`[bridge] browser→SC  ${msg.address}  ${JSON.stringify(msg.args)}`);
+      } else if (msg.direction === "session" && msg.event && session) {
+        session.out.write(`{"t":${sessionT().toFixed(2)},"s":${JSON.stringify(msg.event)}}\n`);
       }
     } catch (_) { }
   });
@@ -119,6 +166,7 @@ wss.on("connection", (ws) => {
 // Helper: broadcast a JSON payload to all connected browser clients
 function broadcast(payload) {
   const json = JSON.stringify(payload);
+  if (session) session.out.write(`{"t":${sessionT().toFixed(2)},"m":${json}}\n`);
   for (const ws of clients) {
     if (ws.readyState === 1) ws.send(json);
   }
@@ -149,6 +197,12 @@ udpPort.on("message", (oscMsg) => {
   const address = oscMsg.address;
   const args = (oscMsg.args || []).map((a) => a.value);
   trackMsg("sc2b", address, args[0] ?? null);
+
+  // The recorder's own start and stop open and close the session log. Opened
+  // before the broadcast, so /rec/started is the log's first message and the
+  // page's snapshot (sent when it sees it) lands right after.
+  if (address === "/rec/started") sessionOpen(args[0]);
+  else if (address === "/rec/stopped") { broadcast({ address, args }); sessionClose(); return; }
 
   // ── Route 1: known SC paths → translate to /ch/methodName ────────────────
   const methodName = SC_TO_CH[address];
@@ -247,3 +301,15 @@ udpPort.on("error", (err) => {
 });
 
 udpPort.open();
+
+// A bridge killed mid-recording (start_ecosystem.sh's cleanup) still leaves a
+// complete session log: flush it before exiting.
+for (const sig of ["SIGINT", "SIGTERM"]) {
+  process.on(sig, () => {
+    if (!session) process.exit(0);
+    const { out } = session;
+    sessionClose();
+    out.on("finish", () => process.exit(0));
+    setTimeout(() => process.exit(0), 1000);
+  });
+}

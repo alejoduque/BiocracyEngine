@@ -106,6 +106,12 @@ s.doWhenBooted({
                     };
                     
                     "✓ %-channel recording started successfully".format(~recordingParams.channels).postln;
+
+                    // Time zero of the recording, told to the bridge: it opens
+                    // a .session.jsonl next to this WAV and logs everything the
+                    // visuals receive from here on, so dome-render.js can
+                    // replay the session at 4096 in sync with this file.
+                    if(~visualsDest.notNil) { ~visualsDest.sendMsg('/rec/started', recordingPath) };
                 }.defer(0.1);
                 
                 // Update recording state
@@ -162,6 +168,9 @@ s.doWhenBooted({
                 ~recordingBuffer = nil;
             };
             
+            // …and the end of it: the bridge closes the session log.
+            if(~visualsDest.notNil) { ~visualsDest.sendMsg('/rec/stopped') };
+
             // Report results
             duration = ~recordingParams.recordingDuration;
             path = ~recordingParams.recordingPath;

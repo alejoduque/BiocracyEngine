@@ -158,6 +158,8 @@ let _mountId = 0;  // monotonic mount generation; stale mounts abort
 // Exposed for parliamentEntry label tracking + FFT feed
 let _activeThreeStage: any = null;
 export function getActiveThreeStage(): any { return _activeThreeStage; }
+/** The slot key on stage ("" before the first mount) — for the session snapshot. */
+export function getCurrentSlot(): string { return currentKey; }
 
 // ─── HUD ─────────────────────────────────────────────────────────────────────
 function updateHUD(name: string, key: string) {

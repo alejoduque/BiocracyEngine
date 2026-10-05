@@ -25,6 +25,10 @@ archive/
 # versionan; sus nombres quedan documentados en recordings/README.md, que sí.
 # No hay placeholder vacío para ellos porque ocuparían esas mismas rutas.
 recordings/*.wav
+# Logs de sesión del bridge (uno por grabación) y los renders de la cúpula
+# que salen de ellos: datos de una función, pesados, no código.
+recordings/*.session.jsonl
+renders/
 
 # Derived phenological corpus (~4.5 GB, rebuildable from the AudioMoth
 # originals with tools/build_corpus.py). The manifest is small and is the

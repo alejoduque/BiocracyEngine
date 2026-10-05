@@ -45,6 +45,26 @@ const _ignore = new WeakSet<THREE.WebGLRenderer>();
 // keep each one's latest sighting and pick the most substantial at read time.
 const _seen = new Map<THREE.Scene, CapturedView>();
 
+// Which context each canvas was given, as the page asked for it. The dome
+// needs to know which stage canvases are 2-D (or raw WebGL, like the camera's
+// CRT) to show them as a flat panel, and it must not find out by asking:
+// getContext("2d") on a canvas nobody has claimed yet CLAIMS it, and the slot
+// that created it then gets null for its own "webgl" (that broke slot C
+// whenever the dome was open while it mounted).
+const _ctxType = new WeakMap<HTMLCanvasElement, "2d" | "webgl">();
+// three.js canvases are shown through their scene, never as a panel.
+const _threeCanvases = new WeakSet<HTMLCanvasElement>();
+
+/**
+ * How a stage canvas can feed the dome's flat panel: "2d" or "webgl" for a
+ * canvas drawn by hand (p5, a 2-D sketch, a raw WebGL pass), null for a
+ * three.js canvas or one that has no context yet.
+ */
+export function panelKind(c: HTMLCanvasElement): "2d" | "webgl" | null {
+  if (_threeCanvases.has(c)) return null;
+  return _ctxType.get(c) ?? null;
+}
+
 /** Renderers that must never be captured — the dome's own. */
 export function ignoreRenderer(r: THREE.WebGLRenderer) { _ignore.add(r); }
 
@@ -84,12 +104,22 @@ export function installDomeCapture(stage: HTMLElement) {
   // the setter installs a wrapped render() as the renderer's own property.
   // Every renderer constructed after this point is covered, whatever module
   // made it; nothing already built is touched.
+  const canvasProto = HTMLCanvasElement.prototype as any;
+  const getContext = canvasProto.getContext;
+  canvasProto.getContext = function (this: HTMLCanvasElement, type: string, ...rest: any[]) {
+    const ctx = getContext.call(this, type, ...rest);
+    if (ctx && !_ctxType.has(this)) _ctxType.set(this, type === "2d" ? "2d" : "webgl");
+    return ctx;
+  };
+
   const proto = THREE.WebGLRenderer.prototype as any;
   Object.defineProperty(proto, "render", {
     configurable: true,
     get() { return undefined; },
     set(fn: (scene: any, camera: any) => void) {
       const renderer = this;
+      // domElement is assigned at the top of the constructor, render() far below.
+      if (renderer.domElement) _threeCanvases.add(renderer.domElement);
       Object.defineProperty(renderer, "render", {
         configurable: true, writable: true,
         value: function (scene: any, camera: any) {

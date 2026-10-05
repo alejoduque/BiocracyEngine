@@ -17,8 +17,10 @@
 // bare domemaster for OBS / MadMapper screen capture — at screen resolution,
 // which is why it is a preview route, not the 4096 deliverable.
 
-import { installDomeCapture, currentView } from "./domeCapture";
+import { installDomeCapture, currentView, panelKind } from "./domeCapture";
 import { Domemaster, DEFAULT_PARAMS, type DomeParams } from "./domemaster";
+import { RENDER_MODE } from "./renderMode";
+import { sessionEvent } from "./session";
 
 type ViewMode = "master" | "sim";
 
@@ -122,11 +124,25 @@ function load(): Settings {
 }
 function save() {
   try { localStorage.setItem(STORE_KEY, JSON.stringify(_s)); } catch { /* ignore */ }
+  // Every settled change is part of the performance: a recording's render
+  // should frame the dome the way it was framed live.
+  sessionEvent({ dome: domeParams() });
+}
+
+/** The settings that shape the image (not the viewer's own: view mode, sim camera, output route). */
+export function domeParams(): Record<string, unknown> {
+  const out: Record<string, unknown> = {};
+  for (const k of Object.keys(DEFAULT_PARAMS) as (keyof DomeParams)[]) out[k] = _s[k];
+  return out;
 }
 
 // ── What feeds the dome ─────────────────────────────────────────────────────
 
-/** The slot's largest 2-D canvas, for slots with no 3-D scene (p5, text). */
+/**
+ * The slot's largest hand-drawn canvas — 2-D (p5, text) or raw WebGL (the
+ * camera's CRT) — for slots with no three.js scene. Never probed with
+ * getContext: see panelKind in domeCapture.ts.
+ */
 function panelCanvas(): HTMLCanvasElement | null {
   if (!_stage) return null;
   let best: HTMLCanvasElement | null = null;
@@ -134,12 +150,7 @@ function panelCanvas(): HTMLCanvasElement | null {
   _stage.querySelectorAll("canvas").forEach((c) => {
     const cv = c as HTMLCanvasElement;
     const a = cv.width * cv.height;
-    if (a <= area) return;
-    // getContext("2d") on a canvas that already holds a WebGL context returns
-    // null and changes nothing; every stage canvas is initialised by now.
-    let is2d = false;
-    try { is2d = !!cv.getContext("2d"); } catch { is2d = false; }
-    if (is2d) { best = cv; area = a; }
+    if (a > area && panelKind(cv)) { best = cv; area = a; }
   });
   return best;
 }
@@ -365,8 +376,9 @@ function close() {
 
 export function initDome(stage: HTMLElement) {
   _stage = stage;
-  _s = load();
   installDomeCapture(stage);
+  if (RENDER_MODE) { initRender(); return; }
+  _s = load();
 
   window.addEventListener("keydown", (e) => {
     if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement
@@ -381,4 +393,44 @@ export function initDome(stage: HTMLElement) {
   // For output bridges (Syphon / NDI / recorder): the last rendered
   // domemaster as RGBA8, bottom-up rows. null while the dome is closed.
   (window as any).__domeFrame = () => (_open && _dome ? _dome.readPixels() : null);
+}
+
+// ── Offline render (renderMode.ts, dome-render.js) ─────────────────────────
+// The renderer has no screen and no loop: renderMode calls renderOnce() after
+// each stepped frame and reads the domemaster straight back. Settings start
+// from the defaults — not this profile's localStorage — and follow the
+// session's snapshot and logged changes; only the size is the renderer's own.
+function initRender() {
+  const q = new URLSearchParams(location.search);
+  const size = (q.get("dome") === "2048" ? 2048 : 4096) as 2048 | 4096;
+  _s = { ...DEFAULTS, size, syphon: false };
+  build();
+  _dome = new Domemaster(_canvas!, _s);
+  _dome.renderer.setPixelRatio(1);
+  _dome.renderer.setSize(64, 64, false);   // nothing is shown; the domemaster is a render target
+  _open = true;
+  _root!.classList.add("open", "clean");
+  _clean = true;
+  let buf: Uint8Array | null = null;
+
+  (window as any).__domeRender = {
+    ready: () => !!_dome,
+    renderOnce() {
+      if (!_dome) return;
+      const view = currentView();
+      _dome.renderFrame(view, view ? null : panelCanvas(), slotTitle());
+    },
+    read() {
+      const N = _dome!.params.size;
+      if (!buf || buf.length !== N * N * 4) buf = new Uint8Array(N * N * 4);
+      _dome!.readPixelsInto(buf);
+      return { width: N, height: N, data: buf };
+    },
+    apply(settings: Record<string, unknown>) {
+      for (const k of Object.keys(DEFAULT_PARAMS) as (keyof DomeParams)[]) {
+        if (k !== "size" && k in settings) (_s as any)[k] = settings[k];
+      }
+      _dome?.setParams(_s);
+    },
+  };
 }
