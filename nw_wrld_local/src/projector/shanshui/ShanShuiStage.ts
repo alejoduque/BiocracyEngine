@@ -45,6 +45,11 @@ const HMAX = 4.5;       // tallest a ridge can stand
 const DEPTH = 60;       // how far back the horizon is
 const PTS = 96;         // ridge vertices
 const BG = 0x000804;
+// Transaction heads: half the size they were, and a little see-through, so
+// the nodes mark the ranges without standing over them like trees.
+const HEAD_MIN = 0.025;
+const HEAD_RANGE = 0.06;
+const HEAD_OPACITY = 0.72;
 const INK = 0xd6d0c2;
 const VERM = 0xc43e2c;
 const WASH = 0x3c4c45;
@@ -186,7 +191,8 @@ export class ShanShuiStage extends RingStageBase {
     this.liveCurtain.frustumCulled = false;
     this.scene.add(this.liveCurtain, this.liveRibbon);
 
-    this.heads = new THREE.InstancedMesh(new THREE.IcosahedronGeometry(1, 1), new THREE.MeshBasicMaterial({ color: 0xffffff }), 2000);
+    this.heads = new THREE.InstancedMesh(new THREE.IcosahedronGeometry(1, 1),
+      new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: HEAD_OPACITY, depthWrite: false }), 2000);
     this.heads.count = 0;
     this.heads.frustumCulled = false;
     const sg = new THREE.BufferGeometry();
@@ -398,7 +404,7 @@ export class ShanShuiStage extends RingStageBase {
       for (const nd of r.nodes) {
         if (nh >= 2000) break;
         const stem = 0.35 + nd.tx.valueNorm * 0.3;
-        const s = 0.05 + nd.tx.valueNorm * 0.12;
+        const s = HEAD_MIN + nd.tx.valueNorm * HEAD_RANGE;
         m.makeScale(s, s, s).setPosition(nd.x, nd.y + stem, r.z);
         this.heads.setMatrixAt(nh, m);
         c.setHex(INK).multiplyScalar(Math.max(0.05, inkA * fade + 0.1));
@@ -428,7 +434,7 @@ export class ShanShuiStage extends RingStageBase {
       const x = -XW + Math.max(0, Math.min(1, tx.gasNorm)) * 2 * XW;
       const y = this.heightAt(this.liveRidge, x);
       const stem = 0.35 + tx.valueNorm * 0.3;
-      const s = 0.05 + tx.valueNorm * 0.12;
+      const s = HEAD_MIN + tx.valueNorm * HEAD_RANGE;
       m.makeScale(s, s, s).setPosition(x, y + stem, 0);
       this.heads.setMatrixAt(nh, m);
       this.heads.setColorAt(nh, c.setHex(INK));
