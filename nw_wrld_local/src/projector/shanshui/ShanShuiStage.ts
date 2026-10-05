@@ -38,6 +38,7 @@ import type { LabelSpec } from "../rings/ringLabels";
 import parliamentStore from "../parliament/parliamentStore";
 import { getEthBlockLog, getEthTxLog, type EthBlockRaw, type EthTxRaw } from "../ethLive";
 import { blobPoly, Perlin, Pt, strokePoly } from "./inkLib";
+import { installDomeBend } from "../dome/domeBend";
 
 const XW = 10;          // half-width of the frequency axis, world units
 const HMAX = 4.5;       // tallest a ridge can stand
@@ -170,8 +171,11 @@ export class ShanShuiStage extends RingStageBase {
 
   constructor(container: HTMLElement) {
     super(container);
-    this.defaultView = { fitRadius: 13, polarDeg: 66, azimuthDeg: 0 };
-    this.viewTarget = new THREE.Vector3(0, 1.4, -16);
+    // Framed so the front range runs off both edges of the screen and the
+    // recession fills it upward — at fitRadius 13 the landscape sat in the
+    // middle 60% with empty sky above.
+    this.defaultView = { fitRadius: 9.2, polarDeg: 52, azimuthDeg: 0 };
+    this.viewTarget = new THREE.Vector3(0, 1.2, -9);
     this.scene.fog = new THREE.Fog(BG, 20, 78);
 
     for (let i = 0; i < PTS; i++) this.liveRidge.push([-XW + (i / (PTS - 1)) * 2 * XW, 0]);
@@ -191,6 +195,11 @@ export class ShanShuiStage extends RingStageBase {
     this.stems = new THREE.LineSegments(sg, new THREE.LineBasicMaterial({ color: INK, transparent: true, opacity: 0.35 }));
     this.stems.frustumCulled = false;
     this.scene.add(this.heads, this.stems);
+
+    // On the dome the landscape surrounds the audience: frequency goes all the
+    // way round, the live range at the horizon, the past rising toward the
+    // zenith into the fog (dome/domeBend.ts). The flat screen is untouched.
+    installDomeBend(this.scene, this.renderer, { halfWidth: XW, depth: DEPTH, r0: 10, rGrowth: 0.9, baseDeg: 3, topDeg: 80, degPerY: 4.5 });
 
     // The ledger and the seal live in the overlay, as DOM text.
     if (this.overlayEl) {
