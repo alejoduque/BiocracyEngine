@@ -717,10 +717,9 @@ export function mountTimeTravel(stageEl: HTMLElement, getLatestState: () => Parl
         // Rebuild grid if textureDepth changed spacing
         const gridSpacing = Math.floor(lerp(60, 20, texDep));
         if (Math.abs(gridSpacing - lastGridSpacing) > 4) rebuildGrid(gridSpacing);
-        (gridGroup.children[0] as THREE.LineSegments).material = new THREE.LineBasicMaterial({
-            color: 0x663300, transparent: true,
-            opacity: (0.04 + texDep * 0.12 + filtC * 0.08) * masterA,
-        });
+        // Re-tuned in place — a new material every frame leaked (see slot 7).
+        ((gridGroup.children[0] as THREE.LineSegments).material as THREE.LineBasicMaterial).opacity =
+            (0.04 + texDep * 0.12 + filtC * 0.08) * masterA;
 
         // Rebuild inner rings if droneDepth changed ring count
         const ringCount = Math.floor(2 + droneD * 6);
@@ -2473,11 +2472,14 @@ export function mountGeometry(stageEl: HTMLElement, getLatestState: () => Parlia
         // Rebuild grid when noiseLevel changes significantly
         const gridStep = Math.floor(lerp(50, 15, texDep));
         if (Math.abs(gridStep - lastGridStep) > 5) rebuildGrid(gridStep, noiseL, texDep);
+        // The grid's own material, re-tuned in place. This used to assign a NEW
+        // LineBasicMaterial every frame and never dispose the old one: sixty
+        // materials a second, each registered with this renderer and — with the
+        // dome open — with the dome's too, which draws the scene six times. The
+        // heap grew ~15 MB a minute and the stalls reached the sound card.
         if (gridGroup.children[0]) {
-            (gridGroup.children[0] as THREE.LineSegments).material = new THREE.LineBasicMaterial({
-                color: 0x663300, transparent: true,
-                opacity: (0.04 + texDep * 0.08 + droneMix * 0.06 + filtC * 0.04) * masterA,
-            });
+            ((gridGroup.children[0] as THREE.LineSegments).material as THREE.LineBasicMaterial).opacity =
+                (0.04 + texDep * 0.08 + droneMix * 0.06 + filtC * 0.04) * masterA;
         }
 
         // Eco sweep lines — noiseFilt controls count
