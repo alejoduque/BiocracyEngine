@@ -19,7 +19,7 @@ import { initDome, domeParams } from "./dome/dome";
 import { initSession, setSessionSink, setSessionSnapshot, sessionRecordingStarted } from "./dome/session";
 import { initPulsarPlot, pushRow, setPulsarSource, type PulsarSource } from "./pulsarPlot";
 import { startVizMotion } from "./vizMotion";
-import { publishScAudio, noteVoiceOnset, tickScAudio, type ScAudio } from "./scAudio";
+import { publishScAudio, publishStems, noteVoiceOnset, tickScAudio, type ScAudio } from "./scAudio";
 import {
   pushEthTx, pushEthBlock, tickEthLive, getEthLive,
   tickEthScaled, getEthScaled,
@@ -341,6 +341,8 @@ function connectControlWS() {
         pushEthBlock(args as number[]);
         return;
       }
+
+      if (address === "/stems") { publishStems(args as unknown[]); return; }
 
       if (address === "/spectrum") {
         const bands = args.filter((a: unknown) => typeof a === "number") as number[];

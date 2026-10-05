@@ -1,0 +1,86 @@
+{
+  "_": "Single source of every formula on the blended slots (src/projector/blend/) and in the ManimGL prototypes (tools/manim/). Conceptual blending after Fauconnier & Turner: two input spaces (neuronal / forest, silicon / chain), the generic space they share, and the blend. \\class{key}{…} names the parts that TransformMatchingParts matches between formulas.",
+
+  "s4": {
+    "title": "Umbral",
+    "idea": "Integrar hasta un umbral y disparar. Lo que separa a una neurona de un bloque es la fuga: una membrana olvida, una cadena no.",
+    "generic": "\\int_{0}^{t} \\text{entrada}\\,ds \\;\\geq\\; \\theta \\;\\Rightarrow\\; \\text{evento, reinicio}",
+    "neuronal": {
+      "label": "NEURONA \\cdot BOSQUE",
+      "law": "\\tau\\,\\frac{d\\class{V}{V}}{dt} = -\\class{V}{V} + R\\,\\class{I}{I(t)}",
+      "rule": "\\class{V}{V} \\geq \\class{th}{\\theta} \\;\\Rightarrow\\; \\text{disparo}"
+    },
+    "silicon": {
+      "label": "BLOQUE \\cdot CADENA",
+      "law": "\\class{V}{G}_{n+1} = \\class{V}{G}_{n} + \\class{I}{g_{\\mathrm{tx}}}",
+      "rule": "\\class{V}{G} \\geq \\class{th}{G_{\\max}} \\;\\Rightarrow\\; \\text{sello}"
+    },
+    "blend": {
+      "label": "MEZCLA",
+      "neuronal": "\\tau\\,\\frac{d\\class{U}{U}}{dt} = -\\class{U}{U} + \\class{I}{I_{\\text{bosque}}}",
+      "mixed": "\\tau\\,\\frac{d\\class{U}{U}}{dt} = -(1-\\class{lam}{\\lambda})\\,\\class{U}{U} + (1-\\class{lam}{\\lambda})\\,\\class{I}{I_{\\text{bosque}}} + \\class{lam}{\\lambda}\\,\\class{g}{g_{\\text{cadena}}}",
+      "silicon": "\\Delta \\class{U}{U} = \\class{g}{g_{\\text{cadena}}}",
+      "rule": "\\class{U}{U} \\geq \\class{th}{\\theta} \\;\\Rightarrow\\; \\text{disparo} \\,/\\, \\text{sello}"
+    }
+  },
+
+  "s5": {
+    "title": "Redes",
+    "idea": "Pesos que aprenden de lo que ocurre junto. Hebb en la red micorrízica; valor movido entre direcciones en la cadena.",
+    "generic": "G = (V, E, w), \\quad w_{ij} \\leftarrow w_{ij} + \\Delta w_{ij}",
+    "neuronal": {
+      "label": "MICORRIZA \\cdot BOSQUE",
+      "law": "\\Delta \\class{w}{w_{ij}} = \\class{eta}{\\eta}\\, \\class{x}{x_i\\, x_j}",
+      "rule": "x_i = \\text{presencia de la especie } i"
+    },
+    "silicon": {
+      "label": "TRANSACCIONES \\cdot CADENA",
+      "law": "\\Delta \\class{w}{w_{ab}} = \\class{x}{v_{a \\to b}}",
+      "rule": "v_{a\\to b} = \\text{valor movido de } a \\text{ a } b"
+    },
+    "blend": {
+      "label": "MEZCLA",
+      "neuronal": "\\Delta \\class{w}{w} = \\class{eta}{\\eta}\\,\\class{x}{x_i x_j}",
+      "mixed": "\\Delta \\class{w}{w} = (1-\\class{lam}{\\lambda})\\,\\class{eta}{\\eta}\\,\\class{x}{x_i x_j} + \\class{lam}{\\lambda}\\,\\class{v}{v_{a\\to b}}",
+      "silicon": "\\Delta \\class{w}{w} = \\class{v}{v_{a\\to b}}",
+      "rule": "\\text{valor} = \\class{f0}{\\text{pres}}\\cdot\\class{f1}{\\text{act}}\\cdot\\class{f2}{\\text{eDNA}}\\cdot\\class{f3}{\\text{hongos}}\\cdot\\class{f4}{\\text{IA}}\\cdot\\class{f5}{\\text{IUCN}}"
+    }
+  },
+
+  "_roadmap": "Proposed for after the pilots; same shape as s4/s5 once built.",
+  "s3": {
+    "title": "Prueba",
+    "idea": "Verificar sin revelar. El error de predicción solo deja pasar lo que no se esperaba; una prueba de conocimiento cero solo deja pasar que es cierto. La cláusula de opacidad.",
+    "generic": "\\text{verificar}(x) \\text{ sin revelar } x",
+    "neuronal": { "label": "PREDICCIÓN \\cdot BOSQUE", "law": "\\varepsilon = x - \\hat{x}" },
+    "silicon": { "label": "COMPROMISO \\cdot CADENA", "law": "C = g^{x} h^{r}" }
+  },
+  "s6": {
+    "title": "Uso",
+    "idea": "Estructuras que se reorganizan hacia lo que se usa: la dendrita que se potencia, el árbol splay que sube lo consultado a la raíz.",
+    "generic": "\\text{costo}(x) \\downarrow \\text{ cuanto más se usa } x",
+    "neuronal": { "label": "DENDRITA \\cdot BOSQUE", "law": "\\Delta w = \\eta\\, r_{\\text{pre}}\\, r_{\\text{post}} - \\gamma\\, w" },
+    "silicon": { "label": "SPLAY \\cdot CADENA", "law": "\\hat{c}(x) \\leq 3\\,(r(\\text{raíz}) - r(x)) + 1" }
+  },
+  "s7": {
+    "title": "Campos",
+    "idea": "Partir un espacio en regiones de respuesta: el campo receptivo de una neurona, la celda de Voronoi de una dirección.",
+    "generic": "\\text{espacio} \\to \\text{regiones de respuesta}",
+    "neuronal": { "label": "CAMPO RECEPTIVO \\cdot BOSQUE", "law": "r(\\theta) = r_{\\max}\\, e^{-(\\theta-\\theta_0)^2 / 2\\sigma^2}" },
+    "silicon": { "label": "VORONOI \\cdot CADENA", "law": "V_i = \\{x : \\lVert x - p_i \\rVert \\leq \\lVert x - p_j \\rVert\\ \\forall j\\}" }
+  },
+  "s8": {
+    "title": "Memoria",
+    "idea": "Capacidad contra demora: el olvido de la memoria, la jerarquía de cachés.",
+    "generic": "\\text{capacidad} \\uparrow \\;\\Leftrightarrow\\; \\text{demora} \\uparrow",
+    "neuronal": { "label": "OLVIDO \\cdot BOSQUE", "law": "R(t) = e^{-t/S}" },
+    "silicon": { "label": "CACHÉ \\cdot CADENA", "law": "\\text{AMAT} = t_{\\text{hit}} + m \\cdot t_{\\text{miss}}" }
+  },
+  "s9": {
+    "title": "Huella",
+    "idea": "El circuito olfativo de la mosca es un hash sensible a la localidad (Dasgupta et al., 2017); la cadena firma con keccak256.",
+    "generic": "h : \\text{señal} \\to \\text{huella corta}",
+    "neuronal": { "label": "OLFATO \\cdot BOSQUE", "law": "h(x) = \\mathrm{WTA}_k(Mx)" },
+    "silicon": { "label": "KECCAK \\cdot CADENA", "law": "h(x) = \\mathrm{keccak256}(x)" }
+  }
+}

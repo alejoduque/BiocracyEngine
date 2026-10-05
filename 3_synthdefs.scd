@@ -304,6 +304,28 @@ s.doWhenBooted({
             { x };
         Out.ar(out, x);
     }).add;
+    // The same levels, for the visuals. The GUI's meters listen to /stem in
+    // 4_gui.scd; the projector needs them too — the blended slots read the
+    // CORPUS layer as the forest's own voice, apart from the chain's. One
+    // message at 10 Hz carrying name/rms pairs for every layer, rather than
+    // forwarding fourteen streams at 12 Hz each.
+    ~stemRms = ~stemRms ?? { () };
+    OSCdef(\stemToVisuals).free;
+    OSCdef(\stemToVisuals, { |msg|
+        var name = (~stemNames ? [])[msg[3].asInteger];
+        if(name.notNil) { ~stemRms[name] = msg[5] };
+    }, '/stem');
+    if(~stemVisualsRoutine.notNil) { ~stemVisualsRoutine.stop };
+    ~stemVisualsRoutine = Routine({
+        loop {
+            if(~visualsDest.notNil and: { ~stemRms.size > 0 }) {
+                ~visualsDest.sendMsg('/stems', *(~stemNames.collect { |n|
+                    [n.asString, (~stemRms[n] ? 0).asFloat] }.flatten));
+            };
+            0.1.wait;
+        }
+    }).play(SystemClock);
+
     // Where each stem's \stemSum lives, and its pan state — kept here so the
     // three places that create them (below, 17_ and 18_) and the GUI agree.
     ~stemNodes = ();

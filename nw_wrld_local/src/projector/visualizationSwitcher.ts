@@ -1686,8 +1686,21 @@ async function switchTo(key: string) {
     }
     else if (key === "2") viz = await mountLowEarthPoint();
     else if (key === "3") viz = mountPerlinBlob();
-    else if (key === "4") viz = mountTimeTravel(stageEl!, getLatestState);
-    else if (key === "5") viz = mountDynamicGraphs(stageEl!, getLatestState);
+    // Slot 4 is a blended space now (blend/umbral.ts): the neuron and the
+    // block, and the leak that separates them, with its formulas live. The
+    // former Time Travel (mountTimeTravel) stays in dataStructureVisuals.ts
+    // until the blended slots are settled. Lazy: MathJax comes with it.
+    else if (key === "4") {
+      const { mountUmbral } = await import("./blend/umbral");
+      viz = mountUmbral(stageEl!);
+    }
+    // Slot 5 likewise (blend/redes.ts): the mycorrhizal net and the
+    // transaction graph, and the bonds between species and addresses. The
+    // former Dynamic Graphs stays in dataStructureVisuals.ts for now.
+    else if (key === "5") {
+      const { mountRedes } = await import("./blend/redes");
+      viz = mountRedes(stageEl!, getLatestState);
+    }
     else if (key === "6") viz = mountDynamicOptimality(stageEl!, getLatestState);
     else if (key === "7") viz = mountGeometry(stageEl!, getLatestState);
     else if (key === "8") viz = mountMemoryHierarchy(stageEl!, getLatestState);

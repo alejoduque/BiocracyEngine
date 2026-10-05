@@ -207,3 +207,24 @@ export function bandRange(from: number, to: number): number {
   for (let i = a; i <= b; i++) { s += audio.bands[i]; c++; }
   return c ? s / c : 0;
 }
+
+// ── Per-layer levels ─────────────────────────────────────────────────────────
+// /stems from SC (3_synthdefs.scd, ~stemVisualsRoutine): name/rms pairs for
+// every mixer layer, 10 Hz. The spectrum above is the whole mix; this says how
+// much of it each layer is — the CORPUS layer alone is the forest's own voice,
+// apart from the chain's instruments.
+const stems: Record<string, number> = {};
+let stemsAt = 0;
+
+export function publishStems(args: unknown[]): void {
+  for (let i = 0; i + 1 < args.length; i += 2) {
+    const v = Number(args[i + 1]);
+    if (typeof args[i] === "string" && Number.isFinite(v)) stems[args[i] as string] = v;
+  }
+  stemsAt = nowS();
+}
+
+/** A layer's RMS (linear, as SC measures it), or 0 when nothing has arrived for 2 s. */
+export function getStem(name: string): number {
+  return nowS() - stemsAt < 2 ? (stems[name] ?? 0) : 0;
+}
