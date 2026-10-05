@@ -30,6 +30,8 @@
 //   --window <WxH>       page size, i.e. the resolution of the 2-D slots (default 1920x1080)
 //   --audio-offset <ms>  shift the audio against the picture (default 0)
 //   --lfe-hz <Hz>        crossover of the 5.1 file's LFE channel (default 100)
+//   --embed-audio        also put the 5.1 inside the .mov (prores/hapq), for a
+//                        player that wants picture and sound in one file
 //
 // Audio: two WAVs at 48 kHz / 24 bit beside the video — <name>_LRLsRs.wav
 // (four channels, console order) and <name>_5.1.wav (L R C LFE Ls Rs, the
@@ -79,6 +81,7 @@ const WARMUP_MS = (args.warmup !== undefined ? Number(args.warmup) : 3) * 1000;
 const [WIN_W, WIN_H] = String(args.window || "1920x1080").split("x").map(Number);
 const AUDIO_OFFSET_MS = Number(args["audio-offset"]) || 0;
 const LFE_HZ = Number(args["lfe-hz"]) || 100;
+const EMBED_AUDIO = args["embed-audio"] === "1";
 const URL_BASE = args.url || "http://localhost:9001/parliament.html";
 const NAME = path.basename(SESSION).replace(/\.session\.jsonl$/, "");
 const OUT = path.resolve(args.out || path.join(__dirname, "..", "renders", `${NAME}_${SIZE}`));
@@ -188,7 +191,23 @@ function cutAudio() {
   if (spawnSync("ffmpeg", [...cut, "-filter_complex", graph, "-map", "[out]", "-t", dur.toFixed(4), "-c:a", "pcm_s24le", five],
     { stdio: "inherit" }).status === 0) {
     say(five, `5.1 · L R C LFE Ls Rs · LFE < ${LFE_HZ} Hz`);
+    if (EMBED_AUDIO) embedAudio(five);
   }
+}
+
+/**
+ * The 5.1 inside the .mov as well, as 24-bit PCM: one file, picture and sound
+ * locked. The video is copied, not re-encoded (any ffmpeg can copy HAP), and
+ * the .mov is replaced only once the new one is complete.
+ */
+function embedAudio(five) {
+  const mov = fs.readdirSync(OUT).find((f) => f.endsWith(".mov"));
+  if (!mov) { console.log("[dome-render] (--embed-audio: no .mov — use --format hapq or prores)"); return; }
+  const src = path.join(OUT, mov), tmp = src.replace(/\.mov$/, ".audio.tmp.mov");
+  const r = spawnSync("ffmpeg", ["-hide_banner", "-loglevel", "error", "-y", "-i", src, "-i", five,
+    "-map", "0:v", "-map", "1:a", "-c:v", "copy", "-c:a", "pcm_s24le", "-shortest", tmp], { stdio: "inherit" });
+  if (r.status === 0) { fs.renameSync(tmp, src); console.log(`[dome-render] ${mov}  + 5.1 PCM embedded`); }
+  else { try { fs.unlinkSync(tmp); } catch { /* none */ } console.log("[dome-render] embedding the audio failed; the .mov and the WAVs are as they were"); }
 }
 
 // ── The page ────────────────────────────────────────────────────────────────

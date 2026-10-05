@@ -80,6 +80,7 @@ Output in `renders/<name>_4096/`: the video (a PNG sequence, or the `.mov`) plus
 | `--warmup <s>` | 3 | time the page runs before time zero so slots can mount |
 | `--window <WxH>` | 1920x1080 | page size, which sets the resolution of the 2-D panel slots |
 | `--audio-offset <ms>` | 0 | nudge the audio against the picture |
+| `--embed-audio` | off | also put the 5.1 inside the `.mov` (24-bit PCM), for a player that wants picture and sound in one file |
 
 **Time on the M5:** about **3 fps at 4096** (≈10× real time: a 20-minute piece takes about 3 h 20 min unattended), and about 10 fps at 2048. Encoding is not the bottleneck; PNG and ProRes run at the same speed.
 

@@ -80,6 +80,7 @@ Sale en `renders/<nombre>_4096/`: el video (secuencia PNG, o el `.mov`) y dos WA
 | `--warmup <s>` | 3 | tiempo que corre la página antes del cero, para que las ranuras monten |
 | `--window <AxA>` | 1920x1080 | tamaño de la página, que fija la resolución de las ranuras en panel 2D |
 | `--audio-offset <ms>` | 0 | mover el audio respecto a la imagen |
+| `--embed-audio` | no | además mete el 5.1 dentro del `.mov` (PCM de 24 bits), para un reproductor que quiera imagen y sonido en un solo archivo |
 
 **Tiempo en el M5:** unos **3 fps a 4096** (≈10× el tiempo real: una pieza de 20 minutos tarda unas 3 h 20 min, sin supervisión), y unos 10 fps a 2048. La codificación no es el cuello de botella; PNG y ProRes van a la misma velocidad.
 
