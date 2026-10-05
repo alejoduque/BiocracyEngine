@@ -32,6 +32,7 @@ En `parliament.html`, la **D** abre **CÚPULA** sobre la página. Las ranuras si
 | guías | anillos de elevación cada 15° y una marca al frente |
 | salida: sin salida / ndi / syphon | adónde va el domemaster además de la pantalla. **ndi** solo funciona en la ventana en vivo (sección 4). La salida sigue con la vista cerrada |
 | negro | envía negro a la salida sin apagarla |
+| opaca / alfa | **alfa** envía la salida con canal alfa (RGBA, UYVA en la red): el negro es transparente, así la sala puede poner el vivo como capa sobre un clip que ya se está reproduciendo |
 | salida limpia | el domemaster solo, a pantalla completa (Esc para volver). Sirve solo para captura de pantalla, no es la entrega 4K |
 
 Cada ranura llega a la cúpula por una de dos vías:
@@ -65,7 +66,9 @@ npm run serve                      # en una terminal: http://localhost:9001
 npm run dome:render -- --session ../recordings/<nombre>.session.jsonl
 ```
 
-Sale en `renders/<nombre>_4096/`: `frame_00000.png …` y `audio.wav`. El audio es el mismo tramo de la grabación, 4 canales, en sincronía con el cuadro 0.
+Sale en `renders/<nombre>_4096/`: el video (secuencia PNG, o el `.mov`) y dos WAV del mismo tramo de la grabación, en sincronía con el cuadro 0, ambos a 48 kHz / 24 bits:
+- `<nombre>_4096_LRLsRs.wav`: 4 canales en orden de consola;
+- `<nombre>_4096_5.1.wav`: L R C LFE Ls Rs, con el centro en silencio y el LFE con los graves de la mezcla (suma de los cuatro canales, pasa bajos a 100 Hz, 24 dB/oct; `--lfe-hz` lo cambia). Con este archivo la sala reproduce la función completa, subwoofers incluidos, y no hace falta nuestra MOTU.
 
 | Opción | Por defecto | |
 |---|---|---|
@@ -87,6 +90,16 @@ npm run dome:render -- --session ../recordings/<nombre>.session.jsonl --size 204
 ```
 
 Cómo funciona: la página corre con un reloj virtual (`src/projector/dome/renderMode.ts`) y el log se le entrega en sus tiempos. Así cada cuadro cae exactamente donde le corresponde frente al WAV, por lento que se renderice. `--from` reproduce todo lo anterior sin renderizarlo, para que la página llegue a ese punto en el estado en que la dejó la función.
+
+## Plan A y Plan B
+
+- **Plan A (la función): clips pre-renderizados.** HAP Q a 4096 y 30 fps con su WAV 5.1, reproducidos por Digistar y la consola de la sala. Nada nuestro tiene que funcionar en vivo. El flujo:
+  1. Grabar cada pieza en SC; el log de sesión queda junto al WAV.
+  2. Renderizar primero un minuto (`--to 60 --format hapq`). Revisarlo en la vista CÚPULA sobre la grilla de la sala, y después su tamaño y los WAV.
+  3. Renderizar cada pieza completa.
+  4. Copiar los `.mov` y sus `_5.1.wav` / `_LRLsRs.wav` al disco USB 3.0 en NTFS.
+  5. Mandarle a la sala un clip de prueba de 30 s con su WAV antes del día, para que revisen el códec y la carga en Digistar.
+- **Plan B (encima, opcional): el instrumento en vivo como capa NDI** sobre un clip que se está reproduciendo, con la salida **alfa**. Solo se usa si el día la sala confirma que Digistar toma una fuente NDI como capa sobre sus medios, y cómo la mezcla (alfa, o aditivo/screen). Es solo imagen: el sonido ya va en el WAV del clip.
 
 ## 4. En vivo por NDI
 

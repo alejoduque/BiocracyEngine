@@ -32,6 +32,7 @@ In `parliament.html`, **D** opens **CÚPULA** over the page. The slots keep runn
 | guías | elevation rings every 15° and a front tick |
 | salida: sin salida / ndi / syphon | where the domemaster goes besides the screen. **ndi** only works in the live window (section 4). The output keeps running with the view closed |
 | negro | sends black to the output without turning it off |
+| opaca / alfa | **alfa** sends the output with an alpha channel (RGBA, UYVA on the wire): black is transparent, so the venue can lay the live feed as a layer over a clip that is already playing |
 | salida limpia | the bare domemaster full screen (Esc to return). For screen capture only, not the 4K deliverable |
 
 Each slot reaches the dome one of two ways:
@@ -65,7 +66,9 @@ npm run serve                      # in one terminal: http://localhost:9001
 npm run dome:render -- --session ../recordings/<name>.session.jsonl
 ```
 
-Output in `renders/<name>_4096/`: `frame_00000.png …` plus `audio.wav`. The audio is the same stretch of the recording, 4 channels, in sync with frame 0.
+Output in `renders/<name>_4096/`: the video (a PNG sequence, or the `.mov`) plus two WAVs of the same stretch of the recording, in sync with frame 0, both at 48 kHz / 24 bit:
+- `<name>_4096_LRLsRs.wav`: 4 channels in console order;
+- `<name>_4096_5.1.wav`: L R C LFE Ls Rs, with the centre silent and the LFE being the low end of the mix (the four channels summed, low-passed at 100 Hz, 24 dB/oct; `--lfe-hz` changes it). With this file the venue plays the whole show, subwoofers included, and our MOTU is not needed.
 
 | Option | Default | |
 |---|---|---|
@@ -87,6 +90,16 @@ npm run dome:render -- --session ../recordings/<name>.session.jsonl --size 2048 
 ```
 
 How it works: the page runs on a virtual clock (`src/projector/dome/renderMode.ts`), and the log is played into it at its logged times. Every frame therefore lands exactly where it belongs against the WAV, however slowly it renders. `--from` plays everything before that point without rendering it, so the page arrives in the state the performance left it.
+
+## Plan A and Plan B
+
+- **Plan A (the show): pre-rendered clips.** HAP Q 4096 at 30 fps with their 5.1 WAV, played by Digistar and the venue console. Nothing of ours has to work live. The workflow:
+  1. Record each piece in SC; the session log is written beside the WAV.
+  2. Render one minute first (`--to 60 --format hapq`). Check it in the CÚPULA view over the venue's grid, then check its size and the WAVs.
+  3. Render every piece in full.
+  4. Copy the `.mov` files and their `_5.1.wav` / `_LRLsRs.wav` to the NTFS USB 3.0 drive.
+  5. Send the venue a 30 s test clip with its WAV before the day, so they can check the codec and loading on Digistar.
+- **Plan B (on top, optional): the live instrument as an NDI layer** over a playing clip, with the **alfa** output. It is used only if, on the day, the venue confirms that Digistar takes an NDI source as a layer over its media, and how it blends it (alpha, or additive/screen). It is picture only: the sound is already in the clip's WAV.
 
 ## 4. Live over NDI
 
