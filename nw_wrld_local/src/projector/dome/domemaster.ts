@@ -247,23 +247,52 @@ void main() {
 // dome-local coordinates: +Y the zenith, -Z the front, +X the right.
 const SIM_VS = /* glsl */ `
 varying vec3 vDir;
+varying vec3 vWorld;
 void main() {
   vDir = normalize(position);
+  vWorld = normalize(mat3(modelMatrix) * position);   // the room's own up, whatever the dome's tilt
   gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
 }
 `;
 const SIM_FS = /* glsl */ `
 uniform sampler2D tDome;
 uniform float uHalfAperture;
+uniform float uGuides;
+uniform sampler2D tPattern;
+uniform float uPattern;
+uniform float uTilted;         // 1 when the dome is tilted: draw the room's true horizon
 varying vec3 vDir;
+varying vec3 vWorld;
 void main() {
   vec3 d = normalize(vDir);
   float phi = acos(clamp(d.y, -1.0, 1.0));
-  if (phi > uHalfAperture) { gl_FragColor = vec4(0.0, 0.0, 0.0, 1.0); return; }
+  // Outside the dome: the room. A dim floor below the true horizon, so a
+  // tilted dome reads as tilted rather than as the view looking elsewhere.
+  if (phi > uHalfAperture) {
+    float below = step(normalize(vWorld).y, 0.0);
+    gl_FragColor = vec4(vec3(0.035, 0.03, 0.025) * below, 1.0);
+    return;
+  }
   float a = atan(d.x, -d.z);
   float r = phi / uHalfAperture;
   vec2 uv = 0.5 + 0.5 * vec2(r * sin(a), -r * cos(a));
   vec3 col = texture2D(tDome, uv).rgb;
+  // The venue's grid, mapped onto the hemisphere exactly as their projectors will.
+  if (uPattern > 0.0) col = mix(col, texture2D(tPattern, uv).rgb, uPattern);
+  // Guides as on the domemaster: elevation every 15° and the front meridian.
+  if (uGuides > 0.5) {
+    float el = 90.0 - phi * 57.29578;
+    float w = fwidth(el) * 1.2;
+    float g = 1.0 - smoothstep(0.0, w, abs(el - 15.0 * floor(el / 15.0 + 0.5)));
+    float front = 1.0 - smoothstep(0.0, fwidth(a) * 1.5, abs(a));
+    g = max(g, front * step(el, 30.0));
+    col = mix(col, vec3(1.0, 0.533, 0.0), g * 0.5);
+  }
+  // The room's true horizon, where it crosses a tilted dome.
+  if (uTilted > 0.5) {
+    float wy = normalize(vWorld).y;
+    col = mix(col, vec3(0.3, 0.6, 1.0), (1.0 - smoothstep(0.0, fwidth(wy) * 1.5, abs(wy))) * 0.6);
+  }
   // the spring line, faintly, so the edge of the dome reads in the preview
   col = mix(col, vec3(0.4, 0.2, 0.0), 1.0 - smoothstep(0.0, 0.004, uHalfAperture - phi));
   gl_FragColor = vec4(col, 1.0);
@@ -492,7 +521,11 @@ export class Domemaster {
 
     this.simMat = new THREE.ShaderMaterial({
       vertexShader: SIM_VS, fragmentShader: SIM_FS, side: THREE.BackSide,
-      uniforms: { tDome: { value: null }, uHalfAperture: { value: 90 * DEG } },
+      uniforms: {
+        tDome: { value: null }, uHalfAperture: { value: 90 * DEG },
+        uGuides: { value: 0 }, tPattern: { value: null }, uPattern: { value: 0 }, uTilted: { value: 0 },
+      },
+      extensions: { derivatives: true } as any,
     });
     this.simScene = new THREE.Scene();
     this.simDome = new THREE.Mesh(new THREE.SphereGeometry(10, 128, 64), this.simMat);
@@ -916,6 +949,8 @@ export class Domemaster {
     if (this.patternTex) { this.patternTex.colorSpace = THREE.NoColorSpace; this.patternTex.needsUpdate = true; }
     this.displayMat.uniforms.tPattern.value = this.patternTex;
     this.displayMat.uniforms.uPattern.value = img ? opacity : 0;
+    this.simMat.uniforms.tPattern.value = this.patternTex;
+    this.simMat.uniforms.uPattern.value = img ? opacity : 0;
   }
 
   /** Show the domemaster in the screen canvas (letterboxed square). */
@@ -930,10 +965,12 @@ export class Domemaster {
   }
 
   /** Show the dome from inside, looking along yaw/pitch (degrees). */
-  presentSim(yawDeg: number, pitchDeg: number, fovDeg: number) {
+  presentSim(yawDeg: number, pitchDeg: number, fovDeg: number, guides = false) {
     const R = this.renderer;
     const sz = R.getSize(new THREE.Vector2());
     this.simMat.uniforms.uHalfAperture.value = (this.params.aperture / 2) * DEG;
+    this.simMat.uniforms.uGuides.value = guides ? 1 : 0;
+    this.simMat.uniforms.uTilted.value = this.params.tilt > 0.05 ? 1 : 0;
     // Tilt: the dome leans forward, lowering its front edge toward the audience.
     this.simDome.rotation.set(-this.params.tilt * DEG, 0, 0);
     const cam = this.simCamera;

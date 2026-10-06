@@ -301,7 +301,7 @@ function frame(t: number) {
   // Drawn to the screen only while the viewport shows; with it closed the
   // loop is here for the output alone.
   if (_open) {
-    if (_s.mode === "sim" && !_clean) _dome.presentSim(_s.simYaw, _s.simPitch, _s.simFov);
+    if (_s.mode === "sim" && !_clean) _dome.presentSim(_s.simYaw, _s.simPitch, _s.simFov, _s.guides);
     else _dome.presentMaster(_s.guides && !_clean);
   }
   outFrame();
@@ -386,12 +386,16 @@ function segmented(name: string, options: [string, string][], get: () => string,
   return wrap;
 }
 
+// Sliders a gesture can also move (the tilt), so their thumb follows.
+const _sliders = new Map<string, () => void>();
+
 function slider(label: string, min: number, max: number, step: number, get: () => number, set: (v: number) => void, unit = "°") {
   const l = el("label");
   const i = el("input", { type: "range", min: String(min), max: String(max), step: String(step) }) as HTMLInputElement;
   const o = el("span", { class: "ro" });
   i.value = String(get());
   o.textContent = `${get()}${unit}`;
+  _sliders.set(label, () => { i.value = String(get()); o.textContent = `${Math.round(get())}${unit}`; });
   i.addEventListener("input", () => { set(+i.value); o.textContent = `${i.value}${unit}`; });
   // Leave focus on the page, not the slider: with focus on an <input> the
   // slot switcher ignores the number keys.
@@ -409,7 +413,7 @@ function build() {
   const bar = el("div", { id: "dome-bar" });
   _canvas = el("canvas") as HTMLCanvasElement;
   const help = el("div", { id: "dome-help" },
-    "D cerrar · 0–9 P F B E R A C cambiar módulo · simulación: arrastrar para mirar, rueda para el campo visual · salida limpia: Esc para volver");
+    "D cerrar · 0–9 P F B E R A C cambiar módulo · simulación: dos dedos o arrastrar para mirar, pellizcar (o Alt + rueda) para acercar, Mayús + dos dedos inclina el domo · salida limpia: Esc para volver");
 
   const apply = () => _dome?.setParams(_s);
 
@@ -511,11 +515,39 @@ function wireCanvas(c: HTMLCanvasElement) {
     _s.simPitch = Math.max(-10, Math.min(90, drag.pitch + (e.clientY - drag.y) * k));
   });
   c.addEventListener("pointerup", () => { if (drag) { drag = null; save(); } });
+  // Trackpad, in the simulation:
+  //   two fingers           look around: sideways turns, up/down raises the gaze
+  //   pinch                 zoom (field of view) — Chrome reports it as a
+  //                         wheel with ctrlKey; Alt + wheel does it with a mouse
+  //   Shift + two fingers   up/down tilts the dome itself (inclinación)
+  // Directions follow the drag: the dome moves with the fingers.
   c.addEventListener("wheel", (e) => {
     if (_s.mode !== "sim") return;
     e.preventDefault();
-    _s.simFov = Math.max(40, Math.min(160, _s.simFov + e.deltaY * 0.05));
+    const px = e.deltaMode === 1 ? 16 : e.deltaMode === 2 ? 400 : 1;   // lines / pages → px
+    const dx = e.deltaX * px, dy = e.deltaY * px;
+    if (e.ctrlKey || e.altKey) {
+      _s.simFov = Math.max(30, Math.min(160, _s.simFov * Math.exp(dy * 0.01)));
+    } else if (e.shiftKey) {
+      // Shift turns a vertical scroll into deltaX on macOS: take whichever moved.
+      const v = Math.abs(dy) >= Math.abs(dx) ? dy : dx;
+      _s.tilt = Math.max(0, Math.min(30, _s.tilt - v * 0.05));
+      _dome?.setParams(_s);
+      _sliders.get("inclinación")?.();
+    } else {
+      const k = _s.simFov / Math.max(1, c.clientHeight);
+      _s.simYaw += dx * k;
+      _s.simPitch = Math.max(-10, Math.min(90, _s.simPitch - dy * k));
+    }
+    scheduleSave();
   }, { passive: false });
+}
+
+// Gestures arrive as dozens of events a second: settle, then save once.
+let _saveTimer: ReturnType<typeof setTimeout> | null = null;
+function scheduleSave() {
+  if (_saveTimer) clearTimeout(_saveTimer);
+  _saveTimer = setTimeout(() => { _saveTimer = null; save(); }, 400);
 }
 
 // Resize and full screen, for whichever window holds the viewport.

@@ -22,13 +22,13 @@ En `parliament.html`, la **D** abre **CÚPULA** sobre la página. Los módulos s
 
 | Control | Qué hace |
 |---|---|
-| Domemaster / Simulación | el ojo de pez plano, o el domo visto desde las butacas (arrastrar para mirar, rueda para el campo visual) |
+| Domemaster / Simulación | el ojo de pez plano, o el domo visto desde las butacas. En la simulación: **dos dedos** en el trackpad (o arrastrar) para mirar, **pellizcar** (o Alt + rueda) para acercar, **Mayús + dos dedos** arriba/abajo para inclinar el domo. Las guías y la grilla de la sala también se ven dentro del domo simulado |
 | sobre la página / ventana aparte | **ventana aparte** saca CÚPULA a una ventana propia, para llevarla a una segunda pantalla: `parliament.html` queda entera (las columnas laterales, los controles) para tocar. Las teclas que se pulsan en la ventana de la cúpula llegan a la página, así que desde ahí también se cambia de módulo. Cerrar esa ventana, o la D, cierra la vista; las salidas siguen |
 | 2048 / 4096 | tamaño del domemaster |
 | frente | a qué altura sobre el horizonte cae el "adelante" del módulo (butacas reclinadas: ~30°) |
 | inmersión | mete la cámara de la cúpula en la escena. En 0 el mundo es una mancha al frente; desde 80% rodea al público |
 | apertura | 180° = hemisferio |
-| inclinación | inclinación del domo, solo en la simulación |
+| inclinación | inclinación del domo, solo en la simulación. Una línea azul marca el horizonte real de la sala y el piso bajo él se oscurece, así que la inclinación se ve |
 | texto · letra · altura texto | el título del módulo dibujado en la cúpula (tamaño y altura en grados) |
 | guías | anillos de elevación cada 15° y una marca al frente |
 | salida: sin salida / ndi / syphon | adónde va el domemaster además de la pantalla. **ndi** solo funciona en la ventana en vivo (sección 4). La salida sigue con la vista cerrada |

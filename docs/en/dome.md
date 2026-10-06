@@ -22,13 +22,13 @@ In `parliament.html`, **D** opens **CÚPULA** over the page. The modules keep ru
 
 | Control | What it does |
 |---|---|
-| Domemaster / Simulación | the flat fisheye, or the dome seen from the seats (drag to look around, wheel for the field of view) |
+| Domemaster / Simulación | the flat fisheye, or the dome seen from the seats. In the simulation: **two fingers** on the trackpad (or drag) to look around, **pinch** (or Alt + wheel) to zoom, **Shift + two fingers** up/down to tilt the dome. The guides and the venue's grid show inside the simulated dome too |
 | sobre la página / ventana aparte | **ventana aparte** moves CÚPULA into a window of its own, to drag onto a second screen: `parliament.html` stays whole (the side columns, the controls) for performing. Keys pressed in the dome window reach the page, so modules still switch from there. Closing that window, or D, closes the view; outputs keep running |
 | 2048 / 4096 | domemaster size |
 | frente | how high above the horizon the module's "forward" lands (reclined seats: ~30°) |
 | inmersión | moves the dome camera into the scene. At 0 the world is a patch in front; at 80%+ it surrounds the audience |
 | apertura | 180° = hemisphere |
-| inclinación | dome tilt, simulation only |
+| inclinación | dome tilt, simulation only. A blue line marks the room's true horizon and the floor below it is dimmed, so the tilt shows |
 | texto · letra · altura texto | the module title drawn natively on the dome (size and height in degrees) |
 | guías | elevation rings every 15° and a front tick |
 | salida: sin salida / ndi / syphon | where the domemaster goes besides the screen. **ndi** only works in the live window (section 4). The output keeps running with the view closed |
