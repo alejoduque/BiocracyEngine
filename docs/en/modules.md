@@ -2,7 +2,35 @@
 
 # Visual modules
 
-## Slots 4–9 · the six instruments
+## The Biocratic Engine · six organs
+
+The nineteen modules are organs of one engine, not separate visualisations. The engine has two input spaces: **the forest** (AudioMoth corpus, phenology, species) and **the chain** (live Ethereum). Both drive one sound engine. Each organ processes that input its own way, and each module is a view of its organ. A control never belongs to a module: it belongs to the engine, and each module reads it its own way. The [Cuaderno de Mandos](https://claude.ai/code/artifact/785cc1af-01a5-48a5-b915-272e957e80e2) shows, for each module, which controls reach it.
+
+| Organ | Modules | What it does in the parliament |
+|---|---|---|
+| **I · The Hemicycle** | 0 · O · T | Who holds a seat, and when: the clocks of the year, the day, the now and the strike. All three share `rings/RingStageBase.ts`, so the same controls reach them the same way |
+| **II · The Phenological Chamber** | P · C · 1 | The year as evidence (Arts. 42, 43, 47): the calendar and its benches, what the camera trap saw, the range the sound leaves behind |
+| **III · The Strata** | F · E · A | The forest by height (Humboldt): whoever sings, sings from a height |
+| **IV · The Six Voices** | 4–9 | The engine that sounds, one voice per module, with the forest ↔ chain blended space inside |
+| **V · The Deliberation** | B · R | From signal to minutes: what is inscribed, and how deep the record runs, flow back into the sound |
+| **VI · The Antechamber** | 2 · 3 | Sketches and proofs, with no bench of their own |
+
+### On the dome
+
+Measured module by module on the domemaster (October 2026):
+
+| How it lands | Modules | Why |
+|---|---|---|
+| **surrounds** | 1, 4–9, A | 4–9 carry layers made for the dome: flying formulas, the constellation in the sky, rings of text. 1 bends around the audience. A surrounds with its stand |
+| **compact** | 0, O, T, P, F, 2 | A world seen from the front: it fills part of the dome. The rings are a flat disc seen from afar |
+| **background** | B, R, E | They fill with their background colour, not content. B and R are white and wash out the dome |
+| **2-D panel** | 3, C | Not 3-D scenes: a plane in front, which cannot surround |
+
+Two of them failed and no longer do:
+- **A did not appear.** Antifonía parks what it is not using at y = −9999 instead of deleting it. The dome's immersion aimed at the centre of the *whole* scene and took the camera out of the forest. It now aims at the centre of what the module's own camera sees (`domemaster.ts`, `sceneCentre`).
+- **C came out black.** The CRT is a WebGL canvas that was cleared once shown; it now keeps its image (`camara/crt.ts`, `preserveDrawingBuffer`).
+
+## Modules 4–9 · the six instruments
 
 The six data-structure slots were flat diagrams on orthographic cameras that read control *values* and never the sound. They are now the **six voices of the engine, one each and no repeats** — the instrument laid out across six screens:
 
@@ -53,7 +81,7 @@ Gaps are set by what the voice is *for*, not by taste: `drone` 6 s (a re-pitch i
 
 Each slot reads **its own register**, normalised against its own recent peak — a kick visual must not brighten because a bell rang, and measured on a live engine the low band runs ~40× hotter than the high one, so a raw reading leaves the treble slots looking dead while they work.
 
-## Slots 4–9 · the blended space
+## Modules 4–9 · the blended space
 
 Every instrument slot (4–9) keeps its whole world: structures, trails, constellations, ticker. Into the same scene, `blend/blendLayer.ts` adds a **conceptual blend** (Fauconnier & Turner) of the engine's two input spaces: *neuronal · bosque* (the CORPUS layer, the species) and *silicio · cadena* (Ethereum mainnet). Because it lives in the slot's scene, the dome, NDI and the 4K render carry it, with the slot's own bloom and trails.
 
@@ -93,7 +121,7 @@ Votes reached 9 slots and missed 7 (2, 4–9). Consensus was dead in 5: slot 1 i
 
 **`"failed"` was handled in eight places and produced in none.** SC reports real outcomes on `/parliament/vote/result`, and `parliamentStore` already ingested them — the result simply never reached `__voteEvent`. It does now, so a rejected motion looks different from a carried one.
 
-## Slot 0 · Phenological rings (and variants O and T)
+## Module 0 · Phenological rings (and variants O and T)
 
 <p align="center"><img src="../rings/slot0.jpg" width="32%" alt="Slot 0 · nested clocks"> <img src="../rings/slotO.jpg" width="32%" alt="Slot O · reference"> <img src="../rings/slotT.jpg" width="32%" alt="Slot T · taxa"></p>
 
@@ -108,7 +136,7 @@ The rings are a live calendar, from the year down to the second (`nw_wrld_local/
 
 Today's most active species move from the calendar lane to the voice lane (their taxon sounds) or the event lane (affinity with a recording's role). Consensus draws them in; Article 47 withholds the name, never the body. Wheel = zoom to cursor, double-click = fly, same key again = whole dial. **O**: one turn = one phenological day. **T**: five year lanes by taxon. `\masterScope`/`\corpusScope` now use 96 bands.
 
-## Slot A · Antifonía — the forest's acoustic parliament
+## Module A · Antifonía — the forest's acoustic parliament
 
 Antiphony is alternating song between groups: a real bioacoustic phenomenon (duetting) and the oldest form of parliament, speaking in turns. Each sound source is a member taking the floor, and one session lasts a day.
 

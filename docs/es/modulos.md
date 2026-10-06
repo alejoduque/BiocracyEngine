@@ -2,7 +2,35 @@
 
 # Módulos visuales
 
-## Slots 4–9 · los seis instrumentos
+## El Motor Biocrático · seis órganos
+
+Los diecinueve módulos son órganos de un mismo motor, no visualizaciones sueltas. El motor tiene dos espacios de entrada: **el bosque** (corpus AudioMoth, fenología, especies) y **la cadena** (Ethereum en vivo). Los dos mueven un solo motor sonoro. Cada órgano procesa esa entrada a su manera, y cada módulo es una vista de su órgano. Un mando nunca pertenece a un módulo: pertenece al motor, y cada módulo lo lee a su modo. El [Cuaderno de Mandos](https://claude.ai/code/artifact/785cc1af-01a5-48a5-b915-272e957e80e2) muestra, para cada módulo, qué mandos lo alcanzan.
+
+| Órgano | Módulos | Qué hace en el parlamento |
+|---|---|---|
+| **I · El Hemiciclo** | 0 · O · T | Quién tiene escaño, y cuándo: los relojes del año, el día, el ahora y el golpe. Los tres comparten `rings/RingStageBase.ts`, así que los mismos mandos los alcanzan igual |
+| **II · La Cámara Fenológica** | P · C · 1 | El año como evidencia (Arts. 42, 43, 47): el calendario y sus bancadas, lo que vio la cámara trampa, la cordillera que deja el sonido |
+| **III · Los Estratos** | F · E · A | El bosque por alturas (Humboldt): quien canta, canta desde una altura |
+| **IV · Las Seis Voces** | 4–9 | El motor que suena, una voz por módulo, con el espacio de mezcla bosque ↔ cadena adentro |
+| **V · La Deliberación** | B · R | De la señal al acta: lo inscrito y la profundidad del acta vuelven al sonido |
+| **VI · La Antesala** | 2 · 3 | Bocetos y pruebas, sin bancada propia |
+
+### En la cúpula
+
+Medido módulo por módulo sobre el domemaster (octubre 2026):
+
+| Cómo llega | Módulos | Por qué |
+|---|---|---|
+| **envuelve** | 1, 4–9, A | 4–9 llevan capas pensadas para el domo: fórmulas en vuelo, constelación en el cielo, anillos de texto. 1 se curva alrededor del público. A rodea con su rodal |
+| **compacto** | 0, O, T, P, F, 2 | Un mundo visto de frente: ocupa una parte del domo. Los anillos son un disco plano visto desde lejos |
+| **fondo** | B, R, E | Llenan con su color de fondo, no con contenido. B y R son blancos y lavan el contraste del domo |
+| **panel 2D** | 3, C | No son escenas 3D: un plano al frente, que no puede envolver |
+
+Dos de ellos fallaban y ya no:
+- **A no aparecía.** Antifonía estaciona lo que no usa a y = −9999 en lugar de borrarlo. La inmersión de la cúpula apuntaba al centro de *toda* la escena y sacaba la cámara del bosque. Ahora apunta al centro de lo que ve la cámara del módulo (`domemaster.ts`, `sceneCentre`).
+- **C salía negro.** El CRT es un canvas WebGL que se borraba tras mostrarse; ahora conserva su imagen (`camara/crt.ts`, `preserveDrawingBuffer`).
+
+## Módulos 4–9 · los seis instrumentos
 
 Los seis slots de estructuras de datos eran diagramas planos sobre cámaras ortográficas que leían *valores* de control y nunca el sonido. Ahora son las **seis voces del motor, una cada uno y sin repetir** — el instrumento desplegado en seis pantallas:
 
@@ -53,20 +81,20 @@ Los huecos se fijan por aquello *para lo que sirve* la voz, no por gusto: `drone
 
 Cada slot lee **su propio registro**, normalizado contra su propio pico reciente — un visual de bombo no debe iluminarse porque sonó una campana, y medido sobre un motor en vivo la banda grave corre unas 40× más caliente que la aguda, así que una lectura cruda deja los slots de agudos con aspecto de muertos mientras trabajan.
 
-## Slots 4–9 · el espacio de mezcla
+## Módulos 4–9 · el espacio de mezcla
 
-Cada ranura instrumento (4–9) conserva su mundo entero: estructuras, estelas, constelaciones, ticker. En la misma escena, `blend/blendLayer.ts` agrega una **mezcla conceptual** (Fauconnier y Turner) de los dos espacios de entrada del motor: *neuronal · bosque* (la capa CORPUS, las especies) y *silicio · cadena* (Ethereum mainnet). Como vive en la escena de la ranura, la cúpula, el NDI y el render 4K la llevan, con el brillo y las estelas propios de la ranura.
+Cada módulo instrumento (4–9) conserva su mundo entero: estructuras, estelas, constelaciones, ticker. En la misma escena, `blend/blendLayer.ts` agrega una **mezcla conceptual** (Fauconnier y Turner) de los dos espacios de entrada del motor: *neuronal · bosque* (la capa CORPUS, las especies) y *silicio · cadena* (Ethereum mainnet). Como vive en la escena del módulo, la cúpula, el NDI y el render 4K la llevan, con el brillo y las estelas propios del módulo.
 
-- **Fórmulas en vuelo.** Una oleada del bosque escribe en el aire la ley neuronal de la ranura, que entra volando por un lado. Un bloque de la cadena manda la ley de silicio por el otro. Cada una lleva un número en vivo. Cuando las dos llegan al frente **se transforman una en otra** (TransformMatchingParts de manim) y se vuelven la mezcla, o la estructura genérica que comparten; sube y se disuelve. Una fórmula que no encuentra a nadie sigue de largo y se desescribe.
+- **Fórmulas en vuelo.** Una oleada del bosque escribe en el aire la ley neuronal del módulo, que entra volando por un lado. Un bloque de la cadena manda la ley de silicio por el otro. Cada una lleva un número en vivo. Cuando las dos llegan al frente **se transforman una en otra** (TransformMatchingParts de manim) y se vuelven la mezcla, o la estructura genérica que comparten; sube y se disuelve. Una fórmula que no encuentra a nadie sigue de largo y se desescribe.
 - **La superficie de mezcla.** Una malla bajo la estructura cuya forma es la mezcla: `h = (1−λ)·membrana + λ·retícula`. La membrana son oleadas suaves en las especies, que respiran con el bosque. La retícula son terrazas que levantan las transacciones, la forma escalonada de un libro contable. λ es la parte de la actividad que es de la cadena. La superficie gira despacio y su color se inclina al verde o al ámbar según qué mundo la levanta.
 
-- **La arboleda (ranuras 6 y 9, en lugar de la superficie).** Cuatro árboles, cada uno la mezcla de dos árboles reales sobre una misma topología: una **dendrita** (irregular, en 3D, con largos decrecientes) y un **árbol de Merkle** (binario, simétrico, recto: el árbol que compromete cada bloque de Ethereum). La forma se transforma con λ. Una oleada del bosque manda un pulso verde desde la punta de una rama hasta la raíz; un bloque manda un pulso ámbar desde una hoja hasta la raíz, el camino de una prueba de Merkle.
+- **La arboleda (módulos 6 y 9, en lugar de la superficie).** Cuatro árboles, cada uno la mezcla de dos árboles reales sobre una misma topología: una **dendrita** (irregular, en 3D, con largos decrecientes) y un **árbol de Merkle** (binario, simétrico, recto: el árbol que compromete cada bloque de Ethereum). La forma se transforma con λ. Una oleada del bosque manda un pulso verde desde la punta de una rama hasta la raíz; un bloque manda un pulso ámbar desde una hoja hasta la raíz, el camino de una prueba de Merkle.
 
 **En la cúpula:**
-- El ticker de las ranuras 4–9 se vuelve **tres anillos de texto** alrededor del domo (elevaciones 5°, 24°, 44°), que giran despacio, alternando el sentido.
-- La ranura 1 (Shan Shui) **envuelve al público** (`dome/domeBend.ts`). La frecuencia da la vuelta completa, la cordillera en vivo rodea el horizonte y el pasado sube hacia el cenit. La pantalla plana no cambia, y su encuadre ahora llena el ancho.
+- El ticker de los módulos 4–9 se vuelve **tres anillos de texto** alrededor del domo (elevaciones 5°, 24°, 44°), que giran despacio, alternando el sentido.
+- El módulo 1 (Shan Shui) **envuelve al público** (`dome/domeBend.ts`). La frecuencia da la vuelta completa, la cordillera en vivo rodea el horizonte y el pasado sube hacia el cenit. La pantalla plana no cambia, y su encuadre ahora llena el ancho.
 
-| Ranura | Ley neuronal | Ley de silicio | Se encuentran como |
+| Módulo | Ley neuronal | Ley de silicio | Se encuentran como |
 |---|---|---|---|
 | 4 | τ dV/dt = −V + R I(t) | G_{n+1} = G_n + g_tx | τ dU/dt = −(1−λ)U + (1−λ)I + λ g: la fuga es la diferencia |
 | 5 | Δw_ij = η x_i x_j (Hebb) | Δw_ab = v_{a→b} | Δw = (1−λ)η x_i x_j + λ v_{a→b} |
@@ -93,7 +121,7 @@ Los votos llegaban a 9 slots y se saltaban 7 (2, 4–9). El consenso estaba muer
 
 **`"failed"` se manejaba en ocho sitios y no se producía en ninguno.** SC reporta resultados reales en `/parliament/vote/result`, y `parliamentStore` ya los ingería — el resultado simplemente nunca llegaba a `__voteEvent`. Ahora sí, de modo que una moción rechazada se ve distinta de una aprobada.
 
-## Slot 0 · Anillos fenológicos (y variantes O y T)
+## Módulo 0 · Anillos fenológicos (y variantes O y T)
 
 <p align="center"><img src="../rings/slot0.jpg" width="32%" alt="Slot 0 · relojes anidados"> <img src="../rings/slotO.jpg" width="32%" alt="Slot O · referencia"> <img src="../rings/slotT.jpg" width="32%" alt="Slot T · taxones"></p>
 
@@ -108,7 +136,7 @@ Los anillos son un calendario vivo, del año al segundo (`nw_wrld_local/src/proj
 
 Las especies más activas del día pasan del carril de calendario al de voz (su taxón suena) o al de evento (afinidad con el rol de una grabación). El consenso las atrae al centro; el Art. 47 retira el nombre, no el cuerpo. Rueda = zoom al cursor, doble clic = volar, repetir la tecla = volver al dial. **O**: una vuelta = un día fenológico. **T**: cinco carriles del año por taxón. `\masterScope`/`\corpusScope` usan ahora 96 bandas.
 
-## Slot A · Antifonía — el parlamento acústico del bosque
+## Módulo A · Antifonía — el parlamento acústico del bosque
 
 La antifonía es canto alternado entre grupos: un fenómeno bioacústico real (dueto) y la forma más antigua de parlamento, hablar por turnos. Cada fuente sonora es un miembro tomando la palabra, y una sesión dura un día.
 
