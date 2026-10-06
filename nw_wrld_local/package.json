@@ -9,6 +9,7 @@
     "serve": "webpack serve --mode development",
     "dome:render": "electron dome-render.js",
     "dome:live": "electron dome-live.js",
+    "dome:preview": "node dome-preview.js",
     "build": "webpack --mode production",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "typecheck:core": "tsc -p tsconfig.core.json --noEmit",

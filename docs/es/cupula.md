@@ -80,6 +80,9 @@ Sale en `renders/<nombre>_4096/`: el video (secuencia PNG, o el `.mov`) y dos WA
 | `--warmup <s>` | 3 | tiempo que corre la página antes del cero, para que las ranuras monten |
 | `--window <AxA>` | 1920x1080 | tamaño de la página, que fija la resolución de las ranuras en panel 2D |
 | `--audio-offset <ms>` | 0 | mover el audio respecto a la imagen |
+| `--session last` | | la grabación más reciente de `recordings/`, o sea la toma que acabas de grabar |
+| `--stills <s>` | 0 | además guarda una imagen PNG a tamaño completo cada `<s>` segundos, para revisar la toma |
+| `--no-preview` | | no genera la vista previa para QuickTime |
 | `--embed-audio` | no | además mete el 5.1 dentro del `.mov` (PCM de 24 bits), para un reproductor que quiera imagen y sonido en un solo archivo |
 
 **Tiempo en el M5:** unos **3 fps a 4096** (≈10× el tiempo real: una pieza de 20 minutos tarda unas 3 h 20 min, sin supervisión), y unos 10 fps a 2048. La codificación no es el cuello de botella; PNG y ProRes van a la misma velocidad.
@@ -91,6 +94,13 @@ npm run dome:render -- --session ../recordings/<nombre>.session.jsonl --size 204
 ```
 
 Cómo funciona: la página corre con un reloj virtual (`src/projector/dome/renderMode.ts`) y el log se le entrega en sus tiempos. Así cada cuadro cae exactamente donde le corresponde frente al WAV, por lento que se renderice. `--from` reproduce todo lo anterior sin renderizarlo, para que la página llegue a ese punto en el estado en que la dejó la función.
+
+**La grabación no genera las imágenes.** El REC de SC guarda el WAV y el log de sesión; las imágenes se renderizan después, a partir del log:
+```bash
+cd nw_wrld_local && npm run serve          # si no está corriendo
+npm run dome:render -- --session last --format hapq --stills 15
+```
+HAP Q es un códec de reproducción para servidores de medios: QuickTime y VLC no lo abren. Por eso cada clip trae también `<nombre>_preview_2048.mp4` (H.264 con su audio), que se abre en cualquier parte, y `--stills` guarda imágenes PNG para revisar. Para un clip ya renderizado: `npm run dome:preview -- <clip.mov> --stills 15`.
 
 ## Plan A y Plan B
 

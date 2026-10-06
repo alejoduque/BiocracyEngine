@@ -25,7 +25,7 @@ cd "ffmpeg-$VER"
   --enable-encoder=hap,png,rawvideo --enable-decoder=hap,rawvideo,png \
   --enable-muxer=mov,image2,rawvideo --enable-demuxer=rawvideo,mov,image2 \
   --enable-protocol=file,pipe,fd \
-  --enable-filter=vflip,scale,format,null,copy \
+  --enable-filter=vflip,scale,format,null,copy,fps \
   --extra-cflags="-I$PREFIX/include" --extra-ldflags="-L$PREFIX/lib"
 make -j"$(sysctl -n hw.ncpu)"
 make install

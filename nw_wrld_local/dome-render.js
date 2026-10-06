@@ -31,6 +31,8 @@
 //   --window <WxH>       page size, i.e. the resolution of the 2-D slots (default 1920x1080)
 //   --audio-offset <ms>  shift the audio against the picture (default 0)
 //   --lfe-hz <Hz>        crossover of the 5.1 file's LFE channel (default 100)
+//   --stills <s>         also save one full-size PNG every <s> seconds
+//   --no-preview         skip the QuickTime preview (see below)
 //   --embed-audio        also put the 5.1 inside the .mov (prores/hapq), for a
 //                        player that wants picture and sound in one file
 //
@@ -91,6 +93,10 @@ const [WIN_W, WIN_H] = String(args.window || "1920x1080").split("x").map(Number)
 const AUDIO_OFFSET_MS = Number(args["audio-offset"]) || 0;
 const LFE_HZ = Number(args["lfe-hz"]) || 100;
 const EMBED_AUDIO = args["embed-audio"] === "1";
+// HAP Q does not open in QuickTime or VLC: every .mov gets an H.264 preview
+// beside it (dome-preview.js), unless --no-preview.
+const PREVIEW = args["no-preview"] !== "1";
+const STILLS = Number(args.stills) || 0;
 const URL_BASE = args.url || "http://localhost:9001/parliament.html";
 const NAME = path.basename(SESSION).replace(/\.session\.jsonl$/, "");
 const OUT = path.resolve(args.out || path.join(__dirname, "..", "renders", `${NAME}_${SIZE}`));
@@ -271,7 +277,8 @@ async function run() {
   console.log(`[dome-render] ${SIZE}² @ ${FPS} fps · ${(FROM_MS / 1000).toFixed(1)}–${(TO_MS / 1000).toFixed(1)} s · ${N_FRAMES} frames · ${FORMAT} → ${OUT}`);
 
   const dt = 1000 / FPS;
-  const step = (to, batch) => wc.executeJavaScript(`window.__render.step(${to}, ${JSON.stringify(batch)})`);
+  const step = (to, batch, render = false) =>
+    wc.executeJavaScript(`window.__render.step(${to}, ${JSON.stringify(batch)}, ${render})`);
 
   // Warm-up: the page runs before time zero with nothing arriving, so slots
   // mount and settle before the first message.
@@ -292,8 +299,9 @@ async function run() {
       const it = items[next++];
       batch.push(it.m !== undefined ? { t: it.t + WARMUP_MS, m: it.m } : { t: it.t + WARMUP_MS, s: it.s });
     }
-    await step(tSession + WARMUP_MS, batch);
-    if (tSession + 1e-6 < FROM_MS) continue;
+    const capture = tSession + 1e-6 >= FROM_MS;
+    await step(tSession + WARMUP_MS, batch, capture);
+    if (!capture) continue;
     await wc.executeJavaScript("window.__render.frame()");
     frames++;
     const now = Date.now();
@@ -309,8 +317,21 @@ async function run() {
   if (ff) { ffEnding = true; ff.stdin.end(); await ffDone; }
   win.destroy();
   cutAudio();
+  if (FORMAT !== "png" && (PREVIEW || STILLS)) {
+    const mov = fs.readdirSync(OUT).find((f) => f.endsWith(".mov") && !f.includes(".tmp."));
+    if (mov) {
+      console.log("[dome-render] preview…");
+      try {
+        const files = await require("./dome-preview").makePreview(path.join(OUT, mov), { stills: STILLS });
+        for (const f of files) console.log(`[dome-render] ${path.basename(f)}`);
+      } catch (e) { console.log(`[dome-render] (preview failed: ${e.message} — the clip itself is fine)`); }
+    }
+  }
   console.log(`[dome-render] done in ${fmt((Date.now() - t0) / 1000)} → ${OUT}`);
   app.exit(0);
 }
 
+// The window is closed before the audio and the preview are made: without
+// this, Electron's default quits the app the moment it closes.
+app.on("window-all-closed", () => { /* run() exits when it is done */ });
 app.whenReady().then(() => run().catch((e) => fail(e.stack || String(e))));

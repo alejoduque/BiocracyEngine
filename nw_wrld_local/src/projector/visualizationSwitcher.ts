@@ -1663,7 +1663,18 @@ function mountPlaceholder(key: string): Viz {
 }
 
 // ─── Switch ──────────────────────────────────────────────────────────────────
+// How many slot switches are still mounting. The offline renderer
+// (dome/renderMode.ts) waits for zero before moving the session's clock on,
+// so a slot that loads its code or data in real time is not rendered black.
+let _mounting = 0;
 async function switchTo(key: string) {
+  _mounting++;
+  (window as any).__slotMounting = _mounting;
+  try { await switchToNow(key); }
+  finally { _mounting--; (window as any).__slotMounting = _mounting; }
+}
+
+async function switchToNow(key: string) {
   if (key === currentKey && currentViz) {
     currentViz.resetView?.();
     return;

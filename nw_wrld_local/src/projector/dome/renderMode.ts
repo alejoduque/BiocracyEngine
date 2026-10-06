@@ -142,13 +142,29 @@ function install() {
     });
   }
 
+  /** A clip still loading holds the render: the session's time must not run on without its picture. */
+  function loaded(v: HTMLMediaElement): Promise<void> {
+    if (v.readyState >= 2) return Promise.resolve();
+    return new Promise((res) => {
+      const done = () => { v.removeEventListener("loadeddata", done); v.removeEventListener("error", done); res(); };
+      v.addEventListener("loadeddata", done);
+      v.addEventListener("error", done);
+      // a clip that never loads (missing file) costs ten real seconds, once
+      realSetTimeout(done, 10000);
+    });
+  }
+
   async function stepVideos(dtSec: number) {
     const waits: Promise<void>[] = [];
     const ended: HTMLMediaElement[] = [];
+    // Before moving time on, wait for every playing clip to have a picture.
+    // Without this the camera slot (C) rendered black for ~45 s of a session:
+    // its clip loads in real time while the virtual clock runs far ahead.
+    await Promise.all([...running].filter((v) => v.readyState < 2 && (v.src || v.currentSrc)).map(loaded));
     for (const v of running) {
       if (!v.isConnected && !v.src && !v.currentSrc) { running.delete(v); continue; }
       const dur = v.duration;
-      if (!Number.isFinite(dur) || dur <= 0 || v.readyState < 1) continue;   // not loaded yet: holds at 0
+      if (!Number.isFinite(dur) || dur <= 0 || v.readyState < 1) continue;   // failed to load: holds
       let t = v.currentTime + dtSec;
       if (t >= dur) {
         if (v.loop) t %= dur;
@@ -159,6 +175,24 @@ function install() {
     }
     await Promise.all(waits);
     for (const v of ended) v.dispatchEvent(new Event("ended"));
+  }
+
+  // ── Loading, held ─────────────────────────────────────────────────────────
+  // A slot loads its code and its data (clip index, assets) in real time. The
+  // session's clock must not run ahead while it does, or the render shows
+  // black for however long the loading took. Every step waits — up to 8 real
+  // seconds — for slot mounts and the page's own fetches to settle.
+  let inflight = 0;
+  const realFetch = window.fetch.bind(window);
+  W.fetch = (...a: Parameters<typeof fetch>) => {
+    inflight++;
+    return realFetch(...a).finally(() => { inflight--; });
+  };
+  async function settled() {
+    const t0 = RealDate.now();
+    while ((inflight > 0 || (W.__slotMounting ?? 0) > 0) && RealDate.now() - t0 < 8000) {
+      await new Promise<void>((r) => realSetTimeout(r, 25));
+    }
   }
 
   // ── The bridge socket, replayed ───────────────────────────────────────────
@@ -243,12 +277,19 @@ function install() {
   }
 
   // ── The renderer's handle ─────────────────────────────────────────────────
+  let renderedInStep = false;
   W.__render = {
     ready(): boolean {
       return !!dome()?.ready() && !!document.getElementById("viz-hud");
     },
     now(): number { return vt; },
-    async step(toMs: number, items: Item[]) {
+    /**
+     * `render`: this frame will be captured — draw the dome right after the
+     * slots, in the same task. A slot drawn on a raw WebGL canvas (the camera's
+     * CRT) only holds its picture until the task ends; copied any later, the
+     * dome's panel came out black.
+     */
+    async step(toMs: number, items: Item[], render = false) {
       const dt = Math.max(0, toMs - vt);
       for (const it of items) {
         advance(Math.min(it.t, toMs));
@@ -256,13 +297,16 @@ function install() {
         else if (it.s) pageEvent(it.s);
       }
       advance(toMs);
+      await settled();
       await stepVideos(dt / 1000);
       runFrame();
+      if (render) { dome()?.renderOnce(); renderedInStep = true; }
     },
     async frame(): Promise<{ width: number; height: number } | null> {
       const d = dome();
       if (!d) return null;
-      d.renderOnce();
+      if (!renderedInStep) d.renderOnce();
+      renderedInStep = false;
       const px = d.read();
       await W.__renderOut?.frame(px.data, px.width, px.height);
       return { width: px.width, height: px.height };

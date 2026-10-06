@@ -80,6 +80,9 @@ Output in `renders/<name>_4096/`: the video (a PNG sequence, or the `.mov`) plus
 | `--warmup <s>` | 3 | time the page runs before time zero so slots can mount |
 | `--window <WxH>` | 1920x1080 | page size, which sets the resolution of the 2-D panel slots |
 | `--audio-offset <ms>` | 0 | nudge the audio against the picture |
+| `--session last` | | the newest recording in `recordings/`, i.e. the take just recorded |
+| `--stills <s>` | 0 | also save one full-size PNG every `<s>` seconds, to check the take |
+| `--no-preview` | | skip the QuickTime preview |
 | `--embed-audio` | off | also put the 5.1 inside the `.mov` (24-bit PCM), for a player that wants picture and sound in one file |
 
 **Time on the M5:** about **3 fps at 4096** (≈10× real time: a 20-minute piece takes about 3 h 20 min unattended), and about 10 fps at 2048. Encoding is not the bottleneck; PNG and ProRes run at the same speed.
@@ -91,6 +94,13 @@ npm run dome:render -- --session ../recordings/<name>.session.jsonl --size 2048 
 ```
 
 How it works: the page runs on a virtual clock (`src/projector/dome/renderMode.ts`), and the log is played into it at its logged times. Every frame therefore lands exactly where it belongs against the WAV, however slowly it renders. `--from` plays everything before that point without rendering it, so the page arrives in the state the performance left it.
+
+**Recording does not make the images.** SC's REC saves the WAV and the session log; the pictures are rendered afterwards, from the log:
+```bash
+cd nw_wrld_local && npm run serve          # if it is not running
+npm run dome:render -- --session last --format hapq --stills 15
+```
+HAP Q is a playback codec for media servers: QuickTime and VLC do not open it. So every clip also gets `<name>_preview_2048.mp4` (H.264 with its audio), which opens anywhere, and `--stills` saves PNG frames to look at. For a clip that is already rendered: `npm run dome:preview -- <clip.mov> --stills 15`.
 
 ## Plan A and Plan B
 
