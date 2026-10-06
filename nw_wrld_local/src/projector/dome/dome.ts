@@ -20,6 +20,12 @@
 // the performer can work the page while the dome receives the image. NEGRO
 // sends black. The clean feed ("salida limpia") fills the window with the
 // bare domemaster for screen capture — a preview route, not the deliverable.
+//
+// "ventana aparte" moves the viewport into a window of its own (window.open),
+// to drag onto a second screen: the performer keeps parliament.html whole —
+// the side columns, the controls — while the dome view watches beside it.
+// Same renderer loop, driven from this page; keys pressed in the dome window
+// are handed back to the page, so 0–9 P F B E R A C still switch slots.
 
 import { installDomeCapture, currentView, currentPost, currentLayers, panelKind, setDomeEconomy } from "./domeCapture";
 import { Domemaster, DEFAULT_PARAMS, type DomeParams } from "./domemaster";
@@ -53,6 +59,8 @@ type Settings = DomeParams & {
   simYaw: number;
   simPitch: number;
   simFov: number;
+  /** The viewport in a window of its own instead of over the page. */
+  floating: boolean;
 };
 
 const STORE_KEY = "biocracy.dome.v1";
@@ -67,10 +75,15 @@ const DEFAULTS: Settings = {
   simYaw: 0,
   simPitch: 30,
   simFov: 100,
+  floating: false,
 };
 
 let _stage: HTMLElement | null = null;
 let _root: HTMLDivElement | null = null;
+/** The dome's own window while it floats ("ventana aparte"); null when docked. */
+let _popup: Window | null = null;
+/** The window the viewport lives in: this page's, or the popup. */
+const viewWin = (): Window => _popup ?? window;
 let _canvas: HTMLCanvasElement | null = null;
 let _dome: Domemaster | null = null;
 let _open = false;        // the viewport is showing
@@ -265,7 +278,7 @@ function placeCompass() {
 function resize() {
   if (!_canvas || !_dome) return;
   const r = _canvas.getBoundingClientRect();
-  _dome.renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+  _dome.renderer.setPixelRatio(Math.min(viewWin().devicePixelRatio || 1, 2));
   _dome.renderer.setSize(Math.max(1, r.width), Math.max(1, r.height), false);
   placeCompass();
 }
@@ -346,6 +359,7 @@ const CSS = `
   color:rgba(255,136,0,.75); letter-spacing:.08em; pointer-events:none; }
 #dome-view.black canvas { opacity:.15; }
 #dome-bar button.negro[aria-pressed="true"] { background:#c00; border-color:#c00; color:#fff; }
+body.dome-window { margin:0; background:#000; overflow:hidden; }
 #dome-live-badge { position:fixed; right:12px; bottom:12px; z-index:8999; padding:4px 10px;
   font:11px/1.4 ui-monospace, Menlo, monospace; color:#000; background:rgba(255,136,0,.9);
   letter-spacing:.06em; pointer-events:none; }
@@ -395,13 +409,17 @@ function build() {
   const bar = el("div", { id: "dome-bar" });
   _canvas = el("canvas") as HTMLCanvasElement;
   const help = el("div", { id: "dome-help" },
-    "D cerrar · 0–9 P F B E R A C cambiar ranura · simulación: arrastrar para mirar, rueda para el campo visual · salida limpia: Esc para volver");
+    "D cerrar · 0–9 P F B E R A C cambiar módulo · simulación: arrastrar para mirar, rueda para el campo visual · salida limpia: Esc para volver");
 
   const apply = () => _dome?.setParams(_s);
 
   bar.append(
     el("span", { class: "t" }, "CÚPULA"),
     segmented("vista", [["master", "Domemaster"], ["sim", "Simulación"]], () => _s.mode, (v) => { _s.mode = v as ViewMode; placeCompass(); }),
+    segmented("ventana aparte: la cúpula en su propia ventana, para llevarla a otra pantalla; la página queda entera",
+      [["dock", "sobre la página"], ["float", "ventana aparte"]],
+      () => (_s.floating ? "float" : "dock"),
+      (v) => { const f = v === "float"; if (f === _s.floating) return; _s.floating = f; if (_open) { close(); open(); } }),
     // Live, the dome is 2048. At 4096 it holds ~1.75 GB more of the memory the
     // M5's CPU and GPU share — measured, alongside a browser that has been
     // open for days, it is what takes the page down (Chromium's sad face) and
@@ -432,14 +450,14 @@ function build() {
       let on = false;
       b.addEventListener("click", () => {
         b.blur();
-        if (on) { on = false; _dome?.setPattern(null); b.setAttribute("aria-pressed", "false"); return; }
+        if (on) { on = false; _pattern = null; _dome?.setPattern(null); b.setAttribute("aria-pressed", "false"); return; }
         input.click();
       });
       input.addEventListener("change", () => {
         const f = input.files?.[0];
         if (!f) return;
         const img = new Image();
-        img.onload = () => { _dome?.setPattern(img, 0.5); on = true; b.setAttribute("aria-pressed", "true"); URL.revokeObjectURL(img.src); };
+        img.onload = () => { _pattern = img; _dome?.setPattern(img, 0.5); on = true; b.setAttribute("aria-pressed", "true"); };
         img.src = URL.createObjectURL(f);
         input.value = "";
       });
@@ -474,30 +492,37 @@ function build() {
 
   _root.append(_canvas, bar, help);
   document.body.appendChild(_root);
+  wireCanvas(_canvas);
+  wireWindow(window);
+}
 
-  // Simulation: drag to look around, wheel to widen or narrow the view.
+// Simulation: drag to look around, wheel to widen or narrow the view.
+function wireCanvas(c: HTMLCanvasElement) {
   let drag: { x: number; y: number; yaw: number; pitch: number } | null = null;
-  _canvas.addEventListener("pointerdown", (e) => {
+  c.addEventListener("pointerdown", (e) => {
     if (_s.mode !== "sim") return;
     drag = { x: e.clientX, y: e.clientY, yaw: _s.simYaw, pitch: _s.simPitch };
-    _canvas!.setPointerCapture(e.pointerId);
+    c.setPointerCapture(e.pointerId);
   });
-  _canvas.addEventListener("pointermove", (e) => {
+  c.addEventListener("pointermove", (e) => {
     if (!drag) return;
-    const k = _s.simFov / Math.max(1, _canvas!.clientHeight);
+    const k = _s.simFov / Math.max(1, c.clientHeight);
     _s.simYaw = drag.yaw - (e.clientX - drag.x) * k;
     _s.simPitch = Math.max(-10, Math.min(90, drag.pitch + (e.clientY - drag.y) * k));
   });
-  _canvas.addEventListener("pointerup", () => { if (drag) { drag = null; save(); } });
-  _canvas.addEventListener("wheel", (e) => {
+  c.addEventListener("pointerup", () => { if (drag) { drag = null; save(); } });
+  c.addEventListener("wheel", (e) => {
     if (_s.mode !== "sim") return;
     e.preventDefault();
     _s.simFov = Math.max(40, Math.min(160, _s.simFov + e.deltaY * 0.05));
   }, { passive: false });
+}
 
-  window.addEventListener("resize", resize);
-  document.addEventListener("fullscreenchange", () => {
-    if (!document.fullscreenElement && _clean) setClean(false);
+// Resize and full screen, for whichever window holds the viewport.
+function wireWindow(w: Window) {
+  w.addEventListener("resize", resize);
+  w.document.addEventListener("fullscreenchange", () => {
+    if (!w.document.fullscreenElement && _clean) setClean(false);
     requestAnimationFrame(resize);
   });
 }
@@ -507,16 +532,25 @@ function setClean(on: boolean) {
   _clean = on;
   _root.classList.toggle("clean", on);
   placeCompass();
+  const doc = _root.ownerDocument;
   if (on) { _root.requestFullscreen?.().catch(() => { /* not allowed: still clean in-window */ }); }
-  else if (document.fullscreenElement) { document.exitFullscreen().catch(() => {}); }
+  else if (doc.fullscreenElement) { doc.exitFullscreen().catch(() => {}); }
   requestAnimationFrame(resize);
 }
 
 let _badge: HTMLDivElement | null = null;
 
+let _pattern: HTMLImageElement | null = null;
+
+function makeDome() {
+  _dome = new Domemaster(_canvas!, _s);
+  _dome.setOutputAlpha(_s.outAlpha);
+  if (_pattern) _dome.setPattern(_pattern, 0.5);
+}
+
 function ensureBuilt() {
   if (!_root) build();
-  if (!_dome) { _dome = new Domemaster(_canvas!, _s); _dome.setOutputAlpha(_s.outAlpha); }
+  if (!_dome) makeDome();
   if (!_badge) {
     _badge = el("div", { id: "dome-live-badge" }) as HTMLDivElement;
     _badge.hidden = true;
@@ -543,10 +577,76 @@ function open() {
   if (_open) return;
   ensureBuilt();
   _open = true;
+  if (_s.floating && float()) { _root!.classList.add("open"); resize(); syncLoop(); return; }
   _root!.classList.add("open");
   resize();
   syncLoop();
   setDomeEconomy(true);       // the page is covered: its flat view at 30 fps, density 1
+}
+
+// ── Ventana aparte ──────────────────────────────────────────────────────────
+// The viewport's DOM moves into the popup whole (its buttons keep their
+// listeners). The canvas does not: a WebGL context belongs to the document
+// its canvas was made in, so the dome gets a new canvas there and a new
+// renderer, and the same again when it comes back. The popup has no code of
+// its own — this page draws into it.
+
+const POPUP_NAME = "biocracy-dome";
+
+function moveRoot(to: Document) {
+  const fresh = to.createElement("canvas");
+  _root!.replaceChild(fresh, _canvas!);
+  _canvas = fresh;
+  to.body.appendChild(to.adoptNode(_root!));
+  if (_dome) {
+    _dome.dispose();
+    _dome.renderer.forceContextLoss();    // free its GPU memory now, not at GC
+    _dome = null;
+  }
+  makeDome();
+  wireCanvas(fresh);
+}
+
+function float(): boolean {
+  const w = window.open("", POPUP_NAME, "popup,width=1100,height=1000");
+  if (!w) { console.warn("[dome] el navegador no dejó abrir la ventana aparte; la cúpula queda sobre la página"); return false; }
+  _popup = w;
+  const d = w.document;
+  d.head.replaceChildren(); d.body.replaceChildren();   // a window of that name left from before
+  d.title = "CÚPULA — Parlamento de lo vivo";
+  d.body.className = "dome-window";
+  const style = d.createElement("style");
+  style.textContent = CSS;
+  d.head.appendChild(style);
+  moveRoot(d);
+  wireWindow(w);
+  // Keys pressed in the dome window: D and Esc are the viewport's own; the
+  // rest go back to the page, where the slot switcher and the session log
+  // listen, as if they had been pressed there.
+  const pass = (e: KeyboardEvent) => {
+    const tag = (e.target as Element | null)?.tagName;
+    if (tag === "INPUT" || tag === "SELECT" || tag === "TEXTAREA") return;
+    if (e.type === "keydown" && onViewKey(e)) return;
+    document.body.dispatchEvent(new KeyboardEvent(e.type, {
+      key: e.key, code: e.code, shiftKey: e.shiftKey, altKey: e.altKey, metaKey: e.metaKey,
+      ctrlKey: e.ctrlKey, repeat: e.repeat, bubbles: true, cancelable: true,
+    }));
+  };
+  w.addEventListener("keydown", pass);
+  w.addEventListener("keyup", pass);
+  // Closed from its own title bar: the viewport comes home, closed.
+  w.addEventListener("pagehide", () => { if (_popup === w) { dock(); _open = false; _clean = false; _root!.classList.remove("open", "clean"); syncLoop(); } });
+  w.focus();
+  return true;
+}
+
+/** Back into this page (still showing or not: the caller decides). */
+function dock() {
+  const w = _popup;
+  if (!w) return;
+  _popup = null;
+  moveRoot(document);
+  if (!w.closed) w.close();
 }
 
 // Closing the viewport no longer stops an output: the performer closes it to
@@ -558,11 +658,23 @@ function close() {
   _open = false;
   setClean(false);
   _root!.classList.remove("open");
+  if (_popup) dock();
   syncLoop();
   setDomeEconomy(false);
 }
 
 // ── Public ──────────────────────────────────────────────────────────────────
+
+/** D and Esc, the viewport's own keys, from the page or the dome window. True if taken. */
+function onViewKey(e: KeyboardEvent): boolean {
+  if (e.key === "Escape" && _clean) { setClean(false); return true; }
+  if (e.key === "d" && !e.metaKey && !e.ctrlKey && !e.altKey) {
+    e.preventDefault();
+    if (_open) close(); else open();
+    return true;
+  }
+  return false;
+}
 
 export function initDome(stage: HTMLElement) {
   _stage = stage;
@@ -574,14 +686,12 @@ export function initDome(stage: HTMLElement) {
   if (_s.output === "ndi") syncLoop();
 
   window.addEventListener("keydown", (e) => {
-    if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement
-        || e.target instanceof HTMLSelectElement) return;
-    if (e.key === "Escape" && _clean) { setClean(false); return; }
-    if ((e.key === "d") && !e.metaKey && !e.ctrlKey && !e.altKey) {
-      e.preventDefault();
-      if (_open) close(); else open();
-    }
+    const tag = (e.target as Element | null)?.tagName;
+    if (tag === "INPUT" || tag === "SELECT" || tag === "TEXTAREA") return;
+    onViewKey(e);
   });
+  // A reload of the page leaves the dome window orphaned (and black): close it.
+  window.addEventListener("pagehide", () => { if (_popup && !_popup.closed) _popup.close(); });
 
   // For output bridges (Syphon / NDI / recorder): the last rendered
   // domemaster as RGBA8, bottom-up rows. null while the dome is closed.
@@ -593,16 +703,20 @@ export function initDome(stage: HTMLElement) {
 // each stepped frame and reads the domemaster straight back. Settings start
 // from the defaults — not this profile's localStorage — and follow the
 // session's snapshot and logged changes; only the size is the renderer's own.
+// The module's name is never written on a render: the clips and stills are
+// the image alone, whatever the "texto" toggle was live.
 function initRender() {
   const q = new URLSearchParams(location.search);
   const size = (q.get("dome") === "2048" ? 2048 : 4096) as 2048 | 4096;
-  _s = { ...DEFAULTS, size, output: "none" };
+  _s = { ...DEFAULTS, size, output: "none", showText: false };
   build();
   _dome = new Domemaster(_canvas!, _s);
   _dome.renderer.setPixelRatio(1);
   _dome.renderer.setSize(64, 64, false);   // nothing is shown; the domemaster is a render target
+  // The viewport stays hidden: the domemaster is read from its render target,
+  // and the page underneath stays in view for the flat stills
+  // (dome-render.js --stills captures the window itself).
   _open = true;
-  _root!.classList.add("open", "clean");
   _clean = true;
   let buf: Uint8Array | null = null;
 
@@ -621,7 +735,7 @@ function initRender() {
     },
     apply(settings: Record<string, unknown>) {
       for (const k of Object.keys(DEFAULT_PARAMS) as (keyof DomeParams)[]) {
-        if (k !== "size" && k in settings) (_s as any)[k] = settings[k];
+        if (k !== "size" && k !== "showText" && k in settings) (_s as any)[k] = settings[k];
       }
       _dome?.setParams(_s);
     },

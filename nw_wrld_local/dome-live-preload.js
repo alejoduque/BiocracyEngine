@@ -22,18 +22,32 @@ const DEADMAN_MS = parseInt(process.env.DOME_DEADMAN_MS || "1000", 10);
 const RGBX = 1480738642;   // NDIlib_FourCC_video_type_RGBX
 const RGBA = 1094862674;   // NDIlib_FourCC_video_type_RGBA — with the page's "alfa" output
 
+// The dome's own window ("ventana aparte", opened by the page) inherits this
+// preload: it must not be a second sender of the same name.
+const IS_POPUP = !!window.opener;
+
 let grandiose = null;
-try {
+if (!IS_POPUP) try {
   grandiose = require("@stagetimerio/grandiose");
 } catch (e) {
   console.warn(`[dome-live] NDI not available (${String(e.message).split("\n")[0]}) — cd nw_wrld_local && npm i`);
 }
 
 let sender = null;
-if (grandiose) {
+// A reload keeps the renderer process, and the old page's sender with it until
+// it is destroyed: the new one cannot take the name while it lives. So it is
+// released on the way out, and creating it retries for a few seconds.
+function startSender(tries = 10) {
   grandiose.send({ name: NAME, clockVideo: false })
     .then((s) => { sender = s; console.log(`[dome-live] NDI source "${s.sourcename()}" up`); })
-    .catch((e) => console.warn(`[dome-live] NDI sender failed: ${e.message}`));
+    .catch((e) => {
+      if (tries > 1) setTimeout(() => startSender(tries - 1), 500);
+      else console.warn(`[dome-live] NDI sender failed: ${e.message}`);
+    });
+}
+if (grandiose) {
+  startSender();
+  window.addEventListener("pagehide", () => { const s = sender; sender = null; s?.destroy().catch(() => {}); });
 }
 
 let lastAt = 0;
@@ -61,7 +75,7 @@ async function sendBlack() {
   sending = false;
 }
 
-window.__domeOut = {
+if (!IS_POPUP) window.__domeOut = {
   name: NAME,
   async frame(data, w, h, alpha = false) {
     lastAt = Date.now();
@@ -79,6 +93,6 @@ window.__domeOut = {
   connections() { return sender ? sender.connections() : 0; },
 };
 
-setInterval(() => {
+if (!IS_POPUP) setInterval(() => {
   if (blackOn || (lastW && Date.now() - lastAt > DEADMAN_MS)) sendBlack();
 }, 500);
