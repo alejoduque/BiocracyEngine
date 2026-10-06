@@ -266,11 +266,18 @@ export class Orbiters {
       _m.compose(o.pos, _q, _s);
       const bright = Math.min(1.4, (0.45 + feeds.quorum * 0.35 + o.env * 0.5) * p.level) * o.alpha;
       _c.setHex(o.howler ? PHOSPHOR : TAXON_COLOR[o.s.taxon]).multiplyScalar(bright);
+      // Never more than the meshes hold. While a roster changes, the new
+      // bodies arrive before the old ones have faded out and the total can
+      // pass the capacity for a moment; a count past it made the GPU refuse
+      // the whole draw ("Vertex buffer is not big enough") — every body of the
+      // slot vanished for those frames, live and in the dome render alike.
       if (isVeiled(o.s, floor)) {
-        this.hollow.setMatrixAt(nh, _m);
-        this.hollow.setColorAt(nh, _c);
-        nh++;
-      } else {
+        if (nh < this.hollow.instanceMatrix.count) {
+          this.hollow.setMatrixAt(nh, _m);
+          this.hollow.setColorAt(nh, _c);
+          nh++;
+        }
+      } else if (ns < this.solid.instanceMatrix.count) {
         this.solid.setMatrixAt(ns, _m);
         this.solid.setColorAt(ns, _c);
         ns++;

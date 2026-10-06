@@ -262,6 +262,12 @@ async function run() {
     },
   });
   const wc = win.webContents;
+  // The dev server reloads its pages when the code changes. A reload here
+  // would throw away a render in progress (or the dome mid-show): its
+  // live-reload socket is refused for this window.
+  win.webContents.session.webRequest.onBeforeRequest(
+    { urls: ["ws://localhost:9001/*", "ws://127.0.0.1:9001/*"] },
+    (_d, cb) => cb({ cancel: true }));
   wc.on("console-message", (e) => {
     if (e.level === "error" || String(e.message).startsWith("[render]")) console.log(`  page: ${e.message}`);
   });

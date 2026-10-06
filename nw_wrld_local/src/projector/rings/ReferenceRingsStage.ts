@@ -207,12 +207,16 @@ export class ReferenceRingsStage extends RingStageBase {
       const inBench = f.bancada === 0 || b.bancada === f.bancada - 1;
       const s = (0.028 + b.conf * 0.03) * (live ? 2.2 + Math.sin(t * 5) * 0.2 : 1);
       m.makeScale(s, s, s).setPosition(b.pos);
+      // Capped at what the meshes hold (see orbiters.ts): a count past the
+      // capacity makes the GPU refuse the whole draw.
       if (b.opaque) {
+        if (nv >= this.veiledBlobs.instanceMatrix.count) continue;
         c.setHex(0x6a6f6c);
         this.veiledBlobs.setMatrixAt(nv, m);
         this.veiledBlobs.setColorAt(nv, c);
         nv++;
       } else {
+        if (nb >= this.blobs.instanceMatrix.count) continue;
         c.setHex(live ? 0xffaa44 : 0xf2fff4).multiplyScalar(inBench ? (live ? 1.2 : 0.85) : 0.2);
         this.blobs.setMatrixAt(nb, m);
         this.blobs.setColorAt(nb, c);
