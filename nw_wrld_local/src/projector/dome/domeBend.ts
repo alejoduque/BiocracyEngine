@@ -104,8 +104,11 @@ export function installDomeBend(scene: THREE.Scene, ownRenderer: THREE.WebGLRend
   };
   sweep();
 
+  // The whole seat, not part of it: a stage may inherit another (Shan Shui is
+  // a RingStageBase, whose dial is entered from above with the zenith −Y).
   scene.userData.domeEye = new THREE.Vector3(0, 0, 0);
   scene.userData.domeForward = new THREE.Vector3(0, 0, -1);
+  scene.userData.domeUp = new THREE.Vector3(0, 1, 0);
 
   const prevBefore = scene.onBeforeRender;
   scene.onBeforeRender = function (renderer: any, ...rest: any[]) {
