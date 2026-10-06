@@ -19,6 +19,8 @@
 import * as THREE from "three";
 import { BaseThreeJsModule } from "../helpers/threeBase";
 import { parliamentStore } from "../parliament/parliamentStore";
+import { installDomeSeat } from "../dome/domeSeat";
+import { mountDomeCard, mountDomeBand } from "../dome/domeCard";
 
 type DFArg = Record<string, unknown> | undefined;
 type DarkForestInstance = {
@@ -95,6 +97,34 @@ async function ensureConstructor() {
   return _ctor!;
 }
 
+// ── In the dome ─────────────────────────────────────────────────────────────
+// The audience sits in the soil, just above the mycorrhizal network, looking
+// up through the stack (Humboldt's tableau physique, entered): the network
+// at the horizon, then the litter, the understory, the canopy, the
+// emergents, the atmosphere toward the zenith. In front is the axis with the
+// strata's labels, so the names stand one above the other where the eye
+// rests. The terminal — the live log of what the forest exchanges — is HTML
+// on the page; on the dome it is a card beside the axis, and the headline
+// crawl becomes the dome's rings of text.
+let _domeOff: (() => void)[] = [];
+function seatInDome(inst: any, container: HTMLElement) {
+  if (!inst.scene || !inst.world) return;
+  installDomeSeat(inst.scene, inst.world, {
+    eye: new THREE.Vector3(0, -2.9, 0),     // micorriza is at y −2.3, the terrain at −3.7
+    up: new THREE.Vector3(0, 1, 0),
+    forward: new THREE.Vector3(-1, 0, 0),   // the axis and its labels (x −7.6)
+  });
+  if (inst._term) {
+    _domeOff.push(mountDomeCard(container, {
+      az: 42, el: 22, w: 44, cols: 40, rows: 11, color: "#9fe0b0",
+      text: () => (inst._term as HTMLElement).textContent || "",
+    }));
+  }
+  if (typeof inst._crawlText === "string") {
+    _domeOff.push(mountDomeBand(container, () => inst._crawlText || "", "#e6a648"));
+  }
+}
+
 export async function mountDarkForest(
   container: HTMLElement,
   hooks: DarkForestHooks
@@ -103,6 +133,7 @@ export async function mountDarkForest(
   const Ctor = await ensureConstructor();
   _instance = new Ctor(container);
   _hooks = hooks;
+  seatInDome(_instance, container);
 
   wireEcoFromStore();
   wireConsensusFromStore();
@@ -112,6 +143,8 @@ export async function mountDarkForest(
 }
 
 export function destroyDarkForest() {
+  for (const off of _domeOff) off();
+  _domeOff = [];
   if (_ecoTimer) { clearInterval(_ecoTimer); _ecoTimer = null; }
   if (_voteTimer) { clearInterval(_voteTimer); _voteTimer = null; }
   if (_reverseTimer) { clearInterval(_reverseTimer); _reverseTimer = null; }

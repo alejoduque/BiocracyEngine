@@ -133,14 +133,18 @@ export function currentPost(): CapturedPost {
 // with how it belongs on a dome:
 //   "sky"   the whole hemisphere — laid over the domemaster like a star chart
 //   "band"  a strip low around the front, where a reader's eye rests
+//   "card"  a flat page of text at a set azimuth and elevation, sized in
+//           degrees — for text meant to be READ (dome/domeCard.ts)
 // and the domemaster composites it as the page does ("screen", or "over").
-export type DomeLayerMode = "sky" | "band";
-export type DomeLayer = { canvas: HTMLCanvasElement; mode: DomeLayerMode; blend: "screen" | "over" };
+export type DomeLayerMode = "sky" | "band" | "card";
+/** Where a card sits: azimuth (0 = front, + = right), elevation and width, degrees. */
+export type DomeCardPlace = { az: number; el: number; w: number };
+export type DomeLayer = { canvas: HTMLCanvasElement; mode: DomeLayerMode; blend: "screen" | "over"; place?: DomeCardPlace };
 const _layers = new Set<DomeLayer>();
 
 /** Declare a 2-D canvas as part of the slot's image on the dome. Returns an unregister function. */
-export function registerDomeLayer(canvas: HTMLCanvasElement, opts: { mode: DomeLayerMode; blend?: "screen" | "over" }): () => void {
-  const layer: DomeLayer = { canvas, mode: opts.mode, blend: opts.blend ?? "screen" };
+export function registerDomeLayer(canvas: HTMLCanvasElement, opts: { mode: DomeLayerMode; blend?: "screen" | "over"; place?: DomeCardPlace }): () => void {
+  const layer: DomeLayer = { canvas, mode: opts.mode, blend: opts.blend ?? "screen", place: opts.place };
   _layers.add(layer);
   return () => { _layers.delete(layer); };
 }

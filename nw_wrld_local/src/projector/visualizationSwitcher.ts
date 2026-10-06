@@ -62,6 +62,9 @@ import {
 
 import type { RosterEntry } from "./speciesFetcher";
 import { getVizMotion, readVoteFlash, isAlarm } from "./vizMotion";
+import * as THREE from "three";
+import { installDomeSeat } from "./dome/domeSeat";
+import { mountDomeCard } from "./dome/domeCard";
 
 // Hardcoded fallback roster (used when IUCN API is unreachable)
 const FALLBACK_ROSTER: [string, string, string][] = [
@@ -374,6 +377,7 @@ async function mountLowEarthPoint(): Promise<Viz> {
   requestAnimationFrame(zkSwap);
 
   // match() — flash yellow/red highlights on paired words
+  const zkRecent: string[] = [];
   const zkStage = {
     destroyed: false,
     match({ matchCount = 6 }: { matchCount?: number } = {}) {
@@ -395,6 +399,15 @@ async function mountLowEarthPoint(): Promise<Viz> {
         }
       }
       matches.forEach(([a, b]) => { a.style.background = "yellow"; b.style.background = "red"; });
+      // What was verified, kept long enough to read on the dome (the page
+      // flashes each pair for 75 ms among sixty shuffling rows).
+      for (const [a, b] of matches) {
+        const line = `${a.textContent ?? ""}  ⇄  ${b.textContent ?? ""}`;
+        const i = zkRecent.indexOf(line);
+        if (i >= 0) zkRecent.splice(i, 1);
+        zkRecent.push(line);
+      }
+      if (zkRecent.length > 9) zkRecent.splice(0, zkRecent.length - 9);
       setTimeout(() => {
         matches.forEach(([a, b]) => { a.style.background = "transparent"; b.style.background = "transparent"; });
       }, 75);
@@ -615,10 +628,30 @@ async function mountLowEarthPoint(): Promise<Viz> {
     }
   }, 60);
 
+  // ── In the dome ────────────────────────────────────────────────────────
+  // The audience sits just under the cloud (the cube spans ±5, scaled by
+  // presence up to ~1.8×), which hangs overhead as the sky: points and their
+  // curves from the zenith down to ~30°. Seated at its very centre the
+  // curves cross in every direction at once and the dome washed out white
+  // (measured: 100 % lit, mean 163 of 255). The proof's exchange — which
+  // statement was verified against which equivalent — is a card in front,
+  // below the cloud, where it can be read.
+  if (stage.scene) {
+    installDomeSeat(stage.scene, null, {
+      eye: new THREE.Vector3(0, -9, 0), up: new THREE.Vector3(0, 1, 0), forward: new THREE.Vector3(0, 0, -1),
+    });
+  }
+  const zkCardOff = mountDomeCard(wrapper, {
+    az: 0, el: 20, w: 58, cols: 54, rows: 9, color: "#f2e6b8",
+    title: "prueba · conocimiento cero · pares verificados",
+    text: () => (zkRecent.length ? zkRecent : ["…"]),
+  });
+
   return {
     name: "Low Earth Point",
     key: "2",
     destroy: () => {
+      zkCardOff();
       clearInterval(_slot2Vote);
       (window as any).__activeVizStage2 = null;
       if (zkMatchInterval) clearInterval(zkMatchInterval);

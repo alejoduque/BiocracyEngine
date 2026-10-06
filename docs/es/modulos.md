@@ -21,10 +21,18 @@ Medido módulo por módulo sobre el domemaster (octubre 2026):
 
 | Cómo llega | Módulos | Por qué |
 |---|---|---|
-| **envuelve** | 0, O, T, 1, 4–9, A | 4–9 llevan capas pensadas para el domo: fórmulas en vuelo, constelación en el cielo, anillos de texto. 1 se curva alrededor del público. A rodea con su rodal. En 0, O y T el público está en el centro del dial, mirando hacia abajo: el dial es el cielo, con el anillo del año a 15–20° sobre el horizonte, los relojes interiores hacia el cenit, y las seis en punto al frente |
-| **compacto** | P, F, 2 | Un mundo visto de frente: ocupa una parte del domo |
+| **envuelve** | 0, O, T, P, 2, F, 1, 4–9, A | 4–9 llevan capas pensadas para el domo: fórmulas en vuelo, constelación en el cielo, anillos de texto. 1 se curva alrededor del público. A rodea con su rodal. En 0, O y T el público está en el centro del dial, mirando hacia abajo: el dial es el cielo, con el anillo del año a 15–20° sobre el horizonte, los relojes interiores hacia el cenit, y las seis en punto al frente. En P igual, frente al centro de su dial. En 2 la nube cuelga encima como cielo (sentado en su centro, las curvas se cruzaban en todas direcciones y el domo se lavaba en blanco). En F el público está en el suelo, sobre la red micorrícica, mirando hacia arriba a través de los estratos, con sus nombres al frente |
 | **fondo** | B, R, E | Llenan con su color de fondo, no con contenido. B y R son blancos y lavan el contraste del domo |
 | **panel 2D** | 3, C | No son escenas 3D: un plano al frente, que no puede envolver |
+
+**El texto que cada módulo intercambia, legible en la cúpula.** Lo que esos módulos escriben en HTML sobre la página no llega a la cámara de la cúpula. Ahora se dibuja como **tarjetas** (`dome/domeCard.ts`): páginas planas a una altura de lectura, a los lados del frente, con el mismo texto que muestra la página.
+- **P:** el día, el régimen y el progreso a la izquierda; el censo de especies a la derecha.
+- **2:** los pares que la prueba de conocimiento cero verifica (enunciado ⇄ equivalente), que en la página destellan 75 ms entre sesenta filas barajadas.
+- **F:** la terminal, el registro vivo de lo que el bosque intercambia, junto al eje; su titular corre por los anillos de texto del domo.
+
+El asiento (`dome/domeSeat.ts`) sigue al grupo del propio módulo, así que si el mundo se inclina o gira, el público va con él.
+
+Los puntos que se achican con la distancia salían de un tamaño equivocado en la cúpula: three los mide contra el alto del canvas, no de la cara del cubo. Salían 2.2× más grandes con la vista abierta en una pantalla Retina y ~12× más chicos en el render offline. La cúpula los corrige mientras dibuja.
 
 Dos de ellos fallaban y ya no:
 - **A no aparecía.** Antifonía estaciona lo que no usa a y = −9999 en lugar de borrarlo. La inmersión de la cúpula apuntaba al centro de *toda* la escena y sacaba la cámara del bosque. Ahora apunta al centro de lo que ve la cámara del módulo (`domemaster.ts`, `sceneCentre`).

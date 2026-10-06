@@ -21,10 +21,18 @@ Measured module by module on the domemaster (October 2026):
 
 | How it lands | Modules | Why |
 |---|---|---|
-| **surrounds** | 0, O, T, 1, 4–9, A | 4–9 carry layers made for the dome: flying formulas, the constellation in the sky, rings of text. 1 bends around the audience. A surrounds with its stand. On 0, O and T the audience sits at the centre of the dial, looking down: the dial is the sky, with the year ring 15–20° above the horizon, the inner clocks toward the zenith, and six o'clock in front |
-| **compact** | P, F, 2 | A world seen from the front: it fills part of the dome |
+| **surrounds** | 0, O, T, P, 2, F, 1, 4–9, A | 4–9 carry layers made for the dome: flying formulas, the constellation in the sky, rings of text. 1 bends around the audience. A surrounds with its stand. On 0, O and T the audience sits at the centre of the dial, looking down: the dial is the sky, with the year ring 15–20° above the horizon, the inner clocks toward the zenith, and six o'clock in front. P the same, facing the centre of its dial. On 2 the cloud hangs overhead as the sky (seated at its centre, the curves crossed in every direction and the dome washed out white). On F the audience sits in the soil, above the mycorrhizal network, looking up through the strata, with their names in front |
 | **background** | B, R, E | They fill with their background colour, not content. B and R are white and wash out the dome |
 | **2-D panel** | 3, C | Not 3-D scenes: a plane in front, which cannot surround |
+
+**The text each module exchanges, readable on the dome.** What these modules write in HTML over the page never reaches the dome's camera. It is now drawn as **cards** (`dome/domeCard.ts`): flat pages at reading height either side of the front, with the same text the page shows.
+- **P:** the day, the regime and the progress on the left; the species census on the right.
+- **2:** the pairs the zero-knowledge proof verifies (statement ⇄ equivalent), which on the page flash for 75 ms among sixty shuffling rows.
+- **F:** the terminal, the live log of what the forest exchanges, beside the axis; its headline runs along the dome's rings of text.
+
+The seat (`dome/domeSeat.ts`) follows the module's own group, so if the world tilts or turns, the audience goes with it.
+
+Points that shrink with distance came out the wrong size on the dome: three measures them against the canvas height, not the cube face. They were 2.2× too big with the viewport open on a Retina screen and ~12× too small in the offline render. The dome corrects them while it draws.
 
 Two of them failed and no longer do:
 - **A did not appear.** Antifonía parks what it is not using at y = −9999 instead of deleting it. The dome's immersion aimed at the centre of the *whole* scene and took the camera out of the forest. It now aims at the centre of what the module's own camera sees (`domemaster.ts`, `sceneCentre`).

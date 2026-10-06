@@ -421,6 +421,9 @@ export class Domemaster {
   private textFontPx = 0;
   private panelFeed: CanvasFeed | null = null;
   private panelMesh: THREE.Mesh;
+  // Text cards (layers of mode "card"): a few planes, each with its own feed.
+  private cards: { mesh: THREE.Mesh; feed: CanvasFeed | null; source: HTMLCanvasElement | null; key: string }[] = [];
+  private static readonly MAX_CARDS = 4;
   private panelSource: HTMLCanvasElement | null = null;
   private panelKey = "";
 
@@ -509,6 +512,16 @@ export class Domemaster {
     this.panelMesh.renderOrder = 0;
     this.textMesh.renderOrder = 1;
     this.overScene.add(this.panelMesh, this.textMesh, ...this.bandRings);
+    for (let i = 0; i < Domemaster.MAX_CARDS; i++) {
+      const mesh = new THREE.Mesh(
+        new THREE.PlaneGeometry(1, 1),
+        new THREE.MeshBasicMaterial({ transparent: true, premultipliedAlpha: true, depthTest: false, depthWrite: false }),
+      );
+      mesh.renderOrder = 2;
+      mesh.visible = false;
+      this.overScene.add(mesh);
+      this.cards.push({ mesh, feed: null, source: null, key: "" });
+    }
 
     this.build();
   }
@@ -583,6 +596,8 @@ export class Domemaster {
   private _pos = new THREE.Vector3();
   private _quat = new THREE.Quaternion();
   private _scl = new THREE.Vector3();
+  private _v2 = new THREE.Vector2();
+  private _pts: THREE.PointsMaterial[] = [];
 
   // Middle of each scene, for immersion: the middle of what the slot's own
   // camera shows. Not the whole graph's bounds: slots park what they are not
@@ -691,7 +706,24 @@ export class Domemaster {
       }
       this.sceneCam.updateMatrixWorld();
       R.setClearColor(view.clearColor, 1);
-      this.sceneCam.update(R, view.scene);
+      // Points that shrink with distance (PointsMaterial, sizeAttenuation)
+      // are sized by three against the CANVAS height, not the target being
+      // drawn: in a cube face they came out 2.2× too big with the viewport
+      // open on a Retina screen and ~12× too small in an offline render (a
+      // 64 px canvas). Scaled for the cube's faces while the cube draws, and
+      // put back at once — the slot's own render never sees the change.
+      const k = this.sceneCube.width / Math.max(1, R.getPixelRatio() * R.getSize(this._v2).y);
+      if (Math.abs(k - 1) > 0.01) {
+        this._pts.length = 0;
+        view.scene.traverseVisible((o: any) => {
+          const m = o.isPoints ? o.material : null;
+          for (const mm of Array.isArray(m) ? m : m ? [m] : []) {
+            if (mm.isPointsMaterial && mm.sizeAttenuation && !this._pts.includes(mm)) { this._pts.push(mm); mm.size *= k; }
+          }
+        });
+      }
+      try { this.sceneCam.update(R, view.scene); }
+      finally { for (const mm of this._pts) mm.size /= k; this._pts.length = 0; }
     }
 
     // 2. the overlay: text, and the panel when there is no 3-D scene
@@ -733,6 +765,30 @@ export class Domemaster {
       this.panelMesh.visible = this.panelFeed!.ready;
     } else {
       this.panelMesh.visible = false;
+    }
+
+    // Text cards: flat pages placed where the slot asked, sized in degrees.
+    {
+      let i = 0;
+      for (const l of layers) {
+        if (l.mode !== "card" || !l.place || i >= this.cards.length) continue;
+        const c = this.cards[i++];
+        const key = `${l.canvas.width}x${l.canvas.height}`;
+        if (c.source !== l.canvas || c.key !== key) {
+          c.feed?.dispose();
+          c.feed = new CanvasFeed(THREE.SRGBColorSpace);
+          c.feed.texture.repeat.y = -1;
+          c.feed.texture.offset.y = 1;
+          const m = c.mesh.material as THREE.MeshBasicMaterial;
+          m.map = c.feed.texture;
+          m.needsUpdate = true;
+          c.source = l.canvas; c.key = key;
+        }
+        c.feed!.pull(l.canvas);
+        this.place(c.mesh, l.place.az, l.place.el, l.place.w, l.canvas.width / l.canvas.height);
+        c.mesh.visible = c.feed!.ready;
+      }
+      for (; i < this.cards.length; i++) this.cards[i].mesh.visible = false;
     }
 
     // The band layer (the ticker), as rings of text round the dome.
@@ -1003,6 +1059,7 @@ export class Domemaster {
     this.skyFeed?.dispose(); this.bandFeed?.dispose();
     this.sceneCube.dispose(); this.overCube.dispose(); this.domeRT.dispose();
     this.textTex.dispose(); this.panelFeed?.dispose();
+    for (const c of this.cards) { c.feed?.dispose(); c.mesh.geometry.dispose(); (c.mesh.material as THREE.Material).dispose(); }
     this.fisheyeMat.dispose(); this.displayMat.dispose(); this.simMat.dispose();
     this.renderer.dispose();
   }

@@ -1,6 +1,8 @@
 import * as THREE from "three";
 import { BaseThreeJsModule } from "../helpers/threeBase";
 import { parliamentStore } from "../parliament/parliamentStore";
+import { installDomeSeat } from "../dome/domeSeat";
+import { mountDomeCard } from "../dome/domeCard";
 
 type PhenoMethodArg = Record<string, unknown> | undefined;
 type PhenoInstance = {
@@ -98,6 +100,37 @@ async function ensureConstructor() {
 }
 
 let _unsubscribeStore: (() => void) | null = null;
+let _domeOff: (() => void)[] = [];
+
+// ── In the dome ─────────────────────────────────────────────────────────────
+// The calendar is a dial (radius ~1.1, in its group's XY plane, tilted back).
+// The audience sits just in front of its centre, looking at it — the dial is
+// the sky: the year round the rim at ~20° of elevation, the taxon orbits
+// opening toward the zenith, six o'clock in front, as on the screen. The
+// day panel and the census, HTML on the page, become two cards either side
+// of the front so what the chamber reports can be read on the dome.
+function seatInDome(inst: any, container: HTMLElement) {
+  const group = inst._calendarGroup as THREE.Object3D | undefined;
+  if (!inst.scene || !group) return;
+  installDomeSeat(inst.scene, group, {
+    eye: new THREE.Vector3(0, 0, 0.45),
+    up: new THREE.Vector3(0, 0, -1),
+    forward: new THREE.Vector3(0, -1, 0),
+  });
+  const cols = inst._huCols as { info?: HTMLElement; census?: HTMLElement } | undefined;
+  if (cols?.info) {
+    _domeOff.push(mountDomeCard(container, {
+      az: -34, el: 24, w: 38, cols: 34, rows: 12, color: "#e6e6dc", keep: "start",
+      text: () => cols.info!.innerText,
+    }));
+  }
+  if (cols?.census) {
+    _domeOff.push(mountDomeCard(container, {
+      az: 34, el: 24, w: 46, cols: 44, rows: 14, color: "#d8e6c8", keep: "start",
+      text: () => cols.census!.innerText,
+    }));
+  }
+}
 
 export async function mountPhenologyCalendar(
   container: HTMLElement,
@@ -112,6 +145,7 @@ export async function mountPhenologyCalendar(
   // parliament re-tunes this in real time via wireRotationFromStore.
   _instance.autoplay({ enabled: true, daysPerSecond: 0.8 });
 
+  seatInDome(_instance, container);
   wireForwardBreath();
   wireRotationFromStore();
   wireBiogeochemFromStore();
@@ -120,6 +154,8 @@ export async function mountPhenologyCalendar(
 }
 
 export function destroyPhenologyCalendar() {
+  for (const off of _domeOff) off();
+  _domeOff = [];
   stopReverseBreath();
   if (_voteTimer) { clearInterval(_voteTimer); _voteTimer = null; _voteListenerWired = false; }
   if (_unsubscribeStore) { _unsubscribeStore(); _unsubscribeStore = null; }
