@@ -165,8 +165,13 @@ export function createCrtSurface(
   getOptions: () => CrtOptions,
   paint: CrtPaint,
 ): CrtSurface {
+  // preserveDrawingBuffer: the dome (dome/domemaster.ts CanvasFeed) copies
+  // this canvas from its own animation frame. Without it the buffer is
+  // cleared once the page has shown it, and a dome that happens to read after
+  // that — D opened before C, say — gets black.
   const gl = canvas.getContext("webgl", {
     antialias: false, alpha: false, depth: false, premultipliedAlpha: false,
+    preserveDrawingBuffer: true,
   }) as WebGLRenderingContext | null;
   if (!gl) throw new Error("CRT requires WebGL");
 

@@ -295,7 +295,13 @@ export function installDomeCapture(stage: HTMLElement) {
  */
 export function currentView(): CapturedView | null {
   const now = performance.now();
+  // The slot's main view is the one drawn on its largest canvas; a slot may
+  // keep a second renderer for a strip or an inset (Antifonia's sonogram),
+  // whose scene can hold MORE objects than the main one — a few big point
+  // clouds — so counting objects alone picked the strip. On one canvas
+  // (composer passes, overlays) the scene with the most objects wins.
   let best: CapturedView | null = null;
+  let bestArea = -1;
   let bestN = -1;
   for (const [scene, v] of _seen) {
     // A slot being switched away is torn down within the same tick its
@@ -309,9 +315,11 @@ export function currentView(): CapturedView | null {
       if (now - v.at > 5000) _seen.delete(scene);
       continue;
     }
+    const area = v.canvas.width * v.canvas.height;
+    if (area < bestArea) continue;
     let n = 0;
     scene.traverse(() => { n++; });
-    if (n > bestN) { best = v; bestN = n; }
+    if (area > bestArea || n > bestN) { best = v; bestArea = area; bestN = n; }
   }
   return best;
 }

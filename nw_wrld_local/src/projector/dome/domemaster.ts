@@ -584,15 +584,39 @@ export class Domemaster {
   private _quat = new THREE.Quaternion();
   private _scl = new THREE.Vector3();
 
-  // Middle of each scene, for immersion. Bounds walk the whole graph, so they
-  // are refreshed at most every 2 s per scene — worlds drift, they don't jump.
+  // Middle of each scene, for immersion: the middle of what the slot's own
+  // camera shows. Not the whole graph's bounds: slots park what they are not
+  // using far out of frame instead of deleting it (Antifonia moves its unused
+  // glyphs to y = −9999), and one parked object dragged the centre thousands
+  // of units away — immersion then slid the dome camera out of the world and
+  // the dome showed only the background. So an object counts only if it is
+  // visible and its middle is inside the slot camera's frustum. Bounds walk
+  // the graph, so they are refreshed at most every 2 s per scene — worlds
+  // drift, they don't jump.
   private centres = new WeakMap<THREE.Scene, { c: THREE.Vector3; at: number }>();
-  private sceneCentre(scene: THREE.Scene): THREE.Vector3 | null {
+  private _frustum = new THREE.Frustum();
+  private _pv = new THREE.Matrix4();
+  private _sphere = new THREE.Sphere();
+  private _objBox = new THREE.Box3();
+  private sceneCentre(scene: THREE.Scene, camera: THREE.PerspectiveCamera): THREE.Vector3 | null {
     const now = performance.now();
     const hit = this.centres.get(scene);
     if (hit && now - hit.at < 2000) return hit.c;
     try {
-      const box = new THREE.Box3().setFromObject(scene);
+      camera.updateMatrixWorld();
+      this._pv.multiplyMatrices(camera.projectionMatrix, camera.matrixWorldInverse);
+      this._frustum.setFromProjectionMatrix(this._pv);
+      const box = new THREE.Box3();
+      scene.traverseVisible((o: any) => {
+        if (!(o.isMesh || o.isPoints || o.isLine) || !o.geometry) return;
+        let s: THREE.Sphere | null;
+        if (o.isInstancedMesh) { if (!o.boundingSphere) o.computeBoundingSphere(); s = o.boundingSphere; }
+        else { if (!o.geometry.boundingSphere) o.geometry.computeBoundingSphere(); s = o.geometry.boundingSphere; }
+        if (!s || !Number.isFinite(s.radius)) return;
+        this._sphere.copy(s).applyMatrix4(o.matrixWorld);
+        if (!this._frustum.containsPoint(this._sphere.center)) return;
+        box.union(this._objBox.setFromObject(o));
+      });
       if (box.isEmpty()) return null;
       const c = box.getCenter(new THREE.Vector3());
       if (![c.x, c.y, c.z].every(Number.isFinite)) return null;
@@ -651,7 +675,7 @@ export class Domemaster {
       this.sceneCam.position.copy(eye && (eye as any).isVector3 ? eye : this._pos);
       // Immersion: slide along the camera's line of sight toward the scene's
       // middle — only forward, and never past it.
-      const centre = !eye && P.immersion > 0 ? this.sceneCentre(view.scene) : null;
+      const centre = !eye && P.immersion > 0 ? this.sceneCentre(view.scene, cam) : null;
       if (centre) {
         const fwd = new THREE.Vector3(0, 0, -1).applyQuaternion(this._quat);
         const d = centre.clone().sub(this._pos).dot(fwd);
