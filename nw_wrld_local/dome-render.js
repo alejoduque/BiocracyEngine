@@ -39,6 +39,11 @@
 //                        whole page, flat, as performed — stage, side columns,
 //                        controls — at the window size (<name>_pagina/)
 //   --no-preview         skip the QuickTime preview (see below)
+//   --flat [width]       also the PAGE as video, flat, as performed — stage,
+//                        side columns, controls — frame by frame with the
+//                        domemaster: <name>_pagina_<width>.mp4 (H.264, 1920
+//                        wide unless given, with the take's audio as stereo)
+//   --no-dome            with --flat: only the page, no domemaster (faster)
 //   --embed-audio        also put the 5.1 inside the .mov (prores/hapq), for a
 //                        player that wants picture and sound in one file
 //
@@ -106,6 +111,9 @@ const AUDIO_ONLY = args["audio-only"] === "1";
 // beside it (dome-preview.js), unless --no-preview.
 const PREVIEW = args["no-preview"] !== "1";
 const STILLS = Number(args.stills) || 0;
+// The page as video: "--flat" alone is 1920 wide; "--flat 3840" sets it.
+const FLAT = args.flat === undefined ? 0 : (Number(args.flat) > 100 ? Math.round(Number(args.flat)) : 1920);
+const NO_DOME = args["no-dome"] === "1" && FLAT > 0;
 const URL_BASE = args.url || "http://localhost:9001/parliament.html";
 const NAME = path.basename(SESSION).replace(/\.session\.jsonl$/, "");
 const OUT = path.resolve(args.out || path.join(__dirname, "..", "renders", `${NAME}_${SIZE}`));
@@ -170,6 +178,54 @@ ipcMain.handle("dome-frame", (_e, data, w, h) => {
     else ff.stdin.once("drain", () => res(true));
   });
 });
+
+// ── The page as video (--flat) ──────────────────────────────────────────────
+// The window's own paint, taken after each stepped frame (capturePage), so the
+// page video and the domemaster are the same frames of the same performance.
+// NativeImage bitmaps are BGRA, top row first. Written silent, then muxed with
+// the take's audio once the WAVs exist (flatMux).
+let flatFF = null, flatDone = null, flatSize = null;
+const flatTmp = () => path.join(OUT, `${NAME}_pagina_${FLAT}.video.tmp.mp4`);
+const flatOut = () => path.join(OUT, `${NAME}_pagina_${FLAT}.mp4`);
+
+const FLAT_WAIT_MS = Number(process.env.FLAT_WAIT_MS ?? 20);
+async function flatFrame(win) {
+  // The page's own clock is virtual, but its compositor runs on real time:
+  // captured straight after a step, about one frame in five was still the
+  // previous one (measured). A short real wait lets the new frame land.
+  if (FLAT_WAIT_MS > 0) await new Promise((r) => setTimeout(r, FLAT_WAIT_MS));
+  let img = await win.webContents.capturePage();
+  if (img.isEmpty()) return;
+  if (img.getSize().width !== FLAT) img = img.resize({ width: FLAT, quality: "good" });
+  let { width: w, height: h } = img.getSize();
+  if (!flatFF) {
+    h -= h % 2;                                   // yuv420p wants even sizes
+    flatSize = { w, h };
+    fs.mkdirSync(OUT, { recursive: true });
+    flatFF = spawn("ffmpeg", ["-hide_banner", "-loglevel", "error", "-y",
+      "-f", "rawvideo", "-pix_fmt", "bgra", "-s", `${w}x${h}`, "-framerate", String(FPS), "-i", "-",
+      "-c:v", "h264_videotoolbox", "-b:v", "16M", "-pix_fmt", "yuv420p", "-tag:v", "avc1", flatTmp()],
+      { stdio: ["pipe", "inherit", "inherit"] });
+    flatDone = new Promise((res) => flatFF.on("close", res));
+    flatFF.stdin.on("error", () => { /* reported at the end */ });
+  }
+  const bmp = img.toBitmap();
+  const need = flatSize.w * flatSize.h * 4;
+  const buf = bmp.length === need ? bmp : bmp.subarray(0, need);   // an odd height: drop the last row
+  if (!flatFF.stdin.write(buf)) await new Promise((r) => flatFF.stdin.once("drain", r));
+}
+
+function flatMux() {
+  if (!fs.existsSync(flatTmp())) return;
+  const wav = ["_2ch.wav", "_LRLsRs.wav", "_1ch.wav"].map((s) => path.join(OUT, `${NAME}_${SIZE}${s}`)).find((f) => fs.existsSync(f));
+  const args = ["-hide_banner", "-loglevel", "error", "-y", "-i", flatTmp(),
+    ...(wav ? ["-i", wav, "-map", "0:v", "-map", "1:a", "-ac", "2", "-c:a", "aac", "-b:a", "256k", "-shortest"] : []),
+    "-c:v", "copy", "-movflags", "+faststart", flatOut()];
+  if (spawnSync("ffmpeg", args, { stdio: "inherit" }).status === 0) {
+    fs.unlinkSync(flatTmp());
+    console.log(`[dome-render] ${path.basename(flatOut())}  ${flatSize.w}×${flatSize.h} · la página, plana${wav ? " · con audio" : ""}`);
+  } else console.log(`[dome-render] (the page video is at ${flatTmp()}; adding its audio failed)`);
+}
 
 // ── Audio: the same span of the recording ───────────────────────────────────
 function cutAudio() {
@@ -332,6 +388,7 @@ async function run() {
 
   console.log(`[dome-render] ${NAME}`);
   console.log(`[dome-render] ${SIZE}² @ ${FPS} fps · ${(FROM_MS / 1000).toFixed(1)}–${(TO_MS / 1000).toFixed(1)} s · ${N_FRAMES} frames · ${FORMAT} → ${OUT}`);
+  if (FLAT) console.log(`[dome-render] + la página, plana, a ${FLAT} de ancho${NO_DOME ? " — sin domemaster" : ""}`);
 
   const dt = 1000 / FPS;
   const step = (to, batch, render = false) =>
@@ -357,9 +414,10 @@ async function run() {
       batch.push(it.m !== undefined ? { t: it.t + WARMUP_MS, m: it.m } : { t: it.t + WARMUP_MS, s: it.s });
     }
     const capture = tSession + 1e-6 >= FROM_MS;
-    await step(tSession + WARMUP_MS, batch, capture);
+    await step(tSession + WARMUP_MS, batch, capture && !NO_DOME);
     if (!capture) continue;
-    await wc.executeJavaScript("window.__render.frame()");
+    if (!NO_DOME) await wc.executeJavaScript("window.__render.frame()");
+    if (FLAT) await flatFrame(win);
     if (STILLS && frames % Math.max(1, Math.round(STILLS * FPS)) === 0) await pageStill(win, tSession);
     frames++;
     const now = Date.now();
@@ -373,8 +431,10 @@ async function run() {
   process.stdout.write("\n");
 
   if (ff) { ffEnding = true; ff.stdin.end(); await ffDone; }
+  if (flatFF) { flatFF.stdin.end(); await flatDone; }
   win.destroy();
   cutAudio();
+  if (FLAT) flatMux();
   if (FORMAT !== "png" && (PREVIEW || STILLS)) {
     const mov = fs.readdirSync(OUT).find((f) => f.endsWith(".mov") && !f.includes(".tmp."));
     if (mov) {

@@ -84,6 +84,8 @@ Sale en `renders/<nombre>_4096/`: el video (secuencia PNG, o el `.mov`) y dos WA
 | `--audio-offset <ms>` | 0 | mover el audio respecto a la imagen |
 | `--session last` | | la grabación más reciente de `recordings/`, o sea la toma que acabas de grabar |
 | `--stills <s>` | 0 | además guarda una imagen PNG a tamaño completo cada `<s>` segundos, para revisar la toma: el domemaster (`<clip>_stills/`) y la página entera, plana, como se tocó —escenario, columnas laterales, controles— al tamaño de la ventana ×2 (`<nombre>_pagina/pagina_00m15s.png`). En un render nunca se escribe el nombre del módulo en la cúpula |
+| `--flat [ancho]` | no | además **la página en video**, plana, como se tocó —escenario, columnas laterales, controles—, cuadro a cuadro con el domemaster: `<nombre>_pagina_1920.mp4` (H.264, con el audio de la toma en estéreo). Cada cuadro verificado como nuevo |
+| `--no-dome` | no | con `--flat`: solo la página, sin domemaster. Más o menos la mitad del tiempo real, contra ~5× más lento con un domemaster de 2048 |
 | `--no-preview` | | no genera la vista previa para QuickTime |
 | `--embed-audio` | no | además mete el 5.1 dentro del `.mov` (PCM de 24 bits), para un reproductor que quiera imagen y sonido en un solo archivo |
 
@@ -102,7 +104,7 @@ Cómo funciona: la página corre con un reloj virtual (`src/projector/dome/rende
 ./start_ecosystem.sh render              # la última toma
 ./start_ecosystem.sh render pendientes   # todas las tomas sin video aún
 ```
-Levanta el servidor web si hace falta y no toca una función que esté corriendo en otra terminal. Opciones: `RENDER_SIZE=2048`, `RENDER_STILLS=10`, `RENDER_FORMAT=prores`. Con `AUTO_RENDER=1 ./start_ecosystem.sh`, cada toma se renderiza en cuanto se detiene su grabación. Pesa y compite con la función en vivo, así que úsalo en ensayos, no en una función. A mano: `cd nw_wrld_local && npm run dome:render -- --session last --format hapq --stills 15`.
+Levanta el servidor web si hace falta y no toca una función que esté corriendo en otra terminal. Opciones: `RENDER_SIZE=2048`, `RENDER_STILLS=10`, `RENDER_FORMAT=prores`, `RENDER_PAGINA=1` (también la página en video) o `RENDER_PAGINA=solo` (solo la página). Con `AUTO_RENDER=1 ./start_ecosystem.sh`, cada toma se renderiza en cuanto se detiene su grabación. Pesa y compite con la función en vivo, así que úsalo en ensayos, no en una función. A mano: `cd nw_wrld_local && npm run dome:render -- --session last --format hapq --stills 15`.
 HAP Q es un códec de reproducción para servidores de medios: QuickTime y VLC no lo abren. Por eso cada clip trae también `<nombre>_preview_2048.mp4` (H.264 con su audio), que se abre en cualquier parte, y `--stills` guarda imágenes PNG para revisar. Para un clip ya renderizado: `npm run dome:preview -- <clip.mov> --stills 15`.
 
 ## Plan A y Plan B

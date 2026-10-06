@@ -84,6 +84,8 @@ Output in `renders/<name>_4096/`: the video (a PNG sequence, or the `.mov`) plus
 | `--audio-offset <ms>` | 0 | nudge the audio against the picture |
 | `--session last` | | the newest recording in `recordings/`, i.e. the take just recorded |
 | `--stills <s>` | 0 | also save one full-size PNG every `<s>` seconds, to check the take: the domemaster (`<clip>_stills/`) and the whole page, flat, as performed — stage, side columns, controls — at the window size ×2 (`<name>_pagina/pagina_00m15s.png`). The module's name is never written on the dome in a render |
+| `--flat [width]` | off | also the **page as video**, flat, as performed — stage, side columns, controls — frame by frame with the domemaster: `<name>_pagina_1920.mp4` (H.264, the take's audio as stereo). Every frame checked to be a new one |
+| `--no-dome` | off | with `--flat`: only the page, no domemaster. About half real time, against ~5× slower with a 2048 domemaster |
 | `--no-preview` | | skip the QuickTime preview |
 | `--embed-audio` | off | also put the 5.1 inside the `.mov` (24-bit PCM), for a player that wants picture and sound in one file |
 
@@ -102,7 +104,7 @@ How it works: the page runs on a virtual clock (`src/projector/dome/renderMode.t
 ./start_ecosystem.sh render              # the last take
 ./start_ecosystem.sh render pendientes   # every take without a video yet
 ```
-It starts the web server if needed and does not touch a show running in another terminal. Options: `RENDER_SIZE=2048`, `RENDER_STILLS=10`, `RENDER_FORMAT=prores`. With `AUTO_RENDER=1 ./start_ecosystem.sh`, each take is rendered as soon as its recording stops. It is heavy and competes with the live show, so use it in rehearsal, not in a performance. By hand: `cd nw_wrld_local && npm run dome:render -- --session last --format hapq --stills 15`.
+It starts the web server if needed and does not touch a show running in another terminal. Options: `RENDER_SIZE=2048`, `RENDER_STILLS=10`, `RENDER_FORMAT=prores`, `RENDER_PAGINA=1` (the page as video too) or `RENDER_PAGINA=solo` (only the page). With `AUTO_RENDER=1 ./start_ecosystem.sh`, each take is rendered as soon as its recording stops. It is heavy and competes with the live show, so use it in rehearsal, not in a performance. By hand: `cd nw_wrld_local && npm run dome:render -- --session last --format hapq --stills 15`.
 HAP Q is a playback codec for media servers: QuickTime and VLC do not open it. So every clip also gets `<name>_preview_2048.mp4` (H.264 with its audio), which opens anywhere, and `--stills` saves PNG frames to look at. For a clip that is already rendered: `npm run dome:preview -- <clip.mov> --stills 15`.
 
 ## Plan A and Plan B

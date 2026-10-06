@@ -25,13 +25,21 @@ cd "$SCRIPT_DIR" || { echo "No se puede entrar a $SCRIPT_DIR"; exit 1; }
 # L R Ls Rs (o el estéreo, si se grabó sin la MOTU), la vista previa .mp4 que
 # abre QuickTime y una imagen fija cada 15 s.
 #   RENDER_FORMAT=hapq|prores|png   RENDER_SIZE=4096|2048   RENDER_STILLS=15
+#   RENDER_PAGINA=1      además la página entera en video, plana, como se tocó
+#                        (<toma>_pagina_1920.mp4, con su audio)
+#   RENDER_PAGINA=solo   solo la página, sin domemaster (mucho más rápido)
 if [ "$1" = "render" ]; then
     TARGET="${2:-last}"
     R_FORMAT="${RENDER_FORMAT:-hapq}"
     R_SIZE="${RENDER_SIZE:-4096}"
     R_STILLS="${RENDER_STILLS:-15}"
+    R_EXTRA=()
+    case "${RENDER_PAGINA:-}" in
+        1|si|sí|yes) R_EXTRA=(--flat) ;;
+        solo|only)   R_EXTRA=(--flat --no-dome) ;;
+    esac
     echo ""
-    echo ">> Render de tomas (formato $R_FORMAT, ${R_SIZE}², imágenes cada ${R_STILLS} s)"
+    echo ">> Render de tomas (formato $R_FORMAT, ${R_SIZE}², imágenes cada ${R_STILLS} s${RENDER_PAGINA:+, página: $RENDER_PAGINA})"
 
     SESSIONS=()
     case "$TARGET" in
@@ -83,7 +91,7 @@ if [ "$1" = "render" ]; then
         echo "──────────────────────────────────────────────"
         case "$f" in /*) ABS="$f" ;; *) ABS="$SCRIPT_DIR/$f" ;; esac
         ( cd "$SCRIPT_DIR/nw_wrld_local" && npx electron dome-render.js \
-            --session "$ABS" --format "$R_FORMAT" --size "$R_SIZE" --stills "$R_STILLS" )
+            --session "$ABS" --format "$R_FORMAT" --size "$R_SIZE" --stills "$R_STILLS" "${R_EXTRA[@]}" )
         echo ""
         echo "   Archivos en renders/${NAME}_${R_SIZE}/:"
         ls -1 "renders/${NAME}_${R_SIZE}/" 2>/dev/null | sed 's/^/     /'
