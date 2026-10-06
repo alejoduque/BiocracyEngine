@@ -18,7 +18,8 @@
 // bridge need not be running.
 //
 // Options:
-//   --session <file>     the .session.jsonl (required)
+//   --session <file>     the .session.jsonl (required), or "last": the newest
+//                        one in recordings/
 //   --out <dir>          default renders/<session name>_<size>
 //   --size 4096|2048     domemaster size (default 4096)
 //   --fps <n>            default 30
@@ -67,7 +68,15 @@ function fail(msg) {
 }
 
 if (!args.session) fail("--session <file.session.jsonl> is required");
-const SESSION = path.resolve(args.session);
+// "last": the newest session log in recordings/ — the take just recorded.
+function lastSession() {
+  const dir = path.join(__dirname, "..", "recordings");
+  const logs = fs.existsSync(dir) ? fs.readdirSync(dir).filter((f) => f.endsWith(".session.jsonl")) : [];
+  if (!logs.length) fail(`no .session.jsonl in ${dir} — record in SC first (the bridge writes it beside the WAV)`);
+  logs.sort((a, b) => fs.statSync(path.join(dir, b)).mtimeMs - fs.statSync(path.join(dir, a)).mtimeMs);
+  return path.join(dir, logs[0]);
+}
+const SESSION = args.session === "last" ? lastSession() : path.resolve(args.session);
 const SIZE = args.size === "2048" ? 2048 : 4096;
 const FPS = Number(args.fps) || 30;
 const FORMAT = ["prores", "hapq"].includes(args.format) ? args.format : "png";
