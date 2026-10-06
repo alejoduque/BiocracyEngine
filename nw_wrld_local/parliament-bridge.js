@@ -120,11 +120,49 @@ function sessionOpen(wavArg) {
   }
 }
 
-function sessionClose() {
+function sessionClose(shuttingDown = false) {
   if (!session) return;
   session.out.end();
-  console.log(`[bridge] ■ session log closed (${(sessionT() / 1000).toFixed(1)} s)`);
+  const secs = sessionT() / 1000;
+  const logPath = session.path;
+  console.log(`[bridge] ■ session log closed (${secs.toFixed(1)} s)`);
   session = null;
+  // A take is a WAV and a log; its pictures are rendered from the log. Say so
+  // where the performer is looking, with the command — or, with
+  // AUTO_RENDER=1, queue the render right away.
+  console.log("");
+  console.log(`[bridge] ● toma guardada: ${nodePath.basename(logPath).replace(/\.session\.jsonl$/, "")} (${secs.toFixed(0)} s)`);
+  if (process.env.AUTO_RENDER === "1" && !shuttingDown) {
+    queueRender(logPath);
+  } else {
+    console.log("[bridge]   video + audio de esta toma:  ./start_ecosystem.sh render last");
+  }
+  console.log("");
+}
+
+// ─── AUTO_RENDER=1: each take rendered as soon as it is recorded ──────────
+// One render at a time, at low priority (nice 10), with its progress in this
+// terminal. A 4096 render is heavy: while it runs, the live instrument and
+// the audio share the machine with it — for a show, render afterwards.
+const renderQueue = [];
+let rendering = false;
+function queueRender(logPath) {
+  renderQueue.push(logPath);
+  console.log(`[bridge]   AUTO_RENDER: render en cola (${renderQueue.length}) — el progreso sale aquí`);
+  if (!rendering) nextRender();
+}
+function nextRender() {
+  const logPath = renderQueue.shift();
+  if (!logPath) { rendering = false; return; }
+  rendering = true;
+  const { spawn } = require("child_process");
+  const args = ["-n", "10", "npx", "electron", "dome-render.js", "--session", logPath,
+    "--format", process.env.RENDER_FORMAT || "hapq", "--stills", process.env.RENDER_STILLS || "15"];
+  const p = spawn("nice", args, { cwd: __dirname, stdio: "inherit" });
+  p.on("close", (code) => {
+    console.log(code === 0 ? "[bridge] ✓ render terminado" : `[bridge] ⚠ el render terminó con código ${code}`);
+    nextRender();
+  });
 }
 
 // WebSocket server (nw_wrld connects here)
@@ -315,7 +353,7 @@ for (const sig of ["SIGINT", "SIGTERM"]) {
   process.on(sig, () => {
     if (!session) process.exit(0);
     const { out } = session;
-    sessionClose();
+    sessionClose(true);
     out.on("finish", () => process.exit(0));
     setTimeout(() => process.exit(0), 1000);
   });

@@ -95,11 +95,12 @@ npm run dome:render -- --session ../recordings/<name>.session.jsonl --size 2048 
 
 How it works: the page runs on a virtual clock (`src/projector/dome/renderMode.ts`), and the log is played into it at its logged times. Every frame therefore lands exactly where it belongs against the WAV, however slowly it renders. `--from` plays everything before that point without rendering it, so the page arrives in the state the performance left it.
 
-**Recording does not make the images.** SC's REC saves the WAV and the session log; the pictures are rendered afterwards, from the log:
+**Recording does not make the images.** SC's REC saves the WAV and the session log; the pictures are rendered afterwards, from the log. When a recording stops, the terminal says so and shows the command. The simplest way, with all the progress in the terminal:
 ```bash
-cd nw_wrld_local && npm run serve          # if it is not running
-npm run dome:render -- --session last --format hapq --stills 15
+./start_ecosystem.sh render              # the last take
+./start_ecosystem.sh render pendientes   # every take without a video yet
 ```
+It starts the web server if needed and does not touch a show running in another terminal. Options: `RENDER_SIZE=2048`, `RENDER_STILLS=10`, `RENDER_FORMAT=prores`. With `AUTO_RENDER=1 ./start_ecosystem.sh`, each take is rendered as soon as its recording stops. It is heavy and competes with the live show, so use it in rehearsal, not in a performance. By hand: `cd nw_wrld_local && npm run dome:render -- --session last --format hapq --stills 15`.
 HAP Q is a playback codec for media servers: QuickTime and VLC do not open it. So every clip also gets `<name>_preview_2048.mp4` (H.264 with its audio), which opens anywhere, and `--stills` saves PNG frames to look at. For a clip that is already rendered: `npm run dome:preview -- <clip.mov> --stills 15`.
 
 ## Plan A and Plan B

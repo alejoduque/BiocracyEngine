@@ -95,11 +95,12 @@ npm run dome:render -- --session ../recordings/<nombre>.session.jsonl --size 204
 
 Cómo funciona: la página corre con un reloj virtual (`src/projector/dome/renderMode.ts`) y el log se le entrega en sus tiempos. Así cada cuadro cae exactamente donde le corresponde frente al WAV, por lento que se renderice. `--from` reproduce todo lo anterior sin renderizarlo, para que la página llegue a ese punto en el estado en que la dejó la función.
 
-**La grabación no genera las imágenes.** El REC de SC guarda el WAV y el log de sesión; las imágenes se renderizan después, a partir del log:
+**La grabación no genera las imágenes.** El REC de SC guarda el WAV y el log de sesión; las imágenes se renderizan después, a partir del log. Al detener una grabación, la terminal lo avisa y muestra el comando. Lo más simple, con todo el progreso en la terminal:
 ```bash
-cd nw_wrld_local && npm run serve          # si no está corriendo
-npm run dome:render -- --session last --format hapq --stills 15
+./start_ecosystem.sh render              # la última toma
+./start_ecosystem.sh render pendientes   # todas las tomas sin video aún
 ```
+Levanta el servidor web si hace falta y no toca una función que esté corriendo en otra terminal. Opciones: `RENDER_SIZE=2048`, `RENDER_STILLS=10`, `RENDER_FORMAT=prores`. Con `AUTO_RENDER=1 ./start_ecosystem.sh`, cada toma se renderiza en cuanto se detiene su grabación. Pesa y compite con la función en vivo, así que úsalo en ensayos, no en una función. A mano: `cd nw_wrld_local && npm run dome:render -- --session last --format hapq --stills 15`.
 HAP Q es un códec de reproducción para servidores de medios: QuickTime y VLC no lo abren. Por eso cada clip trae también `<nombre>_preview_2048.mp4` (H.264 con su audio), que se abre en cualquier parte, y `--stills` guarda imágenes PNG para revisar. Para un clip ya renderizado: `npm run dome:preview -- <clip.mov> --stills 15`.
 
 ## Plan A y Plan B

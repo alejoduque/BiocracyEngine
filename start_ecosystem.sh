@@ -12,6 +12,88 @@ echo "=============================================="
 SCRIPT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 cd "$SCRIPT_DIR" || { echo "No se puede entrar a $SCRIPT_DIR"; exit 1; }
 
+# ── Modo render: ./start_ecosystem.sh render [last | pendientes | <archivo>] ─
+# Genera el video y los audios de una toma ya grabada, con todo el progreso en
+# esta terminal. No arranca ni apaga la función: si el ecosistema está
+# corriendo en otra terminal, sigue tal cual (por eso va antes de todo pkill).
+#
+#   ./start_ecosystem.sh render                 la última toma
+#   ./start_ecosystem.sh render pendientes      todas las tomas sin video aún
+#   ./start_ecosystem.sh render recordings/<toma>.session.jsonl
+#
+# Por toma, en renders/<toma>_4096/: el .mov HAP Q, el WAV 5.1 y el de
+# L R Ls Rs (o el estéreo, si se grabó sin la MOTU), la vista previa .mp4 que
+# abre QuickTime y una imagen fija cada 15 s.
+#   RENDER_FORMAT=hapq|prores|png   RENDER_SIZE=4096|2048   RENDER_STILLS=15
+if [ "$1" = "render" ]; then
+    TARGET="${2:-last}"
+    R_FORMAT="${RENDER_FORMAT:-hapq}"
+    R_SIZE="${RENDER_SIZE:-4096}"
+    R_STILLS="${RENDER_STILLS:-15}"
+    echo ""
+    echo ">> Render de tomas (formato $R_FORMAT, ${R_SIZE}², imágenes cada ${R_STILLS} s)"
+
+    SESSIONS=()
+    case "$TARGET" in
+        last|ultima|última)
+            NEWEST=$(ls -t recordings/*.session.jsonl 2>/dev/null | head -1)
+            [ -n "$NEWEST" ] && SESSIONS=("$NEWEST")
+            ;;
+        pendientes|pending|all|todas)
+            for f in recordings/*.session.jsonl; do
+                [ -e "$f" ] || continue
+                NAME=$(basename "$f" .session.jsonl)
+                ls "renders/${NAME}_${R_SIZE}/"*.mov >/dev/null 2>&1 || SESSIONS+=("$f")
+            done
+            ;;
+        *)
+            SESSIONS=("$TARGET")
+            ;;
+    esac
+    if [ ${#SESSIONS[@]} -eq 0 ]; then
+        echo "   No hay tomas para renderizar. Graba con REC en la GUI de SC: el bridge"
+        echo "   guarda recordings/<toma>.session.jsonl junto al WAV."
+        exit 0
+    fi
+
+    # El render carga la página: el servidor web tiene que estar arriba.
+    SERVE_PID=""
+    if ! curl -sf -o /dev/null http://localhost:9001 2>/dev/null; then
+        echo "   Levantando el servidor web (puerto 9001) para el render..."
+        ( cd "$SCRIPT_DIR/nw_wrld_local" && npm run serve --silent ) > "${TMPDIR:-/tmp}/biocracy-render-serve.log" 2>&1 &
+        SERVE_PID=$!
+        for i in {1..120}; do
+            curl -sf -o /dev/null http://localhost:9001 2>/dev/null && break
+            sleep 0.5
+        done
+        trap '[ -n "$SERVE_PID" ] && pkill -P "$SERVE_PID" 2>/dev/null; kill "$SERVE_PID" 2>/dev/null' EXIT
+    fi
+
+    FPS_EST=$([ "$R_SIZE" = "4096" ] && echo 2.7 || echo 10)
+    N=0
+    for f in "${SESSIONS[@]}"; do
+        N=$((N + 1))
+        NAME=$(basename "$f" .session.jsonl)
+        # duración de la toma: el tiempo de la última línea del log
+        SECS=$(tail -1 "$f" | sed -n 's/^{"t": *\([0-9.]*\).*/\1/p' | awk '{printf "%d", $1/1000}')
+        MINS=$(awk -v s="${SECS:-0}" -v r="$FPS_EST" 'BEGIN{printf "%d", (s*30/r)/60 + 1}')
+        echo ""
+        echo "──────────────────────────────────────────────"
+        echo " Toma $N/${#SESSIONS[@]}: $NAME  (${SECS:-?} s · render ~${MINS} min)"
+        echo "──────────────────────────────────────────────"
+        case "$f" in /*) ABS="$f" ;; *) ABS="$SCRIPT_DIR/$f" ;; esac
+        ( cd "$SCRIPT_DIR/nw_wrld_local" && npx electron dome-render.js \
+            --session "$ABS" --format "$R_FORMAT" --size "$R_SIZE" --stills "$R_STILLS" )
+        echo ""
+        echo "   Archivos en renders/${NAME}_${R_SIZE}/:"
+        ls -1 "renders/${NAME}_${R_SIZE}/" 2>/dev/null | sed 's/^/     /'
+    done
+    echo ""
+    echo ">> Listo. La vista previa (*_preview_2048.mp4) se abre en QuickTime;"
+    echo "   el .mov HAP Q es el que va al disco para Digistar."
+    exit 0
+fi
+
 # ── (1) Verificación de dependencias antes de matar nada ───────────────────
 # Si algo crítico falta, mejor avisar y salir limpio que matar procesos del
 # usuario y dejarlo sin Node/Python solo para descubrir que falta sclang.
@@ -277,6 +359,10 @@ fi
 # negro: la cúpula queda oscura, no congelada.
 #   DOME=1             → lanza el puente
 #   DOME_FLIP=1|0      → invierte la imagen si un receptor la ve de cabeza
+#   AUTO_RENDER=1      → cada toma (REC en SC) se renderiza al detenerla, con
+#                        el progreso en esta terminal. Pesa: compite con la
+#                        función en vivo. Sin esto, al parar el REC se muestra
+#                        el comando: ./start_ecosystem.sh render last
 #   DOME_LIVE=1        → la página abre en la ventana de cúpula en vivo
 #                        (Electron) con salida NDI, en vez del navegador.
 #   DOME_AUDIO=1       → sonido para la consola de la sala: con la MOTU, las

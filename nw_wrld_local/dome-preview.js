@@ -31,7 +31,10 @@ function makePreview(mov, { size = 2048, stills = 0 } = {}) {
     // the clip's own audio, if a WAV of the same stem is beside it
     const wav = ["_5.1.wav", "_LRLsRs.wav", "_2ch.wav", "_1ch.wav"]
       .map((s) => path.join(dir, stem + s)).find((f) => fs.existsSync(f));
-    const fps = spawnSync(decoder, ["-hide_banner", "-i", mov], { encoding: "utf8" }).stderr.match(/(\d+(?:\.\d+)?) fps/)?.[1] || "30";
+    const info = spawnSync(decoder, ["-hide_banner", "-i", mov], { encoding: "utf8" }).stderr;
+    const fps = info.match(/(\d+(?:\.\d+)?) fps/)?.[1] || "30";
+    const dm = info.match(/Duration: (\d+):(\d+):(\d+(?:\.\d+)?)/);
+    const total = dm ? Math.round((+dm[1] * 3600 + +dm[2] * 60 + +dm[3]) * +fps) : 0;
 
     // decode → raw RGBA at preview size → H.264
     const dec = spawn(decoder, ["-hide_banner", "-loglevel", "error", "-i", mov,
@@ -42,11 +45,26 @@ function makePreview(mov, { size = 2048, stills = 0 } = {}) {
       "-c:v", "h264_videotoolbox", "-b:v", "24M", "-pix_fmt", "yuv420p", "-tag:v", "avc1",
       "-shortest", "-movflags", "+faststart", out], { stdio: ["pipe", "inherit", "inherit"] });
     dec.stdout.pipe(enc.stdin);
+    // Progress, from the bytes the decoder hands over: one frame = size² · 4.
+    let bytes = 0, lastPrint = 0;
+    const t0 = Date.now(), frameBytes = size * size * 4;
+    dec.stdout.on("data", (b) => {
+      bytes += b.length;
+      const now = Date.now();
+      if (now - lastPrint < 1000) return;
+      lastPrint = now;
+      const done = Math.floor(bytes / frameBytes), rate = done / ((now - t0) / 1000);
+      const pct = total ? ` ${((100 * done) / total).toFixed(0)}%` : "";
+      const eta = total && rate > 0 ? `  eta ${Math.max(0, Math.round((total - done) / rate))} s` : "";
+      process.stdout.write(`\r[dome-preview] vista previa ${done}${total ? "/" + total : ""}${pct}  ${rate.toFixed(1)} fps${eta}   `);
+    });
     enc.on("close", (code) => {
+      process.stdout.write("\n");
       if (code !== 0) return reject(new Error(`preview encode failed (exit ${code})`));
       const files = [out];
       if (stills > 0) {
         const sdir = path.join(dir, `${stem}_stills`);
+        console.log(`[dome-preview] imágenes fijas, una cada ${stills} s…`);
         fs.mkdirSync(sdir, { recursive: true });
         const r = spawnSync(decoder, ["-hide_banner", "-loglevel", "error", "-y", "-i", mov,
           "-vf", `fps=1/${stills}`, path.join(sdir, "still_%04d.png")], { stdio: "inherit" });   // needs the fps filter (build.sh)
