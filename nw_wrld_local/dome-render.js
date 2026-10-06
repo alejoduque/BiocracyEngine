@@ -31,14 +31,21 @@
 //   --window <WxH>       page size, i.e. the resolution of the 2-D slots (default 1920x1080)
 //   --audio-offset <ms>  shift the audio against the picture (default 0)
 //   --lfe-hz <Hz>        crossover of the 5.1 file's LFE channel (default 100)
-//   --stills <s>         also save one full-size PNG every <s> seconds
+//   --no-upmix           a stereo take stays stereo (no quad, no 5.1)
+//   --audio-only         only the WAVs (e.g. again, with other options); the
+//                        page is not opened and no video is made
+//   --stills <s>         also save one full-size PNG every <s> seconds: the
+//                        domemaster (<clip>_stills/, from the .mov) and the
+//                        whole page, flat, as performed — stage, side columns,
+//                        controls — at the window size (<name>_pagina/)
 //   --no-preview         skip the QuickTime preview (see below)
 //   --embed-audio        also put the 5.1 inside the .mov (prores/hapq), for a
 //                        player that wants picture and sound in one file
 //
 // Audio: two WAVs at 48 kHz / 24 bit beside the video — <name>_LRLsRs.wav
 // (four channels, console order) and <name>_5.1.wav (L R C LFE Ls Rs, the
-// centre silent, the LFE the low end of the mix) — see cutAudio().
+// centre silent, the LFE the low end of the mix) — see cutAudio(). A stereo
+// take (recorded without the MOTU) is upmixed to the same two files.
 //   --url <url>          default http://localhost:9001/parliament.html
 //
 // Run: npx electron dome-render.js --session …   (or npm run dome:render -- …)
@@ -93,6 +100,8 @@ const [WIN_W, WIN_H] = String(args.window || "1920x1080").split("x").map(Number)
 const AUDIO_OFFSET_MS = Number(args["audio-offset"]) || 0;
 const LFE_HZ = Number(args["lfe-hz"]) || 100;
 const EMBED_AUDIO = args["embed-audio"] === "1";
+const UPMIX = args["no-upmix"] !== "1";
+const AUDIO_ONLY = args["audio-only"] === "1";
 // HAP Q does not open in QuickTime or VLC: every .mov gets an H.264 preview
 // beside it (dome-preview.js), unless --no-preview.
 const PREVIEW = args["no-preview"] !== "1";
@@ -176,36 +185,65 @@ function cutAudio() {
   const out24 = ["-ar", "48000", "-c:a", "pcm_s24le"];
   const say = (file, what) => console.log(`[dome-render] ${path.basename(file)}  ${dur.toFixed(2)} s from ${start.toFixed(2)} s of ${path.basename(src)} · 48 kHz / 24 bit · ${what}`);
 
-  if (chans !== 4) {
-    // a stereo session (no MOTU when it was recorded): passed on as it is
+  const stereo = chans === 1 || chans === 2;
+  if (chans !== 4 && !(stereo && UPMIX)) {
+    // passed on as it is: --no-upmix, or a channel count we do not place
     const f = `${base}_${chans}ch.wav`;
     if (spawnSync("ffmpeg", [...cut, ...out24, f], { stdio: "inherit" }).status === 0) say(f, `${chans} ch`);
     return;
   }
 
-  // The planetarium plays WAV at 48 kHz / 24 bit. Two files per clip:
+  // The planetarium plays WAV at 48 kHz / 24 bit. Two files per clip, from
+  // one quad in console order, L R Ls Rs (ffmpeg's FL FR BL BR):
   //
-  //   _LRLsRs.wav  the four channels in console order, L R Ls Rs. SC records
-  //                the quad ring in PanAz order (0 FL, 1 FR, 2 RR, 3 RL), so
-  //                the rears are swapped — channelmap, not pan: pan between
-  //                these layouts remixes instead of reordering (measured).
-  //   _5.1.wav     the same four plus a silent centre and an LFE: the four
+  //   _LRLsRs.wav  the quad. SC records the ring in PanAz order (0 FL, 1 FR,
+  //                2 RR, 3 RL), so the rears are swapped — channelmap, not
+  //                pan: pan between these layouts remixes instead of
+  //                reordering (measured).
+  //   _5.1.wav     the quad plus a silent centre and an LFE: the four
   //                summed, low-passed at 100 Hz (24 dB/oct). Their native
   //                5.1 track — the room's six subwoofers get their own channel
   //                and the show needs no interface of ours at all.
+  //
+  // A stereo take (no MOTU) becomes a quad by a passive upmix:
+  //   L R    the take itself, untouched: the image stays in front.
+  //   Ls Rs  each side minus half the other — the stereo difference, the
+  //          room and the width, with less of what sits in the middle —
+  //          low-passed at 7 kHz and delayed 12 / 15 ms. The delay keeps
+  //          localisation on the fronts (precedence); two different delays
+  //          decorrelate the rears, so they surround instead of forming a
+  //          phantom behind. Their level is set by the 0.7 / −0.35 mix.
+  //   LFE    as for a MOTU take: the four summed, under 100 Hz.
+  // The original stereo is kept beside them as _2ch.wav.
+  let quadGraph;
+  if (chans === 4) {
+    quadGraph = "[0:a]aresample=48000,channelmap=map=0|1|3|2:channel_layout=quad[q]";
+  } else {
+    const st = chans === 1 ? "pan=stereo|c0=c0|c1=c0" : "aformat=channel_layouts=stereo";
+    quadGraph = `[0:a]aresample=48000,${st},asplit=3[f][a][b];` +
+      "[f]channelsplit=channel_layout=stereo[L][R];" +
+      "[a]pan=mono|c0=0.7*c0-0.35*c1,lowpass=f=7000,adelay=12[Ls];" +
+      "[b]pan=mono|c0=0.7*c1-0.35*c0,lowpass=f=7000,adelay=15[Rs];" +
+      "[L][R][Ls][Rs]join=inputs=4:channel_layout=quad:map=0.0-FL|1.0-FR|2.0-BL|3.0-BR[q]";
+    const f = `${base}_${chans}ch.wav`;
+    if (spawnSync("ffmpeg", [...cut, ...out24, f], { stdio: "inherit" }).status === 0) say(f, `${chans} ch, the take as recorded`);
+  }
+  const how = chans === 4 ? "" : ` · upmix from ${chans === 1 ? "mono" : "stereo"}`;
+  const t = ["-t", dur.toFixed(4)];
+
   const quad = `${base}_LRLsRs.wav`;
-  if (spawnSync("ffmpeg", [...cut, "-af", "channelmap=map=0|1|3|2:channel_layout=quad", ...out24, quad], { stdio: "inherit" }).status === 0) {
-    say(quad, "L R Ls Rs");
+  if (spawnSync("ffmpeg", [...cut, "-filter_complex", quadGraph, "-map", "[q]", ...t, "-c:a", "pcm_s24le", quad], { stdio: "inherit" }).status === 0) {
+    say(quad, `L R Ls Rs${how}`);
   }
   const five = `${base}_5.1.wav`;
-  const graph = "[0:a]aresample=48000,asplit=2[m][s];" +
-    "[m]channelmap=map=0|1|3|2:channel_layout=quad,channelsplit=channel_layout=quad[L][R][Ls][Rs];" +
+  const graph = `${quadGraph};[q]asplit=2[m][s];` +
+    "[m]channelsplit=channel_layout=quad[qL][qR][qLs][qRs];" +
     `[s]pan=mono|c0=0.25*c0+0.25*c1+0.25*c2+0.25*c3,lowpass=f=${LFE_HZ},lowpass=f=${LFE_HZ}[lfe];` +
     "anullsrc=channel_layout=mono:sample_rate=48000[c];" +
-    "[L][R][c][lfe][Ls][Rs]join=inputs=6:channel_layout=5.1:map=0.0-FL|1.0-FR|2.0-FC|3.0-LFE|4.0-BL|5.0-BR[out]";
-  if (spawnSync("ffmpeg", [...cut, "-filter_complex", graph, "-map", "[out]", "-t", dur.toFixed(4), "-c:a", "pcm_s24le", five],
+    "[qL][qR][c][lfe][qLs][qRs]join=inputs=6:channel_layout=5.1:map=0.0-FL|1.0-FR|2.0-FC|3.0-LFE|4.0-BL|5.0-BR[out]";
+  if (spawnSync("ffmpeg", [...cut, "-filter_complex", graph, "-map", "[out]", ...t, "-c:a", "pcm_s24le", five],
     { stdio: "inherit" }).status === 0) {
-    say(five, `5.1 · L R C LFE Ls Rs · LFE < ${LFE_HZ} Hz`);
+    say(five, `5.1 · L R C LFE Ls Rs · LFE < ${LFE_HZ} Hz${how}`);
     if (EMBED_AUDIO) embedAudio(five);
   }
 }
@@ -246,6 +284,19 @@ async function waitFor(wc, expr, ms) {
 function fmt(s) {
   const m = Math.floor(s / 60);
   return `${m}:${String(Math.floor(s % 60)).padStart(2, "0")}`;
+}
+
+// The page itself, flat, the way the performer saw it: the window's own
+// paint, taken once the stepped frame has reached the screen.
+async function pageStill(win, tSession) {
+  const dir = path.join(OUT, `${NAME}_pagina`);
+  fs.mkdirSync(dir, { recursive: true });
+  // (the page's own timers run on the virtual clock: the wait is out here)
+  await new Promise((r) => setTimeout(r, 60));
+  const img = await win.webContents.capturePage();
+  if (img.isEmpty()) return;
+  const s = Math.round(tSession / 1000);
+  fs.writeFileSync(path.join(dir, `pagina_${String(Math.floor(s / 60)).padStart(2, "0")}m${String(s % 60).padStart(2, "0")}s.png`), img.toPNG());
 }
 
 async function run() {
@@ -309,6 +360,7 @@ async function run() {
     await step(tSession + WARMUP_MS, batch, capture);
     if (!capture) continue;
     await wc.executeJavaScript("window.__render.frame()");
+    if (STILLS && frames % Math.max(1, Math.round(STILLS * FPS)) === 0) await pageStill(win, tSession);
     frames++;
     const now = Date.now();
     if (now - lastLog > 2000 || frames === N_FRAMES) {
@@ -340,4 +392,12 @@ async function run() {
 // The window is closed before the audio and the preview are made: without
 // this, Electron's default quits the app the moment it closes.
 app.on("window-all-closed", () => { /* run() exits when it is done */ });
-app.whenReady().then(() => run().catch((e) => fail(e.stack || String(e))));
+app.whenReady().then(() => {
+  if (AUDIO_ONLY) {
+    fs.mkdirSync(OUT, { recursive: true });
+    cutAudio();
+    app.exit(0);
+    return;
+  }
+  run().catch((e) => fail(e.stack || String(e)));
+});

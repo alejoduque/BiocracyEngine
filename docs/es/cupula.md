@@ -18,26 +18,27 @@ La mitad 4K se renderiza fuera de tiempo real para no exigirle al M5 4K en vivo.
 
 ## 1. La vista de cúpula (tecla D)
 
-En `parliament.html`, la **D** abre **CÚPULA** sobre la página. Las ranuras siguen corriendo debajo, y 0–9 / P F B E R A C O T siguen cambiando de ranura.
+En `parliament.html`, la **D** abre **CÚPULA** sobre la página. Los módulos siguen corriendo debajo, y 0–9 / P F B E R A C O T siguen cambiando de módulo.
 
 | Control | Qué hace |
 |---|---|
 | Domemaster / Simulación | el ojo de pez plano, o el domo visto desde las butacas (arrastrar para mirar, rueda para el campo visual) |
+| sobre la página / ventana aparte | **ventana aparte** saca CÚPULA a una ventana propia, para llevarla a una segunda pantalla: `parliament.html` queda entera (las columnas laterales, los controles) para tocar. Las teclas que se pulsan en la ventana de la cúpula llegan a la página, así que desde ahí también se cambia de módulo. Cerrar esa ventana, o la D, cierra la vista; las salidas siguen |
 | 2048 / 4096 | tamaño del domemaster |
-| frente | a qué altura sobre el horizonte cae el "adelante" de la ranura (butacas reclinadas: ~30°) |
+| frente | a qué altura sobre el horizonte cae el "adelante" del módulo (butacas reclinadas: ~30°) |
 | inmersión | mete la cámara de la cúpula en la escena. En 0 el mundo es una mancha al frente; desde 80% rodea al público |
 | apertura | 180° = hemisferio |
 | inclinación | inclinación del domo, solo en la simulación |
-| texto · letra · altura texto | el título de la ranura dibujado en la cúpula (tamaño y altura en grados) |
+| texto · letra · altura texto | el título del módulo dibujado en la cúpula (tamaño y altura en grados) |
 | guías | anillos de elevación cada 15° y una marca al frente |
 | salida: sin salida / ndi / syphon | adónde va el domemaster además de la pantalla. **ndi** solo funciona en la ventana en vivo (sección 4). La salida sigue con la vista cerrada |
 | negro | envía negro a la salida sin apagarla |
 | opaca / alfa | **alfa** envía la salida con canal alfa (RGBA, UYVA en la red): el negro es transparente, así la sala puede poner el vivo como capa sobre un clip que ya se está reproduciendo |
 | salida limpia | el domemaster solo, a pantalla completa (Esc para volver). Sirve solo para captura de pantalla, no es la entrega 4K |
 
-Cada ranura llega a la cúpula por una de dos vías:
-- **Ranuras three.js:** se renderizan con una cámara ojo de pez. La barra dice *escena 3D*.
-- **Ranuras 2D y WebGL directo** (1, 3, R, C): aparecen como un panel plano al frente. La barra dice *panel 2D*.
+Cada módulo llega a la cúpula por una de dos vías:
+- **Módulos three.js:** se renderizan con una cámara ojo de pez. La barra dice *escena 3D*.
+- **Módulos 2D y WebGL directo** (1, 3, R, C): aparecen como un panel plano al frente. La barra dice *panel 2D*.
 
 Los ajustes de la cúpula son parte de la función: se guardan en la sesión (abajo).
 
@@ -50,10 +51,10 @@ recordings/eth_sonification_20261004_200000.wav             ← SC, 4 canales
 recordings/eth_sonification_20261004_200000.session.jsonl   ← el bridge
 ```
 
-El log guarda todo lo que los visuales reciben de SC, las teclas pulsadas en la página, la ranura en escena al empezar y cada cambio en los ajustes de la cúpula. Se cierra cuando para la grabación.
+El log guarda todo lo que los visuales reciben de SC, las teclas pulsadas en la página, el módulo en escena al empezar y cada cambio en los ajustes de la cúpula. Se cierra cuando para la grabación.
 
 - El log de sesión solo se escribe mientras SC graba.
-- La interacción con el ratón dentro de una ranura (arrastrar la órbita) **no** se graba. Encuadra cada ranura con teclas y ajustes de la cúpula, no con el ratón.
+- La interacción con el ratón dentro de un módulo (arrastrar la órbita) **no** se graba. Encuadra cada módulo con teclas y ajustes de la cúpula, no con el ratón.
 - Los logs y los renders no se versionan en git (son datos, y pesan).
 
 ## 3. Renderizar a 4K
@@ -69,6 +70,7 @@ npm run dome:render -- --session ../recordings/<nombre>.session.jsonl
 Sale en `renders/<nombre>_4096/`: el video (secuencia PNG, o el `.mov`) y dos WAV del mismo tramo de la grabación, en sincronía con el cuadro 0, ambos a 48 kHz / 24 bits:
 - `<nombre>_4096_LRLsRs.wav`: 4 canales en orden de consola;
 - `<nombre>_4096_5.1.wav`: L R C LFE Ls Rs, con el centro en silencio y el LFE con los graves de la mezcla (suma de los cuatro canales, pasa bajos a 100 Hz, 24 dB/oct; `--lfe-hz` lo cambia). Con este archivo la sala reproduce la función completa, subwoofers incluidos, y no hace falta nuestra MOTU.
+- **Una toma estéreo** (grabada sin la MOTU) da los mismos dos archivos con un upmix pasivo. L y R son la toma sin tocar, así que la imagen sigue al frente. Ls y Rs son cada lado menos la mitad del otro (el ancho y la sala), con pasa bajos a 7 kHz y retardos de 12 y 15 ms: la localización se queda al frente y los traseros envuelven. El LFE se hace igual que arriba. Medido en una toma real: traseros ~4 dB bajo los frontales, nada en el LFE por encima de 200 Hz. El original queda como `<nombre>_4096_2ch.wav`. `--no-upmix` deja una toma estéreo en estéreo. Solo los WAV, para un clip ya renderizado: `npm run dome:render -- --session <log> --audio-only` (con los mismos `--from/--to/--size`).
 
 | Opción | Por defecto | |
 |---|---|---|
@@ -77,11 +79,11 @@ Sale en `renders/<nombre>_4096/`: el video (secuencia PNG, o el `.mov`) y dos WA
 | `--from <s> --to <s>` | toda la sesión | tramo a renderizar, en segundos desde el inicio de la grabación |
 | `--format png\|prores\|hapq` | png | secuencia PNG, un `.mov` ProRes 4444, o un **`.mov` HAP Q**, el formato de la sala (su ffmpeg se compila una vez: `tools/ffmpeg-hap/build.sh`) |
 | `--out <dir>` | `renders/<nombre>_<size>` | |
-| `--warmup <s>` | 3 | tiempo que corre la página antes del cero, para que las ranuras monten |
-| `--window <AxA>` | 1920x1080 | tamaño de la página, que fija la resolución de las ranuras en panel 2D |
+| `--warmup <s>` | 3 | tiempo que corre la página antes del cero, para que los módulos monten |
+| `--window <AxA>` | 1920x1080 | tamaño de la página, que fija la resolución de los módulos en panel 2D |
 | `--audio-offset <ms>` | 0 | mover el audio respecto a la imagen |
 | `--session last` | | la grabación más reciente de `recordings/`, o sea la toma que acabas de grabar |
-| `--stills <s>` | 0 | además guarda una imagen PNG a tamaño completo cada `<s>` segundos, para revisar la toma |
+| `--stills <s>` | 0 | además guarda una imagen PNG a tamaño completo cada `<s>` segundos, para revisar la toma: el domemaster (`<clip>_stills/`) y la página entera, plana, como se tocó —escenario, columnas laterales, controles— al tamaño de la ventana ×2 (`<nombre>_pagina/pagina_00m15s.png`). En un render nunca se escribe el nombre del módulo en la cúpula |
 | `--no-preview` | | no genera la vista previa para QuickTime |
 | `--embed-audio` | no | además mete el 5.1 dentro del `.mov` (PCM de 24 bits), para un reproductor que quiera imagen y sonido en un solo archivo |
 
@@ -137,6 +139,14 @@ Medido en el M5 con un receptor NDI aparte: **2048 × 2048 a 30 fps**, llega en 
 - Para revisar la señal antes de llegar a la sala: *NDI Studio Monitor* (NDI Tools, gratis) en cualquier equipo de la misma red debería mostrar **BiocracyEngine Cúpula**.
 - Deja la señal en vivo en 2048. El 4096 es para los clips pre-renderizados.
 
+### La página misma, plana: "BiocracyEngine Página"
+
+La misma ventana publica una segunda fuente NDI, **BiocracyEngine Página**: `parliament.html` tal como la ve quien toca —escenario, columnas de texto laterales, controles—, plana, con la proporción de la ventana, escalada a 1920 de ancho. No se renderiza nada de más: es lo que la ventana ya pinta, tomado al componerse. Cuesta ~15 ms del proceso principal de Electron por cuadro a 30 fps (medido en el M5), y solo mientras haya un receptor conectado; sin receptores queda en pausa.
+
+El domo toma una fuente NDI a la vez, así que el VJ elige: **Cúpula** (el ojo de pez, todo el domo) o **Página** (un panel plano 16:9 que el VJ ubica en el domo, como cualquier video). Para que la página quede limpia con la vista de cúpula abierta, usa **ventana aparte**.
+
+Variables: `DOME_PAGE=0` la apaga; `DOME_PAGE_NAME`, `DOME_PAGE_WIDTH` (1920), `DOME_PAGE_FPS` (30).
+
 ## 5. Sonido para la consola de la sala
 
 Lleva la **MOTU** y arranca con:
@@ -178,10 +188,10 @@ Llevar: el M5, un adaptador USB-C → RJ45 gigabit, la MOTU y sus cables (4 × l
 
 ## Notas de diseño para un domo de 23 m
 
-- **Evitar fondos blancos o muy claros.** La luz rebota por todo el domo y lava el contraste. La ranura **B (Tránsito)** es blanca y necesita una versión oscura para la cúpula. Las ranuras oscuras (F DarkForest, los anillos) le van bien.
+- **Evitar fondos blancos o muy claros.** La luz rebota por todo el domo y lava el contraste. El módulo **B (Tránsito)** es blanco y necesita una versión oscura para la cúpula. Los módulos oscuros (F DarkForest, los anillos) le van bien.
 - **Movimiento de cámara lento.** Los movimientos rápidos sobre todo el campo visual marean.
 - **El texto** se lee mejor bajo, en la franja del frente, y grande (2–4°). Cerca del cenit se curva.
-- **El láser (ranura P)** es para el bosque, no para el domo.
+- **El láser (módulo P)** es para el bosque, no para el domo.
 
 ## Pendiente
 
@@ -193,8 +203,8 @@ Llevar: el M5, un adaptador USB-C → RJ45 gigabit, la MOTU y sus cables (4 × l
 |---|---|
 | `src/projector/dome/dome.ts` | la vista CÚPULA (tecla D) y sus enganches para el render |
 | `src/projector/dome/domemaster.ts` | cámara cúbica → ojo de pez → domemaster |
-| `src/projector/dome/domeCapture.ts` | encuentra la escena y el canvas de cada ranura sin tocar las ranuras |
-| `src/projector/dome/session.ts` | teclas, ranura y ajustes de la cúpula → el log de sesión |
+| `src/projector/dome/domeCapture.ts` | encuentra la escena y el canvas de cada módulo sin tocar los módulos |
+| `src/projector/dome/session.ts` | teclas, módulo y ajustes de la cúpula → el log de sesión |
 | `src/projector/dome/renderMode.ts` | el reloj virtual y la reproducción, bajo `?render=1` |
 | `nw_wrld_local/dome-live.js` | la ventana en vivo (Electron) |
 | `nw_wrld_local/dome-live-preload.js` | el emisor NDI y su negro de seguridad |

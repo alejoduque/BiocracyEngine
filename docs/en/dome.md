@@ -18,26 +18,27 @@ The 4K half is rendered offline so the M5 is never pushed to 4K in real time.
 
 ## 1. The dome viewport (key D)
 
-In `parliament.html`, **D** opens **CÚPULA** over the page. The slots keep running underneath, and 0–9 / P F B E R A C O T still switch slots.
+In `parliament.html`, **D** opens **CÚPULA** over the page. The modules keep running underneath, and 0–9 / P F B E R A C O T still switch modules.
 
 | Control | What it does |
 |---|---|
 | Domemaster / Simulación | the flat fisheye, or the dome seen from the seats (drag to look around, wheel for the field of view) |
+| sobre la página / ventana aparte | **ventana aparte** moves CÚPULA into a window of its own, to drag onto a second screen: `parliament.html` stays whole (the side columns, the controls) for performing. Keys pressed in the dome window reach the page, so modules still switch from there. Closing that window, or D, closes the view; outputs keep running |
 | 2048 / 4096 | domemaster size |
-| frente | how high above the horizon the slot's "forward" lands (reclined seats: ~30°) |
+| frente | how high above the horizon the module's "forward" lands (reclined seats: ~30°) |
 | inmersión | moves the dome camera into the scene. At 0 the world is a patch in front; at 80%+ it surrounds the audience |
 | apertura | 180° = hemisphere |
 | inclinación | dome tilt, simulation only |
-| texto · letra · altura texto | the slot title drawn natively on the dome (size and height in degrees) |
+| texto · letra · altura texto | the module title drawn natively on the dome (size and height in degrees) |
 | guías | elevation rings every 15° and a front tick |
 | salida: sin salida / ndi / syphon | where the domemaster goes besides the screen. **ndi** only works in the live window (section 4). The output keeps running with the view closed |
 | negro | sends black to the output without turning it off |
 | opaca / alfa | **alfa** sends the output with an alpha channel (RGBA, UYVA on the wire): black is transparent, so the venue can lay the live feed as a layer over a clip that is already playing |
 | salida limpia | the bare domemaster full screen (Esc to return). For screen capture only, not the 4K deliverable |
 
-Each slot reaches the dome one of two ways:
-- **three.js slots:** rendered through a fisheye camera. The status bar says *escena 3D*.
-- **2-D and raw-WebGL slots** (1, 3, R, C): shown as a flat panel in front. The status bar says *panel 2D*.
+Each module reaches the dome one of two ways:
+- **three.js modules:** rendered through a fisheye camera. The status bar says *escena 3D*.
+- **2-D and raw-WebGL modules** (1, 3, R, C): shown as a flat panel in front. The status bar says *panel 2D*.
 
 The dome settings are part of the performance: they are saved into the session (below).
 
@@ -50,10 +51,10 @@ recordings/eth_sonification_20261004_200000.wav             ← SC, 4 channels
 recordings/eth_sonification_20261004_200000.session.jsonl   ← the bridge
 ```
 
-The log holds everything the visuals receive from SC, the keys pressed in the page, the slot on screen when recording started, and every change to the dome settings. It closes when the recording stops.
+The log holds everything the visuals receive from SC, the keys pressed in the page, the module on screen when recording started, and every change to the dome settings. It closes when the recording stops.
 
 - The session log is only written while SC is recording.
-- Mouse interaction with a slot (orbit drags) is **not** recorded. Frame each slot with keys and dome settings, not the mouse.
+- Mouse interaction with a module (orbit drags) is **not** recorded. Frame each module with keys and dome settings, not the mouse.
 - Logs and renders are not committed to git (they are data, and large).
 
 ## 3. Rendering it at 4K
@@ -69,6 +70,7 @@ npm run dome:render -- --session ../recordings/<name>.session.jsonl
 Output in `renders/<name>_4096/`: the video (a PNG sequence, or the `.mov`) plus two WAVs of the same stretch of the recording, in sync with frame 0, both at 48 kHz / 24 bit:
 - `<name>_4096_LRLsRs.wav`: 4 channels in console order;
 - `<name>_4096_5.1.wav`: L R C LFE Ls Rs, with the centre silent and the LFE being the low end of the mix (the four channels summed, low-passed at 100 Hz, 24 dB/oct; `--lfe-hz` changes it). With this file the venue plays the whole show, subwoofers included, and our MOTU is not needed.
+- **A stereo take** (recorded without the MOTU) gets the same two files by a passive upmix. L and R are the take untouched, so the image stays in front. Ls and Rs are each side minus half the other (the width and the room), low-passed at 7 kHz and delayed 12 / 15 ms, so localisation stays on the fronts and the rears surround. The LFE is made as above. Measured on a real take: rears ~4 dB under the fronts, nothing in the LFE above 200 Hz. The original is kept as `<name>_4096_2ch.wav`. `--no-upmix` leaves a stereo take as stereo. The WAVs alone, for a clip already rendered: `npm run dome:render -- --session <log> --audio-only` (same `--from/--to/--size`).
 
 | Option | Default | |
 |---|---|---|
@@ -77,11 +79,11 @@ Output in `renders/<name>_4096/`: the video (a PNG sequence, or the `.mov`) plus
 | `--from <s> --to <s>` | whole session | stretch to render, in seconds into the recording |
 | `--format png\|prores\|hapq` | png | PNG sequence, one ProRes 4444 `.mov`, or one **HAP Q `.mov`**, the planetarium's format (build its ffmpeg once: `tools/ffmpeg-hap/build.sh`) |
 | `--out <dir>` | `renders/<name>_<size>` | |
-| `--warmup <s>` | 3 | time the page runs before time zero so slots can mount |
-| `--window <WxH>` | 1920x1080 | page size, which sets the resolution of the 2-D panel slots |
+| `--warmup <s>` | 3 | time the page runs before time zero so modules can mount |
+| `--window <WxH>` | 1920x1080 | page size, which sets the resolution of the 2-D panel modules |
 | `--audio-offset <ms>` | 0 | nudge the audio against the picture |
 | `--session last` | | the newest recording in `recordings/`, i.e. the take just recorded |
-| `--stills <s>` | 0 | also save one full-size PNG every `<s>` seconds, to check the take |
+| `--stills <s>` | 0 | also save one full-size PNG every `<s>` seconds, to check the take: the domemaster (`<clip>_stills/`) and the whole page, flat, as performed — stage, side columns, controls — at the window size ×2 (`<name>_pagina/pagina_00m15s.png`). The module's name is never written on the dome in a render |
 | `--no-preview` | | skip the QuickTime preview |
 | `--embed-audio` | off | also put the 5.1 inside the `.mov` (24-bit PCM), for a player that wants picture and sound in one file |
 
@@ -137,6 +139,14 @@ Measured on the M5 with a separate NDI receiver: **2048 × 2048 at 30 fps**, arr
 - To check the feed before the venue: *NDI Studio Monitor* (free NDI Tools) on any machine on the same network should list **BiocracyEngine Cúpula**.
 - Keep the live feed at 2048. 4096 is for the pre-rendered clips.
 
+### The page itself, flat: "BiocracyEngine Página"
+
+The same window publishes a second NDI source, **BiocracyEngine Página**: `parliament.html` exactly as the performer sees it — stage, side text columns, controls — flat, at the window's aspect, scaled to 1920 wide. Nothing extra is rendered: it is the window's own paint, taken as it is composited. It costs ~15 ms of Electron's main process per frame at 30 fps (measured on the M5), and only while a receiver is connected; with none it is paused.
+
+The dome takes one NDI source at a time, so the VJ chooses: **Cúpula** (the fisheye, the whole dome) or **Página** (a flat 16:9 panel the VJ places on the dome, like any video). To keep the page clean while the dome view is open, use **ventana aparte**.
+
+Env: `DOME_PAGE=0` turns it off; `DOME_PAGE_NAME`, `DOME_PAGE_WIDTH` (1920), `DOME_PAGE_FPS` (30).
+
 ## 5. Sound for the venue console
 
 Bring the **MOTU** and start with:
@@ -178,10 +188,10 @@ Bring: the M5, a USB-C → RJ45 gigabit adapter, the MOTU and its cables (4 × b
 
 ## Design notes for a 23 m dome
 
-- **Avoid white or bright backgrounds.** Light bounces across the dome and washes out the contrast. Slot **B (Transito)** is white and needs a dark version for the dome. Dark slots (F DarkForest, the rings) suit it well.
+- **Avoid white or bright backgrounds.** Light bounces across the dome and washes out the contrast. Module **B (Transito)** is white and needs a dark version for the dome. Dark modules (F DarkForest, the rings) suit it well.
 - **Slow camera motion.** Fast moves over the whole field of view cause motion sickness.
 - **Text** reads best low in the front band and large (2–4°). Near the zenith it bends.
-- **The laser (slot P)** is for the forest, not the dome.
+- **The laser (module P)** is for the forest, not the dome.
 
 ## Pending
 
@@ -193,8 +203,8 @@ Bring: the M5, a USB-C → RJ45 gigabit adapter, the MOTU and its cables (4 × b
 |---|---|
 | `src/projector/dome/dome.ts` | the CÚPULA viewport (key D) and its render-mode hooks |
 | `src/projector/dome/domemaster.ts` | cube camera → fisheye → domemaster |
-| `src/projector/dome/domeCapture.ts` | finds each slot's scene and canvas without touching the slots |
-| `src/projector/dome/session.ts` | keys, slot and dome settings → the session log |
+| `src/projector/dome/domeCapture.ts` | finds each module's scene and canvas without touching the modules |
+| `src/projector/dome/session.ts` | keys, module and dome settings → the session log |
 | `src/projector/dome/renderMode.ts` | the virtual clock and replay, under `?render=1` |
 | `nw_wrld_local/dome-live.js` | the live window (Electron) |
 | `nw_wrld_local/dome-live-preload.js` | the NDI sender and its black dead-man |
