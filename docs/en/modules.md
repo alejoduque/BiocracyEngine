@@ -21,8 +21,8 @@ Measured module by module on the domemaster (October 2026):
 
 | How it lands | Modules | Why |
 |---|---|---|
-| **surrounds** | 1, 4–9, A | 4–9 carry layers made for the dome: flying formulas, the constellation in the sky, rings of text. 1 bends around the audience. A surrounds with its stand |
-| **compact** | 0, O, T, P, F, 2 | A world seen from the front: it fills part of the dome. The rings are a flat disc seen from afar |
+| **surrounds** | 0, O, T, 1, 4–9, A | 4–9 carry layers made for the dome: flying formulas, the constellation in the sky, rings of text. 1 bends around the audience. A surrounds with its stand. On 0, O and T the audience sits at the centre of the dial, looking down: the dial is the sky, with the year ring 15–20° above the horizon, the inner clocks toward the zenith, and six o'clock in front |
+| **compact** | P, F, 2 | A world seen from the front: it fills part of the dome |
 | **background** | B, R, E | They fill with their background colour, not content. B and R are white and wash out the dome |
 | **2-D panel** | 3, C | Not 3-D scenes: a plane in front, which cannot surround |
 

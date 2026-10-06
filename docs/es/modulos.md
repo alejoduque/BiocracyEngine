@@ -21,8 +21,8 @@ Medido módulo por módulo sobre el domemaster (octubre 2026):
 
 | Cómo llega | Módulos | Por qué |
 |---|---|---|
-| **envuelve** | 1, 4–9, A | 4–9 llevan capas pensadas para el domo: fórmulas en vuelo, constelación en el cielo, anillos de texto. 1 se curva alrededor del público. A rodea con su rodal |
-| **compacto** | 0, O, T, P, F, 2 | Un mundo visto de frente: ocupa una parte del domo. Los anillos son un disco plano visto desde lejos |
+| **envuelve** | 0, O, T, 1, 4–9, A | 4–9 llevan capas pensadas para el domo: fórmulas en vuelo, constelación en el cielo, anillos de texto. 1 se curva alrededor del público. A rodea con su rodal. En 0, O y T el público está en el centro del dial, mirando hacia abajo: el dial es el cielo, con el anillo del año a 15–20° sobre el horizonte, los relojes interiores hacia el cenit, y las seis en punto al frente |
+| **compacto** | P, F, 2 | Un mundo visto de frente: ocupa una parte del domo |
 | **fondo** | B, R, E | Llenan con su color de fondo, no con contenido. B y R son blancos y lavan el contraste del domo |
 | **panel 2D** | 3, C | No son escenas 3D: un plano al frente, que no puede envolver |
 

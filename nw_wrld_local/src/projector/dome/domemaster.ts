@@ -626,10 +626,13 @@ export class Domemaster {
   }
 
   /** Dome coordinates are world coordinates: +Y the zenith, `forward` (horizontal) the front. */
-  private setBasisWorld(forward?: THREE.Vector3) {
-    this.zen.set(0, 1, 0);
+  private setBasisWorld(forward?: THREE.Vector3, up?: THREE.Vector3) {
+    // The zenith is +Y unless the slot names another (scene.userData.domeUp):
+    // a world laid out flat, like the rings' dial, is entered from above and
+    // looked DOWN on, so its zenith is −Y.
+    this.zen.copy(up && (up as any).isVector3 ? up : new THREE.Vector3(0, 1, 0)).normalize();
     this.front.copy(forward && (forward as any).isVector3 ? forward : new THREE.Vector3(0, 0, -1));
-    this.front.y = 0;
+    this.front.addScaledVector(this.zen, -this.front.dot(this.zen));   // level: square to the zenith
     if (this.front.lengthSq() < 1e-6) this.front.set(0, 0, -1);
     this.front.normalize();
     this.right.crossVectors(this.front, this.zen).normalize();
@@ -663,10 +666,11 @@ export class Domemaster {
     const R = this.renderer;
     const P = this.params;
     // A slot built around its audience names the seat itself: scene.userData
-    // .domeEye (and optionally .domeForward). Its world is then authored in
-    // dome coordinates — +Y the zenith — and is not re-aimed or moved in.
+    // .domeEye (and optionally .domeForward and .domeUp). Its world is then
+    // authored in dome coordinates — +Y the zenith unless .domeUp says
+    // otherwise — and is not re-aimed or moved in.
     const eye: THREE.Vector3 | undefined = view?.scene.userData?.domeEye;
-    if (view && eye && (eye as any).isVector3) this.setBasisWorld(view.scene.userData.domeForward);
+    if (view && eye && (eye as any).isVector3) this.setBasisWorld(view.scene.userData.domeForward, view.scene.userData.domeUp);
     else this.setBasisFrom(view ? view.camera : null);
 
     // 1. the slot's scene into the cube, from the slot camera's position

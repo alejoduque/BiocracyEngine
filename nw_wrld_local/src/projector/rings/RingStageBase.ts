@@ -101,6 +101,9 @@ export class RingStageBase extends BaseThreeJsModule {
   private _onDbl: ((e: MouseEvent) => void) | null = null;
   private _lastNear = 0;
 
+  /** Height of the dome's seat above the dial (world units; the year ring is r ≈ 6–9). */
+  static readonly DOME_EYE_HEIGHT = 2.4;
+
   constructor(container: HTMLElement) {
     super(container);
 
@@ -134,6 +137,20 @@ export class RingStageBase extends BaseThreeJsModule {
     this._ptLight.position.set(0, 6, 0);
     this.scene.add(new THREE.AmbientLight(0xffffff, 0.3));
     this.scene.add(this._ptLight);
+
+    // ── In the dome: the audience at the centre of the dial ────────────────
+    // The flat screen looks at the rings from outside, so on a dome they were
+    // a small disc in front. In the dome the seat is just above the dial's
+    // centre, looking DOWN (zenith −Y): the dial becomes the sky. The year
+    // ring lands ~15–20° above the horizon, the inner clocks (the now, the
+    // strike, the core) open toward the zenith. Front is six o'clock (+Z), so
+    // the domemaster reads like the flat dial seen from above — twelve
+    // o'clock at the back, east and west where they are on screen. The eye
+    // sits clear of the highest layer (the core, y 0.5). See
+    // dome/domemaster.ts setBasisWorld.
+    this.scene.userData.domeEye = new THREE.Vector3(0, RingStageBase.DOME_EYE_HEIGHT, 0);
+    this.scene.userData.domeUp = new THREE.Vector3(0, -1, 0);
+    this.scene.userData.domeForward = new THREE.Vector3(0, 0, 1);
 
     // ── Passes ─────────────────────────────────────────────────────────────
     const w = container.offsetWidth || 1280;
