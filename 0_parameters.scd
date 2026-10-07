@@ -854,6 +854,13 @@ if(File.exists(~presetDir).not) { File.mkdir(~presetDir) };
                     (dict["params"] ?? ()).keysValuesDo { |k, v|
                         var key = k.asSymbol;
                         var val = v.asFloat;
+                        // MEZCLA never comes back from the autosave: every
+                        // start is the instrument as it always sounded (carve
+                        // 0), and only a config loaded on purpose — MEZCLA_*,
+                        // or one saved with the knob moved — carves it. Once
+                        // restored at boot it followed every config after it,
+                        // since base configs don't carry the key (2026-10-07).
+                        if(isAuto and: { key == \mixCarve }) { val = 0 };
                         if(isAuto and: { compounding.includes(key) }) {
                             var def = ~paramDefs.detect { |d| d[\name] == key };
                             if(def.notNil) {
