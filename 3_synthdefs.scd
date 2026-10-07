@@ -329,6 +329,10 @@ s.doWhenBooted({
             y = (y - lo) + (lo * Lag.kr(duckG, 0.01));
             LinXFade2.ar(ch, y * tameG, c * 2 - 1)
         };
+        // A NaN or inf in one layer (an unstable filter, a voice gone bad)
+        // stops here, as silence on that layer, instead of reaching bus 0 and
+        // silencing the whole engine at the limiter.
+        x = x.collect { |ch| Sanitize.ar(ch) };
         peak = x.collect(_.abs).reduce(\max);
         rms = (Lag.ar(x.collect(_.squared).sum / x.size, 0.3)).sqrt;
         pos = Lag.kr(Select.kr(auto > 0.5, [pan, SinOsc.kr(rate, phase) * pan.abs]), 0.6).clip(-1, 1);
@@ -447,7 +451,10 @@ s.doWhenBooted({
     // 4.0). 1.5 reaches streaming level for one LU of dynamics; above 2 the
     // compressor starts flattening the arcs the piece is made of.
     SynthDef(\masterLimiter, { |ceiling = 0.92, glue = 0.55, drive = 0.40, makeup = 1.5, carveBus = (-1)|
-        var sig = In.ar(0, ~limiterChans) * makeup;
+        // Sanitize: anything not summed through a stem (the room, the tape,
+        // CRUDO) can still carry a NaN; one would turn the limiter's output to
+        // silence for good, since its envelope never recovers from it.
+        var sig = Sanitize.ar(In.ar(0, ~limiterChans)) * makeup;
         var clean = LeakDC.ar(sig);
         // MEZCLA (mixCarve): at 0 all three of these are bypassed exactly.
         var carve = Lag.kr(Select.kr(carveBus >= 0, [0, In.kr(carveBus.max(0), 1)]).clip(0, 1), 0.25);
@@ -2348,8 +2355,11 @@ s.doWhenBooted({
         // Read with In.ar and not InFeedback: the aux is written by voices in
         // ~defaultGroup, which runs before this node, so the current block's
         // sends are already there.
-        mono = (Mix(src) / chans.max(1))
-            + Select.ar(aux >= 0, [DC.ar(0), In.ar(aux.max(0), 1)]);
+        // Sanitize first: this is a feedback network, and a single NaN let in
+        // would circulate in it for good and, summed back onto bus 0, silence
+        // everything after it.
+        mono = Sanitize.ar((Mix(src) / chans.max(1))
+            + Select.ar(aux >= 0, [DC.ar(0), In.ar(aux.max(0), 1)]));
         // MEZCLA: no bass into a room that rings up to 28 s — it came back as
         // low-end wash under everything. This also covers the bowl, which
         // perc sends to the aux before its own 180 Hz cut.

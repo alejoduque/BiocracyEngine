@@ -136,7 +136,13 @@ thisProcess.openUDPPort(57120);
             Server.default.options.device               = nil;
             Server.default.options.sampleRate           = rate;
             Server.default.options.numOutputBusChannels = 2;
-            Server.default.options.numInputBusChannels  = 2;
+            // NO input. Nothing in the engine reads one (no SoundIn anywhere),
+            // and opening the input of a Bluetooth headset switches it to its
+            // hands-free profile at 16 kHz: every filter tuned above 8 kHz
+            // (corpus up to 18k, perc 17k, drone 13k) then sat past Nyquist,
+            // went unstable and filled the master with NaN — total silence
+            // after a click (HD 458BT, 2026-10-07).
+            Server.default.options.numInputBusChannels  = 0;
             ~motuOutOffset = 0;
             ~audioMode = \stereo;
         };
@@ -149,7 +155,7 @@ thisProcess.openUDPPort(57120);
 Server.default.options.numBuffers = 1024 * 16;
 Server.default.options.memSize = 8192 * 64; 
 Server.default.options.maxNodes = 1024 * 32;
-Server.default.options.numInputBusChannels = 2;
+// Inputs: set per device by ~detectAudioDevice above (none in stereo mode).
 
 // ── How long the server has to finish a block ───────────────────────────────
 //
