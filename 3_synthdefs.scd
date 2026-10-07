@@ -6,6 +6,15 @@
 // Wait for server to be ready — use doWhenBooted (does NOT re-trigger boot)
 // s.waitForBoot triggers a boot which collides with the boot from 1_server_config.scd
 s.doWhenBooted({
+    // Every filter is held under 0.45 × the sample rate (".min(SampleRate.ir
+    // * 0.45)"): at 16 kHz — a Bluetooth headset in hands-free mode — the ones
+    // tuned to 9-18 kHz went past Nyquist and the output ran to +165 dB
+    // (measured offline, 2026-10-07). The instrument now survives it, but
+    // sounds dull up there; say so.
+    if(s.sampleRate.notNil and: { s.sampleRate < 32000 }) {
+        ("⚠ AUDIO A % Hz — audífonos Bluetooth en modo manos libres (otra app usa su micrófono)."
+         ++ " El motor no se rompe, pero suena apagado: cierra esa app o usa otra salida.").format(s.sampleRate.asInteger).warn;
+    };
     // Ensure default group exists
     if(~defaultGroup.isNil or: { ~defaultGroup.isPlaying.not }) {
         ~defaultGroup = Group.new(s, \addToHead);
