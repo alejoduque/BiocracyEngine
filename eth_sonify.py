@@ -301,10 +301,23 @@ async def poll_transactions(poll_interval=3):
 async def main():
     log("conectando…")
 
-    if not w3.is_connected():
-        log(f"sin conexión a {ETH_NODE_URL}")
-        log("revisa la conexión y el Project ID de Infura")
-        return
+    # Without the chain the instrument still plays (the forest, the motors,
+    # the beat engine), and the launcher waits on this script: returning here
+    # closed the WHOLE ecosystem over a network hiccup. So wait for the node,
+    # quietly, and join the chain the moment it answers.
+    tries = 0
+    while True:
+        try:
+            if w3.is_connected():
+                break
+        except Exception:
+            pass
+        if tries % 6 == 0:
+            log(f"sin conexión a {ETH_NODE_URL} — reintento cada 10 s; el instrumento sigue sin la cadena")
+            if tries == 0:
+                log("revisa la conexión a internet y el Project ID de Infura")
+        tries += 1
+        await asyncio.sleep(10)
 
     log(f"conectado · bloque {w3.eth.block_number}")
     log(f"OSC → {OSC_IP}:{OSC_PORT}")
