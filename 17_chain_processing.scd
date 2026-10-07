@@ -145,7 +145,7 @@ s.waitForBoot {
         // simply becomes a volume control with extra steps.
         sig = (sig * (1 + (cong * 2.6))).tanh / (1 + (cong * 2.3));
         sig = RLPF.ar(sig,
-            cong.linexp(0, 1, 12000, 900).clip(300, 16000),
+            (cong.linexp(0, 1, 12000, 900).clip(300, 16000)).min(SampleRate.ir * 0.45),
             cong.linlin(0, 1, 0.9, 0.62));
         // Level-matched against the dry path, so what congestion changes is the
         // sound and not the loudness.

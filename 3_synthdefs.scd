@@ -317,7 +317,7 @@ s.doWhenBooted({
         x = dry.collect { |ch|
             var y = ch, lo;
             // 4th-order low cut (two 2nd-order HPFs); bypassed when hpf is 0.
-            y = Select.ar(hpf > 0, [y, HPF.ar(HPF.ar(y, hpf.max(10)), hpf.max(10))]);
+            y = Select.ar(hpf > 0, [y, HPF.ar(HPF.ar(y, hpf.max(10)), (hpf.max(10)).min(SampleRate.ir * 0.45))]);
             y = BPeakEQ.ar(y, dipF.min(SampleRate.ir * 0.42), 1, dipDb);
             y = BLowShelf.ar(y, lsF.min(SampleRate.ir * 0.42), 1, lsDb);
             // Kept under Nyquist: a shelf above it turns the filter unstable
@@ -549,7 +549,7 @@ s.doWhenBooted({
         var bands = Array.geom(~scopeBands, 40, (10000 / 40) ** (1 / (~scopeBands - 1)));
         var makeup = (0.4 / ~scopeRq).sqrt;
         SendReply.kr(Impulse.kr(20), '/spectrum',
-            bands.collect { |f| Amplitude.kr(BPF.ar(sig, f, ~scopeRq), 0.01, 0.12) * makeup });
+            bands.collect { |f| Amplitude.kr(BPF.ar(sig, (f).min(SampleRate.ir * 0.45), ~scopeRq), 0.01, 0.12) * makeup });
     }).add;
 
     // The same analysis over the CORPUS bus alone, so the laser can draw the
@@ -568,7 +568,7 @@ s.doWhenBooted({
         var bands = Array.geom(~scopeBands, 40, (10000 / 40) ** (1 / (~scopeBands - 1)));
         var makeup = (0.4 / ~scopeRq).sqrt;
         SendReply.kr(Impulse.kr(20), '/spectrum/corpus',
-            bands.collect { |f| Amplitude.kr(BPF.ar(sig, f, ~scopeRq), 0.01, 0.12) * makeup });
+            bands.collect { |f| Amplitude.kr(BPF.ar(sig, (f).min(SampleRate.ir * 0.45), ~scopeRq), 0.01, 0.12) * makeup });
     }).add;
 
     // Main transaction bell with MIDI control
@@ -718,7 +718,7 @@ s.doWhenBooted({
 
         // Soft low-pass (not resonant) — no ringing, just warmth
         // Clamp 200–3000Hz: above 3000 LPF is transparent on these pads
-        sig = LPF.ar(sig, spectralFreq.clip(200, 3000));
+        sig = LPF.ar(sig, (spectralFreq.clip(200, 3000)).min(SampleRate.ir * 0.45));
 
         // Slow shimmer via gentle pitch modulation
         grains = PitchShift.ar(sig, 0.3, LFNoise2.kr(0.2).range(0.98, 1.02), textureDensity * 0.3);
@@ -735,7 +735,7 @@ s.doWhenBooted({
 
         // Soft noise breath underneath
         noise = PinkNoise.ar() * noiseAmount * 0.15;
-        noise = LPF.ar(noise, noiseFilter.linexp(0, 1, 200, 2000));
+        noise = LPF.ar(noise, (noiseFilter.linexp(0, 1, 200, 2000)).min(SampleRate.ir * 0.45));
         sig = sig + noise;
 
         // filterCutoff: broad tone tilt over the whole pad (was read and dropped).
@@ -743,7 +743,7 @@ s.doWhenBooted({
         // and undid the 200–3000 Hz clamp applied earlier in the chain, so FM
         // sidebands and the grain shimmer passed straight through. The pads are
         // a drone bed; nothing in them needs to reach beyond ~2.6 kHz.
-        sig = LPF.ar(sig, Lag.kr(legacyFilter, 0.3).linexp(0, 1, 300, 2600));
+        sig = LPF.ar(sig, (Lag.kr(legacyFilter, 0.3).linexp(0, 1, 300, 2600)).min(SampleRate.ir * 0.45));
         // Final safety net, independent of every control: whatever the buses
         // say, this layer does not emit above 3 kHz.
         sig = LPF.ar(sig, 3000);
@@ -847,15 +847,15 @@ s.doWhenBooted({
         // Soft acoustic beater transient — bandpassed pink noise, no high hiss
         click = BPF.ar(
             PinkNoise.ar * EnvGen.ar(Env.perc(0.001, 0.015 + (nFilt * 0.02), 1, -6)),
-            (110 + (nFilt * 350)).clip(80, 500), 0.7);
+            ((110 + (nFilt * 350)).clip(80, 500)).min(SampleRate.ir * 0.45), 0.7);
         sig = sig + (click * nLevel.linlin(0, 0.5, 0.0, 0.75));
 
         // Distortion & Filter (Warm low-end drive)
         sig = (sig * (1 + (fmD * 2.5))).tanh;
         // Kick LPF: strictly capped at 280 Hz so kick remains a warm sub anchor
         sig = RLPF.ar(sig,
-            (filt.clip(80, 240) * Lag.kr(cutoff, dFade.clip(0.1, 5)).linexp(0, 1, 0.7, 1.3))
-                .clip(50, 280),
+            ((filt.clip(80, 240) * Lag.kr(cutoff, dFade.clip(0.1, 5)).linexp(0, 1, 0.7, 1.3))
+                .clip(50, 280)).min(SampleRate.ir * 0.45),
             res.linexp(0, 1, 0.85, 0.4));
 
         // droneDepth reaches the kick's own body: a sine an octave under the
@@ -1023,10 +1023,10 @@ s.doWhenBooted({
             // Contact
             Dust2.ar(3000 + (nLevel * 12000))
                 * EnvGen.ar(Env.perc(0.0002, 0.010 + (nFilt * 0.02))) * 1.2,
-            HPF.ar(WhiteNoise.ar, 2500 + (nFilt * 4000))
+            HPF.ar(WhiteNoise.ar, (2500 + (nFilt * 4000)).min(SampleRate.ir * 0.45))
                 * EnvGen.ar(Env.perc(0.0002, 0.006 + (nFilt * 0.012)))
                 * nLevel.linlin(0, 0.5, 0.5, 1.6),
-            BPF.ar(PinkNoise.ar, (900 + (nFilt * 3500)).clip(400, 6000), 0.6)
+            BPF.ar(PinkNoise.ar, ((900 + (nFilt * 3500)).clip(400, 6000)).min(SampleRate.ir * 0.45), 0.6)
                 * EnvGen.ar(Env.perc(0.002, 0.05 + (nFilt * 0.09)))
                 * nLevel.linlin(0, 0.5, 0.4, 1.3),
             // Body — white over pink, the plate continuing to drive itself.
@@ -1133,11 +1133,11 @@ s.doWhenBooted({
         bowlFreq = (freq * 0.5).clip(35, 480);
 
         bowl = Mix([
-            (Ringz.ar(exciter, (bowlFreq * partials).clip(30, 16000), decays)
+            (Ringz.ar(exciter, ((bowlFreq * partials).clip(30, 16000)).min(SampleRate.ir * 0.45), decays)
                 * modeAmps).sum,
             // The twin bank, half a hair sharp and slightly quieter.
             (Ringz.ar(exciter,
-                ((bowlFreq * partials) + beats).clip(30, 16000), decays)
+                (((bowlFreq * partials) + beats).clip(30, 16000)).min(SampleRate.ir * 0.45), decays)
                 * modeAmps).sum * 0.85
         ]) * 7.sqrt.reciprocal * 2.9;
 
@@ -1154,7 +1154,7 @@ s.doWhenBooted({
         trashDecays = Array.fill(18, { |i|
             (((i + 1) ** -0.5) * (tStretch * 0.16)).clip(0.03, 0.6);
         });
-        trash = Ringz.ar(exciter, (freq * trashRatios).clip(200, 17000), trashDecays)
+        trash = Ringz.ar(exciter, ((freq * trashRatios).clip(200, 17000)).min(SampleRate.ir * 0.45), trashDecays)
             .sum * 18.sqrt.reciprocal * 3.4;
         // Confined to the attack. Without this envelope the dense bank runs
         // the whole length of the note and buries the bowl underneath it.
@@ -1276,7 +1276,7 @@ s.doWhenBooted({
         symDecay = (decays[0] * 1.7).clip(0.6, 40.0);
         symp = Ringz.ar(
             HPF.ar(trash, 900) * 0.25,
-            (bowlFreq * [1.0, 2.74, 5.12]).clip(30, 12000),
+            ((bowlFreq * [1.0, 2.74, 5.12]).clip(30, 12000)).min(SampleRate.ir * 0.45),
             [symDecay, symDecay * 0.55, symDecay * 0.3]
         );
         symp = (symp * [1.0, 0.5, 0.24]).sum * 3.sqrt.reciprocal
@@ -1304,10 +1304,10 @@ s.doWhenBooted({
         // scream"; for a china that band is not a defect, it is the instrument.
         // Two detuned bands beating against one another so it never sits still.
         shimmer = Mix([
-            BPF.ar(exciter, (freq * 7.0 * LFNoise1.kr(5.5).range(0.86, 1.18))
-                .clip(600, 13000), 0.09),
-            BPF.ar(exciter, (freq * 11.5 * LFNoise1.kr(3.1).range(0.90, 1.12))
-                .clip(900, 15000), 0.07)
+            BPF.ar(exciter, ((freq * 7.0 * LFNoise1.kr(5.5).range(0.86, 1.18))
+                .clip(600, 13000)).min(SampleRate.ir * 0.45), 0.09),
+            BPF.ar(exciter, ((freq * 11.5 * LFNoise1.kr(3.1).range(0.90, 1.12))
+                .clip(900, 15000)).min(SampleRate.ir * 0.45), 0.07)
         ]) * 5 * res.linlin(0.1, 0.8, 0.5, 1.4);
         // All three noise layers below are now the STRIKE, not the voice. The
         // bowl is what should be left in the room after half a second, so
@@ -1339,7 +1339,7 @@ s.doWhenBooted({
         // underneath. This is what carries the "trash".
         wash = BPF.ar(
             WhiteNoise.ar,
-            (freq * 6.5 * LFNoise1.kr(0.8).range(0.75, 1.35)).clip(500, 14000),
+            ((freq * 6.5 * LFNoise1.kr(0.8).range(0.75, 1.35)).clip(500, 14000)).min(SampleRate.ir * 0.45),
             1.6
         ) * EnvGen.ar(Env.perc(0.001, (0.30 * tStretch).clip(0.10, 1.4), 1, -5))
           * res.linlin(0.1, 0.8, 0.35, 1.1) * 0.22;
@@ -1368,7 +1368,7 @@ s.doWhenBooted({
                 )
             }
         );
-        chug = HPF.ar(chug, (freq * 3.2).clip(400, 5000));
+        chug = HPF.ar(chug, ((freq * 3.2).clip(400, 5000)).min(SampleRate.ir * 0.45));
         chug = (chug * (1 + (fmD * 2.2))).tanh;
         sig = sig + (chug
             * EnvGen.ar(Env.perc(0.0008, (0.10 * tStretch).clip(0.04, 0.35), 1, -6))
@@ -1417,15 +1417,15 @@ s.doWhenBooted({
         // metal resonators come out sounding like a wood block. A china lives
         // almost entirely above that line.
         sig = LPF.ar(sig,
-            (filt.clip(400, 11000)
+            ((filt.clip(400, 11000)
                 * Lag.kr(cutoff, dFade.clip(0.1, 5)).linexp(0, 1, 0.55, 1.9))
-                .clip(700, 17000));
+                .clip(700, 17000)).min(SampleRate.ir * 0.45));
         // High shelf instead of a backstop: tames the very top without
         // removing it, so the plate stays bronze rather than turning to glass.
         // Shelf moved up and eased: 7 kHz/-3.5 dB was shaving the top of a
         // 56-mode bank whose highest resonances are the point. A china is a
         // bright, harsh instrument; this only takes the edge off the very top.
-        sig = BHiShelf.ar(sig, 9500, 1.0, -2.0);
+        sig = BHiShelf.ar(sig, (9500).min(SampleRate.ir * 0.45), 1.0, -2.0);
         // The plate has no fundamental down here; this only stops the comb and
         // reverb accumulating sub-bass that the master compressor would key on.
         sig = HPF.ar(sig, 180);
@@ -1649,7 +1649,7 @@ s.doWhenBooted({
             + LFNoise1.kr(0.28).range(0, 240));
         var filtered = RLPF.ar(
             (warmOsc + vocalSim),
-            (fCutHz * wobbleCut).clip(60, 6000),
+            ((fCutHz * wobbleCut).clip(60, 6000)).min(SampleRate.ir * 0.45),
             wobbleRes);
 
         // ── Tape saturation ───────────────────────────────────────────────────
@@ -1792,7 +1792,7 @@ s.doWhenBooted({
         bands = Mix.fill(4, { |i|
             var bf = f * (i + 1)
                 * (1 + (LFNoise1.kr(0.019 + (i * 0.013) + (seed * 0.031)) * 0.02));
-            BPF.ar(PinkNoise.ar(1.0), bf.clip(20, 14000),
+            BPF.ar(PinkNoise.ar(1.0), (bf.clip(20, 14000)).min(SampleRate.ir * 0.45),
                 (0.003 + (i * 0.0025) + r1.range(0.0, 0.008)).clip(0.001, 0.05))
                 * (i + 1).reciprocal
         }) * 14;   // narrow bandpasses throw away most of the level
@@ -1850,7 +1850,7 @@ s.doWhenBooted({
         respond = (0.10 + (seed * 0.45))
             * LFNoise2.kr(0.03 + (seed * 0.05)).range(0.45, 1.25);
 
-        sig = LPF.ar(sig, (filt.clip(80, 4000) * cutoff.linexp(0, 1, 0.6, 2.2)
+        sig = LPF.ar(sig, ((filt.clip(80, 4000) * cutoff.linexp(0, 1, 0.6, 2.2)
             // Percussive energy opens the partial: the bed brightens under a
             // cluster of strikes and darkens again in the silences.
             // 0.75 -> 0.34. At the old depth a saturated cluster opened the
@@ -1858,7 +1858,7 @@ s.doWhenBooted({
             // strikes", it is the percussion playing the drone.
             * (1 + (strike * respond * 0.34))
             // …and so does the voice's own internal incident.
-            * (1 + (grit * 1.8))).clip(90, 13000));
+            * (1 + (grit * 1.8))).clip(90, 13000)).min(SampleRate.ir * 0.45));
         // MEZCLA: the reverb's input loses its lows as mixCarve rises (none at 0).
         sig = sig + (FreeVerb.ar(LinXFade2.ar(sig, HPF.ar(sig, 180), Lag.kr(Select.kr(mixCarveBus >= 0, [0, In.kr(mixCarveBus.max(0), 1)]).clip(0, 1), 0.25) * 2 - 1), revM * 0.7, dSpace.linlin(0, 1, 0.4, 0.95), 0.15) * 0.5);
 
@@ -1975,8 +1975,8 @@ s.doWhenBooted({
         // Lagged by droneFade so the slider glides instead of stepping.
         sig = RLPF.ar(
             sig,
-            LFNoise2.kr(0.05).exprange(filt.clip(80, 3000) * 0.5, filt.clip(80, 3000) * 1.5).clip(80, 4500)
-                * Lag.kr(cutoff, dFade).linexp(0, 1, 0.5, 2.0),
+            (LFNoise2.kr(0.05).exprange(filt.clip(80, 3000) * 0.5, filt.clip(80, 3000) * 1.5).clip(80, 4500)
+                * Lag.kr(cutoff, dFade).linexp(0, 1, 0.5, 2.0)).min(SampleRate.ir * 0.45),
             res.linexp(0, 1, 0.9, 0.15)  // rq floor raised to 0.15 — prevents instability at high Q
         );
 
@@ -2016,8 +2016,8 @@ s.doWhenBooted({
         noiseBed = Mix.fill(6, { |i|
             BPF.ar(
                 PinkNoise.ar(1.0),
-                LFNoise1.kr(0.02 + (i * 0.007))
-                    .exprange(90, (120 + (nFilt * 3800)).clip(150, 4000)),
+                (LFNoise1.kr(0.02 + (i * 0.007))
+                    .exprange(90, (120 + (nFilt * 3800)).clip(150, 4000))).min(SampleRate.ir * 0.45),
                 LFNoise1.kr(0.03 + (i * 0.004)).range(0.05, 0.32)
             )
         }) * 0.42;
@@ -2143,13 +2143,13 @@ s.doWhenBooted({
         tunedPitch = (110 * fmR.linexp(0.1, 5, 0.5, 2.5)
             * (pitch.clip(-12, 12) / 12).midiratio).clip(45, 650);
 
-        ring = Ringz.ar(grains, tunedPitch, res.linlin(0, 1, 0.04, 0.30) * tStretch);
-        ring = ring + (Resonz.ar(grains, tunedPitch * 1.5, 0.18) * 0.6);
+        ring = Ringz.ar(grains, (tunedPitch).min(SampleRate.ir * 0.45), res.linlin(0, 1, 0.04, 0.30) * tStretch);
+        ring = ring + (Resonz.ar(grains, (tunedPitch * 1.5).min(SampleRate.ir * 0.45), 0.18) * 0.6);
         sig = grains + (ring * fmR.linexp(0.1, 5, 0.1, 0.8));
 
         // Soft pink noise bed under the grains
         bed = BPF.ar(PinkNoise.ar,
-            (180 + (nFilt * 800)).clip(120, 1200),
+            ((180 + (nFilt * 800)).clip(120, 1200)).min(SampleRate.ir * 0.45),
             0.4 + (nFilt * 0.5)) * nLevel.linlin(0, 0.5, 0.0, 0.4);
         sig = sig + bed;
 
@@ -2159,9 +2159,9 @@ s.doWhenBooted({
         // 1.2 kHz at 0), and \stemSum cuts dust below 250 Hz: dust carries
         // the presence of the rhythm instead of its body.
         sig = LPF.ar(sig,
-            (filt.clip(180, Lag.kr(Select.kr(mixCarveBus >= 0, [0, In.kr(mixCarveBus.max(0), 1)]).clip(0, 1), 0.25).linexp(0, 1, 1100, 5000))
-                * Lag.kr(cutoff, dFade.clip(0.1, 5)).linexp(0, 1, 0.6, 1.4)).clip(120, Lag.kr(Select.kr(mixCarveBus >= 0, [0, In.kr(mixCarveBus.max(0), 1)]).clip(0, 1), 0.25).linexp(0, 1, 1200, 6000)));
-        sig = LPF.ar(sig, Lag.kr(Select.kr(mixCarveBus >= 0, [0, In.kr(mixCarveBus.max(0), 1)]).clip(0, 1), 0.25).linexp(0, 1, 1200, 6000)); // backstop: 1.2 kHz, or up to 6 kHz carved
+            ((filt.clip(180, Lag.kr(Select.kr(mixCarveBus >= 0, [0, In.kr(mixCarveBus.max(0), 1)]).clip(0, 1), 0.25).linexp(0, 1, 1100, 5000))
+                * Lag.kr(cutoff, dFade.clip(0.1, 5)).linexp(0, 1, 0.6, 1.4)).clip(120, Lag.kr(Select.kr(mixCarveBus >= 0, [0, In.kr(mixCarveBus.max(0), 1)]).clip(0, 1), 0.25).linexp(0, 1, 1200, 6000))).min(SampleRate.ir * 0.45));
+        sig = LPF.ar(sig, (Lag.kr(Select.kr(mixCarveBus >= 0, [0, In.kr(mixCarveBus.max(0), 1)]).clip(0, 1), 0.25).linexp(0, 1, 1200, 6000)).min(SampleRate.ir * 0.45)); // backstop: 1.2 kHz, or up to 6 kHz carved
         sig = (sig * 1.3).tanh;  // Tape saturation warmth
 
         // Delay + Reverb wash
@@ -2381,7 +2381,7 @@ s.doWhenBooted({
         // Damped in the loop, so the tail darkens as it decays the way a room
         // does rather than hissing on forever.
         lines = LPF.ar(lines,
-            damp.linexp(0, 1, 900, 7000) * absorb.linlin(0, 1, 1.0, 0.55));
+            (damp.linexp(0, 1, 900, 7000) * absorb.linlin(0, 1, 1.0, 0.55)).min(SampleRate.ir * 0.45));
 
         // Householder mixing: every line feeds every other, which is what makes
         // the network dense instead of four parallel echoes.

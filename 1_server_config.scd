@@ -315,7 +315,7 @@ Server.default.options.hardwareBufferSize = 2048;
                 sig = SinOsc.ar(freq + mod);
                 
                 // Filter
-                sig = RLPF.ar(sig, spectralShift.clip(80, 8000), 0.3);
+                sig = RLPF.ar(sig, (spectralShift.clip(80, 8000)).min(SampleRate.ir * 0.45), 0.3);
                 
                 // Sustain envelope
                 env = EnvGen.kr(Env.asr(0.1, 1, 0.5), gate: 1);
@@ -382,7 +382,7 @@ Server.default.options.hardwareBufferSize = 2048;
                 // Create obvious test sound that clearly shows parameter changes
                 var freq = 440 * (pitchShift / 12).midiratio;  // Pitch shift effect
                 var sig = SinOsc.ar(freq) * masterVol.squared * 0.3;  // Volume effect
-                sig = LPF.ar(sig, spectralShift.clip(200, 4000));  // Filter effect
+                sig = LPF.ar(sig, (spectralShift.clip(200, 4000)).min(SampleRate.ir * 0.45));  // Filter effect
                 
                 // Send to both speakers
                 Out.ar(0, sig ! 2);

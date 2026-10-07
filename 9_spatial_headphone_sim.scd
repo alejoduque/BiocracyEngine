@@ -159,7 +159,7 @@
         // Filter with spectral control
         sig = RLPF.ar(
             sig,
-            spectralShift.clip(200, 5000),
+            (spectralShift.clip(200, 5000)).min(SampleRate.ir * 0.45),
             res
         );
         

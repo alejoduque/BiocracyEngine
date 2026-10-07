@@ -229,8 +229,8 @@ SynthDef(\motRemRec, { |out = 0, gate = 1, bufA, bufC, bufM, t_rec = 1, bedAmp =
     cf   = ~motIn.(\spectralShift, 1000).explin(80, 2400, 300, 4500)
         * LFNoise1.kr(0.05 + (infl * 0.5)).exprange(0.6, 1.6);
     rq   = ~motIn.(\resonantBody, 0.4).linexp(0.1, 0.8, 0.2, 0.02);
-    filt = Resonz.ar(play, cf, rq, 16)
-        + Resonz.ar(play, (cf * hr.explin(0.1, 5, 1.0, 3.0)).clip(40, 16000), rq,
+    filt = Resonz.ar(play, (cf).min(SampleRate.ir * 0.45), rq, 16)
+        + Resonz.ar(play, ((cf * hr.explin(0.1, 5, 1.0, 3.0)).clip(40, 16000)).min(SampleRate.ir * 0.45), rq,
             16 * hr.explin(0.1, 5, 0.0, 0.8));
     filt = filt.tanh;
     // La memoria entra siempre al mismo nivel. Sin esto, con spectralShift
@@ -256,7 +256,7 @@ SynthDef(\motRemRec, { |out = 0, gate = 1, bufA, bufC, bufM, t_rec = 1, bedAmp =
         ~motIn.(\noiseFilt, 0.5).linexp(0, 1, 0.25, 0.015), bufM, rate,
         LFNoise1.kr(0.3).range(0, 1), 2, LFNoise1.kr(5) * jit);
     bed = (bed * (1 - grainAmt)) + (grains * 2.5 * grainAmt);
-    bed = LPF.ar(bed, ~motIn.(\filterCutoff, 0.6).linexp(0, 1, 500, 18000));
+    bed = LPF.ar(bed, (~motIn.(\filterCutoff, 0.6).linexp(0, 1, 500, 18000)).min(SampleRate.ir * 0.45));
     // spectralShift abajo pone el Resonz ×16 donde la mezcla tiene más
     // energía, y el lecho subía 16 dB con sólo girar esa perilla. 4:1 sobre
     // 0.012, justo encima de su nivel normal: el filtro sigue cambiando el
@@ -297,8 +297,8 @@ SynthDef(\motRemPlay, { |out = 0, buf, bufM, rate = 1, amp = 1, dur = 1, pan = 0
     // salía 25 dB más fuerte o más débil según hubiera o no energía en el
     // búfer justo en cf. Compensado con √rq, y con un techo suave por golpe,
     // la resonancia sigue cambiando el COLOR sin decidir el volumen.
-    sig = RLPF.ar(sig, cf.clip(60, 16000), rq.clip(0.05, 1.5)) * rq.clip(0.05, 1.5).sqrt;
-    sig = LPF.ar(sig, lpf.clip(200, 20000));
+    sig = RLPF.ar(sig, (cf.clip(60, 16000)).min(SampleRate.ir * 0.45), rq.clip(0.05, 1.5)) * rq.clip(0.05, 1.5).sqrt;
+    sig = LPF.ar(sig, (lpf.clip(200, 20000)).min(SampleRate.ir * 0.45));
     sig = (sig * 2).tanh * 0.5;
     sig = ~motCrush.(sig, srate, bits);
     sig = sig + (CombC.ar(sig, 1.0, echoT.clip(0.01, 1.0), echo * 4) * echo);
@@ -383,8 +383,8 @@ SynthDef(\motCaos, { |out = 0, gate = 1, lr = 28, ha = 1.3, gk = 1.2, fbk = 1.1,
     sig = voices.collect { |v, i|
         Pan2.ar(v * gates[i], (i / 5 * 2 - 1) * 0.8)
     }.sum;
-    sig = RLPF.ar(sig, cut, 0.5);
-    rez = Ringz.ar(sig * 0.05, Lag.kr(txf, 0.05) * [1, 2.76, 5.4], [1.2, 0.8, 0.5]).sum;
+    sig = RLPF.ar(sig, (cut).min(SampleRate.ir * 0.45), 0.5);
+    rez = Ringz.ar(sig * 0.05, (Lag.kr(txf, 0.05) * [1, 2.76, 5.4]).min(SampleRate.ir * 0.45), [1.2, 0.8, 0.5]).sum;
     sig = (sig + (rez * body)) * (1 + (kick * 1.5));
     ~motOut.(out, sig.tanh, gate, \caos);
 }).add;
@@ -432,7 +432,7 @@ SynthDef(\motRup, { |out = 0, gate = 1, a = 12, b = 8, c = 4, m = 63, txf = 220,
         (held - len + Phasor.ar(T2A.ar(t_st), 1, 0, len)).wrap(0, 48000), 1, 1);
     st   = Lag.kr(Trig1.kr(t_st, stDur), 0.004);
     sig  = (sig * (1 - st)) + (rd * st);
-    ~motOut.(out, LPF.ar(sig, 16000) * 0.8, gate, \ruptura, 1, 4);
+    ~motOut.(out, LPF.ar(sig, (16000).min(SampleRate.ir * 0.45)) * 0.8, gate, \ruptura, 1, 4);
 }).add;
 
 // ═════════════════════════════════════════════════════════════════════════
@@ -467,7 +467,7 @@ SynthDef(\motMasa, { |out = 0, gate = 1, f0 = 30, t_bloom = 0|
         Pan2.ar(pair.sum * 0.5, Rand(-0.7, 0.7))
     }.sum;
     sub  = SinOsc.ar(fund * [0.5, 0.502]) * 0.6;
-    sub  = sub + (RLPF.ar(Saw.ar(fund * [1, 1.003]), fund * 4, 0.3) * 0.25);
+    sub  = sub + (RLPF.ar(Saw.ar(fund * [1, 1.003]), (fund * 4).min(SampleRate.ir * 0.45), 0.3) * 0.25);
     body = DynKlank.ar(`[[1, 2.01, 3.03, 4.98, 7.1], nil, [4, 3, 2.5, 2, 1.5] * tStr],
         BrownNoise.ar([0.002, 0.002]), fund);
     // ── ARCO: el drone de Beachfires, con la forma de la Marea ─────────
@@ -481,8 +481,8 @@ SynthDef(\motMasa, { |out = 0, gate = 1, f0 = 30, t_bloom = 0|
         + Mix(SinOsc.ar(fund * 0.5 * [1, 1.0143]) * 0.6)
         + BrownNoise.ar(0.1);
     deep = MoogFF.ar((deep * 1.5).tanh,
-        (tide.linexp(0, 1, 50, 400) * (fund / 35).clip(0.5, 3)
-            * LFNoise2.kr(0.05).exprange(0.8, 1.25)).clip(30, 4000), 2.5);
+        ((tide.linexp(0, 1, 50, 400) * (fund / 35).clip(0.5, 3)
+            * LFNoise2.kr(0.05).exprange(0.8, 1.25)).clip(30, 4000)).min(SampleRate.ir * 0.45), 2.5);
     deep = deep * tide.linlin(0, 1, 0.12, 1.0);
     deep = [deep, DelayC.ar(deep, 0.02, 0.015)];
     sig  = HPF.ar(parts * 0.35 + sub + (body * 0.5) + (deep * ~arcoGain), 16);
@@ -491,7 +491,7 @@ SynthDef(\motMasa, { |out = 0, gate = 1, f0 = 30, t_bloom = 0|
     // diferencia y masa sonaba igual en la cresta que en el valle. Ahora la
     // Marea abre y cierra el paso bajo (300 Hz → 6 kHz) y el nivel (-9 dB en
     // el valle): masa entera sale del fondo y vuelve a hundirse.
-    sig  = LPF.ar(sig, tide.linexp(0, 1, 300, 6000)) * tide.linlin(0, 1, 0.35, 1.0);
+    sig  = LPF.ar(sig, (tide.linexp(0, 1, 300, 6000)).min(SampleRate.ir * 0.45)) * tide.linlin(0, 1, 0.35, 1.0);
     ~motOut.(out, sig, gate, \masa, 8, 12);
 }).add;
 
@@ -548,7 +548,7 @@ SynthDef(\cinta, {
     var wet  = DelayC.ar(dry, 0.15, (0.03 + ((wow + flut + drag) * amt)).clip(0.005, 0.12));
     var crack, drop;
     wet  = (wet * 1.2).tanh * 0.85;
-    wet  = LPF.ar(wet, amt.linexp(0, 1, 18000, 3500));
+    wet  = LPF.ar(wet, (amt.linexp(0, 1, 18000, 3500)).min(SampleRate.ir * 0.45));
     crack = Dust2.ar(LFNoise1.kr(0.5).range(2, 10)) + Crackle.ar(1.95, 0.1) + PinkNoise.ar(0.05);
     crack = LPF.ar(HPF.ar(crack, 800), 6000) * 0.012 * amt;
     drop = 1 - ((1 - LFNoise0.kr(0.2).range(0.2, 1.0)) * amt * 0.7);

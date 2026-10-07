@@ -284,8 +284,8 @@ s.doWhenBooted({
             sig = XFade2.ar(sig, grains, stretchAmount.linlin(0, 1, -1, 1));
 
             // Filtering
-            sig = HPF.ar(sig, controlHPF.clip(20, 2000));
-            sig = RLPF.ar(sig, controlLPF.clip(200, 8000), controlFilterRes.clip(0.1, 0.8));
+            sig = HPF.ar(sig, (controlHPF.clip(20, 2000)).min(SampleRate.ir * 0.45));
+            sig = RLPF.ar(sig, (controlLPF.clip(200, 8000)).min(SampleRate.ir * 0.45), controlFilterRes.clip(0.1, 0.8));
 
             // Delay
             // DelayC has no feedback: its fourth argument is `mul`. So the

@@ -301,7 +301,7 @@ s.waitForBoot {
         // That was much of the corpus's weakness and its distant, muffled
         // sound. Mapped now: 80-2400 → 1.5-18 kHz, still a darkening control,
         // never one that hides the recording.
-        sig = RLPF.ar(sig, lpf.explin(80, 2400, 1500, 18000), res.clip(0.1, 0.8));
+        sig = RLPF.ar(sig, (lpf.explin(80, 2400, 1500, 18000)).min(SampleRate.ir * 0.45), res.clip(0.1, 0.8));
 
         // DELAY / DELAY TIME, with the sample voice's feedback, recirculating.
         echo = CombC.ar(sig, 2.0, dTime, dTime * (0.001.log / dFb.log));
@@ -398,7 +398,7 @@ s.waitForBoot {
         // Same mapping as \corpusVoice: the ×8-expanded calls live at
         // 2.5-12 kHz and a 2.4 kHz ceiling removed most of them. CRUDO skips it.
         crudo = Lag.kr(Select.kr(corpusCrudoBus >= 0, [0, In.kr(corpusCrudoBus, 1)]).clip(0, 1), 0.15);
-        sig = XFade2.ar(LPF.ar(sig, lpf.explin(80, 2400, 1500, 18000)), sig, crudo.linlin(0, 1, -1, 1));
+        sig = XFade2.ar(LPF.ar(sig, (lpf.explin(80, 2400, 1500, 18000)).min(SampleRate.ir * 0.45)), sig, crudo.linlin(0, 1, -1, 1));
 
         env = EnvGen.kr(
             Env.new([0, 1, 1, 0],
