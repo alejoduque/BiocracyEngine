@@ -186,7 +186,7 @@ And across the engine:
 
 **Measuring it:** `python3 tools/mixcheck.py recordings/<take>.wav` gives LUFS, range, true peak, crest, octave bands, width per band and what is under 30 Hz, with a ✔/✘ per criterion. `--ref <file>` compares against a reference. The take of 2026-10-05, uncarved, fails all five: low mids at the bass's level, presence −18.6 dB, side −3.3 dB below 120 Hz, rumble, crest 25.7 dB.
 
-**Delivery level for the dome:** the clips' WAVs are leveled in post to −20 LUFS, never above −1 dBTP, one gain for all of them and no limiting (`dome-render.js --loudness`, `off` to leave them as cut).
+**Delivery level for the dome:** the clips' WAVs are leveled in post to −20 LUFS, never above −1 dBTP, one gain for all of them and no limiting (`dome-render.js`, always, no option).
 
 ## Marea — the density arc
 

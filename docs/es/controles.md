@@ -186,7 +186,7 @@ Y en todo el motor:
 
 **Medirlo:** `python3 tools/mixcheck.py recordings/<toma>.wav` da LUFS, rango, true peak, cresta, bandas por octava, ancho por banda y lo que hay bajo 30 Hz, con un ✔/✘ por criterio. `--ref <archivo>` compara contra una referencia. La toma del 2026-10-05, sin carve, falla los cinco: medios bajos al nivel del bajo, presencia −18.6 dB, lado a −3.3 dB bajo 120 Hz, rumble, cresta 25.7 dB.
 
-**Nivel de entrega para el domo:** los WAV de los clips se nivelan en post a −20 LUFS, nunca por encima de −1 dBTP, con una sola ganancia para todos y sin limitar (`dome-render.js --loudness`, `off` para dejarlos como salen).
+**Nivel de entrega para el domo:** los WAV de los clips se nivelan en post a −20 LUFS, nunca por encima de −1 dBTP, con una sola ganancia para todos y sin limitar (`dome-render.js`, siempre, sin opción).
 
 ## Marea — el arco de densidad
 

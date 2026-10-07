@@ -32,9 +32,6 @@
 //   --audio-offset <ms>  shift the audio against the picture (default 0)
 //   --lfe-hz <Hz>        crossover of the 5.1 file's LFE channel (default 100)
 //   --no-upmix           a stereo take stays stereo (no quad, no 5.1)
-//   --loudness <LUFS|off>  the clips' WAVs leveled to this integrated
-//                        loudness (default −20, the dome's), never past −1 dBTP:
-//                        one plain gain for all of them, no limiting
 //   --audio-only         only the WAVs (e.g. again, with other options); the
 //                        page is not opened and no video is made
 //   --stills <s>         also save one full-size PNG every <s> seconds: the
@@ -110,7 +107,9 @@ const LFE_HZ = Number(args["lfe-hz"]) || 100;
 const EMBED_AUDIO = args["embed-audio"] === "1";
 const UPMIX = args["no-upmix"] !== "1";
 const AUDIO_ONLY = args["audio-only"] === "1";
-const LOUDNESS = args.loudness === "off" ? null : (Number(args.loudness) || -20);
+// The clips' WAVs are always leveled for the dome (levelAudio): −20 LUFS,
+// never past −1 dBTP. No flag — one delivery level, the same every time.
+const LOUDNESS = -20;
 // HAP Q does not open in QuickTime or VLC: every .mov gets an H.264 preview
 // beside it (dome-preview.js), unless --no-preview.
 const PREVIEW = args["no-preview"] !== "1";
@@ -320,7 +319,7 @@ function levelAudio() {
   const base = path.join(OUT, `${NAME}_${SIZE}`);
   const wavs = ["_5.1.wav", "_LRLsRs.wav", "_2ch.wav", "_1ch.wav"].map((x) => base + x).filter((f) => fs.existsSync(f));
   const ref = [base + "_LRLsRs.wav", base + "_2ch.wav", base + "_1ch.wav", base + "_5.1.wav"].find((f) => fs.existsSync(f));
-  if (ref && LOUDNESS !== null) {
+  if (ref) {
     const m = spawnSync("ffmpeg", ["-hide_banner", "-nostats", "-i", ref, "-af", "ebur128=peak=true", "-f", "null", "-"], { encoding: "utf8" }).stderr;
     const sum = m.slice(m.lastIndexOf("Summary"));
     const I = Number((sum.match(/I:\s+(-?[\d.]+) LUFS/) || [])[1]);
