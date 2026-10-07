@@ -290,12 +290,49 @@ s.doWhenBooted({
     // it stays still. A BALANCE law, not equal-power: at pan 0 both sides are
     // exactly unity, so adding this changed nothing until a knob moves (Pan2
     // or Balance2 would have dropped every layer 3 dB at centre).
-    SynthDef(\stemSum, { |in = 0, out = 0, id = 0, pan = 0, auto = 0, rate = 0.012, phase = 0|
-        var x = In.ar(in, ~limiterChans).asArray;
-        var peak = x.collect(_.abs).reduce(\max);
-        var rms = (Lag.ar(x.collect(_.squared).sum / x.size, 0.3)).sqrt;
-        var pos = Lag.kr(Select.kr(auto > 0.5, [pan, SinOsc.kr(rate, phase) * pan.abs]), 0.6).clip(-1, 1);
-        var gl = (1 - pos).clip(0, 1), gr = (1 + pos).clip(0, 1);
+    // MEZCLA (mixCarve, 0_parameters.scd): each stem is carved here, on its
+    // way into the mix, by a profile of its own (~stemCarveArgs below) — a low
+    // cut, a dip where it treads on another layer, shelves, the drone and pad
+    // ducked under the kick below 150 Hz, and the peaks held at `tame` dB over
+    // the layer's own running level. The carved stem is CROSSFADED against the
+    // untouched one by mixCarve (LinXFade2: at 0 the output IS the input, the
+    // filters only run), so the engine at 0 sounds exactly as it always has.
+    SynthDef(\stemSum, { |in = 0, out = 0, id = 0, pan = 0, auto = 0, rate = 0.012, phase = 0,
+            carveBus = (-1), hpf = 0, dipF = 300, dipDb = 0, lsF = 200, lsDb = 0,
+            hsF = 9500, hsDb = 0, duckIn = (-1), duckDb = 0, tame = 0|
+        var dry = In.ar(in, ~limiterChans).asArray;
+        var c = Lag.kr(Select.kr(carveBus >= 0, [0, In.kr(carveBus.max(0), 1)]).clip(0, 1), 0.25);
+        var key, keyEnv, keyRef, duckG, sum, env, lvl, tameG, x, peak, rms, pos, gl, gr;
+        // The kick's own stem, low-passed: how hard it is hitting NOW against
+        // how hard it has been hitting lately, 0..1.
+        key = LPF.ar(Mix(In.ar(duckIn.max(0), ~limiterChans)), 150) * (duckIn >= 0);
+        keyEnv = Amplitude.kr(key, 0.005, 0.18);
+        keyRef = Amplitude.kr(key, 0.001, 3.0).max(1e-5);
+        duckG = (1 - ((keyEnv / keyRef).clip(0, 1) * (1 - duckDb.neg.dbamp))).clip(0, 1);
+        // Peaks over the layer's own level: a fast envelope against a slow RMS.
+        sum = Mix(dry) / dry.size;
+        env = Amplitude.ar(sum, 0.0005, 0.08);
+        lvl = Lag.ar(sum.squared, 0.4).sqrt;
+        tameG = Select.ar(tame > 0, [DC.ar(1), ((lvl * tame.dbamp) / env.max(1e-6)).clip(0, 1)]);
+        x = dry.collect { |ch|
+            var y = ch, lo;
+            // 4th-order low cut (two 2nd-order HPFs); bypassed when hpf is 0.
+            y = Select.ar(hpf > 0, [y, HPF.ar(HPF.ar(y, hpf.max(10)), hpf.max(10))]);
+            y = BPeakEQ.ar(y, dipF.min(SampleRate.ir * 0.42), 1, dipDb);
+            y = BLowShelf.ar(y, lsF.min(SampleRate.ir * 0.42), 1, lsDb);
+            // Kept under Nyquist: a shelf above it turns the filter unstable
+            // (a 16 kHz device put 9.5 kHz past it and the stem ran away).
+            y = BHiShelf.ar(y, hsF.min(SampleRate.ir * 0.42), 1, hsDb);
+            // Duck the band under 150 Hz only: the rest of the layer is
+            // untouched, so the kick takes the floor without the bed pumping.
+            lo = LPF.ar(LPF.ar(y, 150), 150);
+            y = (y - lo) + (lo * Lag.kr(duckG, 0.01));
+            LinXFade2.ar(ch, y * tameG, c * 2 - 1)
+        };
+        peak = x.collect(_.abs).reduce(\max);
+        rms = (Lag.ar(x.collect(_.squared).sum / x.size, 0.3)).sqrt;
+        pos = Lag.kr(Select.kr(auto > 0.5, [pan, SinOsc.kr(rate, phase) * pan.abs]), 0.6).clip(-1, 1);
+        gl = (1 - pos).clip(0, 1); gr = (1 + pos).clip(0, 1);
         SendReply.kr(Impulse.kr(12), '/stem', [id, Amplitude.kr(peak, 0.001, 0.4), rms]);
         // PanAz(4) order: 0 front-left, 1 front-right, 2 rear-right, 3 rear-left.
         x = case
@@ -338,6 +375,36 @@ s.doWhenBooted({
         [\pan, st[\pan] ? 0, \auto, st[\auto] ? 0,
          \rate, 1 / (40 + ((h % 1000) / 1000 * 80)), \phase, (h % 628) / 100]
     };
+    // MEZCLA profiles: what carving means for each layer. Only these numbers
+    // differ; the processing is \stemSum's, and all of it scales with mixCarve.
+    //   kick    owns 40-90 Hz and the sub: its 12-22 Hz sine cut at 28 Hz,
+    //           peaks held 12 dB over its level
+    //   drone   above the kick (cut 45 Hz), ducked 4 dB under it below 150 Hz,
+    //           a 2 dB dip at 400 where the low mids pile up
+    //   pad     cut 60 Hz (its Pulse an octave down lived at 8-37 Hz), ducked,
+    //           a 3 dB dip at 300 where kick and drone overlap
+    //   perc    peaks held; its −2 dB air shelf given back
+    //   dust    cut 250 Hz: dust is detail, not body
+    //   corpus  −3 dB below 200 Hz so the forest sits above the bed
+    //   sample  cut 40; motors cut 30, masa 25 (its 10-20 Hz sine)
+    ~stemCarveProfiles = (
+        kick:   [\hpf, 28, \tame, 12],
+        drone:  [\hpf, 45, \dipF, 400, \dipDb, -2, \duckDb, -4],
+        pad:    [\hpf, 60, \dipF, 300, \dipDb, -3, \duckDb, -4],
+        perc:   [\tame, 12, \hsDb, 2],
+        dust:   [\hpf, 250],
+        sample: [\hpf, 40],
+        corpus: [\lsF, 200, \lsDb, -3],
+        masa:   [\hpf, 25],
+        remuestreo: [\hpf, 30], espectro: [\hpf, 30], caos: [\hpf, 30],
+        ruptura: [\hpf, 30], seq: [\hpf, 30]
+    );
+    ~stemCarveArgs = { |name|
+        var prof = ~stemCarveProfiles[name] ? [];
+        var duck = if((prof.indexOf(\duckDb)).notNil and: { ~stems[\kick].notNil },
+            { [\duckIn, ~stems[\kick].index] }, { [] });
+        [\carveBus, ((~buses !? { ~buses[\mixCarve] } !? { |b| b.index }) ? -1)] ++ prof ++ duck
+    };
     ~stemPanSet = { |name, pan, auto|
         var st = ~stemPan[name] ?? { (pan: 0, auto: 0) };
         if(pan.notNil) { st[\pan] = pan.clip(-1, 1) };
@@ -379,11 +446,35 @@ s.doWhenBooted({
     // def: x1.0 -17.0 LUFS (LRA 5.6), x1.5 -14.2 (LRA 4.6), x2.0 -12.5 (LRA
     // 4.0). 1.5 reaches streaming level for one LU of dynamics; above 2 the
     // compressor starts flattening the arcs the piece is made of.
-    SynthDef(\masterLimiter, { |ceiling = 0.92, glue = 0.55, drive = 0.40, makeup = 1.5|
+    SynthDef(\masterLimiter, { |ceiling = 0.92, glue = 0.55, drive = 0.40, makeup = 1.5, carveBus = (-1)|
         var sig = In.ar(0, ~limiterChans) * makeup;
         var clean = LeakDC.ar(sig);
-        var key = Mix(clean) / ~limiterChans.max(1);
-        var comped, sat, lim, mono;
+        // MEZCLA (mixCarve): at 0 all three of these are bypassed exactly.
+        var carve = Lag.kr(Select.kr(carveBus >= 0, [0, In.kr(carveBus.max(0), 1)]).clip(0, 1), 0.25);
+        var key, comped, sat, lim, mono, lows, monoLow;
+        // 1 · A real low cut, 4th order at 24 Hz. LeakDC alone was the only
+        //     one: 6 dB/oct around 38 Hz, so 12-20 Hz from the kick's sub,
+        //     the drone's 0.5 ratio, the pad and masa reached the speakers.
+        // 2 · The lows in mono: below 120 Hz (Linkwitz-Riley, 4th order, so
+        //     lows + highs sum back flat) the channels are summed and sent to
+        //     every speaker alike. Wide bass cancels between speakers on a
+        //     dome — measured on a take, side was only 3 dB under mid below
+        //     80 Hz — and the room's six subwoofers want one signal.
+        clean = clean.asArray.collect { |ch|
+            LinXFade2.ar(ch, HPF.ar(HPF.ar(ch, 24), 24), carve * 2 - 1)
+        };
+        lows = clean.collect { |ch| LPF.ar(LPF.ar(ch, 120), 120) };
+        monoLow = Mix(lows) / ~limiterChans.max(1);
+        clean = clean.collect { |ch, i|
+            LinXFade2.ar(ch, (ch - lows[i]) + monoLow, carve * 2 - 1)
+        };
+        // 3 · The compressor's key high-passed at 100 Hz, as on a mix bus:
+        //     keyed full-band, the sub's energy pumped every layer.
+        key = Mix(clean) / ~limiterChans.max(1);
+        //     ×1.6 (+4 dB) puts the filtered key back near the level the
+        //     threshold (0.10) was measured against, so carving takes the
+        //     sub OUT of the gain riding without simply compressing less.
+        key = LinXFade2.ar(key, HPF.ar(HPF.ar(key, 100), 100) * 1.6, carve * 2 - 1);
 
         // slopeAbove 1.0 is no compression, 0.35 is about 3:1; glue rides
         // between them so the amount is one number. Makeup is derived from that
@@ -695,7 +786,7 @@ s.doWhenBooted({
     
     // opalKick: Deep FM/Distortion kick (Gem style)
     SynthDef(\opalKick, {
-        arg out=0, freq=50, amp=0.5, atk=0.001, dec=0.4,
+        arg mixCarveBus=(-1), out=0, freq=50, amp=0.5, atk=0.001, dec=0.4,
         masterVolBus=(-1), timeBus=(-1), harmonicBus=(-1), textureBus=(-1), spectralBus=(-1), atmosphereBus=(-1), spatialBus=(-1),
         // Reach added so this voice can be sculpted rather than only triggered.
         // Every one of these had a fader on the surface that stopped at the
@@ -767,7 +858,8 @@ s.doWhenBooted({
 
         // Reverb tail and slap
         sig = sig + DelayC.ar(sig, 0.25, 0.055 + (dMix * 0.08), dMix * 0.35);
-        sig = sig + FreeVerb.ar(sig, revM * 0.35, 0.6, 0.2);
+        // MEZCLA: the reverb's input loses its lows as mixCarve rises (none at 0).
+        sig = sig + FreeVerb.ar(LinXFade2.ar(sig, HPF.ar(sig, 180), Lag.kr(Select.kr(mixCarveBus >= 0, [0, In.kr(mixCarveBus.max(0), 1)]).clip(0, 1), 0.25) * 2 - 1), revM * 0.35, 0.6, 0.2);
 
         sig = sig * env * amp * vol * ~trimKick
             * Lag.kr(Select.kr(mixKickBus >= 0, [1.0, In.kr(mixKickBus, 1)]), 0.08);
@@ -798,7 +890,7 @@ s.doWhenBooted({
     SynthDef(\opalPerc, {
         // bodySeed 0-1: which body is being struck. Supplied by the caller,
         // not by a knob — see the note at the partials below.
-        arg out=0, freq=400, amp=0.3, bodySeed=0.0, 
+        arg mixCarveBus=(-1), out=0, freq=400, amp=0.3, bodySeed=0.0, 
         masterVolBus=(-1), harmonicBus=(-1), textureBus=(-1), resonantBus=(-1), spectralBus=(-1), timeBus=(-1),
         memoryBus=(-1), atmosphereBus=(-1), spatialBus=(-1),
         // Reach added: pitch so the struck body tunes with the engine, the two
@@ -1372,7 +1464,8 @@ s.doWhenBooted({
         // somewhere rather than in the mix. Room size 0.7 -> 0.94 and damping
         // 0.4 -> 0.15, so the tail is long and stays bright instead of going
         // muddy — bronze reflections keep their top end.
-        sig = sig + FreeVerb.ar(sig, revM * 0.85, 0.94, 0.15);
+        // MEZCLA: the reverb's input loses its lows as mixCarve rises (none at 0).
+        sig = sig + FreeVerb.ar(LinXFade2.ar(sig, HPF.ar(sig, 180), Lag.kr(Select.kr(mixCarveBus >= 0, [0, In.kr(mixCarveBus.max(0), 1)]).clip(0, 1), 0.25) * 2 - 1), revM * 0.85, 0.94, 0.15);
 
         sig = sig * amp * vol * ~trimPerc * family * mixPerc;
 
@@ -1433,7 +1526,7 @@ s.doWhenBooted({
         // envelope to a second knob anyway. They are two arguments now: tempo
         // stays at 1.0 and owns the envelope, motion owns every LFO. The fades
         // are exactly what they were at any motion setting.
-        arg out=0, gate=1, freq=110, amp=0.18, tempo=1.0, motion=1.0, ratio=1.0, pan=0,
+        arg mixCarveBus=(-1), out=0, gate=1, freq=110, amp=0.18, tempo=1.0, motion=1.0, ratio=1.0, pan=0,
             envScale=1.0,
             masterVolBus=(-1), pitchBus=(-1), timeBus=(-1), spectralBus=(-1),
             spatialBus=(-1), textureBus=(-1), atmosphereBus=(-1), memoryBus=(-1),
@@ -1487,7 +1580,9 @@ s.doWhenBooted({
         // 11 Hz on the lowest ratio, which fades into the sub rather than
         // sitting on a clip) and the floor comes down to 14 to meet it. The
         // whole travel of the fader now moves the sound.
-        var baseFreq = (freq * ratio * padPitch
+        // MEZCLA: carved, the pad climbs up to x1.6 (none at 0) so it lives
+        // above the kick instead of on it; \stemSum cuts it at 60 Hz.
+        var baseFreq = (freq * ratio * padPitch * (1 + (Lag.kr(Select.kr(mixCarveBus >= 0, [0, In.kr(mixCarveBus.max(0), 1)]).clip(0, 1), 0.25) * 0.6))
             * (pShift.clip(-24, 24) / 12).midiratio).clip(14, 900);
 
         // ── Long evolving envelope (8s atk / 28s sustain / 18s release)
@@ -1579,7 +1674,8 @@ s.doWhenBooted({
         // ── Reverb tail ───────────────────────────────────────────────────────
         // atmMix feeds the same FreeVerb used on every other voice, so the
         // space setting is consistent across the ensemble.
-        sig = sig + (FreeVerb2.ar(sig[0], sig[1], atmMix, 0.85, 0.5) * 0.38);
+        // MEZCLA: the reverb's input loses its lows as mixCarve rises (none at 0).
+        sig = sig + (FreeVerb2.ar(*(LinXFade2.ar(sig, HPF.ar(sig, 180), Lag.kr(Select.kr(mixCarveBus >= 0, [0, In.kr(mixCarveBus.max(0), 1)]).clip(0, 1), 0.25) * 2 - 1).asArray.keep(2) ++ [atmMix, 0.85, 0.5])) * 0.38);
 
         // ── Output chain ──────────────────────────────────────────────────────
         // HPF removes subsonic energy from the detuned Saws; Compander applies
@@ -1619,7 +1715,7 @@ s.doWhenBooted({
     // ─── End \biocratiaPad ────────────────────────────────────────────────────
 
     SynthDef(\dronePartial, {
-        arg out = 0, freq = 110, amp = 0.10, ratio = 1.0,
+        arg mixCarveBus=(-1), out = 0, freq = 110, amp = 0.10, ratio = 1.0,
             atk = 20, hold = 30, rel = 25, pan = 0, detune = 0.004, seed = 0,
             // Where this partial sits across the three synthesis regimes. The
             // ensemble spreads it across the bed so no two voices are made of
@@ -1756,7 +1852,8 @@ s.doWhenBooted({
             * (1 + (strike * respond * 0.34))
             // …and so does the voice's own internal incident.
             * (1 + (grit * 1.8))).clip(90, 13000));
-        sig = sig + (FreeVerb.ar(sig, revM * 0.7, dSpace.linlin(0, 1, 0.4, 0.95), 0.15) * 0.5);
+        // MEZCLA: the reverb's input loses its lows as mixCarve rises (none at 0).
+        sig = sig + (FreeVerb.ar(LinXFade2.ar(sig, HPF.ar(sig, 180), Lag.kr(Select.kr(mixCarveBus >= 0, [0, In.kr(mixCarveBus.max(0), 1)]).clip(0, 1), 0.25) * 2 - 1), revM * 0.7, dSpace.linlin(0, 1, 0.4, 0.95), 0.15) * 0.5);
 
         // Sine curves on both ends: a partial should arrive and leave without
         // ever being heard to start or stop.
@@ -1984,7 +2081,7 @@ s.doWhenBooted({
 
     // opalDust: Crackly granular noise (Dust style)
     SynthDef(\opalDust, {
-        arg out=0, amp=0.2,
+        arg mixCarveBus=(-1), out=0, amp=0.2,
         masterVolBus=(-1), textureBus=(-1), spectralBus=(-1), timeBus=(-1), pitchBus=(-1),
         memoryBus=(-1), atmosphereBus=(-1), spatialBus=(-1),
         // Reach added: harmonicRich to give the crackle a resonant pitch,
@@ -2050,16 +2147,21 @@ s.doWhenBooted({
         sig = sig + bed;
 
         // ── Warm Analog High-Cut Filter (cutting all harsh high freqs)
+        // MEZCLA: the 1.2 kHz ceiling held dust in the low mids, adding mud
+        // instead of detail. With mixCarve it opens toward 6 kHz (exactly
+        // 1.2 kHz at 0), and \stemSum cuts dust below 250 Hz: dust carries
+        // the presence of the rhythm instead of its body.
         sig = LPF.ar(sig,
-            (filt.clip(180, 1100)
-                * Lag.kr(cutoff, dFade.clip(0.1, 5)).linexp(0, 1, 0.6, 1.4)).clip(120, 1200));
-        sig = LPF.ar(sig, 1200); // Fixed backstop: strictly eliminates high hiss
+            (filt.clip(180, Lag.kr(Select.kr(mixCarveBus >= 0, [0, In.kr(mixCarveBus.max(0), 1)]).clip(0, 1), 0.25).linexp(0, 1, 1100, 5000))
+                * Lag.kr(cutoff, dFade.clip(0.1, 5)).linexp(0, 1, 0.6, 1.4)).clip(120, Lag.kr(Select.kr(mixCarveBus >= 0, [0, In.kr(mixCarveBus.max(0), 1)]).clip(0, 1), 0.25).linexp(0, 1, 1200, 6000)));
+        sig = LPF.ar(sig, Lag.kr(Select.kr(mixCarveBus >= 0, [0, In.kr(mixCarveBus.max(0), 1)]).clip(0, 1), 0.25).linexp(0, 1, 1200, 6000)); // backstop: 1.2 kHz, or up to 6 kHz carved
         sig = (sig * 1.3).tanh;  // Tape saturation warmth
 
         // Delay + Reverb wash
         wet = CombC.ar(sig, 0.5, 0.12, Lag.kr(dFeed, 0.2).linexp(0, 1, 0.2, 4.0)) * dMix * 0.8;
         sig = sig + wet;
-        sig = sig + FreeVerb.ar(sig, revM * 0.7, 0.75, 0.4);
+        // MEZCLA: the reverb's input loses its lows as mixCarve rises (none at 0).
+        sig = sig + FreeVerb.ar(LinXFade2.ar(sig, HPF.ar(sig, 180), Lag.kr(Select.kr(mixCarveBus >= 0, [0, In.kr(mixCarveBus.max(0), 1)]).clip(0, 1), 0.25) * 2 - 1), revM * 0.7, 0.75, 0.4);
 
         sig = sig * env * amp * vol * ~trimDust
             * Lag.kr(Select.kr(mixDustBus >= 0, [1.0, In.kr(mixDustBus, 1)]), 0.08);
@@ -2206,7 +2308,7 @@ s.doWhenBooted({
 
     SynthDef(\resonantChamber, {
         arg in = 0, aux = (-1), mixBus = (-1), sizeBus = (-1), occBus = (-1),
-            damp = 0.42;
+            damp = 0.42, carveBus = (-1);
         var chans = ~limiterChans;
         var src   = In.ar(in, chans);
         // Long lags: this is architecture, and a room that changes shape in
@@ -2248,6 +2350,11 @@ s.doWhenBooted({
         // sends are already there.
         mono = (Mix(src) / chans.max(1))
             + Select.ar(aux >= 0, [DC.ar(0), In.ar(aux.max(0), 1)]);
+        // MEZCLA: no bass into a room that rings up to 28 s — it came back as
+        // low-end wash under everything. This also covers the bowl, which
+        // perc sends to the aux before its own 180 Hz cut.
+        mono = LinXFade2.ar(mono, HPF.ar(HPF.ar(mono, 150), 150),
+            Lag.kr(Select.kr(carveBus >= 0, [0, In.kr(carveBus.max(0), 1)]).clip(0, 1), 0.25) * 2 - 1);
         // Input diffusion, so a transient arrives as a wash rather than as
         // four discrete echoes.
         diff = mono;
@@ -2296,7 +2403,8 @@ s.doWhenBooted({
     ~stemGroupA = Group.after(~defaultGroup ? s.defaultGroup);
     [\drone, \pad, \kick, \perc, \dust, \sample].do { |n|
         ~stemNodes[n] = Synth.tail(~stemGroupA, \stemSum,
-            [\in, ~stems[n].index, \out, 0, \id, ~stemNames.indexOf(n)] ++ ~stemPanArgs.(n));
+            [\in, ~stems[n].index, \out, 0, \id, ~stemNames.indexOf(n)] ++ ~stemPanArgs.(n)
+            ++ ~stemCarveArgs.(n));
     };
     if(~chamberSynth.notNil) { try { ~chamberSynth.free }; ~chamberSynth = nil };
     ~chamberSynth = Synth.tail(RootNode(s), \resonantChamber, [
@@ -2304,7 +2412,8 @@ s.doWhenBooted({
         \mixBus,  ((~buses !? { ~buses[\chamberMix]  } !? { |b| b.index }) ? -1),
         \sizeBus, ((~buses !? { ~buses[\chamberSize] } !? { |b| b.index }) ? -1),
         \occBus,  (~chamberOccupancyBus !? { |b| b.index } ? -1),
-        \aux,     (~chamberAuxBus !? { |b| b.index } ? -1)
+        \aux,     (~chamberAuxBus !? { |b| b.index } ? -1),
+        \carveBus, ((~buses !? { ~buses[\mixCarve] } !? { |b| b.index }) ? -1)
     ]);
     "La cámara active — one shared room, RT60 2-28 s.".postln;
 
@@ -2318,7 +2427,8 @@ s.doWhenBooted({
     };
     ~masterMakeup = ~masterMakeup ? 1.5;
     ~masterLimiterSynth = Synth.tail(RootNode(s), \masterLimiter,
-        [\ceiling, 0.92, \makeup, ~masterMakeup]);
+        [\ceiling, 0.92, \makeup, ~masterMakeup,
+         \carveBus, ((~buses !? { ~buses[\mixCarve] } !? { |b| b.index }) ? -1)]);
     // Scope sits AFTER the limiter so it reports what actually leaves the box.
     if(~masterScopeSynth.notNil) { try { ~masterScopeSynth.free }; ~masterScopeSynth = nil };
     ~masterScopeSynth = Synth.tail(RootNode(s), \masterScope);

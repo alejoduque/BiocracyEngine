@@ -583,7 +583,8 @@ fork { s.sync; ~cintaNode = Synth.after(~stemGroupB, \cinta) };
 if(~stems.notNil) {
     [\remuestreo, \espectro, \caos, \ruptura, \masa, \seq].do { |n|
         ~stemNodes[n] = Synth.tail(~stemGroupB, \stemSum,
-            [\in, ~stems[n].index, \out, 0, \id, ~stemNames.indexOf(n)] ++ ~stemPanArgs.(n));
+            [\in, ~stems[n].index, \out, 0, \id, ~stemNames.indexOf(n)] ++ ~stemPanArgs.(n)
+            ++ (~stemCarveArgs !? { ~stemCarveArgs.(n) } ? []));
     };
 };
 

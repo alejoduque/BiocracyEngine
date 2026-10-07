@@ -162,6 +162,32 @@ El unísono es **1.0 a media carrera**: al arrancar estos multiplican por exacta
 
 Las tiras de la GUI de SC llevan un **MUTE** que recuerda la posición del fader, así que quitar el mute restaura el nivel exacto. Los faders del mezclador aparecen en ambas superficies y siguen a MIDI, navegador y cargas de preset por la misma ruta `~setParam` que cualquier otro control.
 
+## MEZCLA — una banda, un dueño (`mixCarve`)
+
+Un solo control, de 0 a 1, en la fila de la Marea y la sala (GUI de SC; ruta `/mix/carve`). **0 es el motor exactamente como siempre sonó**, con su barro incluido, que es también el camino hacia una pieza de ruido. **1 es la mezcla profesional**: cada capa en su banda, sin que se tapen. Todo lo que hace se cruza con este número (`LinXFade2`), así que cualquier valor intermedio es una mezcla entre las dos. Medido: a 0 la salida es idéntica bit a bit a la entrada.
+
+Se carga desde la lista de configs, como los EXT, con tres complementos que sólo tocan este valor y dejan el mundo que esté sonando: **MEZCLA_1_Limpia** (1.0), **MEZCLA_2_Media** (0.5) y **MEZCLA_0_Barro** (0.0). Las configs base no lo traen, así que no lo cambian.
+
+Qué hace, en el camino de cada capa hacia la mezcla (`\stemSum`, perfiles en `~stemCarveProfiles`):
+
+| Capa | Mezcla |
+|---|---|
+| **kick** | dueño de 40–90 Hz y del sub: su seno de 12–22 Hz se corta a 28 Hz; los picos quedan a 12 dB de su propio nivel |
+| **drone** | sobre el bombo (corte a 45 Hz), cede 4 dB bajo 150 Hz cuando golpea el bombo, −2 dB a 400 Hz donde se amontonan los medios bajos |
+| **pad** | corte a 60 Hz (su pulso una octava abajo vivía en 8–37 Hz), cede bajo el bombo, −3 dB a 300 Hz; sube de registro hasta ×1.6 |
+| **perc** | picos contenidos; devuelve su estante de aire |
+| **dust** | corte a 250 Hz y techo de 1.2 kHz abierto hasta 6 kHz: el polvo pasa de cuerpo a detalle |
+| **corpus** | −3 dB bajo 200 Hz: el bosque se sienta sobre la cama |
+| **sample, motores** | corte a 40 / 30 Hz; masa a 25 Hz |
+
+Y en todo el motor:
+- **Sin graves en las reverbs:** la entrada de cada FreeVerb pierde lo que está bajo 180 Hz, y la sala (`\resonantChamber`, hasta 28 s) lo que está bajo 150 Hz. Ahí estaba el lavado grave.
+- **Master:** un corte real a 24 Hz (4º orden; antes sólo había el LeakDC), los graves en mono bajo 120 Hz (Linkwitz-Riley: el domo y sus seis subwoofers quieren una sola señal) y el compresor con su llave filtrada a 100 Hz, para que el sub deje de bombear al resto.
+
+**Medirlo:** `python3 tools/mixcheck.py recordings/<toma>.wav` da LUFS, rango, true peak, cresta, bandas por octava, ancho por banda y lo que hay bajo 30 Hz, con un ✔/✘ por criterio. `--ref <archivo>` compara contra una referencia. La toma del 2026-10-05, sin carve, falla los cinco: medios bajos al nivel del bajo, presencia −18.6 dB, lado a −3.3 dB bajo 120 Hz, rumble, cresta 25.7 dB.
+
+**Nivel de entrega para el domo:** los WAV de los clips se nivelan en post a −20 LUFS, nunca por encima de −1 dBTP, con una sola ganancia para todos y sin limitar (`dome-render.js --loudness`, `off` para dejarlos como salen).
+
 ## Marea — el arco de densidad
 
 El ritmo no es una rejilla. No hay patrón de pasos decidiendo qué suena; un oleaje lento decide qué tan *probable* es cualquier onset, y los eventos se colocan por probabilidad con ±45 % de un tick de jitter para que nada caiga sobre un pulso audible. El bombo sólo puede ocurrir donde la cadena misma tiene una costura —un bloque nuevo— e incluso ahí sólo con probabilidad `tide²`, de modo que el extremo grave está presente en la cresta y ausente en el valle.

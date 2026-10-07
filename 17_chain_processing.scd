@@ -265,7 +265,8 @@ s.waitForBoot {
         ~corpusFeeders = [\corpus, \ultra].collect { |n|
             ~stemNodes[n] = Synth.before(~chainProcSynth, \stemSum,
                 [\in, ~stems[n].index, \out, ~corpusProcBus.index, \id, ~stemNames.indexOf(n)]
-                ++ (~stemPanArgs !? { ~stemPanArgs.(n) } ? []))
+                ++ (~stemPanArgs !? { ~stemPanArgs.(n) } ? [])
+                ++ (~stemCarveArgs !? { ~stemCarveArgs.(n) } ? []))
         };
         ~corpusIn = (corpus: ~stemOut.(\corpus), ultra: ~stemOut.(\ultra));
     };

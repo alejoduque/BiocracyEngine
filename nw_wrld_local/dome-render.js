@@ -32,6 +32,9 @@
 //   --audio-offset <ms>  shift the audio against the picture (default 0)
 //   --lfe-hz <Hz>        crossover of the 5.1 file's LFE channel (default 100)
 //   --no-upmix           a stereo take stays stereo (no quad, no 5.1)
+//   --loudness <LUFS|off>  the clips' WAVs leveled to this integrated
+//                        loudness (default −20, the dome's), never past −1 dBTP:
+//                        one plain gain for all of them, no limiting
 //   --audio-only         only the WAVs (e.g. again, with other options); the
 //                        page is not opened and no video is made
 //   --stills <s>         also save one full-size PNG every <s> seconds: the
@@ -107,6 +110,7 @@ const LFE_HZ = Number(args["lfe-hz"]) || 100;
 const EMBED_AUDIO = args["embed-audio"] === "1";
 const UPMIX = args["no-upmix"] !== "1";
 const AUDIO_ONLY = args["audio-only"] === "1";
+const LOUDNESS = args.loudness === "off" ? null : (Number(args.loudness) || -20);
 // HAP Q does not open in QuickTime or VLC: every .mov gets an H.264 preview
 // beside it (dome-preview.js), unless --no-preview.
 const PREVIEW = args["no-preview"] !== "1";
@@ -300,8 +304,42 @@ function cutAudio() {
   if (spawnSync("ffmpeg", [...cut, "-filter_complex", graph, "-map", "[out]", ...t, "-c:a", "pcm_s24le", five],
     { stdio: "inherit" }).status === 0) {
     say(five, `5.1 · L R C LFE Ls Rs · LFE < ${LFE_HZ} Hz${how}`);
-    if (EMBED_AUDIO) embedAudio(five);
+    // embedding waits for the loudness pass (levelAudio), below
   }
+}
+
+/**
+ * Delivery level, in post: every WAV of the clip gets the SAME plain gain, so
+ * the 5.1, the quad and the stereo stay identical to each other, and nothing
+ * is limited or compressed — the take's dynamics are the piece's. The gain
+ * brings the integrated loudness (EBU R128, measured on the quad or the
+ * stereo) to LOUDNESS, unless that would push the true peak past −1 dBTP, in
+ * which case it stops there. Then the 5.1 is embedded if asked.
+ */
+function levelAudio() {
+  const base = path.join(OUT, `${NAME}_${SIZE}`);
+  const wavs = ["_5.1.wav", "_LRLsRs.wav", "_2ch.wav", "_1ch.wav"].map((x) => base + x).filter((f) => fs.existsSync(f));
+  const ref = [base + "_LRLsRs.wav", base + "_2ch.wav", base + "_1ch.wav", base + "_5.1.wav"].find((f) => fs.existsSync(f));
+  if (ref && LOUDNESS !== null) {
+    const m = spawnSync("ffmpeg", ["-hide_banner", "-nostats", "-i", ref, "-af", "ebur128=peak=true", "-f", "null", "-"], { encoding: "utf8" }).stderr;
+    const sum = m.slice(m.lastIndexOf("Summary"));
+    const I = Number((sum.match(/I:\s+(-?[\d.]+) LUFS/) || [])[1]);
+    const TP = Number((sum.match(/Peak:\s+(-?[\d.]+) dBFS/) || [])[1]);
+    if (Number.isFinite(I) && Number.isFinite(TP) && I > -70) {
+      const gain = Math.min(LOUDNESS - I, -1 - TP);
+      for (const f of wavs) {
+        const tmp = f.replace(/\.wav$/, ".lvl.tmp.wav");
+        const r = spawnSync("ffmpeg", ["-hide_banner", "-loglevel", "error", "-y", "-i", f, "-af", `volume=${gain.toFixed(2)}dB`, "-c:a", "pcm_s24le", tmp], { stdio: "inherit" });
+        if (r.status === 0) fs.renameSync(tmp, f); else { try { fs.unlinkSync(tmp); } catch { /* none */ } }
+      }
+      const capped = gain < LOUDNESS - I - 0.05;
+      console.log(`[dome-render] level: ${I.toFixed(1)} LUFS, true peak ${TP.toFixed(1)} dBTP → ${(I + gain).toFixed(1)} LUFS, ${(TP + gain).toFixed(1)} dBTP (${gain >= 0 ? "+" : ""}${gain.toFixed(1)} dB${capped ? ", held by the −1 dBTP ceiling" : ""})`);
+    } else {
+      console.log(`[dome-render] (level: could not measure ${path.basename(ref)}; WAVs left as cut)`);
+    }
+  }
+  const five = base + "_5.1.wav";
+  if (EMBED_AUDIO && fs.existsSync(five)) embedAudio(five);
 }
 
 /**
@@ -434,6 +472,7 @@ async function run() {
   if (flatFF) { flatFF.stdin.end(); await flatDone; }
   win.destroy();
   cutAudio();
+  levelAudio();
   if (FLAT) flatMux();
   if (FORMAT !== "png" && (PREVIEW || STILLS)) {
     const mov = fs.readdirSync(OUT).find((f) => f.endsWith(".mov") && !f.includes(".tmp."));
@@ -456,6 +495,7 @@ app.whenReady().then(() => {
   if (AUDIO_ONLY) {
     fs.mkdirSync(OUT, { recursive: true });
     cutAudio();
+    levelAudio();
     app.exit(0);
     return;
   }

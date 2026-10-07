@@ -239,6 +239,16 @@
     // bed (REMU). Either one above 0 switches remuestreo on, so the sequences
     // can play with no bed and the bed with no sequences.
     (name: \mixSeq,        spec: ControlSpec(0, 2, \lin), default: 0.0, path: "/mix/seq",        cc: 63),
+    // MEZCLA: how much the mix is CARVED — one owner per band. 0 is the
+    // engine exactly as it always sounded (the mud included, and the road to
+    // a noise piece); 1 is the professional mix: low cuts per layer, the
+    // drone and pad ducked under the kick below 150 Hz, the low mids dipped,
+    // the lows in mono, no bass inside the reverbs, the peaks held 12 dB
+    // over each layer's own level. Everything crossfades on this one number
+    // (3_synthdefs.scd \stemSum, \masterLimiter, \resonantChamber and the
+    // voices' reverbs), so any value between is a mix between the two.
+    // Loaded by the MEZCLA_* add-on configs; base configs leave it alone.
+    (name: \mixCarve,      spec: ControlSpec(0, 1, \lin), default: 0.0, path: "/mix/carve"),
 
     // ── Beat engine (no control bus — lives in ~beatParams) ─────────────
     (name: \beatTempo, spec: ControlSpec(0.5, 2.0, \exp), default: 1.0, path: "/soneth/beatTempo",

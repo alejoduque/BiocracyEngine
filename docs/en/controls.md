@@ -162,6 +162,32 @@ Unity is **1.0 at mid-throw**: at boot these multiply by exactly 1 and the engin
 
 The SC GUI strips carry a **MUTE** that remembers the fader position, so unmuting restores the exact level. Mixer faders appear on both surfaces and follow MIDI, browser and preset loads through the same `~setParam` path as every other control.
 
+## MEZCLA — one band, one owner (`mixCarve`)
+
+One control, 0 to 1, on the Marea and room row (SC GUI; path `/mix/carve`). **0 is the engine exactly as it always sounded**, its mud included, which is also the road to a noise piece. **1 is the professional mix**: every layer in its own band, none hiding another. Everything it does is crossfaded on this one number (`LinXFade2`), so any value between is a mix of the two. Measured: at 0 the output is bit-identical to the input.
+
+It loads from the config list, like the EXT ones, as three add-ons that touch only this value and leave whatever world is playing: **MEZCLA_1_Limpia** (1.0), **MEZCLA_2_Media** (0.5) and **MEZCLA_0_Barro** (0.0). Base configs don't carry it, so they don't change it.
+
+What it does, on each layer's way into the mix (`\stemSum`, profiles in `~stemCarveProfiles`):
+
+| Layer | Carve |
+|---|---|
+| **kick** | owns 40–90 Hz and the sub: its 12–22 Hz sine cut at 28 Hz; peaks held 12 dB over its own level |
+| **drone** | above the kick (cut 45 Hz), gives 4 dB under 150 Hz when the kick hits, −2 dB at 400 Hz where the low mids pile up |
+| **pad** | cut 60 Hz (its pulse an octave down lived at 8–37 Hz), gives way under the kick, −3 dB at 300 Hz; moves up a register to ×1.6 |
+| **perc** | peaks held; its air shelf given back |
+| **dust** | cut 250 Hz and its 1.2 kHz ceiling opened to 6 kHz: dust goes from body to detail |
+| **corpus** | −3 dB below 200 Hz: the forest sits above the bed |
+| **sample, motors** | cut 40 / 30 Hz; masa 25 Hz |
+
+And across the engine:
+- **No bass in the reverbs:** every FreeVerb input loses what is under 180 Hz, and the room (`\resonantChamber`, up to 28 s) what is under 150 Hz. That was the low-end wash.
+- **Master:** a real 24 Hz cut (4th order; there was only LeakDC), the lows in mono below 120 Hz (Linkwitz-Riley: the dome and its six subwoofers want one signal) and the compressor keyed through a 100 Hz high-pass, so the sub stops pumping the rest.
+
+**Measuring it:** `python3 tools/mixcheck.py recordings/<take>.wav` gives LUFS, range, true peak, crest, octave bands, width per band and what is under 30 Hz, with a ✔/✘ per criterion. `--ref <file>` compares against a reference. The take of 2026-10-05, uncarved, fails all five: low mids at the bass's level, presence −18.6 dB, side −3.3 dB below 120 Hz, rumble, crest 25.7 dB.
+
+**Delivery level for the dome:** the clips' WAVs are leveled in post to −20 LUFS, never above −1 dBTP, one gain for all of them and no limiting (`dome-render.js --loudness`, `off` to leave them as cut).
+
 ## Marea — the density arc
 
 The rhythm is not a grid. There is no step pattern deciding what sounds; a slow swell decides how *likely* any onset is, and events are placed by probability with ±45% of a tick of jitter so nothing lands on an audible pulse. The kick can only occur where the chain itself has a seam — a new block — and even there only with probability `tide²`, so the low end is present at the crest and absent through the trough.

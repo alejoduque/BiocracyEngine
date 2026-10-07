@@ -1187,7 +1187,10 @@
         // drone row where space and delay live: that row already holds seven
         // knobs at 132 px, and nine would be 1188 px against a surface of about
         // 1100, which buys a horizontal scroller for two controls.
-        [\chamberMix, \chamberSize].do { |key|
+        // MEZCLA (mixCarve) beside them, for the same reason: how carved the
+        // whole mix is — 0 the mud as it always was, 1 one owner per band.
+        // The MEZCLA_* add-on configs set it; base configs leave it alone.
+        [\chamberMix, \chamberSize, \mixCarve].do { |key|
             ~knobs[key] = ~makeKnob.value(
                 key.asString,
                 ~controlSpecs[key].minval,
