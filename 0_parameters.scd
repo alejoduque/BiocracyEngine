@@ -31,6 +31,10 @@
 ~paramDefs = [
     // ── Row 1: Core Performance (Lawrence English ambient) ──────────────
     (name: \masterVolume,  spec: ControlSpec(0.01, 1, \lin),  default: 0.3,  path: "/soneth/volume",        cc: 0),
+    // PITCH: the motors read it as semitones (±24). The voices (kick, perc,
+    // pad, drone, dust, samples) read it as TWELFTHS — (p / 12).midiratio —
+    // so on them the whole knob is about ±2 semitones (±1 on kick and perc).
+    // Kept as it sounds; documented, not changed.
     (name: \pitchShift,    spec: ControlSpec(-24, 24, \lin),  default: 0.0,  path: "/soneth/pitchshift",    cc: 1),
     (name: \timeDilation,  spec: ControlSpec(0.5, 6, \exp),   default: 2.0,  path: "/soneth/timedilation",  cc: 2,
         aliases: ["/parliament/fx/delaytime"]),
@@ -88,8 +92,9 @@
     // ── Row 3: Drone/Noise Controls ──────────────────────────────────────
     // beatParam mirror added: the beat engine already multiplies
     // ~beatParams.masterAmp into every percussion \amp, but without this field
-    // ~setParam never wrote it, so the slider only moved a bus. Now the one
-    // control trims pad layer (\elektronBell), drone (\opalDrone) and beats.
+    // ~setParam never wrote it, so the slider only moved a bus. It trims the
+    // SYNTH layers against the rest — drone bed, kick, perc, dust and the
+    // motors — but not the pad, the bells or the corpus: hence SYNTH TRIM.
     (name: \masterAmp,     spec: ControlSpec(0, 1, \lin),     default: 0.7,  path: "/soneth/masteramp",     cc: 5,
         beatParam: \masterAmp),
     (name: \filterCutoff,  spec: ControlSpec(0, 1, \lin),     default: 0.6,  path: "/soneth/filtercutoff",  cc: 6),
@@ -500,7 +505,7 @@
     \memoryFeed           -> "MEM FEED",
     \harmonicRich         -> "HARMONICS",
     \resonantBody         -> "RES BODY",
-    \masterAmp            -> "MASTER AMP",
+    \masterAmp            -> "SYNTH TRIM",
     \filterCutoff         -> "FILT TILT",
     \noiseLevel           -> "NOISE LVL",
     \noiseFilt            -> "NOISE FILT",
@@ -593,6 +598,13 @@
     };
 };
 ~valueOnly = { |name, val| (val ? 0).round(0.001).asString };
+// The sample row's PITCH SHIFT reads its value as TWELFTHS of a semitone (the
+// voice computes (pitch / 12).midiratio, 10_sample_system.scd), so the ±24
+// knob moves a sample ±2 semitones. The sound is kept as it is; the readout
+// says what is heard.
+~labelFormats[\samplePitch] = { |name, val|
+    (~knobLabels[name] ? ~labelCase.(name)) ++ "\n" ++ ((val ? 0) / 12).round(0.01) ++ " st"
+};
 
 // ─── The single write path ──────────────────────────────────────────────────
 // source: \midi | \osc | \gui | \code — used for the BRIDGE liveness light.
@@ -783,13 +795,9 @@ if(File.exists(~presetDir).not) { File.mkdir(~presetDir) };
         };
         sections.add(jsonSection.(\stems, st));
     };
-    if(~buses.notNil) {
-        var spatial = ();
-        #[\spatialX, \spatialY, \roomSize, \distanceEffect].do { |k|
-            if(~buses[k].notNil) { spatial[k] = ~buses[k].getSynchronous };
-        };
-        if(spatial.size > 0) { sections.add(jsonSection.(\spatial, spatial)) };
-    };
+    // (The "spatial" section — spatialX/Y, roomSize, distanceEffect — is no
+    // longer written: those buses fed only the never-played \elektronBell.
+    // Old configs still carry it; the loader skips keys with no bus.)
     File.use(path, "w", { |f|
         f.write("{\n  \"meta\": { \"engine\": \"BiocracyEngine\", \"version\": 1, \"saved\": \"%\" },\n%\n}\n"
             .format(Date.getDate.format("%Y-%m-%d %H:%M:%S"), sections.join(",\n")));
@@ -875,7 +883,9 @@ if(File.exists(~presetDir).not) { File.mkdir(~presetDir) };
                                 };
                             };
                         };
-                        ~setParam.(key, val, \preset);
+                        // A key this engine no longer has (an old config) is
+                        // skipped quietly rather than warned about on every load.
+                        if(~paramDefsByName[key].notNil) { ~setParam.(key, val, \preset) };
                     };
                     if(clamped.size > 0) {
                         ("⚠ SAFE BOOT: " ++ clamped.size

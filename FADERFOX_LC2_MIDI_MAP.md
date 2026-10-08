@@ -32,7 +32,7 @@ This document outlines the full MIDI CC mapping for the **Faderfox LC2 MicroModu
 | **Knob 3** | `CC 2` | `timeDilation` | `0.5 .. 6.0` (exp) | Estiramiento temporal / Envolventes |
 | **Knob 4** | `CC 3` | `spectralShift` | `80 .. 2400` Hz (exp) | Filtro paso bajo principal (LPF) |
 | **Knob 5** | `CC 4` | `spatialSpread` | `-1.0 .. +1.0` (lin) | Paneo estéreo / Distribución Quad |
-| **Knob 6** | `CC 5` | `masterAmp` | `0.0 .. 1.0` (lin) | Trim de nivel master |
+| **Knob 6** | `CC 5` | `masterAmp` | `0.0 .. 1.0` (lin) | **SYNTH TRIM**: nivel de las capas sintéticas (lecho de drone, kick, perc, dust, motores) frente al pad y el corpus |
 | **Knob 7** | `CC 6` | `filterCutoff` | `0.0 .. 1.0` (lin) | Inclinación tímbrica relativa |
 | **Knob 8** | `CC 7` | `noiseLevel` | `0.0 .. 0.5` (lin) | Nivel de ruido / aliento excita |
 | **Knob 9** | `CC 8` | `noiseFilt` | `0.0 .. 1.0` (lin) | Filtro de banda de ruido excita |
@@ -49,9 +49,9 @@ This document outlines the full MIDI CC mapping for the **Faderfox LC2 MicroModu
 | **Knob 1 (Shift)** | `CC 34` | `memoryFeed` | `0.0 .. 0.8` (lin) | Envío a delay / memoria |
 | **Knob 2 (Shift)** | `CC 35` | `harmonicRich` | `0.1 .. 5.0` (exp) | Riqueza armónica / Parciales |
 | **Knob 3 (Shift)** | `CC 36` | `resonantBody` | `0.1 .. 0.8` (lin) | Resonancia del cuerpo / Inharmonicidad |
-| **Knob 4 (Shift)** | `CC 37` | `droneFade` | `0.1 .. 5.0` s (exp) | Tiempo de suavizado / Glide del drone |
+| **Knob 4 (Shift)** | `CC 37` | `droneFade` | `0.1 .. 5.0` s (exp) | **DRONE FADE**: cuánto tardan en entrar y salir los parciales del lecho (×fade/2) y, sobre 2 s, el glide al cambiar la raíz. En 2.0 suena como siempre |
 | **Knob 5 (Shift)** | `CC 38` | `droneSpace` | `0.0 .. 1.0` (lin) | Tamaño de sala reverb del drone |
-| **Knob 6 (Shift)** | `CC 39` | `droneMix` | `0.0 .. 1.0` (lin) | Mezcla seca ↔ procesada drone |
+| **Knob 6 (Shift)** | `CC 39` | `droneMix` | `0.0 .. 1.0` (lin) | **DRONE LAYER**: el lecho de drone de seco (0) a florecido (1, el doble de reverb). En 0.5 suena como siempre |
 | **Knob 7 (Shift)** | `CC 40` | `delayFeedback` | `0.0 .. 0.95` (lin) | Retroalimentación comb-delay |
 | **Knob 8 (Shift)** | `CC 41` | `transactionInfluence` | `0.0 .. 1.0` (lin) | Influencia datos transaccionales ETH |
 | **Knob 9 (Shift)** | `CC 10` | `activityThreshold` | `0.20 .. 0.85` (lin) | Umbral de actividad fenológica |
@@ -100,3 +100,15 @@ This document outlines the full MIDI CC mapping for the **Faderfox LC2 MicroModu
 ---
 
 *Note: All incoming MIDI CC values are processed by `~setParamNorm` in `0_parameters.scd` to update SuperCollider control buses, the SC GUI controls, and the HTML browser interface in real time.*
+
+---
+
+## 👁️ VIZ: controles que sólo oye la proyección
+
+En el GUI de SC están juntos en la tira **VIZ**, al final de la fila CADENCIA. Ninguno llega a un sintetizador.
+
+| CC | Parámetro | Rango | Función |
+|---|---|---|---|
+| `CC 24` | `camaraOpacity` | `0.0 .. 1.0` | **CÁMARA OPAC**: cuánto de la cámara trampa proyecta el módulo C |
+| `CC 55` | `vizRotation` | `0.1 .. 2.0` | **ROTATION**: velocidad de giro de la proyección |
+| `CC 56` | `vizConsensus` | `0.0 .. 1.0` | **CONSENSUS**: consenso visual del parlamento |

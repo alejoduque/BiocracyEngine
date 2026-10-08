@@ -763,9 +763,12 @@
                     // shorten by up to 40%, so partials arrive and leave more
                     // often and the drone becomes visibly restless under load.
                     var churn = 1.0 - (chainFull * 0.4);
-                    var atk  = rrand(9.0, 26.0) * tDil.linlin(0.5, 6, 0.6, 1.8) * churn;
+                    // DRONE FADE: how slowly each partial arrives and leaves,
+                    // ×1 at its default 2.0 (see \dronePartial).
+                    var fadeK = (((~controlValues ? ()).at(\droneFade) ? 2.0) / 2).clip(0.25, 2.5);
+                    var atk  = rrand(9.0, 26.0) * tDil.linlin(0.5, 6, 0.6, 1.8) * churn * fadeK;
                     var hold = rrand(14.0, 48.0) * tDil.linlin(0.5, 6, 0.6, 1.8) * churn;
-                    var rel  = rrand(12.0, 34.0) * tDil.linlin(0.5, 6, 0.6, 1.8) * churn;
+                    var rel  = rrand(12.0, 34.0) * tDil.linlin(0.5, 6, 0.6, 1.8) * churn * fadeK;
                     var syn = Synth(\dronePartial, [
                         \out,    ~stemOut.(\drone),
                         \freq,   ~droneRoot,

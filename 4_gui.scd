@@ -501,15 +501,16 @@
         // said so rather than implied by a comment that has stopped being true.
         ~knobParameters = [
             // Core performance. The two loudness controls lead the surface
-            // side by side — MASTER VOL, the output level, and MASTER AMP, the
-            // gain that trims pad, drone and beats together. MASTER AMP used to
+            // side by side — MASTER VOL, the output level, and SYNTH TRIM
+            // (\masterAmp), the gain on the synth layers — drone bed, kick,
+            // perc, dust, motors — against the pad and the corpus. It used to
             // sit fourth in the ambient row between RES BODY and the noise bed,
             // so setting the level meant reaching across three timbre knobs
             // for its other half. MIDI is unaffected: CCs map by name.
             [\masterVolume, \masterAmp, \pitchShift, \timeDilation, \spectralShift,
              \spatialSpread, \textureDepth],
             // Ambient processing, then the noise bed. ATMOS MIX moved here in
-            // MASTER AMP's place and belongs here anyway: it is the reverb
+            // SYNTH TRIM's old place and belongs here anyway: it is the reverb
             // send, with MEM FEED, HARMONICS and RES BODY beside it.
             [\atmosphereMix, \memoryFeed, \harmonicRich, \resonantBody,
              \filterCutoff, \noiseLevel, \noiseFilt],
@@ -537,16 +538,13 @@
             [\tideShort, \tideMedia, \tideLarga, \tidePulse],
             // Cámara Fenológica · Corpus: the field-recording layer's own fader,
             // with the bancada selector and the transport button beside it.
-            // camaraOpacity is the visual register's share of the same room —
-            // how much of the camera trap slot C projects. It sits here rather
-            // than in a row of its own because the performer reaches for it in
-            // the same gesture as corpusLevel: one decides how loud the forest
-            // is, the other how much of it is seen.
+            // (camaraOpacity sat here too; it moved to the VIZ strip, row 8 —
+            // it reaches no synth, and this row is sound.)
             // phenoSeek joins them: how much of the silent calendar is heard
             // between recordings is the same decision as how loud they are.
             // corpusFx beside CADENA: both decide how much is DONE to the
             // recordings, one by the chain, one by the sample row.
-            [\corpusLevel, \phenoSeek, \corpusFx, \chainProcess, \camaraOpacity],
+            [\corpusLevel, \phenoSeek, \corpusFx, \chainProcess],
             // Cadencia — how OFTEN, not how loud. The matrix mixer row below
             // sets each layer's level; these set its rate. They are the other
             // half of the same question and the reason the mix faders felt
@@ -565,7 +563,10 @@
             // entered the registry the SC surface could not show them, MIDI
             // could not reach them, and a saved config forgot the one setting
             // that decides how the whole projection moves.
-            [\vizRotation, \vizConsensus]
+            // camaraOpacity (how much of the camera trap module C projects)
+            // joins them: the three controls on this surface that only the
+            // projection hears, in one strip. CCs unchanged (55, 56, 24).
+            [\vizRotation, \vizConsensus, \camaraOpacity]
         ];
 
         // Enhanced knob function with oscilloscope aesthetics

@@ -9,12 +9,7 @@
     var speakers, soundSources, activeNodes;
     var fieldSize, centerX, centerY, speakerRadius;
     var mouseDown, draggedNode, dragOffset;
-    var mainTheme, controlPanel, modeButton, roomKnob, distanceKnob, resetButton;
-    // The two readouts under the knobs. They used to be anonymous StaticTexts
-    // built inline with the literal strings "0.80" and "0.50" and no handle to
-    // update them, so the numbers under ROOM SIZE and DISTANCE were wrong from
-    // the first time anyone moved a knob and stayed wrong for the session.
-    var roomLabel, distanceLabel;
+    var mainTheme, controlPanel, modeButton, resetButton;
     var statusText, coordText;
     
     "Creating Spatial Control GUI...".postln;
@@ -31,27 +26,16 @@
         red: Color.fromHexString("#F38BA8")
     );
     
-    // Spatial control parameters
+    // Spatial control parameters.
+    // The AMB node and the ROOM SIZE / DISTANCE knobs are gone: their buses
+    // were read only by \elektronBell, a SynthDef nothing ever played, so
+    // moving them changed nothing. The SMP node is real (the sample voices).
     ~spatialParams = (
-        // Sound source positions (x, y coordinates -1 to 1)
-        ambientPos: [0.0, 0.0],      // Ethereum ambient sounds
-        samplePos: [0.0, 0.0],       // Current sample position
-        masterSpatialGain: 1.0,      // Overall spatial effect intensity
-        spatialMode: \quad,          // \quad or \headphones
-        roomSize: 0.8,               // Virtual room size for reverb
-        distanceEffect: 0.5          // Distance-based amplitude scaling
+        samplePos: [0.0, 0.0],       // Current sample position (x, y -1 to 1)
+        spatialMode: \quad           // \quad or \headphones
     );
     
-    // Connect to existing buses from synthdefs
     ~spatialBuses = ();
-    
-    // Use existing spatial buses if available, otherwise create new ones
-    if(~buses.notNil) {
-        ~spatialBuses.ambientX = ~buses.spatialX;
-        ~spatialBuses.ambientY = ~buses.spatialY;
-        ~spatialBuses.roomSize = ~buses.roomSize;
-        ~spatialBuses.distanceEffect = ~buses.distanceEffect;
-    };
     
     // Create sample spatial buses if not already available.
     //
@@ -119,7 +103,6 @@
     
     // Sound source nodes (draggable)
     soundSources = [
-        [\ambient, centerX, centerY, mainTheme.accent, "AMB"],
         [\sample, centerX + 50, centerY + 50, mainTheme.cyan, "SMP"]
     ];
     
@@ -152,14 +135,6 @@
         ).postln;
         
         // Update buses
-        if(sourceType == \ambient) {
-            ~spatialParams.ambientPos = [spatialX, spatialY];
-            if(~spatialBuses.ambientX.notNil) {
-                ~spatialBuses.ambientX.set(spatialX);
-                ~spatialBuses.ambientY.set(spatialY);
-            };
-        };
-        
         if(sourceType == \sample) {
             ~spatialParams.samplePos = [spatialX, spatialY];
             if(~spatialBuses.sampleX.notNil) {
@@ -340,48 +315,14 @@
             };
         });
     
-    // Room size control
-    roomKnob = Knob()
-        .maxHeight_(60)
-        .maxWidth_(60)
-        .color_([mainTheme.background, mainTheme.yellow, mainTheme.foreground, mainTheme.foreground.alpha_(0.2)])
-        .value_(~spatialParams.roomSize)
-        .action_({ |knob|
-            ~spatialParams.roomSize = knob.value;
-            // ~spatialBuses is nil when ~buses was not yet populated at load
-            // time (see the guard where it is built) — without this the first
-            // knob move throws instead of just doing nothing.
-            if(~spatialBuses.notNil and: { ~spatialBuses.roomSize.notNil }) {
-                ~spatialBuses.roomSize.set(knob.value);
-            };
-            if(roomLabel.notNil) { roomLabel.string = knob.value.round(0.01).asString };
-        });
-    
-    // Distance effect control
-    distanceKnob = Knob()
-        .maxHeight_(60)
-        .maxWidth_(60)
-        .color_([mainTheme.background, mainTheme.red, mainTheme.foreground, mainTheme.foreground.alpha_(0.2)])
-        .value_(~spatialParams.distanceEffect)
-        .action_({ |knob|
-            ~spatialParams.distanceEffect = knob.value;
-            if(~spatialBuses.notNil and: { ~spatialBuses.distanceEffect.notNil }) {
-                ~spatialBuses.distanceEffect.set(knob.value);
-            };
-            if(distanceLabel.notNil) { distanceLabel.string = knob.value.round(0.01).asString };
-        });
-    
     // Reset positions button
     resetButton = Button()
         .states_([["RESET POSITIONS", mainTheme.foreground, mainTheme.background.blend(mainTheme.purple, 0.2)]])
         .action_({
             "Resetting spatial positions to center".postln;
-            soundSources[0][1] = centerX;  // Ambient
-            soundSources[0][2] = centerY;
-            soundSources[1][1] = centerX + 50;  // Sample
-            soundSources[1][2] = centerY + 50;
+            soundSources[0][1] = centerX + 50;  // Sample
+            soundSources[0][2] = centerY + 50;
             
-            ~updateSpatialPosition.(\ambient, centerX, centerY);
             ~updateSpatialPosition.(\sample, centerX + 50, centerY + 50);
             
             fieldView.refresh;
@@ -391,24 +332,6 @@
     controlPanel.layout.add(VLayout(
         StaticText().string_("MODE").stringColor_(mainTheme.foreground).align_(\center),
         modeButton
-    ));
-    
-    roomLabel = StaticText()
-        .string_(~spatialParams.roomSize.round(0.01).asString)
-        .stringColor_(mainTheme.yellow).align_(\center);
-    controlPanel.layout.add(VLayout(
-        StaticText().string_("ROOM SIZE").stringColor_(mainTheme.foreground).align_(\center),
-        roomKnob,
-        roomLabel
-    ));
-    
-    distanceLabel = StaticText()
-        .string_(~spatialParams.distanceEffect.round(0.01).asString)
-        .stringColor_(mainTheme.red).align_(\center);
-    controlPanel.layout.add(VLayout(
-        StaticText().string_("DISTANCE").stringColor_(mainTheme.foreground).align_(\center),
-        distanceKnob,
-        distanceLabel
     ));
     
     controlPanel.layout.add(VLayout(
@@ -429,7 +352,7 @@
     
     // Coordinate display
     coordText = StaticText()
-        .string_("AMB: [0.00, 0.00] | SMP: [0.00, 0.00]")
+        .string_("SMP: [0.00, 0.00]")
         .stringColor_(mainTheme.cyan)
         .font_(Font("Monaco", 11, true))
         .align_(\center);
@@ -440,10 +363,8 @@
     ~spatialUpdateRoutine = Routine({
         loop {
             {
-                var ambPos = ~spatialParams.ambientPos;
                 var smpPos = ~spatialParams.samplePos;
-                coordText.string = "AMB: [%, %] | SMP: [%, %]".format(
-                    ambPos[0].round(0.01), ambPos[1].round(0.01),
+                coordText.string = "SMP: [%, %]".format(
                     smpPos[0].round(0.01), smpPos[1].round(0.01)
                 );
             }.defer;

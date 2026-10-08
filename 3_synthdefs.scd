@@ -661,223 +661,8 @@ s.doWhenBooted({
             bands.collect { |f| Amplitude.kr(BPF.ar(sig, (f).min(SampleRate.ir * 0.45), ~scopeRq), 0.01, 0.12) * makeup });
     }).add;
 
-    // Main transaction bell with MIDI control
-    SynthDef(\elektronBell, {
-        // out: the only voice on the surface that hard-wired Out.ar(0, ...).
-        // Every other SynthDef takes an out bus, and without one this layer
-        // could not be routed, metered or rendered anywhere except the main
-        // output — which is how it went unmeasured while it was the layer that
-        // sounded wrong. Defaults to 0, so nothing about the running instrument
-        // changes.
-        arg out=0, freq=440, amp=0.3,
-        // ADSR: sus is the HOLD TIME at susLvl, not a level — the level is
-        // susLvl. Defaults keep any caller that does not pass them sounding
-        // close to the previous three-stage shape.
-        atk=2.0, dec=1.0, sus=0.8, susLvl=0.6, rel=1.5,
-        tone=0.3, res=0.4, pan=0, polyComp=1.0,
-        // Bus indices for real-time MIDI control (merged parameter set)
-        masterVolBus=(-1), pitchBus=(-1), timeBus=(-1), spectralBus=(-1), spatialBus=(-1),
-        textureBus=(-1), atmosphereBus=(-1), memoryBus=(-1), harmonicBus=(-1), resonantBus=(-1),
-        // Additional drone/noise control buses
-        masterAmpBus=(-1), filterCutoffBus=(-1), noiseLevelBus=(-1), noiseFiltBus=(-1),
-        droneDepthBus=(-1), droneFadeBus=(-1), droneSpaceBus=(-1), droneMixBus=(-1),
-        // Spatial positioning buses
-        spatialXBus=(-1), spatialYBus=(-1), roomSizeBus=(-1), distanceEffectBus=(-1),
-        // Matrix mixer: this layer's live level (0 = mute, 1 = unity). Named
-        // to match the \mixPad bus, so the generic wiring in 6_osc_handlers
-        // connects it without the spawn site listing it.
-        mixPadBus=(-1);
-
-        var env, sig, mod, carrier, grains, wet, noise, distance, distanceAmp, quadSig, innerMod;
-        // MIDI bus inputs - Lawrence English ambient style with bus parameter fallbacks
-        // LAGGED, like the mix buses beneath it — 0.08 is their figure too.
-        //
-        // This read was raw at all SEVEN sites, and the value multiplies the
-        // signal directly: drone, pad, kick, perc, dust and both bell paths.
-        // So any change to masterVolume stepped the amplitude of every
-        // SUSTAINED voice inside one control block, and a step in a signal
-        // that is already sounding is a click by definition.
-        //
-        // Loading a config is where it bit: ~loadConfig applies every stored
-        // parameter in a single pass, masterVolume among them, so changing
-        // preset from the SC GUI clicked every time. The mix faders had been
-        // given exactly this treatment and the master had been left out.
-        var masterVol = Lag.kr(Select.kr(masterVolBus >= 0, [0.3, In.kr(masterVolBus, 1)]), 0.08);
-        var pitchOffset = Select.kr(pitchBus >= 0, [0.0, In.kr(pitchBus, 1)]);
-        var timeStretch = Select.kr(timeBus >= 0, [2.0, In.kr(timeBus, 1)]);
-        var spectralFreq = Select.kr(spectralBus >= 0, [1000, In.kr(spectralBus, 1)]);
-        var spatialPos = Select.kr(spatialBus >= 0, [0.0, In.kr(spatialBus, 1)]);
-        var textureDensity = Select.kr(textureBus >= 0, [0.2, In.kr(textureBus, 1)]);
-        var atmosphereLevel = Select.kr(atmosphereBus >= 0, [0.4, In.kr(atmosphereBus, 1)]);
-        var memoryFeedback = Select.kr(memoryBus >= 0, [0.3, In.kr(memoryBus, 1)]);
-        var harmonicComplexity = Select.kr(harmonicBus >= 0, [1.0, In.kr(harmonicBus, 1)]);
-        var filterResonance = Select.kr(resonantBus >= 0, [0.4, In.kr(resonantBus, 1)]);
-        
-        // Additional drone/noise parameters
-        // masterAmp + filterCutoff are applied further down (they used to be
-        // read into variables this SynthDef then threw away). The drone*
-        // buses are NOT read here — they belong to \opalDrone, which now
-        // declares and uses them itself.
-        var legacyAmp = Select.kr(masterAmpBus >= 0, [0.7, In.kr(masterAmpBus, 1)]);
-        var legacyFilter = Select.kr(filterCutoffBus >= 0, [0.6, In.kr(filterCutoffBus, 1)]);
-        var noiseAmount = Select.kr(noiseLevelBus >= 0, [0.1, In.kr(noiseLevelBus, 1)]);
-        var noiseFilter = Select.kr(noiseFiltBus >= 0, [0.5, In.kr(noiseFiltBus, 1)]);
-
-        // Spatial positioning parameters from spatial GUI
-        var spatialX = Select.kr(spatialXBus >= 0, [0.0, In.kr(spatialXBus, 1)]);
-        var spatialY = Select.kr(spatialYBus >= 0, [0.0, In.kr(spatialYBus, 1)]);
-        var roomSizeParam = Select.kr(roomSizeBus >= 0, [0.8, In.kr(roomSizeBus, 1)]);
-        var distanceParam = Select.kr(distanceEffectBus >= 0, [0.5, In.kr(distanceEffectBus, 1)]);
-        
-        // Apply pitch shift, then HARD-CLAMP the fundamental.
-        // ~handleTransaction folds the value-derived pitch below 160 Hz so the
-        // pads sit with the drone's sub. The clamp is a backstop placed HERE
-        // rather than in sclang, so no control path — MIDI CC 1, the HTML
-        // slider, a preset load — can lift the layer out of that register.
-        //
-        // NOTE on the shift itself: `(x / 12).midiratio` divides by twelve
-        // TWICE, because midiratio is already 2**(n/12). pitchShift is
-        // documented and specced as ±2 octaves but currently delivers ±1.12x
-        // (about two semitones). Left as-is deliberately — correcting it makes
-        // the control 12x stronger, which is a musical change, not a fix to
-        // make silently mid-session. The clamp above makes it safe to correct
-        // whenever wanted. Same pattern exists in \opalDrone.
-        freq = (freq * (pitchOffset.clip(-24, 24) / 12).midiratio).clip(28, 180);
-
-        // --- Sustained pad tone ---
-        // NESTED FM, three deep, after the single near-unison modulator this
-        // had was judged dull. One modulator at 1.0-1.5x the carrier can only
-        // produce a narrow, static sideband pair — warm, and the same warmth
-        // every time. Nesting a second modulator inside the first makes the
-        // sideband structure itself move, and putting a slow LFNoise on the
-        // innermost frequency means it never settles: the spectrum drifts over
-        // tens of seconds while the pitch stays exactly where it was put.
-        //
-        // The register is unchanged. freq is still folded to 28-180 Hz above,
-        // so this is a low sustained tone with a moving spectrum, not a bell —
-        // harmonicRich still opens it and the modulation index is still scaled
-        // so the top of that fader cannot brighten the layer into one.
-        innerMod = SinOsc.ar(
-            LFNoise2.kr(0.05).exprange(freq * 0.5, freq * 3.2),
-            0,
-            harmonicComplexity.linlin(0.1, 8, 0.5, 6.0)
-        );
-        mod = SinOsc.ar(
-            freq * harmonicComplexity.linexp(0.1, 8, 1.0, 1.5) * (1 + (innerMod * 0.03)),
-            innerMod * 0.4
-        ) * (harmonicComplexity.linlin(0.1, 8, 0.0, 0.15)) * freq;
-        carrier = SinOsc.ar(freq + mod);
-
-        // Blend in a soft sub octave and a quiet 5th for body. The 5th gets a
-        // slow detune so two pads a few seconds apart beat against each other
-        // instead of stacking into one motionless chord.
-        sig = carrier * 0.5
-            + (SinOsc.ar(freq * 0.5) * 0.3)
-            + (SinOsc.ar(freq * 1.5 * LFNoise2.kr(0.04).range(0.997, 1.003))
-                * 0.1 * harmonicComplexity.linlin(0.1, 8, 0.0, 1.0));
-
-        // ── ADSR ─────────────────────────────────────────────────────────
-        // A true four-stage envelope with a HELD sustain, not the previous
-        // three-segment ramp ([0,1,0.6,0]) which decayed straight into its
-        // release and so had no steady portion at all — every pad was a swell
-        // that immediately began dying, which is part of why the layer read as
-        // a wash of bells rather than sustained tone.
-        //
-        //   A  atk        slow fade-in, sine curve
-        //   D  dec        settle to the sustain level, exponential-ish
-        //   S  sus/susLvl HELD — the body of the pad
-        //   R  rel        gentle tail
-        //
-        // timeStretch (timeDilation) still scales every stage, clamped per
-        // stage so a high setting cannot stretch one pad across several bars.
-        env = EnvGen.kr(
-            Env.new(
-                [0, 1, susLvl, susLvl, 0],
-                [
-                    atk * timeStretch.clip(0.5, 3.0),   // A
-                    dec * timeStretch.clip(0.5, 2.0),   // D
-                    sus * timeStretch.clip(0.5, 2.0),   // S — held
-                    rel * timeStretch.clip(0.5, 1.5)    // R
-                ],
-                [\sine, -2, 0, -3]
-            ),
-            doneAction: 2
-        );
-
-        sig = sig * env;
-
-        // Soft low-pass (not resonant) — no ringing, just warmth
-        // Clamp 200–3000Hz: above 3000 LPF is transparent on these pads
-        sig = LPF.ar(sig, (spectralFreq.clip(200, 3000)).min(SampleRate.ir * 0.45));
-
-        // Slow shimmer via gentle pitch modulation
-        grains = PitchShift.ar(sig, 0.3, LFNoise2.kr(0.2).range(0.98, 1.02), textureDensity * 0.3);
-        sig = XFade2.ar(sig, grains, textureDensity.linlin(0, 1, -1, 0.5));
-
-        // Long wash reverb — pads need space
-        wet = DelayC.ar(sig, 2.0, LFNoise2.kr(0.05).range(0.3, 1.2), memoryFeedback * 0.7);
-        sig = sig + wet;
-        sig = FreeVerb2.ar(sig, sig,
-            atmosphereLevel.clip(0.3, 0.95),
-            roomSizeParam.clip(0.3, 0.99),
-            0.5
-        );
-
-        // Soft noise breath underneath
-        noise = PinkNoise.ar() * noiseAmount * 0.15;
-        noise = LPF.ar(noise, (noiseFilter.linexp(0, 1, 200, 2000)).min(SampleRate.ir * 0.45));
-        sig = sig + noise;
-
-        // filterCutoff: broad tone tilt over the whole pad (was read and dropped).
-        // Ceiling 12000 → 2600 Hz. At 12 kHz this filter was effectively open
-        // and undid the 200–3000 Hz clamp applied earlier in the chain, so FM
-        // sidebands and the grain shimmer passed straight through. The pads are
-        // a drone bed; nothing in them needs to reach beyond ~2.6 kHz.
-        sig = LPF.ar(sig, (Lag.kr(legacyFilter, 0.3).linexp(0, 1, 300, 2600)).min(SampleRate.ir * 0.45));
-        // Final safety net, independent of every control: whatever the buses
-        // say, this layer does not emit above 3 kHz.
-        sig = LPF.ar(sig, 3000);
-        
-        // Calculate distance-based amplitude scaling
-        distance = (spatialX.squared + spatialY.squared).sqrt;
-        distanceAmp = 1 - (distance * distanceParam * 0.5);
-        
-        // Volume: masterVol linear (not squared) so pads aren't buried at mid-knob
-        // settings. masterAmp rides on top as the pad-layer trim (also previously
-        // read and dropped) — it is the same control the beat engine scales its
-        // percussion with, so the two layers now balance from one slider.
-        // polyComp is 1/sqrt(live pad count), computed in sclang at spawn —
-        // pads are the one layer that sums linearly with concurrency, and at
-        // 20-30 voices they alone reached 2-3x full scale while every other
-        // layer sat under 0.17.
-        sig = sig * (amp * masterVol.clip(0.01, 1) * distanceAmp.clip(0.1, 1)
-            * Lag.kr(legacyAmp, 0.3).linlin(0, 1, 0.05, 1.4)) * polyComp * ~trimPad
-            * Lag.kr(Select.kr(mixPadBus >= 0, [1.0, In.kr(mixPadBus, 1)]), 0.08);
-        
-        // Quadraphonic spatial positioning
-        // Panner chosen from the REAL output channel count, at graph-build time
-        // — see the note on the other voices. This one additionally has a Y
-        // coordinate when the spatial GUI (12_spatial_gui.scd) is open, so the
-        // quad branch keeps the 2-D angle; no spawn passes spatialYBus, so in
-        // normal operation Y is 0 and only spatialX matters.
-        //
-        // spatialPos is SPREAD. It was read at the top of this SynthDef and
-        // then never used, and no spawn passes spatialXBus either — so the
-        // pads and bells, one of the loudest layers, sat dead centre whatever
-        // SPREAD said. It now moves them like every other voice; the spatial
-        // GUI's X still adds on top when that window is open.
-        spatialX = (spatialX + spatialPos).clip(-1, 1);
-        quadSig = if(~limiterChans >= 4) {
-            PanAz.ar(4, sig.sum,
-                Select.kr(spatialYBus >= 0,
-                    [spatialX * 0.5, spatialX.atan2(spatialY) / pi]),
-                1, 2, 0.5)
-        } {
-            Pan2.ar(sig.sum, spatialX)
-        };
-        
-        Out.ar(out, quadSig);
-    }).add;
+    // (\elektronBell, the old transaction bell, was removed: since bells became
+    // \opalPerc via ~strikeBell (6_osc_handlers.scd) nothing ever played it.)
 
     // --- Fors Opal Emulation Synths ---
     
@@ -1820,7 +1605,7 @@ s.doWhenBooted({
             character = 0.5,
             masterVolBus=(-1), pitchBus=(-1), spectralBus=(-1), spatialBus=(-1),
             textureBus=(-1), atmosphereBus=(-1), harmonicBus=(-1), resonantBus=(-1),
-            masterAmpBus=(-1), filterCutoffBus=(-1), droneFadeBus=(-1),
+            masterAmpBus=(-1), filterCutoffBus=(-1), droneFadeBus=(-1), droneMixBus=(-1),
             droneSpaceBus=(-1), mixDroneBus=(-1), strikeBus=(-1);
 
         var vol   = Lag.kr(Select.kr(masterVolBus >= 0, [0.3, In.kr(masterVolBus, 1)]), 0.08);
@@ -1834,6 +1619,15 @@ s.doWhenBooted({
         var mAmp  = Select.kr(masterAmpBus >= 0, [0.7, In.kr(masterAmpBus, 1)]);
         var cutoff= Select.kr(filterCutoffBus >= 0, [0.6, In.kr(filterCutoffBus, 1)]);
         var dSpace= Select.kr(droneSpaceBus >= 0, [0.5, In.kr(droneSpaceBus, 1)]);
+        // DRONE FADE and DRONE LAYER reach the bed too (they used to reach
+        // only the browser-triggered module-4 drone). Both are neutral at
+        // their defaults, 2.0 and 0.5, so the bed is unchanged there:
+        //   FADE above 2 s makes a root change GLIDE, (fade − 2) seconds;
+        //        it also scales each partial's attack and release, at spawn
+        //        (5_beat_engine.scd), fade/2.
+        //   LAYER sets the bloom: the reverb's share, 0 dry … 1 twice today's.
+        var dFade = Select.kr(droneFadeBus >= 0, [2.0, In.kr(droneFadeBus, 1)]);
+        var dLayer= Select.kr(droneMixBus >= 0, [0.5, In.kr(droneMixBus, 1)]);
         // How excited the PERCUSSION layer is, right now. The beat engine
         // already computes this to shape its own rhythm; writing it to a bus
         // lets the bed feel it too. Lagged slowly, because the bed should seem
@@ -1855,7 +1649,7 @@ s.doWhenBooted({
         var f, sig, env, quadSig, trem, respond;
         var bands, fbk, fm, mode, r1, r2, r3, grit;
 
-        f = (freq * ratio * (pShift.clip(-24, 24) / 12).midiratio).clip(20, 6000);
+        f = (Lag.kr(freq, (dFade - 2).max(0)) * ratio * (pShift.clip(-24, 24) / 12).midiratio).clip(20, 6000);
 
         // ─── Why the previous version could only ever be a propeller ────────
         //
@@ -1950,7 +1744,7 @@ s.doWhenBooted({
             // …and so does the voice's own internal incident.
             * (1 + (grit * 1.8))).clip(90, 13000)).min(SampleRate.ir * 0.45));
         // MEZCLA: the reverb's input loses its lows as mixCarve rises (none at 0).
-        sig = sig + (FreeVerb.ar(LinXFade2.ar(sig, HPF.ar(sig, 180), Lag.kr(Select.kr(mixCarveBus >= 0, [0, In.kr(mixCarveBus.max(0), 1)]).clip(0, 1), 0.25) * 2 - 1), revM * 0.7, dSpace.linlin(0, 1, 0.4, 0.95), 0.15) * 0.5);
+        sig = sig + (FreeVerb.ar(LinXFade2.ar(sig, HPF.ar(sig, 180), Lag.kr(Select.kr(mixCarveBus >= 0, [0, In.kr(mixCarveBus.max(0), 1)]).clip(0, 1), 0.25) * 2 - 1), revM * 0.7, dSpace.linlin(0, 1, 0.4, 0.95), 0.15) * (0.5 * Lag.kr(dLayer, 0.3).linlin(0, 1, 0, 2)));
 
         // Sine curves on both ends: a partial should arrive and leave without
         // ever being heard to start or stop.
@@ -2326,17 +2120,6 @@ s.doWhenBooted({
         if(~buses.notNil and: { ~buses[name].notNil }, { ~buses[name].index }, { -1 });
     };
 
-    // Spatial control buses (driven by 12_spatial_gui.scd, not by the
-    // MIDI/OSC/HTML surfaces — deliberately outside the registry)
-    ~buses.spatialX = Bus.control(s, 1);
-    ~buses.spatialX.set(0.0);
-    ~buses.spatialY = Bus.control(s, 1);
-    ~buses.spatialY.set(0.0);
-    ~buses.roomSize = Bus.control(s, 1);
-    ~buses.roomSize.set(0.8);
-    ~buses.distanceEffect = Bus.control(s, 1);
-    ~buses.distanceEffect.set(0.5);
-    
     // Wait for all bus .set() messages to be processed before readback
     s.sync;
 
