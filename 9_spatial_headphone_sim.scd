@@ -176,8 +176,12 @@
     // Wait for SynthDefs to be added
     s.sync;
     
-    // Start the binaural processor
-    ~binauralProcessor = Synth(\quadToBinaural);
+    // The binaural processor is NOT started here. Only \spatialElektronBell
+    // (the ~testSpatial bell) writes to ~quadBuses, so from boot it folded
+    // silence through 2 FreeVerb and 8 DelayC. Neither output path needs it:
+    // stereo and the MOTU's 4 lines are written by the stems and limiter
+    // directly (~limiterChans). ~setSpatialMode.(\headphones) starts it.
+    if(~binauralProcessor.notNil) { ~binauralProcessor.free; ~binauralProcessor = nil };
     
     // Spatial test function
     ~testSpatial = {

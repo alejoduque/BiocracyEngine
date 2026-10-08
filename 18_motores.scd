@@ -252,7 +252,8 @@ SynthDef(\motRemRec, { |out = 0, gate = 1, bufA, bufC, bufM, t_rec = 1, bedAmp =
     // misma cadena de forma que los golpes — granos, paso bajo, ruptura.
     bed = (play * 0.15) + (filt * 0.4);
     grainAmt = max(tex, espec) * 0.8;
-    grains = GrainBuf.ar(2, Impulse.ar(8 + (espec * 80) + (tex * 20)),
+    // Sin granos en la mezcla (grainAmt 0), no se dispara ninguno.
+    grains = GrainBuf.ar(2, Impulse.ar((8 + (espec * 80) + (tex * 20)) * (grainAmt > 0)),
         ~motIn.(\noiseFilt, 0.5).linexp(0, 1, 0.25, 0.015), bufM, rate,
         LFNoise1.kr(0.3).range(0, 1), 2, LFNoise1.kr(5) * jit);
     bed = (bed * (1 - grainAmt)) + (grains * 2.5 * grainAmt);
@@ -288,7 +289,8 @@ SynthDef(\motRemPlay, { |out = 0, buf, bufM, rate = 1, amp = 1, dur = 1, pan = 0
     var env    = EnvGen.kr(Env.perc(atk, 1, 1, curve), timeScale: dur, doneAction: 2);
     var smooth = PlayBuf.ar(2, buf, rate * BufRateScale.kr(buf), startPos: start, loop: 1);
     var second = PlayBuf.ar(2, buf, rate * ratio2 * BufRateScale.kr(buf), startPos: start, loop: 1);
-    var trig   = Impulse.ar(gdens * LFNoise1.kr(3).range(0.7, 1.3));
+    // Golpe liso (grain 0): los granos no se oyen, así que no se disparan.
+    var trig   = Impulse.ar(gdens * LFNoise1.kr(3).range(0.7, 1.3) * (grain > 0));
     var gpos   = ((start / frames) + (LFNoise1.ar(gdens) * jit)).wrap(0, 1);
     var grains = GrainBuf.ar(2, trig, gsize, bufM, rate, gpos, 2,
         TRand.ar(jit.neg, jit, trig).clip2(0.9));
@@ -579,12 +581,10 @@ if(~stemGroupB.notNil) { try { ~stemGroupB.free } };
 ~stemGroupB = Group.after(~motorGroup);
 // La cinta, después de que todo se sumó y antes de la sala.
 if(~cintaNode.notNil) { try { ~cintaNode.free } };
-fork { s.sync; ~cintaNode = Synth.after(~stemGroupB, \cinta) };
+fork { s.sync; ~cintaNode = Synth.after(~stemGroupB, \cinta); ~cintaAwake = true; ~cintaLowSince = nil };
 if(~stems.notNil) {
     [\remuestreo, \espectro, \caos, \ruptura, \masa, \seq].do { |n|
-        ~stemNodes[n] = Synth.tail(~stemGroupB, \stemSum,
-            [\in, ~stems[n].index, \out, 0, \id, ~stemNames.indexOf(n)] ++ ~stemPanArgs.(n)
-            ++ (~stemCarveArgs !? { ~stemCarveArgs.(n) } ? []));
+        ~stemStart.(n, 0, ~stemGroupB);
     };
 };
 
@@ -793,6 +793,11 @@ if(~stems.notNil) {
     ),
 
     coro: (
+        // Los búferes de las frases: antes cada frase leía su grabación entera
+        // del disco (~11 MB) y la soltaba al terminar, una cada 4-9 s, aunque
+        // el día ofreciera las mismas pocas grabaciones. Ahora quedan en una
+        // caché de cuatro (st[\cache], ruta → búfer, usos, última vez); sólo se
+        // suelta un búfer que ninguna frase está leyendo.
         // El secuenciador que respira: la espera entre frases vaga con
         // Pbrown entre 4 y 9 s (× timeDilation/2), y cada frase dura más de lo
         // que espera — atk 0.4, rel 0.8 de la espera —, así que se solapan.
@@ -809,7 +814,7 @@ if(~stems.notNil) {
                     } { [] };
                     var clip = (pool.size > 0).if({ pool.choose }, { (~corpusClips ? []).choose });
                     if(clip.notNil and: { clip[\audible].notNil } and: { (st[\live] ? 0) < 3 }) {
-                        Buffer.read(s, clip[\audible], action: { |b|
+                        ~coroAcquire.(st, clip[\audible], { |b|
                             var syn;
                             st[\live] = (st[\live] ? 0) + 1;
                             syn = Synth(\motCoro, [\buf, b, \atk, wait * 0.4,
@@ -818,14 +823,14 @@ if(~stems.notNil) {
                                 // Con las voces, no con los motores: escribe en el
                                 // stem del corpus, que se lee ANTES del procesador.
                                 ~defaultGroup ? s.defaultGroup);
-                            syn.onFree({ b.free; st[\live] = (st[\live] ? 1) - 1 });
+                            syn.onFree({ ~coroRelease.(st, clip[\audible]); st[\live] = (st[\live] ? 1) - 1 });
                         });
                     };
                     wait.wait;
                 };
             }).play(SystemClock);
         },
-        stop: { |st| st[\loop].stop }
+        stop: { |st| st[\loop].stop; st[\closing] = true; ~coroTrim.(st, 0) }
     ),
 
     masa: (
@@ -851,6 +856,41 @@ if(~stems.notNil) {
     )
 );
 
+// La caché del coro (ver ~motores[\coro]). ~coroTrim suelta, de lo menos
+// usado reciente a lo más, los búferes sin frase viva hasta dejar `keep`.
+~coroCacheMax = 4;
+~coroAcquire = { |st, path, fn|
+    var cache = st[\cache] ?? { st[\cache] = () };
+    var e = cache[path.asSymbol];
+    if(e.notNil) {
+        e[\refs] = e[\refs] + 1; e[\used] = Main.elapsedTime; fn.(e[\buf]);
+    } {
+        Buffer.read(s, path, action: { |b|
+            var e2 = cache[path.asSymbol];
+            // Dos lecturas de la misma ruta a la vez: se queda la primera.
+            if(e2.notNil) { b.free; b = e2[\buf]; e2[\refs] = e2[\refs] + 1; e2[\used] = Main.elapsedTime } {
+                cache[path.asSymbol] = (buf: b, refs: 1, used: Main.elapsedTime);
+            };
+            fn.(b);
+            ~coroTrim.(st, if(st[\closing] == true, 0, ~coroCacheMax));
+        });
+    };
+};
+~coroRelease = { |st, path|
+    (st[\cache] ? ()).at(path.asSymbol) !? { |e| e[\refs] = (e[\refs] - 1).max(0) };
+    ~coroTrim.(st, if(st[\closing] == true, 0, ~coroCacheMax));
+};
+~coroTrim = { |st, keep|
+    var cache = st[\cache] ? ();
+    var idle = cache.keys.asArray.select { |k| cache[k][\refs] <= 0 }
+        .sort { |a, b| cache[a][\used] < cache[b][\used] };
+    while({ cache.size > keep and: { idle.size > 0 } }) {
+        var k = idle.removeAt(0);
+        try { cache[k][\buf].free };
+        cache.removeAt(k);
+    };
+};
+
 // ─── Encender, apagar, transacción ───────────────────────────────────────
 // ~motLive[key] es el estado del motor encendido (nodos, rutinas, búferes).
 // Ningún motor se enciende a mano: el vigilante mira los faders cuatro veces
@@ -861,8 +901,16 @@ if(~stems.notNil) {
 ~motZeroSince = ();
 ~motOffAfter = 20;       // segundos en cero antes de apagar del todo
 
+// Los stems de cada motor. Con el motor apagado no suenan, así que su suma se
+// pausa (~stemRun, 3_synthdefs.scd): un nodo pausado deja el bus tal cual, que
+// es exactamente lo que sumaba un stem en silencio.
+~motStems = (remuestreo: [\remuestreo, \seq], espectro: [\espectro], caos: [\caos],
+    ruptura: [\ruptura], masa: [\masa]);
+~motStemsRun = { |key, on| (~motStems[key] ? []).do { |n| ~stemRun !? { ~stemRun.(n, on) } } };
+
 ~motStart = { |key|
     var st = ();
+    ~motStemsRun.(key, true);           // antes del primer nodo del motor
     ~motLive[key] = st;
     ~motores[key][\start].(st);        // puede esperar al servidor: se llama en rutina
     ("Motor encendido: " ++ key).postln;
@@ -878,6 +926,9 @@ if(~stems.notNil) {
         if(st[\bufs].notNil) {
             SystemClock.sched(16, { st[\bufs].do { |b| try { b.free } }; nil });
         };
+        // Y su stem se pausa cuando el fundido ya terminó, si nadie lo
+        // volvió a encender entretanto.
+        SystemClock.sched(16, { if(~motLive[key].isNil) { ~motStemsRun.(key, false) }; nil });
         ~motLive[key] = nil;
         ("Motor apagado: " ++ key).postln;
     };
@@ -888,6 +939,30 @@ if(~stems.notNil) {
 if(~motWatcher.notNil) { ~motWatcher.stop };
 ~motLive.keys.asArray.do { |k| ~motStop.(k) };
 
+// La cinta por debajo de OPACIDAD 0.1 devuelve el bus tal cual (XFade2 en
+// -1), pero sigue calculando retardo, filtros y crujido. Pausada deja el bus
+// intacto: lo mismo, gratis. Despierta desde 0.05, antes de que se oiga, para
+// que su línea de 150 ms ya tenga sonido fresco; se duerme tras 1 s abajo,
+// cuando su fundido (Lag 0.3) ya llegó a cero.
+~cintaAwake = true;
+~cintaRunSync = { |op, now|
+    if(~cintaNode.notNil) {
+        if(op >= 0.05) {
+            ~cintaLowSince = nil;
+            if(~cintaAwake.not) { ~cintaAwake = true; ~cintaNode.run(true) };
+        } {
+            ~cintaLowSince = ~cintaLowSince ? now;
+            if(~cintaAwake and: { (now - ~cintaLowSince) >= 1.0 }) {
+                ~cintaAwake = false; ~cintaNode.run(false);
+            };
+        };
+    };
+};
+
+// Al cargar, ningún motor corre todavía: sus stems empiezan pausados y el
+// vigilante los despierta al subir un fader.
+fork { s.sync; ~motStems.keysDo { |k| if(~motLive[k].isNil) { ~motStemsRun.(k, false) } } };
+
 ~motWatcher = Routine({
     loop {
         var now = Main.elapsedTime;
@@ -895,6 +970,7 @@ if(~motWatcher.notNil) { ~motWatcher.stop };
         // La Marea para el ARCO de masa, y la cinta para el tempo del beat.
         ~tideBus.set((~beatParams !? { ~beatParams.tideValue }) ? 0.65);
         ~tapeAmt = ~cintaAmt.(cv[\opacityFloor]);
+        ~cintaRunSync.(cv[\opacityFloor] ? 0, now);
         ~tapeDrift = 1 + ((~tapeDriftStream.next - 1) * ~tapeAmt);
         ~motFaders.keysValuesDo { |key, fader|
             var up = if(~motWakeIf[key].notNil) { ~motWakeIf[key].value } {

@@ -269,7 +269,10 @@ s.doWhenBooted({
                 // GrainBuf is the only expensive thing in this SynthDef.
                 //
                 // overlap is bounded for the same reason: it is the numerator.
-                Dust.kr(overlap.clip(1, 8) / controlGrainSize.clip(0.05, 1.0)),
+                // Zero while TIME STRETCH is x1: the crossfade below hides
+                // the grains entirely there, so none are made.
+                Dust.kr(overlap.clip(1, 8) / controlGrainSize.clip(0.05, 1.0)
+                    * (controlTimeStretch.max(0.05).log2.abs > 0)),
                 controlGrainSize.clip(0.05, 1.0),
                 grainBuf, finalRate,
                 pointer,

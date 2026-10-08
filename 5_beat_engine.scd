@@ -1490,6 +1490,12 @@
                     ~visualsDest.sendMsg('/voice/dust',
                         (0.3 + (density * 0.35)).clip(0, 1));
                 };
+                // DUST at 0 in the mixer: the grain would be multiplied by
+                // zero inside the voice, with its own FreeVerb and CombC still
+                // running, so it is not made at all. Dust is dense enough that
+                // raising the fader is heard within a step or two; the light
+                // and the visuals above still fire either way.
+                if(((~controlValues ? ()).at(\mixDust) ? 1) > 0) {
                 s.makeBundle(s.latency + jitTick, { Synth(\opalDust, [
                     \out,         ~stemOut.(\dust),
                     // Floor 0.3 -> 0.72. On an idle chain density is 0, so
@@ -1508,6 +1514,7 @@
                     // Matrix mixer: this layer's live level.
                     \mixDustBus, ~bi.(\mixDust)
                 ] ++ (~voiceBusArgs.value ? []), targetGrp) });
+                };
             };
 
             // Broadcast current state to visuals bridge

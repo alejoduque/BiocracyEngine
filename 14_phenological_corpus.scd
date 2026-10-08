@@ -289,9 +289,11 @@ s.waitForBoot {
         // are silent and GRAIN SIZE acts only once the recording is stretched.
         pointer = (startPos + Sweep.kr(1, 1 / (stretch.max(0.05) * BufDur.kr(buf)))
             + LFNoise2.kr(3).range(0, grainSz / BufDur.kr(buf))).wrap(0, 1);
-        grains = GrainBuf.ar(1, Dust.kr(4 / grainSz), grainSz, buf,
-            semis.midiratio * BufRateScale.kr(buf), pointer, 2);
+        // At x1 the crossfade below hides the grains completely, so none are
+        // made: the trigger rate is 0 until the recording is stretched.
         stretchAmt = stretch.log2.abs.clip(0, 1);
+        grains = GrainBuf.ar(1, Dust.kr((4 / grainSz) * (stretchAmt > 0)), grainSz, buf,
+            semis.midiratio * BufRateScale.kr(buf), pointer, 2);
         sig = XFade2.ar(sig, grains, stretchAmt.linlin(0, 1, -1, 1));
 
         sig = HPF.ar(sig, 25);

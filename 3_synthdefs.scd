@@ -306,54 +306,77 @@ s.doWhenBooted({
     // the layer's own running level. The carved stem is CROSSFADED against the
     // untouched one by mixCarve (LinXFade2: at 0 the output IS the input, the
     // filters only run), so the engine at 0 sounds exactly as it always has.
-    SynthDef(\stemSum, { |in = 0, out = 0, id = 0, pan = 0, auto = 0, rate = 0.012, phase = 0,
-            carveBus = (-1), hpf = 0, dipF = 300, dipDb = 0, lsF = 200, lsDb = 0,
-            hsF = 9500, hsDb = 0, duckIn = (-1), duckDb = 0, tame = 0|
-        var dry = In.ar(in, ~limiterChans).asArray;
-        var c = Lag.kr(Select.kr(carveBus >= 0, [0, In.kr(carveBus.max(0), 1)]).clip(0, 1), 0.25);
-        var key, keyEnv, keyRef, duckG, sum, env, lvl, tameG, x, peak, rms, pos, gl, gr;
-        // The kick's own stem, low-passed: how hard it is hitting NOW against
-        // how hard it has been hitting lately, 0..1.
-        key = LPF.ar(Mix(In.ar(duckIn.max(0), ~limiterChans)), 150) * (duckIn >= 0);
-        keyEnv = Amplitude.kr(key, 0.005, 0.18);
-        keyRef = Amplitude.kr(key, 0.001, 3.0).max(1e-5);
-        duckG = (1 - ((keyEnv / keyRef).clip(0, 1) * (1 - duckDb.neg.dbamp))).clip(0, 1);
-        // Peaks over the layer's own level: a fast envelope against a slow RMS.
-        sum = Mix(dry) / dry.size;
-        env = Amplitude.ar(sum, 0.0005, 0.08);
-        lvl = Lag.ar(sum.squared, 0.4).sqrt;
-        tameG = Select.ar(tame > 0, [DC.ar(1), ((lvl * tame.dbamp) / env.max(1e-6)).clip(0, 1)]);
-        x = dry.collect { |ch|
-            var y = ch, lo;
-            // 4th-order low cut (two 2nd-order HPFs); bypassed when hpf is 0.
-            y = Select.ar(hpf > 0, [y, HPF.ar(HPF.ar(y, hpf.max(10)), (hpf.max(10)).min(SampleRate.ir * 0.45))]);
-            y = BPeakEQ.ar(y, dipF.min(SampleRate.ir * 0.42), 1, dipDb);
-            y = BLowShelf.ar(y, lsF.min(SampleRate.ir * 0.42), 1, lsDb);
-            // Kept under Nyquist: a shelf above it turns the filter unstable
-            // (a 16 kHz device put 9.5 kHz past it and the stem ran away).
-            y = BHiShelf.ar(y, hsF.min(SampleRate.ir * 0.42), 1, hsDb);
-            // Duck the band under 150 Hz only: the rest of the layer is
-            // untouched, so the kick takes the floor without the bed pumping.
-            lo = LPF.ar(LPF.ar(y, 150), 150);
-            y = (y - lo) + (lo * Lag.kr(duckG, 0.01));
-            LinXFade2.ar(ch, y * tameG, c * 2 - 1)
-        };
-        // A NaN or inf in one layer (an unstable filter, a voice gone bad)
-        // stops here, as silence on that layer, instead of reaching bus 0 and
-        // silencing the whole engine at the limiter.
-        x = x.collect { |ch| Sanitize.ar(ch) };
-        peak = x.collect(_.abs).reduce(\max);
-        rms = (Lag.ar(x.collect(_.squared).sum / x.size, 0.3)).sqrt;
-        pos = Lag.kr(Select.kr(auto > 0.5, [pan, SinOsc.kr(rate, phase) * pan.abs]), 0.6).clip(-1, 1);
-        gl = (1 - pos).clip(0, 1); gr = (1 + pos).clip(0, 1);
-        SendReply.kr(Impulse.kr(12), '/stem', [id, Amplitude.kr(peak, 0.001, 0.4), rms]);
-        // PanAz(4) order: 0 front-left, 1 front-right, 2 rear-right, 3 rear-left.
-        x = case
-            { x.size >= 4 } { [x[0] * gl, x[1] * gr, x[2] * gr, x[3] * gl] }
-            { x.size == 2 } { [x[0] * gl, x[1] * gr] }
-            { x };
-        Out.ar(out, x);
-    }).add;
+    //
+    // THREE DEFS, ONE BUILDER. All fourteen stems run all the time, and the
+    // carve is ~28 filters per stem per channel that only RUN at mixCarve 0.
+    // So the carve is a separate def: \stemSumFlat (pan, Sanitize, meter —
+    // exactly what the full def outputs at 0, where LinXFade2 returns its
+    // input) plays while MEZCLA is at 0, and ~stemCarveSync swaps a stem to
+    // \stemSum (or \stemSumDuck for the two ducked layers) in place when it
+    // moves. `fadeIn` ramps the carve in from 0 after a swap, so a fresh node
+    // whose filters start empty is heard only as it settles; at boot it is 0
+    // and the def behaves as it always did.
+    ~stemSumDef = { |defName, carve, duck|
+        SynthDef(defName, { |in = 0, out = 0, id = 0, pan = 0, auto = 0, rate = 0.012, phase = 0,
+                carveBus = (-1), hpf = 0, dipF = 300, dipDb = 0, lsF = 200, lsDb = 0,
+                hsF = 9500, hsDb = 0, duckIn = (-1), duckDb = 0, tame = 0, fadeIn = 0|
+            var dry = In.ar(in, ~limiterChans).asArray;
+            var x, peak, rms, pos, gl, gr;
+            if(carve) {
+                var c = Lag.kr(Select.kr(carveBus >= 0, [0, In.kr(carveBus.max(0), 1)]).clip(0, 1), 0.25)
+                    * Line.kr(0, 1, fadeIn.max(0.001));
+                var key, keyEnv, keyRef, duckG, sum, env, lvl, tameG;
+                if(duck) {
+                    // The kick's own stem, low-passed: how hard it is hitting
+                    // NOW against how hard it has been hitting lately, 0..1.
+                    key = LPF.ar(Mix(In.ar(duckIn.max(0), ~limiterChans)), 150) * (duckIn >= 0);
+                    keyEnv = Amplitude.kr(key, 0.005, 0.18);
+                    keyRef = Amplitude.kr(key, 0.001, 3.0).max(1e-5);
+                    duckG = (1 - ((keyEnv / keyRef).clip(0, 1) * (1 - duckDb.neg.dbamp))).clip(0, 1);
+                };
+                // Peaks over the layer's own level: a fast envelope against a slow RMS.
+                sum = Mix(dry) / dry.size;
+                env = Amplitude.ar(sum, 0.0005, 0.08);
+                lvl = Lag.ar(sum.squared, 0.4).sqrt;
+                tameG = Select.ar(tame > 0, [DC.ar(1), ((lvl * tame.dbamp) / env.max(1e-6)).clip(0, 1)]);
+                x = dry.collect { |ch|
+                    var y = ch, lo;
+                    // 4th-order low cut (two 2nd-order HPFs); bypassed when hpf is 0.
+                    y = Select.ar(hpf > 0, [y, HPF.ar(HPF.ar(y, hpf.max(10)), (hpf.max(10)).min(SampleRate.ir * 0.45))]);
+                    y = BPeakEQ.ar(y, dipF.min(SampleRate.ir * 0.42), 1, dipDb);
+                    y = BLowShelf.ar(y, lsF.min(SampleRate.ir * 0.42), 1, lsDb);
+                    // Kept under Nyquist: a shelf above it turns the filter unstable
+                    // (a 16 kHz device put 9.5 kHz past it and the stem ran away).
+                    y = BHiShelf.ar(y, hsF.min(SampleRate.ir * 0.42), 1, hsDb);
+                    if(duck) {
+                        // Duck the band under 150 Hz only: the rest of the layer is
+                        // untouched, so the kick takes the floor without the bed pumping.
+                        lo = LPF.ar(LPF.ar(y, 150), 150);
+                        y = (y - lo) + (lo * Lag.kr(duckG, 0.01));
+                    };
+                    LinXFade2.ar(ch, y * tameG, c * 2 - 1)
+                };
+            } { x = dry };
+            // A NaN or inf in one layer (an unstable filter, a voice gone bad)
+            // stops here, as silence on that layer, instead of reaching bus 0 and
+            // silencing the whole engine at the limiter.
+            x = x.collect { |ch| Sanitize.ar(ch) };
+            peak = x.collect(_.abs).reduce(\max);
+            rms = (Lag.ar(x.collect(_.squared).sum / x.size, 0.3)).sqrt;
+            pos = Lag.kr(Select.kr(auto > 0.5, [pan, SinOsc.kr(rate, phase) * pan.abs]), 0.6).clip(-1, 1);
+            gl = (1 - pos).clip(0, 1); gr = (1 + pos).clip(0, 1);
+            SendReply.kr(Impulse.kr(12), '/stem', [id, Amplitude.kr(peak, 0.001, 0.4), rms]);
+            // PanAz(4) order: 0 front-left, 1 front-right, 2 rear-right, 3 rear-left.
+            x = case
+                { x.size >= 4 } { [x[0] * gl, x[1] * gr, x[2] * gr, x[3] * gl] }
+                { x.size == 2 } { [x[0] * gl, x[1] * gr] }
+                { x };
+            Out.ar(out, x);
+        }).add;
+    };
+    ~stemSumDef.(\stemSumFlat, false, false);
+    ~stemSumDef.(\stemSum,     true,  false);
+    ~stemSumDef.(\stemSumDuck, true,  true);
     // The same levels, for the visuals. The GUI's meters listen to /stem in
     // 4_gui.scd; the projector needs them too — the blended slots read the
     // CORPUS layer as the forest's own voice, apart from the chain's. One
@@ -417,6 +440,64 @@ s.doWhenBooted({
         var duck = if((prof.indexOf(\duckDb)).notNil and: { ~stems[\kick].notNil },
             { [\duckIn, ~stems[\kick].index] }, { [] });
         [\carveBus, ((~buses !? { ~buses[\mixCarve] } !? { |b| b.index }) ? -1)] ++ prof ++ duck
+    };
+    // ─── Placing stems, and swapping their def in place ──────────────────
+    // ~stemStart is the one way a stem's sum node is made (here, 17_ and 18_),
+    // so ~stemCarveSync can later re-make it with the same in/out/id where it
+    // stands (Synth.replace keeps the node's place in the order).
+    ~stemBase = ~stemBase ?? { () };
+    ~stemPaused = ~stemPaused ?? { () };
+    ~stemCarved = ((~controlValues !? { ~controlValues[\mixCarve] }) ? 0) > 0;
+    ~stemDefFor = { |name, carved|
+        if(carved.not) { \stemSumFlat } {
+            if(((~stemCarveProfiles[name] ? []).indexOf(\duckDb)).notNil, \stemSumDuck, \stemSum)
+        }
+    };
+    ~stemStart = { |name, out, target, addAction = \addToTail|
+        ~stemBase[name] = [\in, ~stems[name].index, \out, out, \id, ~stemNames.indexOf(name)];
+        ~stemPaused[name] = false;
+        ~stemNodes[name] = Synth(~stemDefFor.(name, ~stemCarved),
+            ~stemBase[name] ++ ~stemPanArgs.(name) ++ ~stemCarveArgs.(name), target, addAction);
+    };
+    ~stemSwap = { |name, carved|
+        ~stemNodes[name] !? { |old|
+            var n = Synth.replace(old, ~stemDefFor.(name, carved),
+                ~stemBase[name] ++ ~stemPanArgs.(name) ++ ~stemCarveArgs.(name)
+                ++ [\fadeIn, if(carved, 0.3, 0)]);
+            ~stemNodes[name] = n;
+            if(~stemPaused[name] == true) { n.run(false) };
+        };
+    };
+    // MEZCLA leaves 0 → every stem carves at once (c is ~0 at that instant,
+    // and fadeIn ramps it). Back at 0 → flat again only after a full second,
+    // when the 0.25 s carve lag has long reached zero: nothing is heard.
+    ~stemCarveSync = {
+        var want = ((~controlValues !? { ~controlValues[\mixCarve] }) ? 0) > 0;
+        if(want) {
+            ~stemZeroSince = nil;
+            if(~stemCarved.not) { ~stemCarved = true; ~stemNodes.keysDo { |n| ~stemSwap.(n, true) } };
+        } {
+            if(~stemCarved) {
+                ~stemZeroSince = ~stemZeroSince ? Main.elapsedTime;
+                if(Main.elapsedTime - ~stemZeroSince >= 1.0) {
+                    ~stemCarved = false; ~stemZeroSince = nil;
+                    ~stemNodes.keysDo { |n| ~stemSwap.(n, false) };
+                };
+            };
+        };
+    };
+    if(~stemCarveRoutine.notNil) { ~stemCarveRoutine.stop };
+    ~stemCarveRoutine = Routine({ loop { ~stemCarveSync.value; 0.25.wait } }).play(SystemClock);
+    // A stem whose layer cannot sound (a motor that is off) is paused: a
+    // paused node leaves its bus alone, which is exactly what a silent stem
+    // added. Its meter is zeroed by hand, since it stops reporting.
+    ~stemRun = { |name, on|
+        ~stemPaused[name] = on.not;
+        ~stemNodes[name] !? { |n| n.run(on) };
+        if(on.not) {
+            ~stemRms !? { |r| r[name] = 0 };
+            ~stemLevels !? { |l| l[name] = [0, 0] };
+        };
     };
     ~stemPanSet = { |name, pan, auto|
         var st = ~stemPan[name] ?? { (pan: 0, auto: 0) };
@@ -2421,9 +2502,7 @@ s.doWhenBooted({
     if(~stemGroupA.notNil) { try { ~stemGroupA.free } };
     ~stemGroupA = Group.after(~defaultGroup ? s.defaultGroup);
     [\drone, \pad, \kick, \perc, \dust, \sample].do { |n|
-        ~stemNodes[n] = Synth.tail(~stemGroupA, \stemSum,
-            [\in, ~stems[n].index, \out, 0, \id, ~stemNames.indexOf(n)] ++ ~stemPanArgs.(n)
-            ++ ~stemCarveArgs.(n));
+        ~stemStart.(n, 0, ~stemGroupA);
     };
     if(~chamberSynth.notNil) { try { ~chamberSynth.free }; ~chamberSynth = nil };
     ~chamberSynth = Synth.tail(RootNode(s), \resonantChamber, [

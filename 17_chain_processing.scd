@@ -82,7 +82,7 @@ s.waitForBoot {
         arg out = 0, in = 0, amount = 0.45,
             entropyBus = -1, calldataBus = -1, congestionBus = -1,
             chainProcessBus = -1,
-            umbralBus = -1, ventanaBus = -1, sesgoBus = -1, opacidadBus = -1,
+            umbralBus = -1, ventanaBus = -1, sesgoBus = -1,
             crudoBus = -1, crudoOut = -1;
 
         var dry = In.ar(in, ~chainBusChans);
@@ -91,7 +91,7 @@ s.waitForBoot {
         var cong = Lag.kr(Select.kr(congestionBus >= 0, [0.0, In.kr(congestionBus, 1)]), 3.0);
         var wetAmt = Lag.kr(Select.kr(chainProcessBus >= 0, [amount, In.kr(chainProcessBus, 1)]), 0.5);
         var sig, diffused, smeared, chainFFT, sum;
-        var umbral, ventana, sesgo, opacidad, key, bleed, bleedMix, crudo;
+        var umbral, ventana, sesgo, key, bleed, bleedMix, crudo;
 
         sig = dry;
 
@@ -168,7 +168,6 @@ s.waitForBoot {
         umbral   = Lag.kr(Select.kr(umbralBus   >= 0, [0.5, In.kr(umbralBus, 1)]), 0.3);
         ventana  = Lag.kr(Select.kr(ventanaBus  >= 0, [1.0, In.kr(ventanaBus, 1)]), 0.3);
         sesgo    = Lag.kr(Select.kr(sesgoBus    >= 0, [0.0, In.kr(sesgoBus, 1)]), 0.3);
-        opacidad = Lag.kr(Select.kr(opacidadBus >= 0, [0.0, In.kr(opacidadBus, 1)]), 0.3);
 
         // UMBRAL — "por encima del umbral el escaño se enciende". Una compuerta
         // suave (expansión 4:1 por debajo) RELATIVA al nivel reciente del
@@ -238,7 +237,7 @@ s.waitForBoot {
         ] ++ [
             // La Cámara sobre el bus (ver el final de \chainProcessor).
             [\umbralBus, \activityThreshold], [\ventanaBus, \windowWidth],
-            [\sesgoBus, \seasonalBias], [\opacidadBus, \opacityFloor]
+            [\sesgoBus, \seasonalBias]
         ].collect { |pair|
             [pair[0], if(~buses.notNil and: { ~buses[pair[1]].notNil },
                 { ~buses[pair[1]].index }, { -1 })]
@@ -260,23 +259,22 @@ s.waitForBoot {
     // feeders carry both into the processor's bus — metered on the way, which
     // is the only point where the two can still be told apart. Placed right
     // BEFORE the processor, so they run after every voice and before it reads.
-    if(~corpusFeeders.notNil) { ~corpusFeeders.do { |n| try { n.free } } };
+    // Freed through ~stemNodes: ~stemCarveSync may have replaced the nodes
+    // ~corpusFeeders first held.
+    if(~corpusFeeders.notNil) { [\corpus, \ultra].do { |n| ~stemNodes[n] !? { |x| try { x.free } } } };
     if(~stems.notNil) {
         ~corpusFeeders = [\corpus, \ultra].collect { |n|
-            ~stemNodes[n] = Synth.before(~chainProcSynth, \stemSum,
-                [\in, ~stems[n].index, \out, ~corpusProcBus.index, \id, ~stemNames.indexOf(n)]
-                ++ (~stemPanArgs !? { ~stemPanArgs.(n) } ? [])
-                ++ (~stemCarveArgs !? { ~stemCarveArgs.(n) } ? []))
+            ~stemStart.(n, ~corpusProcBus.index, ~chainProcSynth, \addBefore)
         };
         ~corpusIn = (corpus: ~stemOut.(\corpus), ultra: ~stemOut.(\ultra));
     };
-    // The corpus analyser sits on the same bus, at the TAIL so it hears the
-    // chain processing rather than the dry recordings — what the laser draws
-    // should be what the room hears, not what the file contains.
-    if(~corpusScopeSynth.notNil) { try { ~corpusScopeSynth.free } };
-    ~corpusScopeSynth = Synth.tail(
-        if(~defaultGroup.notNil, { ~defaultGroup }, { s.defaultGroup }),
-        \corpusScope, [\in, ~corpusProcBus.index]);
+    // The corpus analyser (\corpusScope, 96 bands at 20 Hz) is NOT started.
+    // Nothing in sclang forwarded its /spectrum/corpus replies, so the browser
+    // never received one: it ran 96 BPF + 96 Amplitude for nobody. To bring
+    // the corpus spectrogram back, start it here at the tail of ~defaultGroup
+    // on ~corpusProcBus AND add an OSCdef forwarding '/spectrum/corpus' to
+    // ~visualsDest, as \masterScope does in 6_osc_handlers.scd.
+    if(~corpusScopeSynth.notNil) { try { ~corpusScopeSynth.free }; ~corpusScopeSynth = nil };
 
     ("[chain] processor across the corpus bus (" ++ ~corpusProcBus.index ++ ")").postln;
 };
