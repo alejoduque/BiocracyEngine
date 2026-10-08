@@ -31,7 +31,7 @@ import * as THREE from "three";
 import { UnrealBloomPass } from "three/examples/jsm/postprocessing/UnrealBloomPass.js";
 import { AfterimagePass } from "three/examples/jsm/postprocessing/AfterimagePass.js";
 import type { CapturedView, CapturedPost, DomeLayer } from "./domeCapture";
-import { ignoreRenderer } from "./domeCapture";
+import { ignoreRenderer, domeLayerVersion } from "./domeCapture";
 
 const DEG = Math.PI / 180;
 
@@ -334,6 +334,8 @@ class CanvasFeed {
   readonly texture = new THREE.Texture();
   private busy = false;
   private alive = true;
+  /** The layer version last uploaded (domeLayerVersion); -1 before the first. */
+  private pulled = -1;
 
   constructor(colorSpace: THREE.ColorSpace) {
     this.texture.flipY = false;                 // ignored for bitmaps anyway: v is flipped where it is sampled
@@ -345,10 +347,14 @@ class CanvasFeed {
 
   pull(canvas: HTMLCanvasElement) {
     if (this.busy || !canvas.width || !canvas.height) return;
+    // A layer that reports its redraws is uploaded only when it has one.
+    const v = domeLayerVersion(canvas);
+    if (v !== undefined && v === this.pulled) return;
     this.busy = true;
     createImageBitmap(canvas, { premultiplyAlpha: "premultiply" }).then((bmp) => {
       this.busy = false;
       if (!this.alive) { bmp.close(); return; }
+      if (v !== undefined) this.pulled = v;
       const old = this.texture.image as ImageBitmap | null;
       this.texture.image = bmp;
       this.texture.needsUpdate = true;

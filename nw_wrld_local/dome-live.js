@@ -81,11 +81,20 @@ function pageSource(win) {
   };
 
   // Paid for only while someone watches: subscribe when a receiver connects.
+  // The page is told too (window.__domePageLive, again after a reload): while
+  // it is on air its flat view keeps full quality instead of the dome's
+  // economy (src/projector/dome/dome.ts).
+  let told = null;
+  win.webContents.on("did-finish-load", () => { told = null; });
   setInterval(() => {
     if (!sender || win.isDestroyed()) return;
     const n = sender.connections();
     if (n > 0 && !on) { on = true; sent = 0; win.webContents.beginFrameSubscription(false, onFrame); console.log(`[dome-live] página: ${n} receptor(es) — enviando`); }
     else if (n === 0 && on) { on = false; win.webContents.endFrameSubscription(); console.log("[dome-live] página: sin receptores — en pausa"); }
+    if (told !== on) {
+      told = on;
+      win.webContents.executeJavaScript(`window.__domePageLive = ${on}`).catch(() => { told = null; });
+    }
   }, 1000);
 }
 

@@ -13,7 +13,7 @@
 // Lines are cut, not wrapped: a dome card is a fixed page, and a line that
 // reflows every update is unreadable at the back of a 23 m room.
 
-import { registerDomeLayer, type DomeCardPlace } from "./domeCapture";
+import { registerDomeLayer, touchDomeLayer, type DomeCardPlace } from "./domeCapture";
 
 export type DomeCardOpts = DomeCardPlace & {
   /** The text, read each update: a string (split on newlines) or lines. */
@@ -80,6 +80,7 @@ export function mountDomeCard(host: HTMLElement, o: DomeCardOpts): () => void {
     }
     ctx.fillStyle = ink;
     for (const l of page) { ctx.fillText(l, PAD, y); y += LH; }
+    touchDomeLayer(canvas);   // uploaded to the dome only now, not every frame
   };
 
   draw();
@@ -118,6 +119,7 @@ export function mountDomeBand(host: HTMLElement, text: () => string, color = "#e
     const unit = t + "   ▸   ";
     const w = Math.max(1, ctx.measureText(unit).width);
     for (let x = 8; x < canvas.width; x += w) ctx.fillText(unit, x, canvas.height / 2);
+    touchDomeLayer(canvas);
   };
   draw();
   const timer = setInterval(draw, 500);

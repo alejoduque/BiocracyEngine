@@ -95,6 +95,7 @@ let _last = 0;
 let _fpsT = 0;
 let _fpsN = 0;
 let _lastWarn = -Infinity;
+let _presentTick = 0;
 let _s: Settings = { ...DEFAULTS };
 const _ui: Record<string, HTMLElement> = {};
 
@@ -184,6 +185,22 @@ function setOutput(o: Output) {
   if (o === "none") _dome?.disposeOutput();
   setBlack(false);
   syncLoop();
+  syncEconomy();
+  resize();
+}
+
+// ── Economy, while the dome is live ─────────────────────────────────────────
+// With an output running, what the venue sees is the output: the flat page is
+// the performer's surface, and the preview is a check. So the flat view runs
+// at 30 fps and pixel ratio 1 (domeCapture.ts) — unless the page itself is on
+// air: dome-live.js sets window.__domePageLive while a receiver watches the
+// "Página" NDI source, which is this window's own paint, and then the page
+// keeps its full quality. With the viewport docked over the page, the page is
+// covered and economy is on either way. The dome's own render never changes.
+const pageOnAir = (): boolean => !!(window as unknown as { __domePageLive?: boolean }).__domePageLive;
+const outputLive = (): boolean => _s.output !== "none";
+function syncEconomy() {
+  setDomeEconomy((_open && !_popup) || (outputLive() && !pageOnAir()));
 }
 
 function setBlack(on: boolean) {
@@ -278,7 +295,9 @@ function placeCompass() {
 function resize() {
   if (!_canvas || !_dome) return;
   const r = _canvas.getBoundingClientRect();
-  _dome.renderer.setPixelRatio(Math.min(viewWin().devicePixelRatio || 1, 2));
+  // The preview at density 1 while an output is live: it is a check of the
+  // output, not the output (a quarter of the pixels on a Retina screen).
+  _dome.renderer.setPixelRatio(outputLive() ? 1 : Math.min(viewWin().devicePixelRatio || 1, 2));
   _dome.renderer.setSize(Math.max(1, r.width), Math.max(1, r.height), false);
   placeCompass();
 }
@@ -299,8 +318,11 @@ function frame(t: number) {
     if (t - _lastWarn > 5000) { console.warn("[dome] frame skipped:", e); _lastWarn = t; }
   }
   // Drawn to the screen only while the viewport shows; with it closed the
-  // loop is here for the output alone.
-  if (_open) {
+  // loop is here for the output alone. With an output live the preview is
+  // drawn every other dome frame (15 fps): the canvas holds its last image
+  // between, and the output itself is untouched.
+  _presentTick ^= 1;
+  if (_open && (!outputLive() || _presentTick === 0)) {
     if (_s.mode === "sim" && !_clean) _dome.presentSim(_s.simYaw, _s.simPitch, _s.simFov, _s.guides);
     else _dome.presentMaster(_s.guides && !_clean);
   }
@@ -315,6 +337,7 @@ function frame(t: number) {
     if (_badge) { _badge.textContent = `CÚPULA · ${status}`; _badge.hidden = _open || _s.output === "none"; }
     _outSent = 0;
     _fpsT = t; _fpsN = 0;
+    syncEconomy();   // follows the Página receivers, once a second
     if (_ui.fps) _ui.fps.textContent = `${fps} fps`;
     if (_ui.src) {
       _ui.src.textContent = view ? "escena 3D (fisheye)" : panel ? "panel 2D" : "sin imagen";
@@ -609,11 +632,11 @@ function open() {
   if (_open) return;
   ensureBuilt();
   _open = true;
-  if (_s.floating && float()) { _root!.classList.add("open"); resize(); syncLoop(); return; }
+  if (_s.floating && float()) { _root!.classList.add("open"); resize(); syncLoop(); syncEconomy(); return; }
   _root!.classList.add("open");
   resize();
   syncLoop();
-  setDomeEconomy(true);       // the page is covered: its flat view at 30 fps, density 1
+  syncEconomy();       // the page is covered: its flat view at 30 fps, density 1
 }
 
 // ── Ventana aparte ──────────────────────────────────────────────────────────
@@ -667,7 +690,7 @@ function float(): boolean {
   w.addEventListener("keydown", pass);
   w.addEventListener("keyup", pass);
   // Closed from its own title bar: the viewport comes home, closed.
-  w.addEventListener("pagehide", () => { if (_popup === w) { dock(); _open = false; _clean = false; _root!.classList.remove("open", "clean"); syncLoop(); } });
+  w.addEventListener("pagehide", () => { if (_popup === w) { dock(); _open = false; _clean = false; _root!.classList.remove("open", "clean"); syncLoop(); syncEconomy(); } });
   w.focus();
   return true;
 }
@@ -692,7 +715,7 @@ function close() {
   _root!.classList.remove("open");
   if (_popup) dock();
   syncLoop();
-  setDomeEconomy(false);
+  syncEconomy();       // still on while an output runs and the page is not on air
 }
 
 // ── Public ──────────────────────────────────────────────────────────────────
@@ -715,7 +738,7 @@ export function initDome(stage: HTMLElement) {
   _s = load();
   // Inside dome-live.js an NDI output left on comes back on by itself: a
   // window reopened mid-show resumes the feed without anyone touching it.
-  if (_s.output === "ndi") syncLoop();
+  if (_s.output === "ndi") { syncLoop(); syncEconomy(); }
 
   window.addEventListener("keydown", (e) => {
     const tag = (e.target as Element | null)?.tagName;

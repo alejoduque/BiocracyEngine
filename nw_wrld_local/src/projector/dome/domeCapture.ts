@@ -149,6 +149,19 @@ export function registerDomeLayer(canvas: HTMLCanvasElement, opts: { mode: DomeL
   return () => { _layers.delete(layer); };
 }
 
+// A layer that is redrawn only now and then (a card, a band) says so after
+// each redraw; the dome then uploads it only when it has changed. A layer that
+// never says so (the sky, a crawling ticker) is uploaded every dome frame.
+const _versions = new WeakMap<HTMLCanvasElement, number>();
+/** Mark a layer's canvas as redrawn. */
+export function touchDomeLayer(canvas: HTMLCanvasElement) {
+  _versions.set(canvas, (_versions.get(canvas) ?? 0) + 1);
+}
+/** How many times the canvas has been marked redrawn; undefined if it never is. */
+export function domeLayerVersion(canvas: HTMLCanvasElement): number | undefined {
+  return _versions.get(canvas);
+}
+
 /** The registered layers still on the stage. */
 export function currentLayers(): DomeLayer[] {
   const out: DomeLayer[] = [];
