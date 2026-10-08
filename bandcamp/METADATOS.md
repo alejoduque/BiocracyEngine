@@ -36,6 +36,7 @@ Código: github.com/alejoduque/BiocracyEngine
 | 3 | hondo | 8:05 | `03 - hondo.wav` (140 MB) | -16.6 LUFS | -0.9 dBFS |
 | 4 | vigilia | 13:05 | `04 - vigilia.wav` (226 MB) | -20.1 LUFS | -1.0 dBFS |
 | 5 | crecida | 7:05 | `05 - crecida.wav` (122 MB) | -14.3 LUFS | -0.9 dBFS |
+| 6 | interX | 6:18 | `06 - interX.wav` (109 MB) | -16.0 LUFS | -0.9 dBFS |
 
 Formato de todas: WAV PCM 24 bit, 48 kHz, estéreo. Bandcamp acepta hasta
 291 MB por pista.
@@ -147,3 +148,21 @@ Segunda mitad de la misma sesión, desde el valle donde terminó «vigilia». Un
 **track credits**
 
 Sesión del motor BiocracyEngine grabada el 2026-09-28 a las 22:39, corte 785–1210 s (`eth_sonification_20260928_223908.wav`).
+
+### 06 · interX
+
+| Campo en Bandcamp | Valor |
+|---|---|
+| track name | interX |
+| track number | 6 |
+| artist | planktum |
+| lyrics | — (instrumental) |
+| ISRC | — (opcional) |
+
+**about this track**
+
+La sesión del 8 de octubre a las 15:41, entera. Entra ya sonando, oscura y en el registro medio-grave; cerca de los dos minutos un tramo se abre y brilla, y vuelve a cerrarse. Desde los tres minutos y cuarto se adelgaza: más quieta y más aguda, con una última subida hacia los cuatro y medio, y después se va apagando hasta que sólo queda el detalle alto, y el silencio.
+
+**track credits**
+
+Sesión del motor BiocracyEngine grabada el 2026-10-08 a las 15:41, corte 0–378 s (`eth_sonification_20261008_154131.wav`).

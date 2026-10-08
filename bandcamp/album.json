@@ -68,6 +68,18 @@
         0
       ],
       "hace": "Segunda mitad de la misma sesión, desde el valle donde terminó «vigilia». Un solo crecimiento de seis minutos, en el registro grave, hasta el momento más fuerte y denso de la noche; de ahí cae de golpe a una cola baja que se apaga sola."
+    },
+    {
+      "n": 6,
+      "titulo": "interX",
+      "sesion": "eth_sonification_20261008_154131.wav",
+      "inicio": 0,
+      "duracion": 378,
+      "fundido": [
+        1,
+        0
+      ],
+      "hace": "La sesión del 8 de octubre a las 15:41, entera. Entra ya sonando, oscura y en el registro medio-grave; cerca de los dos minutos un tramo se abre y brilla, y vuelve a cerrarse. Desde los tres minutos y cuarto se adelgaza: más quieta y más aguda, con una última subida hacia los cuatro y medio, y después se va apagando hasta que sólo queda el detalle alto, y el silencio."
     }
   ]
 }
