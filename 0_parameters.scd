@@ -244,6 +244,12 @@
     // bed (REMU). Either one above 0 switches remuestreo on, so the sequences
     // can play with no bed and the bed with no sequences.
     (name: \mixSeq,        spec: ControlSpec(0, 2, \lin), default: 0.0, path: "/mix/seq",        cc: 63),
+    // GOLPE (19_golpe.scd): distorted hand percussion — darbuka, tabla, riq —
+    // overdriven, crushed and dubbed, played from the 32-step grid in the SC
+    // GUI. A voice layer like perc, not a motor: linear like the eight above,
+    // not under MOTOR. Default 0, so it sounds only where a config asks.
+    // CC 65, the first free one.
+    (name: \mixGolpe,      spec: ControlSpec(0, 2, \lin), default: 0.0, path: "/mix/golpe",      cc: 65),
     // MEZCLA: how much the mix is CARVED — one owner per band. 0 is the
     // engine exactly as it always sounded (the mud included, and the road to
     // a noise piece); 1 is the professional mix: low cuts per layer, the
@@ -464,6 +470,88 @@
     ~controlValues[def[\name]] = def[\default];
 };
 
+// The two knobs the Cámara breathes (Art. 45, ~phenoBreath). The breath used
+// to overwrite them outright once per ring day, so what a config set for them
+// lasted about a minute; now it breathes around the value kept here, which
+// only a hand, a controller or a config changes (~setParam, step 3b).
+~breathHome = (harmonicRich: ~controlValues[\harmonicRich],
+    textureDepth: ~controlValues[\textureDepth]);
+
+// ─── GOLPE · the 32-step grid (19_golpe.scd plays it, 4_gui.scd draws it) ───
+// Five rows of hand percussion, 32 sixteenths = two bars. State lives here,
+// in the first file, because the GUI (file 4) is built before the sequencer
+// (file 19) and the configs (this file) save and load it.
+//
+// Written as strings, one per row, "x" = hit, "." = rest — the same strings a
+// config stores in its "golpe" section, so a preset file shows the rhythm.
+// The five rhythms are the darbuka's own (maqsum, baladi, saidi, malfuf,
+// ayoub), with the riq and the tabla added the way Muslimgauze stacks them.
+~golpeRows = [\dum, \tek, \ka, \tabla, \riq];
+~golpeSteps = 32;
+~golpeLibrary = (
+    maqsum: (dum:   "x.......x.......x.......x..x....",
+             tek:   "..x...x.....x.....x...x.....x.x.",
+             ka:    "...x......x...x....x......x.....",
+             tabla: ".....x...............x..........",
+             riq:   "x...x.x.x...x.x.x...x.x.x...x.xx"),
+    baladi: (dum:   "x.x.....x.......x.x.....x.......",
+             tek:   "......x.....x.........x.....xxx.",
+             ka:    "....x.....x...x.....x.....x.....",
+             tabla: "...........x...............x....",
+             riq:   "x...x.x.x...x.x.x...x.x.x...x.x."),
+    saidi:  (dum:   "x.....x.x.......x.....x.xx......",
+             tek:   "..x.........x.....x.........x.x.",
+             ka:    "....x.....x...x.....x.....x....x",
+             tabla: ".......x...............x........",
+             riq:   "..x...x...x...x...x...x...x...x."),
+    malfuf: (dum:   "x.......x.......x.......x.......",
+             tek:   "...x..x....x..x....x..x....x..x.",
+             ka:    ".............x...............x..",
+             tabla: "................................",
+             riq:   "..x...x...x...x...x...x...x...x."),
+    ayoub:  (dum:   "x...x...x...x...x...x...x...x...",
+             tek:   "......x.......x.......x.......xx",
+             ka:    "...x.......x.......x.......x....",
+             tabla: "..............x...............x.",
+             riq:   "..x....x..x....x..x....x..x....x")
+);
+~golpeFromString = { |str|
+    var s = (str ? "").asString;
+    ~golpeSteps.collect { |i| if(s[i] == $x) { 1 } { 0 } }
+};
+~golpeToString = { |arr| arr.collect { |v| if(v > 0) { "x" } { "." } }.join };
+~golpeRefresh = {
+    { if(~golpeGridView.notNil and: { ~golpeGridView.isClosed.not }) { ~golpeGridView.refresh } }.defer;
+};
+// One box. The grid's mouse and nothing else writes single steps.
+~golpeSet = { |row, step, on|
+    if(~golpePattern[row].notNil and: { step.inclusivelyBetween(0, ~golpeSteps - 1) }) {
+        ~golpePattern[row][step] = if(on > 0) { 1 } { 0 };
+        ~stateDirty = true;
+        ~golpeRefresh.value;
+    };
+};
+// A whole pattern: a library entry, a config's "golpe" section (String keys
+// from parseJSON) or an Event of arrays. Rows it does not name stay as they
+// are, like every other section a config leaves out.
+~golpeLoad = { |src|
+    ~golpeRows.do { |row|
+        var v = src[row] ?? { src[row.asString] };
+        if(v.notNil) {
+            ~golpePattern[row] = if(v.isString) { ~golpeFromString.(v) } {
+                ~golpeSteps.collect { |i| if((v[i] ? 0) > 0) { 1 } { 0 } } };
+        };
+    };
+    ~stateDirty = true;
+    ~golpeRefresh.value;
+};
+~golpeClear = { ~golpeRows.do { |row| ~golpePattern[row] = 0 ! ~golpeSteps }; ~stateDirty = true; ~golpeRefresh.value };
+~golpePattern = ~golpePattern ?? {
+    var p = ();
+    ~golpeRows.do { |row| p[row] = ~golpeFromString.(~golpeLibrary[\maqsum][row]) };
+    p
+};
+
 // Upper-cases the first letter for GUI labels. Replaces String:capitalize,
 // which SC 3.14 does not implement (it threw on every parameter write).
 // Display names for knobs whose parameter name does not read well flattened
@@ -650,6 +738,13 @@
         // 3 · language-side cache
         if(~controlValues.notNil) { ~controlValues[name] = val };
 
+        // 3b · where the Cámara's breath returns to (14_phenological_corpus,
+        //     ~phenoBreath). Every hand, MIDI, OSC or config write sets it;
+        //     the breath's own writes (\pheno) never do.
+        if(source != \pheno and: { ~breathHome.notNil } and: { ~breathHome.includesKey(name) }) {
+            ~breathHome[name] = val;
+        };
+
         // 4 · GUI knob + label (event-driven — replaces the 50ms polling loop;
         //     knob.value = does NOT fire the knob's action, so no feedback loop)
         {
@@ -781,6 +876,10 @@ if(File.exists(~presetDir).not) { File.mkdir(~presetDir) };
     };
     var params = ();
     ~paramDefs.do { |def| params[def[\name]] = ~controlValues[def[\name]] ? def[\default] };
+    // The two breathed knobs are saved where the breath returns to, not where
+    // it happened to be: otherwise every autosave on an empty day would store
+    // the thinned value and the next boot would breathe around that.
+    (~breathHome ? ()).keysValuesDo { |k, v| params[k] = v };
     sections.add(jsonSection.(\params, params));
     if(~sampleControlValues.notNil) {
         sections.add(jsonSection.(\sample, ~sampleControlValues));
@@ -794,6 +893,13 @@ if(File.exists(~presetDir).not) { File.mkdir(~presetDir) };
             st[(name ++ "_auto").asSymbol] = v[\auto] ? 0;
         };
         sections.add(jsonSection.(\stems, st));
+    };
+    // The GOLPE grid, one string per row ("x" hit, "." rest), so the file
+    // shows the rhythm. jsonSection writes floats only, hence its own writer.
+    if(~golpePattern.notNil) {
+        sections.add("  \"golpe\": {\n%\n  }".format(~golpeRows.collect { |row|
+            "    \"%\": \"%\"".format(row, ~golpeToString.(~golpePattern[row]))
+        }.join(",\n")));
     };
     // (The "spatial" section — spatialX/Y, roomSize, distanceEffect — is no
     // longer written: those buses fed only the never-played \elektronBell.
@@ -988,6 +1094,9 @@ if(File.exists(~presetDir).not) { File.mkdir(~presetDir) };
                         };
                     };
                 };
+                // The GOLPE grid. A config without it leaves the pattern as
+                // it is, like the stems above.
+                if(dict["golpe"].notNil and: { ~golpeLoad.notNil }) { ~golpeLoad.(dict["golpe"]) };
                 (dict["spatial"] ?? ()).keysValuesDo { |k, v|
                     if(~buses.notNil and: { ~buses[k.asSymbol].notNil }) {
                         ~buses[k.asSymbol].set(v.asFloat);

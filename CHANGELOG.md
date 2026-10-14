@@ -7,6 +7,41 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### GOLPE (32-step distorted hand percussion) and configs that state the whole matrix (2026-10-14)
+
+#### Added
+- **GOLPE** (`19_golpe.scd`, loaded after the motors) is a Muslimgauze-style hand-percussion layer with five rows (DUM, TEK, KA, TABLA, RIQ).
+  - **Chain:** asymmetric drive, then crush, LPF and a ping-pong dub delay. Its own stem, fader `mixGolpe` (`/mix/golpe`, CC 65), and a mixer strip with meter, pan and AUTO. Linear like PERC, not under MOTOR.
+  - **Existing knobs it reads:**
+    - beatTempo sets the BPM (92×);
+    - textureDepth sets the drive;
+    - filterCutoff and noiseFilt set the crush (sample rate and bits);
+    - spectralShift sets the LPF;
+    - delayFeedback, timeDilation and memoryFeed set the dub;
+    - pitchShift, resonantBody and harmonicRich set the tuning and ring;
+    - noiseLevel sets the human feel;
+    - percRate sets the ghost notes;
+    - the Marea arc sets off-beat probability;
+    - CINTA sets the tape drift.
+  - **The chain:** transactions add flams and rolls, and a new block brings a fill and an accent.
+- **32-step grid in the SC GUI** (`GOLPE · 32` row). Click toggles a box and drag paints; the playhead column is inverted. Library buttons MAQSUM, BALADI, SAIDI, MALFUF, AYOUB and CLR.
+  - The pattern lives in `~golpePattern` (`0_parameters.scd`) and is saved in configs as a readable `"golpe"` section, one `x.` string per row.
+- **New config group `GOLPE_1_Maqsum` … `GOLPE_4_Ayoub`:** full worlds with GOLPE as protagonist over MASA, ESPECTRO, RUPTURA or CORO beds, with CINTA tape.
+
+#### Changed
+- **Every base config (01–19, CHINA_OK, FOGATA_*, GOLPE_*) now states the whole sound matrix:**
+  - all motor faders, so loading a config no longer leaves another config's motors running;
+  - `mixGolpe`, `corpusCrudo` and an explicit tide arc;
+  - windowWidth, activityThreshold, seasonalBias, absenceWeight, phenoRate, noiseLevel, noiseFilt, droneFade and droneMix, each chosen from the config's name;
+  - a `stems` section (pad, sample, corpus and golpe pan and AUTO).
+- GOLPE plays in Parliament, Dynamic Graphs, Dynamic Optimality, Memory Hierarchy, Hashing, Tránsito and Registro. MEZCLA_* and EXT* are unchanged.
+- **The Cámara's reverse breath** (`~phenoBreath`) now breathes harmonicRich and textureDepth around the value the config or a hand set (`~breathHome`): ×0.6 on an empty day, ×1.0 on a full day, up to ×1.3. Configs save that home value, not the breathed one.
+
+#### Fixed
+- **Config values for harmonicRich and textureDepth survive.** The breath overwrote both absolutely once per ring day, so on unrecorded days they fell to their floors whatever the config said.
+- **Triad percussion voicing is reachable.** It needed textureDepth > 0.6, which is the spec maximum; the threshold is now ≥ 0.5.
+- **Dead `"spatial"` section removed** from every preset file.
+
 ### Slot 0 as a live phenological calendar; slots O and T (2026-09-30)
 
 #### Added

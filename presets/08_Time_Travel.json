@@ -3,11 +3,11 @@
     "engine": "BiocracyEngine",
     "version": 1,
     "preset": "Time Travel - Vortice Cronologico y Dilatacion",
-    "nota": "Vórtice cronológico: el tiempo se estira hasta casi detenerse. Paulstretch al máximo, todo una quinta abajo, ecos largos que vuelven, pad casi inmóvil; los golpes son raros y lejanos.",
-    "revisado": "2026-09-26"
+    "nota": "Vórtice cronológico: el tiempo se estira hasta casi detenerse. Paulstretch al máximo, todo una quinta abajo, ecos largos que vuelven, pad casi inmóvil; los golpes son raros y lejanos. Revisión 2026-10-14: el anillo a su lectura más lenta (ocho minutos por día); ESPECTRO congelado y REMUESTREO que devuelve lo que ya sonó.",
+    "revisado": "2026-10-14"
   },
   "params": {
-    "absenceWeight": 0.3,
+    "absenceWeight": 0.5,
     "activityThreshold": 0.5,
     "atmosphereMix": 0.9,
     "bancada": 2.0,
@@ -19,12 +19,13 @@
     "chamberMix": 0.5,
     "chamberSize": 0.85,
     "chinaOn": 0.3,
+    "corpusCrudo": 0.0,
     "corpusFx": 1.0,
     "corpusLevel": 0.6,
     "delayFeedback": 0.7,
     "droneDepth": 0.5,
-    "droneFade": 1.0,
-    "droneMix": 0.8,
+    "droneFade": 5.0,
+    "droneMix": 0.9,
     "droneSpace": 0.85,
     "dustRate": 0.3,
     "filterCutoff": 0.6,
@@ -37,13 +38,21 @@
     "masterAmp": 0.85,
     "masterVolume": 0.35,
     "memoryFeed": 0.75,
+    "mixCaos": 0.0,
     "mixCorpus": 1.0,
     "mixDrone": 1.5,
     "mixDust": 0.9,
+    "mixEspectro": 1.3,
+    "mixGolpe": 0.0,
     "mixKick": 0.7,
+    "mixMasa": 0.0,
+    "mixMotor": 1.0,
     "mixPad": 1.2,
     "mixPerc": 0.4,
+    "mixRemuestreo": 0.9,
+    "mixRuptura": 0.0,
     "mixSample": 1.1,
+    "mixSeq": 0.0,
     "mixUltra": 0.9,
     "noiseFilt": 0.5,
     "noiseLevel": 0.2,
@@ -53,7 +62,7 @@
     "padPitch": 0.5,
     "padVoices": 3.0,
     "percRate": 0.08,
-    "phenoRate": 0.0167,
+    "phenoRate": 0.002,
     "phenoSeek": 0.0,
     "pitchShift": -7.0,
     "pulseGain": 0.8,
@@ -62,7 +71,7 @@
     "spatialSpread": 0.5,
     "spectralShift": 1000.0,
     "textureDepth": 0.4,
-    "tideLarga": 0.0,
+    "tideLarga": 1.0,
     "tideMedia": 0.0,
     "tidePulse": 0.0,
     "tideShort": 0.0,
@@ -70,7 +79,7 @@
     "transactionInfluence": 0.4,
     "vizConsensus": 0.5,
     "vizRotation": 0.4,
-    "windowWidth": 1.0
+    "windowWidth": 2.5
   },
   "sample": {
     "delayTime": 1.6,
@@ -80,10 +89,14 @@
     "sampleReverb": 0.55,
     "timeStretch": 8.0
   },
-  "spatial": {
-    "distanceEffect": 0.6,
-    "roomSize": 0.85,
-    "spatialX": 0.0,
-    "spatialY": 0.0
+  "stems": {
+    "corpus_auto": 0.0,
+    "corpus_pan": 0.0,
+    "golpe_auto": 0.0,
+    "golpe_pan": 0.0,
+    "pad_auto": 0.0,
+    "pad_pan": 0.0,
+    "sample_auto": 0.0,
+    "sample_pan": 0.0
   }
 }

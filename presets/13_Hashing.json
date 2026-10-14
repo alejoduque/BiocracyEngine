@@ -3,8 +3,8 @@
     "engine": "BiocracyEngine",
     "version": 1,
     "preset": "Hashing - Prueba Criptografica y Entropia SHA",
-    "nota": "Prueba criptográfica y entropía: ruido, sequedad y velocidad. China casi sola, campanas cada segundo y medio como hashes, polvo al máximo razonable, granos diminutos; sin sala.",
-    "revisado": "2026-09-26"
+    "nota": "Prueba criptográfica y entropía: ruido, sequedad y velocidad. China casi sola, campanas cada segundo y medio como hashes, polvo al máximo razonable, granos diminutos; sin sala. Revisión 2026-10-14: RUPTURA (1.4) como el hash en ocho bits; GOLPE (0.7) en saidi, molido a pocos bits (noiseFilt 0.2).",
+    "revisado": "2026-10-14"
   },
   "params": {
     "absenceWeight": 0.3,
@@ -19,12 +19,13 @@
     "chamberMix": 0.06,
     "chamberSize": 0.15,
     "chinaOn": 0.9,
+    "corpusCrudo": 0.0,
     "corpusFx": 0.5,
     "corpusLevel": 0.6,
     "delayFeedback": 0.4,
     "droneDepth": 0.5,
     "droneFade": 1.0,
-    "droneMix": 0.8,
+    "droneMix": 0.1,
     "droneSpace": 0.6,
     "dustRate": 0.85,
     "filterCutoff": 0.6,
@@ -37,16 +38,24 @@
     "masterAmp": 0.8,
     "masterVolume": 0.35,
     "memoryFeed": 0.4,
+    "mixCaos": 0.8,
     "mixCorpus": 0.7,
     "mixDrone": 1.0,
     "mixDust": 1.0,
+    "mixEspectro": 0.0,
+    "mixGolpe": 0.7,
     "mixKick": 1.2,
+    "mixMasa": 0.0,
+    "mixMotor": 1.0,
     "mixPad": 0.5,
     "mixPerc": 1.2,
+    "mixRemuestreo": 0.0,
+    "mixRuptura": 1.4,
     "mixSample": 0.8,
+    "mixSeq": 0.0,
     "mixUltra": 0.4,
-    "noiseFilt": 0.5,
-    "noiseLevel": 0.3,
+    "noiseFilt": 0.2,
+    "noiseLevel": 0.45,
     "opacityFloor": 0.05,
     "padEvery": 90.0,
     "padMotion": 2.0,
@@ -65,7 +74,7 @@
     "tideLarga": 0.0,
     "tideMedia": 0.0,
     "tidePulse": 1.0,
-    "tideShort": 0.0,
+    "tideShort": 1.0,
     "timeDilation": 2.0,
     "transactionInfluence": 0.85,
     "vizConsensus": 0.3,
@@ -80,10 +89,21 @@
     "sampleReverb": 0.05,
     "timeStretch": 0.5
   },
-  "spatial": {
-    "distanceEffect": 0.2,
-    "roomSize": 0.3,
-    "spatialX": 0.0,
-    "spatialY": 0.0
+  "stems": {
+    "corpus_auto": 0.0,
+    "corpus_pan": 0.0,
+    "golpe_auto": 0.0,
+    "golpe_pan": 0.0,
+    "pad_auto": 0.0,
+    "pad_pan": 0.0,
+    "sample_auto": 0.0,
+    "sample_pan": 0.0
+  },
+  "golpe": {
+    "dum": "x.....x.x.......x.....x.xx......",
+    "tek": "..x.........x.....x.........x.x.",
+    "ka": "....x.....x...x.....x.....x....x",
+    "tabla": ".......x...............x........",
+    "riq": "..x...x...x...x...x...x...x...x."
   }
 }

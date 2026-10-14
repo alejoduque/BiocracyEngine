@@ -398,7 +398,7 @@
     case
     { texDep < 0.2 } { \single }                      // sparse
     { (resBdy > 0.6) and: { texDep < 0.5 } } { \dyad }   // pairs
-    { texDep > 0.6 } { \triad }                       // full chords
+    { texDep >= 0.5 } { \triad }                      // full chords (0.6 is the spec top: > 0.6 never fired)
     { \dyad };                                        // default
 };
 

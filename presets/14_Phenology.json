@@ -3,12 +3,12 @@
     "engine": "BiocracyEngine",
     "version": 1,
     "preset": "Phenology - Camara Fenologica y Ciclo 365",
-    "nota": "Cámara fenológica y ciclo de 365 días: el corpus en pleno, el pulso de la cámara presente, una sala moderada; los sintetizadores callan casi todo y dejan hablar al anillo. BUSCAR 0.35, todas las bancadas: el calendario se lee con sus ausencias, pero el bosque vuelve cada pocos minutos. CORPUS FX 0.2: el calendario se oye como fue grabado.",
-    "revisado": "2026-09-26"
+    "nota": "Cámara fenológica y ciclo de 365 días: el corpus en pleno, el pulso de la cámara presente, una sala moderada; los sintetizadores callan casi todo y dejan hablar al anillo. BUSCAR 0.35, todas las bancadas: el calendario se lee con sus ausencias, pero el bosque vuelve cada pocos minutos. CORPUS FX 0.2: el calendario se oye como fue grabado. Revisión 2026-10-14: Marea larga; umbral algo más exigente y la ausencia audible (0.6): el ciclo de 365 días con sus silencios.",
+    "revisado": "2026-10-14"
   },
   "params": {
-    "absenceWeight": 0.4,
-    "activityThreshold": 0.45,
+    "absenceWeight": 0.6,
+    "activityThreshold": 0.55,
     "atmosphereMix": 0.5,
     "bancada": 0.0,
     "beatTempo": 1.0,
@@ -19,6 +19,7 @@
     "chamberMix": 0.3,
     "chamberSize": 0.5,
     "chinaOn": 0.2,
+    "corpusCrudo": 0.0,
     "corpusFx": 0.2,
     "corpusLevel": 1.0,
     "delayFeedback": 0.4,
@@ -37,13 +38,21 @@
     "masterAmp": 0.85,
     "masterVolume": 0.35,
     "memoryFeed": 0.4,
+    "mixCaos": 0.0,
     "mixCorpus": 1.8,
     "mixDrone": 0.9,
     "mixDust": 1.1,
+    "mixEspectro": 0.0,
+    "mixGolpe": 0.0,
     "mixKick": 0.6,
+    "mixMasa": 0.0,
+    "mixMotor": 1.0,
     "mixPad": 0.5,
     "mixPerc": 0.5,
+    "mixRemuestreo": 0.0,
+    "mixRuptura": 0.0,
     "mixSample": 1.8,
+    "mixSeq": 0.0,
     "mixUltra": 1.2,
     "noiseFilt": 0.5,
     "noiseLevel": 0.2,
@@ -62,7 +71,7 @@
     "spatialSpread": 0.5,
     "spectralShift": 1000.0,
     "textureDepth": 0.4,
-    "tideLarga": 0.0,
+    "tideLarga": 1.0,
     "tideMedia": 0.0,
     "tidePulse": 1.0,
     "tideShort": 0.0,
@@ -70,7 +79,7 @@
     "transactionInfluence": 0.4,
     "vizConsensus": 0.5,
     "vizRotation": 0.6,
-    "windowWidth": 1.0
+    "windowWidth": 1.4
   },
   "sample": {
     "delayTime": 0.5,
@@ -80,10 +89,14 @@
     "sampleReverb": 0.3,
     "timeStretch": 1.5
   },
-  "spatial": {
-    "distanceEffect": 0.5,
-    "roomSize": 0.6,
-    "spatialX": 0.0,
-    "spatialY": 0.0
+  "stems": {
+    "corpus_auto": 0.0,
+    "corpus_pan": 0.0,
+    "golpe_auto": 0.0,
+    "golpe_pan": 0.0,
+    "pad_auto": 0.0,
+    "pad_pan": 0.0,
+    "sample_auto": 0.0,
+    "sample_pan": 0.0
   }
 }

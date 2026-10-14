@@ -3,8 +3,8 @@
     "engine": "BiocracyEngine",
     "version": 1,
     "preset": "Low Earth Point - Trayectoria Orbital LEO",
-    "nota": "Órbita baja: limpio, periódico y claro. Campanas regulares como pasos de satélite, pad alto que se desplaza, eco de samples en período fijo; sala chica, casi seca.",
-    "revisado": "2026-09-26"
+    "nota": "Órbita baja: limpio, periódico y claro. Campanas regulares como pasos de satélite, pad alto que se desplaza, eco de samples en período fijo; sala chica, casi seca. Revisión 2026-10-14: Marea corta como período orbital; las secuencias del remuestreo como pasos regulares; ventana estrecha, drone seco.",
+    "revisado": "2026-10-14"
   },
   "params": {
     "absenceWeight": 0.3,
@@ -19,12 +19,13 @@
     "chamberMix": 0.15,
     "chamberSize": 0.3,
     "chinaOn": 0.3,
+    "corpusCrudo": 0.0,
     "corpusFx": 0.5,
     "corpusLevel": 0.6,
     "delayFeedback": 0.4,
     "droneDepth": 0.5,
     "droneFade": 1.0,
-    "droneMix": 0.8,
+    "droneMix": 0.3,
     "droneSpace": 0.6,
     "dustRate": 0.25,
     "filterCutoff": 0.6,
@@ -37,16 +38,24 @@
     "masterAmp": 0.85,
     "masterVolume": 0.35,
     "memoryFeed": 0.4,
+    "mixCaos": 0.0,
     "mixCorpus": 0.9,
     "mixDrone": 1.1,
     "mixDust": 0.7,
+    "mixEspectro": 0.0,
+    "mixGolpe": 0.0,
     "mixKick": 1.1,
+    "mixMasa": 0.0,
+    "mixMotor": 1.0,
     "mixPad": 0.7,
     "mixPerc": 0.8,
+    "mixRemuestreo": 0.0,
+    "mixRuptura": 0.0,
     "mixSample": 1.0,
+    "mixSeq": 1.0,
     "mixUltra": 0.6,
-    "noiseFilt": 0.5,
-    "noiseLevel": 0.2,
+    "noiseFilt": 0.7,
+    "noiseLevel": 0.05,
     "opacityFloor": 0.05,
     "padEvery": 22.0,
     "padMotion": 1.6,
@@ -65,12 +74,12 @@
     "tideLarga": 0.0,
     "tideMedia": 0.0,
     "tidePulse": 1.0,
-    "tideShort": 0.0,
+    "tideShort": 1.0,
     "timeDilation": 2.0,
     "transactionInfluence": 0.4,
     "vizConsensus": 0.5,
     "vizRotation": 1.6,
-    "windowWidth": 1.0
+    "windowWidth": 0.6
   },
   "sample": {
     "delayTime": 0.9,
@@ -80,10 +89,14 @@
     "sampleReverb": 0.25,
     "timeStretch": 1.5
   },
-  "spatial": {
-    "distanceEffect": 0.3,
-    "roomSize": 0.5,
-    "spatialX": 0.5,
-    "spatialY": 0.0
+  "stems": {
+    "corpus_auto": 0.0,
+    "corpus_pan": 0.0,
+    "golpe_auto": 0.0,
+    "golpe_pan": 0.0,
+    "pad_auto": 0.0,
+    "pad_pan": 0.0,
+    "sample_auto": 0.0,
+    "sample_pan": 0.0
   }
 }

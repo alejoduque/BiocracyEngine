@@ -954,17 +954,22 @@ s.waitForBoot {
 
 // Article 45's reverse breath, factored out so it can be re-applied when
 // pulseGain moves instead of only at a day boundary.
+//
+// It breathes AROUND the value the config (or a hand) set — ~breathHome,
+// 0_parameters.scd — instead of replacing it. With q = quorum × pulse: an
+// empty day (q 0) thins the knob to 0.6 of its home, a full day at unity
+// pulse (q 1) gives the home exactly, and pulse 2 on a full day swells it to
+// 1.3. In native units, not normalised: harmonicRich is exponential, and 0.6
+// of its normalised position would take a config's 2.0 down to 0.4. Before,
+// the breath wrote absolute values, so on the 331 unrecorded days both knobs
+// fell to their floors and no config could hold them for more than a day.
 ~phenoBreath = { |quorum, pulse|
     if(pulse > 0.01 and: { ~setParam.notNil }) {
-        var richSpec = ~controlSpecs[\harmonicRich];
-        var texSpec = ~controlSpecs[\textureDepth];
-        if(richSpec.notNil) {
-            ~setParam.(\harmonicRich,
-                richSpec.map((quorum * pulse * 0.5).clip(0, 1)), \pheno);
-        };
-        if(texSpec.notNil) {
-            ~setParam.(\textureDepth,
-                texSpec.map((quorum * pulse * 0.6).clip(0, 1)), \pheno);
+        var q = (quorum * pulse).clip(0, 2);
+        var f = if(q <= 1) { q.linlin(0, 1, 0.6, 1.0) } { q.linlin(1, 2, 1.0, 1.3) };
+        [\harmonicRich, \textureDepth].do { |name|
+            var home = (~breathHome ? ())[name] ? ~controlValues[name];
+            if(home.notNil) { ~setParam.(name, home * f, \pheno) };
         };
     };
 };

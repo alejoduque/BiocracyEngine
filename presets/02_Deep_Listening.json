@@ -3,11 +3,11 @@
     "engine": "BiocracyEngine",
     "version": 1,
     "preset": "Deep Listening - Atencion Expandida y Espacio",
-    "nota": "Atención expandida (Oliveros, la cisterna de 45 s): casi nada ocurre y todo resuena. Sala al máximo razonable (~27 s), bowl solo sin china, pad cada minuto, sin bombo; el oído llena el espacio. BUSCAR 0.4: el bosque aparece de a ratos, separado por días de ausencia que también se escuchan. CORPUS FX 0.8: las grabaciones entran en la cisterna, estiradas y con eco largo.",
-    "revisado": "2026-09-26"
+    "nota": "Atención expandida (Oliveros, la cisterna de 45 s): casi nada ocurre y todo resuena. Sala al máximo razonable (~27 s), bowl solo sin china, pad cada minuto, sin bombo; el oído llena el espacio. BUSCAR 0.4: el bosque aparece de a ratos, separado por días de ausencia que también se escuchan. CORPUS FX 0.8: las grabaciones entran en la cisterna, estiradas y con eco largo. Revisión 2026-10-14: el ESPECTRO congela la cisterna; la ausencia se oye (ultrasonido en los días vacíos, 0.6); el anillo a cuatro minutos por día; el pad gira despacio por la sala.",
+    "revisado": "2026-10-14"
   },
   "params": {
-    "absenceWeight": 0.3,
+    "absenceWeight": 0.6,
     "activityThreshold": 0.5,
     "atmosphereMix": 0.6,
     "bancada": 2.0,
@@ -19,12 +19,13 @@
     "chamberMix": 0.7,
     "chamberSize": 0.95,
     "chinaOn": 0.0,
+    "corpusCrudo": 0.0,
     "corpusFx": 0.8,
     "corpusLevel": 0.6,
     "delayFeedback": 0.45,
     "droneDepth": 0.5,
-    "droneFade": 0.8,
-    "droneMix": 0.5,
+    "droneFade": 4.5,
+    "droneMix": 0.9,
     "droneSpace": 0.9,
     "dustRate": 0.12,
     "filterCutoff": 0.75,
@@ -37,13 +38,21 @@
     "masterAmp": 0.7,
     "masterVolume": 0.3,
     "memoryFeed": 0.45,
+    "mixCaos": 0.0,
     "mixCorpus": 1.0,
     "mixDrone": 1.2,
     "mixDust": 1.25,
+    "mixEspectro": 1.0,
+    "mixGolpe": 0.0,
     "mixKick": 0.65,
+    "mixMasa": 0.0,
+    "mixMotor": 1.0,
     "mixPad": 1.1,
     "mixPerc": 0.35,
+    "mixRemuestreo": 0.0,
+    "mixRuptura": 0.0,
     "mixSample": 1.4,
+    "mixSeq": 0.0,
     "mixUltra": 0.8,
     "noiseFilt": 0.5,
     "noiseLevel": 0.2,
@@ -53,7 +62,7 @@
     "padPitch": 0.6,
     "padVoices": 2.0,
     "percRate": 0.06,
-    "phenoRate": 0.0167,
+    "phenoRate": 0.004,
     "phenoSeek": 0.4,
     "pitchShift": 0.0,
     "pulseGain": 0.8,
@@ -62,7 +71,7 @@
     "spatialSpread": 0.85,
     "spectralShift": 1200.0,
     "textureDepth": 0.3,
-    "tideLarga": 0.0,
+    "tideLarga": 1.0,
     "tideMedia": 0.0,
     "tidePulse": 0.0,
     "tideShort": 0.0,
@@ -70,7 +79,7 @@
     "transactionInfluence": 0.4,
     "vizConsensus": 0.5,
     "vizRotation": 0.35,
-    "windowWidth": 1.0
+    "windowWidth": 2.2
   },
   "sample": {
     "delayTime": 0.9,
@@ -80,10 +89,14 @@
     "sampleReverb": 0.7,
     "timeStretch": 6.0
   },
-  "spatial": {
-    "distanceEffect": 0.75,
-    "roomSize": 0.7,
-    "spatialX": 0.3,
-    "spatialY": -0.2
+  "stems": {
+    "corpus_auto": 0.0,
+    "corpus_pan": 0.0,
+    "golpe_auto": 0.0,
+    "golpe_pan": 0.0,
+    "pad_auto": 0.3,
+    "pad_pan": 0.0,
+    "sample_auto": 0.0,
+    "sample_pan": 0.0
   }
 }

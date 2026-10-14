@@ -221,6 +221,12 @@ s.doWhenBooted({
     // layer was running at 30% of whatever this constant says. Both are raised
     // together — see 5_beat_engine.scd.
     ~trimDust  = 1.20 * ~trimMaster;   // DUST — pulled back from 1.90, still 4 dB over its old level
+    // GOLPE (19_golpe.scd) — the darbuka/tabla/riq grid after its drive, crush
+    // and dub. Measured on a silent server at the default knobs, 30 s: at 1.0
+    // it came out at -48.7 LUFS, peak -37.1 dBTP — the kick's peak and 5 dB
+    // over the drone stem (-53.3). 0.8 seats it just over the drone, so the
+    // configs' GOLPE faders (0.3-0.8 as a layer, 1.2-1.4 as protagonist) read.
+    ~trimGolpe = 0.8 * ~trimMaster;
     // Field recordings (10_sample_system.scd). Kept in this table rather than
     // beside the sample SynthDef so the whole budget stays readable in one
     // place — a layer that sets its own level somewhere else is exactly how
@@ -289,7 +295,7 @@ s.doWhenBooted({
     // ~stemOut falls back to bus 0 for an unknown name, so a voice can never
     // go silent by being pointed at a stem nobody reads.
     ~stemNames = [\drone, \pad, \kick, \perc, \dust, \sample, \corpus, \ultra,
-                  \remuestreo, \espectro, \caos, \ruptura, \masa, \seq];
+                  \remuestreo, \espectro, \caos, \ruptura, \masa, \seq, \golpe];
     ~stems = ~stems ?? { () };
     ~stemNames.do { |n| if(~stems[n].isNil) { ~stems[n] = Bus.audio(s, ~limiterChans) } };
     ~stemOut = { |name| (~stems !? { ~stems[name] } !? { |b| b.index }) ? 0 };
@@ -433,7 +439,8 @@ s.doWhenBooted({
         corpus: [\lsF, 200, \lsDb, -3],
         masa:   [\hpf, 25],
         remuestreo: [\hpf, 30], espectro: [\hpf, 30], caos: [\hpf, 30],
-        ruptura: [\hpf, 30], seq: [\hpf, 30]
+        ruptura: [\hpf, 30], seq: [\hpf, 30],
+        golpe:  [\hpf, 35, \tame, 12]
     );
     ~stemCarveArgs = { |name|
         var prof = ~stemCarveProfiles[name] ? [];
@@ -2284,7 +2291,9 @@ s.doWhenBooted({
     // 17_chain_processing.scd places their \stemSum just before it.
     if(~stemGroupA.notNil) { try { ~stemGroupA.free } };
     ~stemGroupA = Group.after(~defaultGroup ? s.defaultGroup);
-    [\drone, \pad, \kick, \perc, \dust, \sample].do { |n|
+    // GOLPE (19_golpe.scd) sums here too: its voices sit just before this
+    // group, and the motors' tap hears it like any other voice.
+    [\drone, \pad, \kick, \perc, \dust, \sample, \golpe].do { |n|
         ~stemStart.(n, 0, ~stemGroupA);
     };
     if(~chamberSynth.notNil) { try { ~chamberSynth.free }; ~chamberSynth = nil };

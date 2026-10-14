@@ -3,14 +3,14 @@
     "engine": "BiocracyEngine",
     "version": 1,
     "preset": "Antifonia - Camara Vocal y Dialogo Resonante",
-    "nota": "Cámara vocal y diálogo: llamada y respuesta. Corpus y samples adelante, el eco de los samples como respuesta al otro lado de la sala, bowl resonante; una sala generosa (~21 s) para que se oigan. BUSCAR 0.75: el corpus responde casi siempre a los samples; la antífona necesita a sus dos coros. CORPUS FX 0.5: el coro del bosque responde con el mismo eco que los samples.",
-    "revisado": "2026-09-26"
+    "nota": "Cámara vocal y diálogo: llamada y respuesta. Corpus y samples adelante, el eco de los samples como respuesta al otro lado de la sala, bowl resonante; una sala generosa (~21 s) para que se oigan. BUSCAR 0.75: el corpus responde casi siempre a los samples; la antífona necesita a sus dos coros. CORPUS FX 0.5: el coro del bosque responde con el mismo eco que los samples. Revisión 2026-10-14: los dos coros a los dos lados de la sala (samples a la izquierda, corpus a la derecha); la bancada del coro; el remuestreo responde.",
+    "revisado": "2026-10-14"
   },
   "params": {
     "absenceWeight": 0.3,
     "activityThreshold": 0.5,
     "atmosphereMix": 0.85,
-    "bancada": 2.0,
+    "bancada": 3.0,
     "beatTempo": 1.0,
     "bellEvery": 12.0,
     "bowlOn": 0.9,
@@ -19,6 +19,7 @@
     "chamberMix": 0.65,
     "chamberSize": 0.75,
     "chinaOn": 0.15,
+    "corpusCrudo": 0.0,
     "corpusFx": 0.5,
     "corpusLevel": 0.6,
     "delayFeedback": 0.4,
@@ -37,13 +38,21 @@
     "masterAmp": 0.85,
     "masterVolume": 0.35,
     "memoryFeed": 0.6,
+    "mixCaos": 0.0,
     "mixCorpus": 1.7,
     "mixDrone": 1.0,
     "mixDust": 0.8,
+    "mixEspectro": 0.0,
+    "mixGolpe": 0.0,
     "mixKick": 0.5,
+    "mixMasa": 0.0,
+    "mixMotor": 1.0,
     "mixPad": 1.2,
     "mixPerc": 0.7,
+    "mixRemuestreo": 0.9,
+    "mixRuptura": 0.0,
     "mixSample": 1.9,
+    "mixSeq": 0.9,
     "mixUltra": 0.8,
     "noiseFilt": 0.5,
     "noiseLevel": 0.2,
@@ -63,14 +72,14 @@
     "spectralShift": 1000.0,
     "textureDepth": 0.4,
     "tideLarga": 0.0,
-    "tideMedia": 0.0,
+    "tideMedia": 1.0,
     "tidePulse": 1.0,
     "tideShort": 0.0,
     "timeDilation": 2.0,
     "transactionInfluence": 0.4,
     "vizConsensus": 0.6,
     "vizRotation": 0.7,
-    "windowWidth": 1.0
+    "windowWidth": 1.5
   },
   "sample": {
     "delayTime": 1.2,
@@ -80,10 +89,14 @@
     "sampleReverb": 0.5,
     "timeStretch": 2.2
   },
-  "spatial": {
-    "distanceEffect": 0.5,
-    "roomSize": 0.75,
-    "spatialX": 0.4,
-    "spatialY": 0.0
+  "stems": {
+    "corpus_auto": 0.0,
+    "corpus_pan": 0.6,
+    "golpe_auto": 0.0,
+    "golpe_pan": 0.0,
+    "pad_auto": 0.0,
+    "pad_pan": 0.0,
+    "sample_auto": 0.0,
+    "sample_pan": -0.6
   }
 }

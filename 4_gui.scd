@@ -989,6 +989,7 @@
         ~stripStems = (
             mixDrone: [\drone], mixPad: [\pad], mixKick: [\kick], mixPerc: [\perc],
             mixDust: [\dust], mixSample: [\sample], mixCorpus: [\corpus], mixUltra: [\ultra],
+            mixGolpe: [\golpe],
             mixMotor: [\remuestreo, \seq, \espectro, \caos, \ruptura, \masa],
             mixRemuestreo: [\remuestreo], mixSeq: [\seq], mixEspectro: [\espectro], mixCaos: [\caos],
             mixRuptura: [\ruptura], mixMasa: [\masa]
@@ -1159,7 +1160,7 @@
 
         mixerView.layout.add(
             StaticText()
-                .string_("MATRIX\nMIXER\nCC 42-49\nMOTOR 57-63")
+                .string_("MATRIX\nMIXER\nCC 42-49\nMOTOR 57-63\nGOLPE 65")
                 .font_(Font(~monoFont, 10, true))
                 .stringColor_(Color.white)
                 .align_(\left)
@@ -1170,6 +1171,8 @@
             [\mixKick,   "KICK"],   [\mixPerc,   "PERC"],
             [\mixDust,   "DUST"],   [\mixSample, "SAMPLE"],
             [\mixCorpus, "CORPUS"], [\mixUltra,  "ULTRA"],
+            // GOLPE: a voice layer like PERC (19_golpe.scd), not under MOTOR.
+            [\mixGolpe, "GOLPE"],
             // MOTOR is the master of the five after it (18_motores.scd).
             [\mixMotor,  "MOTOR"],
             [\mixRemuestreo, "REMU"], [\mixSeq, "SEQ"], [\mixEspectro, "ESPEC"], [\mixCaos, "CAOS"],
@@ -1989,6 +1992,117 @@
         // rows shared a column. With it every row packs left at the same 132 px
         // pitch and the surface is finally a grid.
         cadenceRow.layout.add(View().background_(backgroundColor.blend(mainTheme.accent, 0.05)));
+
+        // ─── GOLPE · the 32-step grid (19_golpe.scd plays it) ────────────
+        // One UserView, drawn 1-bit like the REC timer, rather than 160
+        // Buttons: a box of the grid is grey, and lights white the moment it
+        // is heard (framed when accented); a ghost or a chain hit lights amber
+        // where it lands; the playhead is a dim column. Click toggles a box;
+        // dragging paints the value the first click gave, so a run of hits is
+        // one gesture. The state is ~golpePattern (0_parameters.scd), written
+        // only through ~golpeSet / ~golpeLoad, which refresh this view.
+        ~scrollCanvas.layout.add(~sectionHead.("GOLPE · 32"));
+        {
+            var golpeRow = View().background_(backgroundColor).fixedHeight_(112);
+            var capW = 46, cellW = 28, cellH = 16, pitch = 30, rowPitch = 19, top = 8;
+            var paint = 1;
+            var cellRect = { |r, i| Rect(capW + (i * pitch) + ((i div: 4) * 6), top + (r * rowPitch), cellW, cellH) };
+            var hit = { |x, y|
+                var found;
+                ~golpeRows.do { |row, r|
+                    ~golpeSteps.do { |i|
+                        if(found.isNil and: { cellRect.(r, i).containsPoint(Point(x, y)) }) { found = [row, i] };
+                    };
+                };
+                found
+            };
+            var buttons = View();
+            ~golpeGridView = UserView()
+                .fixedSize_(Size(capW + (~golpeSteps * pitch) + ((~golpeSteps div: 4) * 6), top + (~golpeRows.size * rowPitch) + 4))
+                .drawFunc_({ |v|
+                    // What was HEARD on the current step (19_golpe.scd sets it
+                    // s.latency after scheduling, so the light lands with the
+                    // sound): row -> [velocity, kind].
+                    var shown = ~golpeShown;
+                    var now = shown !? { shown[\step] };
+                    var lit = (shown !? { shown[\hits] }) ? ();
+                    var amber = ~phenoAmber ? Color(1.0, 0.62, 0.10);
+                    Pen.smoothing = false;
+                    Pen.fillColor = Color.black;
+                    Pen.fillRect(Rect(0, 0, v.bounds.width, v.bounds.height));
+                    // A tick over every half bar, so the two bars read at a glance.
+                    (0, 8 .. ~golpeSteps - 1).do { |i|
+                        Pen.fillColor = mainTheme.dim;
+                        Pen.fillRect(Rect(cellRect.(0, i).left, 2, cellW, 3));
+                    };
+                    // The playhead: a dim column behind the boxes.
+                    now !? { |i|
+                        var c = cellRect.(0, i);
+                        Pen.fillColor = Color.gray(0.2);
+                        Pen.fillRect(Rect(c.left - 2, top - 3, cellW + 4, ~golpeRows.size * rowPitch + 2));
+                    };
+                    ~golpeRows.do { |row, r|
+                        Pen.stringAtPoint(row.asString.toUpper, Point(2, cellRect.(r, 0).top + 2), Font(~monoFont, 9, true), mainTheme.accent);
+                        ~golpeSteps.do { |i|
+                            var rect = cellRect.(r, i);
+                            var on = ((~golpePattern[row] ? [])[i] ? 0) > 0;
+                            var hit = if(now == i) { lit[row] };
+                            case
+                            // Heard from the grid: lit white, a frame when accented.
+                            { hit.notNil and: { hit[1] == \grid } } {
+                                Pen.fillColor = Color.white;
+                                Pen.fillRect(rect.insetBy(-2, -2));
+                                if(hit[0] >= 0.95) {
+                                    Pen.fillColor = Color.black; Pen.fillRect(rect.insetBy(2, 2));
+                                    Pen.fillColor = Color.white; Pen.fillRect(rect.insetBy(4, 4));
+                                };
+                            }
+                            // Heard but not in the grid: a ghost (STRIKE BEAT) or
+                            // the chain (block fill, transaction flam), in amber.
+                            { hit.notNil } {
+                                if(on) { Pen.fillColor = Color.gray(0.5); Pen.fillRect(rect) } {
+                                    Pen.strokeColor = mainTheme.dim; Pen.width = 1;
+                                    Pen.strokeRect(rect.insetBy(0.5, 0.5));
+                                };
+                                Pen.fillColor = if(hit[1] == \ghost) { Color(amber.red, amber.green, amber.blue, 0.55) } { amber };
+                                Pen.fillRect(rect.insetBy(7, 4));
+                            }
+                            // In the grid, resting (or the Marea let it rest).
+                            { on } { Pen.fillColor = Color.gray(0.5); Pen.fillRect(rect) }
+                            {
+                                Pen.strokeColor = mainTheme.dim; Pen.width = 1;
+                                Pen.strokeRect(rect.insetBy(0.5, 0.5));
+                            };
+                        };
+                    };
+                })
+                .mouseDownAction_({ |v, x, y|
+                    hit.(x, y) !? { |c|
+                        paint = if(((~golpePattern[c[0]] ? [])[c[1]] ? 0) > 0) { 0 } { 1 };
+                        ~golpeSet.(c[0], c[1], paint);
+                    };
+                })
+                .mouseMoveAction_({ |v, x, y|
+                    hit.(x, y) !? { |c|
+                        if(((~golpePattern[c[0]] ? [])[c[1]] ? 0) != paint) { ~golpeSet.(c[0], c[1], paint) };
+                    };
+                });
+            // The rhythm library (0_parameters.scd, ~golpeLibrary) and CLR.
+            buttons.layout = GridLayout.rows(*(
+                [\maqsum, \baladi, \saidi, \malfuf, \ayoub, \clr].collect { |key|
+                    Button().states_([[key.asString.toUpper, mainTheme.accent, backgroundColor]])
+                        .font_(Font(~monoFont, 10, true)).fixedSize_(Size(72, 22))
+                        .action_({
+                            if(key == \clr) { ~golpeClear.value } { ~golpeLoad.(~golpeLibrary[key]) };
+                        })
+                }.clump(2)
+            )).margins_(0).spacing_(4);
+            golpeRow.layout = HLayout(~inlineHead.("GOLPE"), ~golpeGridView, buttons,
+                View().background_(backgroundColor.blend(mainTheme.accent, 0.05))
+            ).margins_(4).spacing_(8);
+            ~scrollCanvas.layout.add(golpeRow);
+        }.value;
+
         ~scrollCanvas.layout.add(~sectionHead.("MEZCLA"));
         ~scrollCanvas.layout.add(mixerView);
         ~scrollCanvas.layout.add(sampleView);
@@ -2252,6 +2366,7 @@
             ~bancadaShown = nil;
             ~phenoCursorLabel = nil;
             ~phenoSkipButton = nil;
+            ~golpeGridView = nil;
             ~mixerStrips = nil;
             ~recordingStatus = nil;
             ~recordButton = nil;

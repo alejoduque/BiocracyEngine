@@ -3,8 +3,8 @@
     "engine": "BiocracyEngine",
     "version": 1,
     "preset": "Geometry - Red Poliedrica y Simetria Sagrada",
-    "nota": "Red poliédrica y simetría: armónicos ricos, campanas a intervalo regular como vértices, pad en acorde de cuatro voces y registro alto, bowl puro; los samples una quinta arriba.",
-    "revisado": "2026-09-26"
+    "nota": "Red poliédrica y simetría: armónicos ricos, campanas a intervalo regular como vértices, pad en acorde de cuatro voces y registro alto, bowl puro; los samples una quinta arriba. Revisión 2026-10-14: Marea corta como vértices regulares; ESPECTRO estira los armónicos; secuencias a intervalo fijo.",
+    "revisado": "2026-10-14"
   },
   "params": {
     "absenceWeight": 0.3,
@@ -19,6 +19,7 @@
     "chamberMix": 0.55,
     "chamberSize": 0.7,
     "chinaOn": 0.15,
+    "corpusCrudo": 0.0,
     "corpusFx": 0.6,
     "corpusLevel": 0.6,
     "delayFeedback": 0.4,
@@ -37,15 +38,23 @@
     "masterAmp": 0.85,
     "masterVolume": 0.35,
     "memoryFeed": 0.4,
+    "mixCaos": 0.0,
     "mixCorpus": 0.7,
     "mixDrone": 1.2,
     "mixDust": 0.7,
+    "mixEspectro": 0.8,
+    "mixGolpe": 0.0,
     "mixKick": 0.4,
+    "mixMasa": 0.0,
+    "mixMotor": 1.0,
     "mixPad": 1.3,
     "mixPerc": 0.6,
+    "mixRemuestreo": 0.0,
+    "mixRuptura": 0.0,
     "mixSample": 0.7,
+    "mixSeq": 0.9,
     "mixUltra": 0.6,
-    "noiseFilt": 0.5,
+    "noiseFilt": 0.6,
     "noiseLevel": 0.2,
     "opacityFloor": 0.05,
     "padEvery": 20.0,
@@ -65,7 +74,7 @@
     "tideLarga": 0.0,
     "tideMedia": 0.0,
     "tidePulse": 1.0,
-    "tideShort": 0.0,
+    "tideShort": 1.0,
     "timeDilation": 2.0,
     "transactionInfluence": 0.4,
     "vizConsensus": 0.6,
@@ -80,10 +89,14 @@
     "sampleReverb": 0.5,
     "timeStretch": 2.5
   },
-  "spatial": {
-    "distanceEffect": 0.5,
-    "roomSize": 0.8,
-    "spatialX": 0.0,
-    "spatialY": 0.0
+  "stems": {
+    "corpus_auto": 0.0,
+    "corpus_pan": 0.0,
+    "golpe_auto": 0.0,
+    "golpe_pan": 0.0,
+    "pad_auto": 0.0,
+    "pad_pan": 0.0,
+    "sample_auto": 0.0,
+    "sample_pan": 0.0
   }
 }

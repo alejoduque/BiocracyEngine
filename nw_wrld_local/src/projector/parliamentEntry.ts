@@ -2006,6 +2006,7 @@ async function init() {
     "/mix/sample": "disp-mix-sample",
     "/mix/corpus": "disp-mix-corpus",
     "/mix/ultra":  "disp-mix-ultra",
+    "/mix/golpe":  "disp-mix-golpe",
     "/mix/motor":  "disp-mix-motor",
     "/mix/remuestreo": "disp-mix-remuestreo",
     "/mix/seq":        "disp-mix-seq",

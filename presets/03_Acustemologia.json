@@ -3,11 +3,11 @@
     "engine": "BiocracyEngine",
     "version": 1,
     "preset": "Acustemologia - Ecosistema Bosque Seco Tropical",
-    "nota": "Ecosistema del bosque seco, como música concreta: el corpus y las grabaciones adelante y casi sin tratar, a tiempo real; al aire libre, sin sala; los sintetizadores apenas sostienen. BUSCAR 1.0 y todas las bancadas: el anillo va de grabación en grabación, sin días vacíos. CORPUS FX 0.15: el documento casi intacto; apenas la sala.",
-    "revisado": "2026-09-26"
+    "nota": "Ecosistema del bosque seco, como música concreta: el corpus y las grabaciones adelante y casi sin tratar, a tiempo real; al aire libre, sin sala; los sintetizadores apenas sostienen. BUSCAR 1.0 y todas las bancadas: el anillo va de grabación en grabación, sin días vacíos. CORPUS FX 0.15: el documento casi intacto; apenas la sala. Revisión 2026-10-14: CRUDO encendido — el documento tal como se grabó; el REMUESTREO (0.9) hace música concreta con lo que suena en la sala.",
+    "revisado": "2026-10-14"
   },
   "params": {
-    "absenceWeight": 0.3,
+    "absenceWeight": 0.5,
     "activityThreshold": 0.5,
     "atmosphereMix": 0.5,
     "bancada": 0.0,
@@ -19,6 +19,7 @@
     "chamberMix": 0.08,
     "chamberSize": 0.25,
     "chinaOn": 0.2,
+    "corpusCrudo": 1.0,
     "corpusFx": 0.15,
     "corpusLevel": 0.8,
     "delayFeedback": 0.35,
@@ -37,16 +38,24 @@
     "masterAmp": 0.85,
     "masterVolume": 0.35,
     "memoryFeed": 0.35,
+    "mixCaos": 0.0,
     "mixCorpus": 1.5,
     "mixDrone": 1.0,
     "mixDust": 1.4,
+    "mixEspectro": 0.0,
+    "mixGolpe": 0.0,
     "mixKick": 0.9,
+    "mixMasa": 0.0,
+    "mixMotor": 1.0,
     "mixPad": 0.55,
     "mixPerc": 0.65,
+    "mixRemuestreo": 0.9,
+    "mixRuptura": 0.0,
     "mixSample": 1.6,
+    "mixSeq": 0.0,
     "mixUltra": 1.0,
     "noiseFilt": 0.5,
-    "noiseLevel": 0.2,
+    "noiseLevel": 0.1,
     "opacityFloor": 0.05,
     "padEvery": 70.0,
     "padMotion": 0.5,
@@ -63,7 +72,7 @@
     "spectralShift": 1800.0,
     "textureDepth": 0.4,
     "tideLarga": 0.0,
-    "tideMedia": 0.0,
+    "tideMedia": 1.0,
     "tidePulse": 1.0,
     "tideShort": 0.0,
     "timeDilation": 1.0,
@@ -80,10 +89,14 @@
     "sampleReverb": 0.15,
     "timeStretch": 1.0
   },
-  "spatial": {
-    "distanceEffect": 0.4,
-    "roomSize": 0.5,
-    "spatialX": 0.0,
-    "spatialY": 0.0
+  "stems": {
+    "corpus_auto": 0.0,
+    "corpus_pan": 0.0,
+    "golpe_auto": 0.0,
+    "golpe_pan": 0.0,
+    "pad_auto": 0.0,
+    "pad_pan": 0.0,
+    "sample_auto": 0.0,
+    "sample_pan": 0.0
   }
 }

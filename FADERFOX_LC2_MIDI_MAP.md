@@ -81,6 +81,7 @@ This document outlines the full MIDI CC mapping for the **Faderfox LC2 MicroModu
 | — | `CC 60` | `mixCaos` | `\motCaos` | Motor caos (EXT3) |
 | — | `CC 61` | `mixRuptura` | `\motRup` | Motor ruptura (EXT4) |
 | — | `CC 62` | `mixMasa` | `\motMasa` | Motor masa (EXT5) |
+| — | `CC 65` | `mixGolpe` | `\golpeFx` | GOLPE: darbuka, tabla y riq distorsionados, rejilla de 32 pasos (19_golpe.scd) |
 
 ---
 

@@ -40,7 +40,10 @@
         "17_chain_processing.scd",   // the chain processes the forest recordings
         // After everything that sounds: two of the motors process the whole
         // mix, so their group is placed after every voice and before the room.
-        "18_motores.scd"             // the five motors a config can switch on
+        "18_motores.scd",            // the five motors a config can switch on
+        // After the motors: it borrows their lifecycle (~motWatcher), ~motCrush
+        // and ~motIn, and places its voices just before the stem sum.
+        "19_golpe.scd"               // GOLPE: distorted hand percussion on the 32-step grid
     ].do { |file|
         var path = basePath +/+ file;
         ("Loading " ++ file ++ "...").postln;

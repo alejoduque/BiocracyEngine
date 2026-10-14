@@ -3,12 +3,12 @@
     "engine": "BiocracyEngine",
     "version": 1,
     "preset": "Dynamic Optimality - Convergencia y Gradiente",
-    "nota": "Convergencia y gradiente: todo tiende a un punto. Densidad media y pareja, pad de tres voces que se asienta, consenso alto en la imagen; la sala media deja que las capas se encuentren.",
-    "revisado": "2026-09-26"
+    "nota": "Convergencia y gradiente: todo tiende a un punto. Densidad media y pareja, pad de tres voces que se asienta, consenso alto en la imagen; la sala media deja que las capas se encuentren. Revisión 2026-10-14: GOLPE (0.3) en baladi, denso y parejo; la MASA (0.9) como el punto al que todo converge.",
+    "revisado": "2026-10-14"
   },
   "params": {
     "absenceWeight": 0.3,
-    "activityThreshold": 0.5,
+    "activityThreshold": 0.6,
     "atmosphereMix": 0.5,
     "bancada": 2.0,
     "beatTempo": 1.1,
@@ -19,6 +19,7 @@
     "chamberMix": 0.3,
     "chamberSize": 0.45,
     "chinaOn": 0.4,
+    "corpusCrudo": 0.0,
     "corpusFx": 0.5,
     "corpusLevel": 0.6,
     "delayFeedback": 0.4,
@@ -37,13 +38,21 @@
     "masterAmp": 0.85,
     "masterVolume": 0.35,
     "memoryFeed": 0.4,
+    "mixCaos": 0.0,
     "mixCorpus": 0.8,
     "mixDrone": 1.0,
     "mixDust": 0.8,
+    "mixEspectro": 0.0,
+    "mixGolpe": 0.3,
     "mixKick": 1.0,
+    "mixMasa": 0.9,
+    "mixMotor": 1.0,
     "mixPad": 0.9,
     "mixPerc": 0.85,
+    "mixRemuestreo": 0.0,
+    "mixRuptura": 0.0,
     "mixSample": 0.8,
+    "mixSeq": 0.9,
     "mixUltra": 0.5,
     "noiseFilt": 0.5,
     "noiseLevel": 0.2,
@@ -63,7 +72,7 @@
     "spectralShift": 1500.0,
     "textureDepth": 0.4,
     "tideLarga": 0.0,
-    "tideMedia": 0.0,
+    "tideMedia": 1.0,
     "tidePulse": 1.0,
     "tideShort": 0.0,
     "timeDilation": 2.0,
@@ -80,10 +89,21 @@
     "sampleReverb": 0.35,
     "timeStretch": 2.0
   },
-  "spatial": {
-    "distanceEffect": 0.5,
-    "roomSize": 0.65,
-    "spatialX": 0.0,
-    "spatialY": 0.0
+  "stems": {
+    "corpus_auto": 0.0,
+    "corpus_pan": 0.0,
+    "golpe_auto": 0.0,
+    "golpe_pan": 0.0,
+    "pad_auto": 0.0,
+    "pad_pan": 0.0,
+    "sample_auto": 0.0,
+    "sample_pan": 0.0
+  },
+  "golpe": {
+    "dum": "x.x.....x.......x.x.....x.......",
+    "tek": "......x.....x.........x.....xxx.",
+    "ka": "....x.....x...x.....x.....x.....",
+    "tabla": "...........x...............x....",
+    "riq": "x...x.x.x...x.x.x...x.x.x...x.x."
   }
 }

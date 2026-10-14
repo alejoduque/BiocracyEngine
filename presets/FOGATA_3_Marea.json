@@ -1,5 +1,10 @@
 {
-  "meta": { "engine": "BiocracyEngine", "version": 1, "saved": "2026-10-01 09:16:31" },
+  "meta": {
+    "engine": "BiocracyEngine",
+    "version": 1,
+    "saved": "2026-10-01 09:16:31",
+    "revisado": "2026-10-14"
+  },
   "params": {
     "absenceWeight": 0.3,
     "activityThreshold": 0.5,
@@ -13,6 +18,7 @@
     "chamberMix": 0.35,
     "chamberSize": 0.75,
     "chinaOn": 0.3,
+    "corpusCrudo": 0.0,
     "corpusFx": 0.5,
     "corpusLevel": 0.6,
     "delayFeedback": 0.7015,
@@ -36,6 +42,7 @@
     "mixDrone": 1.0,
     "mixDust": 1.0,
     "mixEspectro": 0.5,
+    "mixGolpe": 0.0,
     "mixKick": 0.9,
     "mixMasa": 0.9,
     "mixMotor": 1.0,
@@ -81,10 +88,14 @@
     "sampleReverb": 0.4,
     "timeStretch": 2.0
   },
-  "spatial": {
-    "distanceEffect": 0.40000000596046,
-    "roomSize": 0.5,
-    "spatialX": 0.0,
-    "spatialY": 0.0
+  "stems": {
+    "corpus_auto": 0.0,
+    "corpus_pan": 0.0,
+    "golpe_auto": 0.0,
+    "golpe_pan": 0.0,
+    "pad_auto": 0.0,
+    "pad_pan": 0.0,
+    "sample_auto": 0.0,
+    "sample_pan": 0.0
   }
 }
