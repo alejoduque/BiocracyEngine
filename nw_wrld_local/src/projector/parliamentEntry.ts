@@ -20,6 +20,7 @@ import { initSession, setSessionSink, setSessionSnapshot, sessionRecordingStarte
 import { initPulsarPlot, pushRow, setPulsarSource, type PulsarSource } from "./pulsarPlot";
 import { startVizMotion } from "./vizMotion";
 import { publishScAudio, publishStems, noteVoiceOnset, tickScAudio, type ScAudio } from "./scAudio";
+import { publishSources, tickSources } from "./sources";
 import {
   pushEthTx, pushEthBlock, tickEthLive, getEthLive,
   tickEthScaled, getEthScaled,
@@ -353,6 +354,9 @@ function connectControlWS() {
           };
           if (typeof w.__onScSpectrum === "function") w.__onScSpectrum(bands);
           publishScAudio(bands);
+          // The same frame split into the engine's sources (sources.ts):
+          // forest, machine, bed and air, each with its own spectrum.
+          publishSources(bands);
           // …and one row of the pulsar plot. Throttled inside pushRow: SC sends
           // 20 spectra a second and the stack is six deep, so unthrottled the
           // whole plot would turn over three times a second and read as noise
@@ -920,11 +924,17 @@ class SpectrogramRenderer {
         bins[i] = bins[i] * 0.7 + this.prevBins[i] * 0.3;
       }
     }
-    this.prevBins = new Float32Array(bins);
+    // Kept in one buffer: a new Float32Array per push was garbage at 30 Hz.
+    if (!this.prevBins || this.prevBins.length !== bins.length) this.prevBins = new Float32Array(bins.length);
+    this.prevBins.set(bins);
 
-    // Scroll left by 2px for denser waterfall
-    const imageData = ctx.getImageData(2, 0, w - 2, h);
-    ctx.putImageData(imageData, 0, 0);
+    // Scroll left by 2px for denser waterfall. The canvas draws itself shifted:
+    // getImageData returned a NEW ImageData of the whole strip every push —
+    // ~460 KB thirty times a second, the largest garbage source on the page,
+    // and garbage is what reaches the sound card as clicks.
+    ctx.globalCompositeOperation = "copy";
+    ctx.drawImage(this.canvas, -2, 0);
+    ctx.globalCompositeOperation = "source-over";
 
     // Read sonETH params for color modulation
     const sp = (window as any).__sonethParams || {};
@@ -2464,13 +2474,16 @@ async function init() {
     scSpectrumAt = performance.now();
   };
 
-  // Interpolate 16 bands up to the renderer's bin count, in log-frequency
+  // Interpolate SC's 96 bands up to the renderer's bin count, in log-frequency
   // space to match the axis labels. Goes stale after 1 s so a stopped engine
-  // falls back rather than freezing the last frame on screen.
+  // falls back rather than freezing the last frame on screen. One buffer,
+  // rewritten every frame: a new Float32Array per frame was garbage at 60 Hz.
+  let scBinsOut: Float32Array | null = null;
   function scBins(count: number): Float32Array | null {
     if (!scSpectrum || performance.now() - scSpectrumAt > 1000) return null;
     const src = scSpectrum;
-    const out = new Float32Array(count);
+    if (!scBinsOut || scBinsOut.length !== count) scBinsOut = new Float32Array(count);
+    const out = scBinsOut;
     for (let i = 0; i < count; i++) {
       const pos = (i / (count - 1)) * (src.length - 1);
       const lo = Math.floor(pos), hi = Math.min(src.length - 1, lo + 1);
@@ -2494,11 +2507,18 @@ async function init() {
   }
 
   // Animate loop: push spectrogram + update stage FFT exposure
+  let animLast = performance.now();
   (function animLoop() {
-    elapsed += 0.016;
+    // Real elapsed time, clamped after a stall: a fixed 0.016 made the voice
+    // envelopes decay twice as fast on a 120 Hz panel as on a 60 Hz one.
+    const animNow = performance.now();
+    const animDt = Math.min(0.1, Math.max(0, (animNow - animLast) / 1000));
+    animLast = animNow;
+    elapsed += animDt;
     // One place decays the voice envelopes; six slots reading their own would
     // drift apart from each other and from the sound.
-    tickScAudio(0.016);
+    tickScAudio(animDt);
+    tickSources();
     // The chain's own pulses decay here for the same reason: one place, so six
     // modules cannot disagree about how long ago a transaction was — and the
     // followers, envelopes and block phase advance on the same tick, so the
@@ -2574,6 +2594,9 @@ async function init() {
     // returns exactly what calcBioToken multiplies, so the six rows below and
     // the number above them cannot drift apart the way the old static text did.
     const bt6 = bioTokenTerms(state);
+    // Published for slot 5 and its blend layer, so the token on screen and
+    // the one in the panel are the same six numbers (slot 5 had IUCN at 0.6).
+    (window as unknown as { __bioToken?: BioTokenTerms }).__bioToken = bt6;
     setVal("biotoken-value", bt6.value.toFixed(4));
     setVal("bt-iucn", String(iucnMult));
     setVal("bt-edna", bt6.ednaBio.toFixed(2));

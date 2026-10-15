@@ -16,7 +16,7 @@
 //     the difference between a meter and an instrument.
 //
 // Six voices, six slots (4-9), one each and no repeats — see INSTRUMENTS in
-// dataStructureVisuals.ts.
+// slots/instruments.ts.
 
 export type Voice = {
   /** Seconds (performance clock) when this voice last fired. */

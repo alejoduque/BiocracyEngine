@@ -91,12 +91,52 @@ function parse(tex: string, svg: string): TexResult {
   return { tex, glyphs, min: fmin, max: fmax };
 }
 
-/** Typeset `tex` (display mode). Cached; the same source resolves to the same result. */
-export function tex(src: string): Promise<TexResult> {
+/**
+ * Typeset `tex` (display mode). Cached by default; the same source resolves to
+ * the same result. `keep = false` for long one-off lines (the blended slots'
+ * hints and sentences): their outlines run to megabytes, and kept they stayed
+ * for the session after their slot was gone.
+ */
+export function tex(src: string, keep = true): Promise<TexResult> {
+  if (!keep) return cache.get(src) ?? loadCore().then((c) => parse(src, c.texToSvg(src)));
   let hit = cache.get(src);
   if (!hit) {
     hit = loadCore().then((c) => parse(src, c.texToSvg(src)));
     cache.set(src, hit);
   }
   return hit;
+}
+
+// ── Plain Spanish as TeX ─────────────────────────────────────────────────────
+// The hints and sentences on the blended slots are written in formulas.json as
+// ordinary Spanish. MathJax draws a non-ASCII letter inside \text{} as an SVG
+// <text> node, which SVGLoader drops, so every accent, tilde and symbol leaves
+// the \text run and is typeset as math: á → \acute{\mathrm{a}}, θ → \theta.
+const MATH: Record<string, string> = {
+  "á": "\\acute{\\mathrm{a}}", "é": "\\acute{\\mathrm{e}}", "í": "\\acute{\\mathrm{\\imath}}",
+  "ó": "\\acute{\\mathrm{o}}", "ú": "\\acute{\\mathrm{u}}", "ü": "\\ddot{\\mathrm{u}}",
+  "ñ": "\\tilde{\\mathrm{n}}", "Á": "\\acute{\\mathrm{A}}", "É": "\\acute{\\mathrm{E}}",
+  "Í": "\\acute{\\mathrm{I}}", "Ó": "\\acute{\\mathrm{O}}", "Ú": "\\acute{\\mathrm{U}}",
+  "Ñ": "\\tilde{\\mathrm{N}}", "ĉ": "\\hat{c}",
+  "θ": "\\theta", "λ": "\\lambda", "η": "\\eta", "γ": "\\gamma", "τ": "\\tau",
+  "σ": "\\sigma", "ε": "\\varepsilon", "Δ": "\\Delta", "Σ": "\\Sigma",
+  "≥": "\\geq", "≤": "\\leq", "→": "\\to", "·": "\\cdot", "×": "\\times",
+  "¬": "\\neg", "↑": "\\uparrow", "↓": "\\downarrow", "≈": "\\approx", "~": "\\sim",
+  "|": "\\mid", "—": "\\text{-}", "–": "\\text{-}", "%": "\\%", "#": "\\#", "&": "\\&",
+  "_": "\\_", "$": "\\$",
+};
+const DROP = new Set(["¿", "¡", "«", "»", "{", "}", "\\", "^", "“", "”"]);
+
+/** A line of plain Spanish as display TeX that SVGLoader can read in full. */
+export function texText(line: string): string {
+  let out = "", run = "";
+  const flush = () => { if (run) { out += `\\text{${run}}`; run = ""; } };
+  for (const ch of line) {
+    if (DROP.has(ch)) continue;
+    const m = MATH[ch];
+    if (m !== undefined) { flush(); out += m; continue; }
+    run += ch;
+  }
+  flush();
+  return out;
 }

@@ -1,6 +1,5 @@
 {
   "_": "Single source of every formula on the blended slots (src/projector/blend/) and in the ManimGL prototypes (tools/manim/). Conceptual blending after Fauconnier & Turner: two input spaces (neuronal / forest, silicon / chain), the generic space they share, and the blend. \\class{key}{…} names the parts that TransformMatchingParts matches between formulas. Keep every displayed formula ASCII: MathJax draws a non-ASCII letter inside \\text{} as an SVG <text> node, which SVGLoader drops — write accents as \\acute{a}, \\tilde{n}, \\acute{\\imath}.",
-
   "s4": {
     "title": "Umbral",
     "idea": "Integrar hasta un umbral y disparar. Lo que separa a una neurona de un bloque es la fuga: una membrana olvida, una cadena no.",
@@ -21,9 +20,22 @@
       "mixed": "\\tau\\,\\frac{d\\class{U}{U}}{dt} = -(1-\\class{lam}{\\lambda})\\,\\class{U}{U} + (1-\\class{lam}{\\lambda})\\,\\class{I}{I_{\\text{bosque}}} + \\class{lam}{\\lambda}\\,\\class{g}{g_{\\text{cadena}}}",
       "silicon": "\\Delta \\class{U}{U} = \\class{g}{g_{\\text{cadena}}}",
       "rule": "\\class{U}{U} \\geq \\class{th}{\\theta} \\;\\Rightarrow\\; \\text{disparo} \\,/\\, \\text{sello}"
-    }
+    },
+    "stage": "SENSED",
+    "header": "1/6 \\cdot \\textbf{SENSED} \\cdot \\text{el AudioMoth escucha} \\;\\to\\; \\text{PRESENT}",
+    "computes": {
+      "neuronal": "V/θ: la membrana suma el canto del bosque; en 1 dispara",
+      "silicon": "G/Gmax: el gas del bloque se acumula; lleno, se sella",
+      "meet": "λ: la parte de la cadena en lo que se escucha ahora"
+    },
+    "lexicon": [
+      "escuchar no es extraer su legibilidad",
+      "no se le da voz a la especie: se inscribe su presencia",
+      "la ausencia medida también es voz",
+      "el aullido del amanecer es el primer acto político",
+      "sensar no emancipa si se vuelve otra máquina de legibilidad"
+    ]
   },
-
   "s5": {
     "title": "Redes",
     "idea": "Pesos que aprenden de lo que ocurre junto. Hebb en la red micorrízica; valor movido entre direcciones en la cadena.",
@@ -44,43 +56,143 @@
       "mixed": "\\Delta \\class{w}{w} = (1-\\class{lam}{\\lambda})\\,\\class{eta}{\\eta}\\,\\class{x}{x_i x_j} + \\class{lam}{\\lambda}\\,\\class{v}{v_{a\\to b}}",
       "silicon": "\\Delta \\class{w}{w} = \\class{v}{v_{a\\to b}}",
       "rule": "\\text{valor} = \\class{f0}{\\text{pres}}\\cdot\\class{f1}{\\text{act}}\\cdot\\class{f2}{\\text{eDNA}}\\cdot\\class{f3}{\\text{hongos}}\\cdot\\class{f4}{\\text{IA}}\\cdot\\class{f5}{\\text{IUCN}}"
-    }
+    },
+    "stage": "PRESENT",
+    "header": "2/6 \\cdot \\textbf{PRESENT} \\cdot \\text{la voz cede a los 3 s} \\;\\to\\; \\text{OVERLAP}",
+    "computes": {
+      "neuronal": "w: co-presencia de seis bandas del bosque; se olvida en 3 s",
+      "silicon": "v: valor movido por la última transacción",
+      "meet": "BioToken = pres · act · eDNA · hongos · IA · IUCN"
+    },
+    "lexicon": [
+      "el presente cede a los tres segundos",
+      "la micorriza vota antes que la especie",
+      "la señal entre presencias viaja como luz",
+      "el bosque es un parlamento sin cúpula",
+      "un sistema está mejor si el otro lo está"
+    ]
   },
-
   "_roadmap": "Proposed for after the pilots; same shape as s4/s5 once built.",
   "s3": {
     "title": "Prueba",
     "idea": "Verificar sin revelar. El error de predicción solo deja pasar lo que no se esperaba; una prueba de conocimiento cero solo deja pasar que es cierto. La cláusula de opacidad.",
     "generic": "\\text{verificar}(x) \\text{ sin revelar } x",
-    "neuronal": { "label": "PREDICCIÓN \\cdot BOSQUE", "law": "\\varepsilon = x - \\hat{x}" },
-    "silicon": { "label": "COMPROMISO \\cdot CADENA", "law": "C = g^{x} h^{r}" }
+    "neuronal": {
+      "label": "PREDICCIÓN \\cdot BOSQUE",
+      "law": "\\varepsilon = x - \\hat{x}"
+    },
+    "silicon": {
+      "label": "COMPROMISO \\cdot CADENA",
+      "law": "C = g^{x} h^{r}"
+    }
   },
   "s6": {
     "title": "Uso",
     "idea": "Estructuras que se reorganizan hacia lo que se usa: la dendrita que se potencia, el árbol splay que sube lo consultado a la raíz.",
-    "generic": "\\text{costo}(x) \\downarrow \\text{ cuanto m}\\acute{a}\\text{s se usa } x",
-    "neuronal": { "label": "DENDRITA \\cdot BOSQUE", "law": "\\Delta w = \\eta\\, r_{\\text{pre}}\\, r_{\\text{post}} - \\gamma\\, w" },
-    "silicon": { "label": "SPLAY \\cdot CADENA", "law": "\\hat{c}(x) \\leq 3\\,(r(\\text{ra}\\acute{\\imath}\\text{z}) - r(x)) + 1" }
+    "generic": "\\text{costo}(\\class{x}{x}) \\downarrow \\text{ cuanto m}\\acute{a}\\text{s se usa } \\class{x}{x}",
+    "neuronal": {
+      "label": "DENDRITA \\cdot BOSQUE",
+      "law": "\\Delta \\class{x}{w} = \\eta\\, r_{\\text{pre}}\\, r_{\\text{post}} - \\gamma\\, \\class{x}{w}"
+    },
+    "silicon": {
+      "label": "SPLAY \\cdot CADENA",
+      "law": "\\hat{c}(\\class{x}{x}) \\leq 3\\,(r(\\text{ra}\\acute{\\imath}\\text{z}) - r(\\class{x}{x})) + 1"
+    },
+    "stage": "OVERLAP",
+    "header": "3/6 \\cdot \\textbf{OVERLAP} \\cdot \\text{simular antes de ejecutar} \\;\\to\\; \\text{ADJUDICATED}",
+    "computes": {
+      "neuronal": "w: crece donde bosque y máquina suenan juntos; γ la apaga",
+      "silicon": "ĉ: costo de llegar a la voz dominante; lo usado sube a la raíz",
+      "meet": "O: parte del espectro donde bosque y máquina se superponen"
+    },
+    "lexicon": [
+      "simular la acción antes de ejecutarla",
+      "el overlap buffer retiene la voz",
+      "obrar de modo que aumente el número de opciones",
+      "cada futuro simulado abre una opción más",
+      "lo seco digital acostado con lo húmedo vivo"
+    ]
   },
   "s7": {
     "title": "Campos",
     "idea": "Partir un espacio en regiones de respuesta: el campo receptivo de una neurona, la celda de Voronoi de una dirección.",
-    "generic": "\\text{espacio} \\to \\text{regiones de respuesta}",
-    "neuronal": { "label": "CAMPO RECEPTIVO \\cdot BOSQUE", "law": "r(\\theta) = r_{\\max}\\, e^{-(\\theta-\\theta_0)^2 / 2\\sigma^2}" },
-    "silicon": { "label": "VORONOI \\cdot CADENA", "law": "V_i = \\{x : \\lVert x - p_i \\rVert \\leq \\lVert x - p_j \\rVert\\ \\forall j\\}" }
+    "generic": "\\text{espacio} \\to \\class{r}{\\text{regiones de respuesta}}",
+    "neuronal": {
+      "label": "CAMPO RECEPTIVO \\cdot BOSQUE",
+      "law": "\\class{r}{r(\\theta)} = r_{\\max}\\, e^{-(\\theta-\\theta_0)^2 / 2\\sigma^2}"
+    },
+    "silicon": {
+      "label": "VORONOI \\cdot CADENA",
+      "law": "\\class{r}{V_i} = \\{x : \\lVert x - p_i \\rVert \\leq \\lVert x - p_j \\rVert\\ \\forall j\\}"
+    },
+    "stage": "ADJUDICATED",
+    "header": "4/6 \\cdot \\textbf{ADJUDICATED} \\cdot \\text{una retenci}\\acute{\\mathrm{o}}\\text{n que abre} \\;\\to\\; \\text{INSCRIBED} \\mid \\text{OPAQUE}",
+    "computes": {
+      "neuronal": "r(θ): responde cuando el barrido pasa por el centro del bosque",
+      "silicon": "V: bandas que la celda más cercana adjudica a la máquina",
+      "meet": "parte del espectro adjudicada al bosque"
+    },
+    "lexicon": [
+      "detectar y adjudicar no son el mismo gesto",
+      "una retención que abre, no un veredicto que cierra",
+      "el parlamento no vive en el disparo, vive en la demora",
+      "ser registro de verdad pasa a la cadena, validar al parlamento",
+      "todo conocimiento es parcial y encarnado"
+    ]
   },
   "s8": {
     "title": "Memoria",
     "idea": "Capacidad contra demora: el olvido de la memoria, la jerarquía de cachés.",
-    "generic": "\\text{capacidad} \\uparrow \\;\\Leftrightarrow\\; \\text{demora} \\uparrow",
-    "neuronal": { "label": "OLVIDO \\cdot BOSQUE", "law": "R(t) = e^{-t/S}" },
-    "silicon": { "label": "CACHÉ \\cdot CADENA", "law": "\\text{AMAT} = t_{\\text{hit}} + m \\cdot t_{\\text{miss}}" }
+    "generic": "\\class{c}{\\text{capacidad}} \\uparrow \\;\\Leftrightarrow\\; \\class{d}{\\text{demora}} \\uparrow",
+    "neuronal": {
+      "label": "OLVIDO \\cdot BOSQUE",
+      "law": "R(t) = e^{-t/\\class{c}{S}}"
+    },
+    "silicon": {
+      "label": "CACHÉ \\cdot CADENA",
+      "law": "\\class{d}{\\text{AMAT}} = t_{\\text{hit}} + m \\cdot t_{\\text{miss}}"
+    },
+    "stage": "INSCRIBED",
+    "header": "5/6 \\cdot \\textbf{INSCRIBED} \\;(\\neg\\,\\text{opaco}) \\cdot \\text{BioToken} \\to \\text{cadena}",
+    "computes": {
+      "neuronal": "R: lo que queda del último canto; el bosque olvida",
+      "silicon": "AMAT: demora media para hallar el canto en L1 · L2 · L3",
+      "meet": "λ: el bosque olvida, el libro mayor no"
+    },
+    "lexicon": [
+      "un bloque puede ser un acta de asamblea",
+      "la cadena imita la paciencia de la roca",
+      "inscribir o retener: la aceptación se duplica",
+      "medir produce experiencia, y también gobierno",
+      "el bosque nunca se reduce a un número canjeable"
+    ]
   },
   "s9": {
     "title": "Huella",
     "idea": "El circuito olfativo de la mosca es un hash sensible a la localidad (Dasgupta et al., 2017); la cadena firma con keccak256.",
-    "generic": "h : \\text{se}\\tilde{n}\\text{al} \\to \\text{huella corta}",
-    "neuronal": { "label": "OLFATO \\cdot BOSQUE", "law": "h(x) = \\mathrm{WTA}_k(Mx)" },
-    "silicon": { "label": "KECCAK \\cdot CADENA", "law": "h(x) = \\mathrm{keccak256}(x)" }
-  }
+    "generic": "\\class{h}{h} : \\text{se}\\tilde{n}\\text{al} \\to \\text{huella corta}",
+    "neuronal": {
+      "label": "OLFATO \\cdot BOSQUE",
+      "law": "\\class{h}{h(x)} = \\mathrm{WTA}_k(Mx)"
+    },
+    "silicon": {
+      "label": "KECCAK \\cdot CADENA",
+      "law": "\\class{h}{h(x)} = \\mathrm{keccak256}(x)"
+    },
+    "stage": "OPAQUE",
+    "header": "6/6 \\cdot \\textbf{OPAQUE} \\;(\\mathrm{rand} < p_{\\text{opaca}}) \\cdot \\text{resto no inscribible}",
+    "computes": {
+      "neuronal": "huella: 12 de 256 neuronas ganan; parecido con la anterior",
+      "silicon": "keccak256: bits que cambian de un bloque al siguiente",
+      "meet": "p opaca: parte de la huella que no se inscribe"
+    },
+    "lexicon": [
+      "opaco es un estado terminal de pleno derecho",
+      "el resto opaco es la garantía del registro",
+      "negarse a inscribir es un acto de figuración",
+      "lo que no vemos también legisla",
+      "los datos son a la vez don y veneno"
+    ]
+  },
+  "_stages": "Slots 4-9 tell the dossier's automaton (Fig. 3) in key order: SENSED, PRESENT, OVERLAP, ADJUDICATED, then the two terminals INSCRIBED and OPAQUE. `header` is TeX (ASCII rule above) shown at the top of the slot; `computes` are plain Spanish, one line per formula, saying what the live number beside it is; `lexicon` are sentences in the voice of Estratos (slot E) and Registro (slot R), written under the blend in turn. blend/blendLayer.ts converts the plain lines with texText (manim/tex.ts)."
 }

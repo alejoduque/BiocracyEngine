@@ -887,7 +887,7 @@ export type SpectrumRings = {
      * separates the register the engine is working in rather than showing one
      * loudness three times.
      */
-    update(bands: number[], gain: number, tilt: number): void;
+    update(bands: ArrayLike<number>, gain: number, tilt: number): void;
     setOpacity(a: number): void;
     dispose(): void;
 };
@@ -977,7 +977,7 @@ export function makeSpectrumRings(
 export type SpectrumBars = {
     mesh: THREE.InstancedMesh;
     /** One bar per band, standing off a circle. */
-    update(bands: number[], radius: number, gain: number): void;
+    update(bands: ArrayLike<number>, radius: number, gain: number): void;
     setOpacity(a: number): void;
     dispose(): void;
 };
@@ -1138,7 +1138,7 @@ export function makeWaveRibbon(
 export type PeakCaps = {
     mesh: THREE.InstancedMesh;
     /** One cap per band, riding the peak of that band and falling slowly. */
-    update(bands: number[], radius: number, gain: number, dt: number): void;
+    update(bands: ArrayLike<number>, radius: number, gain: number, dt: number): void;
     setOpacity(a: number): void;
     dispose(): void;
 };

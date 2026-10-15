@@ -97,7 +97,14 @@ function note(renderer: any, scene: any, camera: any) {
         v.outputSRGB = renderer.outputColorSpace === THREE.SRGBColorSpace;
         v.intoTarget = renderer.getRenderTarget() !== null;
         v.at = performance.now();
-        if (!prev) _seen.set(scene, v);
+        if (!prev) {
+          // A new scene means a slot was mounted. The pruning in the picker
+          // below only runs while the dome is open, so with it closed every
+          // slot ever shown stayed in this map — its scene and, through the
+          // scene, its renderer: measured as ~1 MB kept per slot change.
+          for (const [s, old] of _seen) if (!_stage.contains(old.canvas)) _seen.delete(s);
+          _seen.set(scene, v);
+        }
       }
     } catch { /* capture must never break a slot's own render */ }
 }

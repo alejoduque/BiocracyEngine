@@ -191,6 +191,8 @@ export class Transform implements Animation {
   private morph: VMobject | null = null;
   private A: THREE.Vector3[][] = [];
   private B: THREE.Vector3[][] = [];
+  /** The in-between contours, rewritten in place every frame. */
+  private C: THREE.Vector3[][] = [];
   constructor(private from: VMobject[], private to: VMobject[], private parent: THREE.Object3D,
               private color?: THREE.ColorRepresentation, private width = 0.02) {}
   begin() {
@@ -199,7 +201,8 @@ export class Transform implements Animation {
     const a = toLocal(this.from.flatMap((v) => v.worldContours()));
     const b = toLocal(this.to.flatMap((v) => v.worldContours()));
     [this.A, this.B] = align(a, b);
-    this.morph = new VMobject(this.A.map((c) => c.map((p) => p.clone())), null, {
+    this.C = this.A.map((c) => c.map((p) => p.clone()));
+    this.morph = new VMobject(this.C, null, {
       stroke: {
         color: this.color ?? (this.to[0]?.strokeMat.color ?? 0xffffff),
         width: this.to[0]?.strokeMat.linewidth ?? this.width, opacity: 1,
@@ -210,7 +213,11 @@ export class Transform implements Animation {
   }
   interpolate(a: number) {
     if (!this.morph) return;
-    this.morph.setContours(this.A.map((c, i) => c.map((p, j) => p.clone().lerp(this.B[i][j], a))));
+    for (let i = 0; i < this.C.length; i++) {
+      const c = this.C[i], A = this.A[i], B = this.B[i];
+      for (let j = 0; j < c.length; j++) c[j].lerpVectors(A[j], B[j], a);
+    }
+    this.morph.setContours(this.C);
     const out = clamp01(1 - a * 2), inn = clamp01(a * 2 - 1);
     for (const v of this.from) v.setAlpha(0, out);
     for (const v of this.to) v.setAlpha(0, inn);
@@ -304,8 +311,9 @@ export class Flash implements Animation {
     const arr = attr.data.array as Float32Array;
     for (let i = 0; i < this.lines; i++) {
       const th = (i / this.lines) * Math.PI * 2;
-      const c = Math.cos(th), s = Math.sin(th);
-      arr.set([c * Math.min(r0, r1), s * Math.min(r0, r1), 0, c * r1, s * r1, 0], i * 6);
+      const c = Math.cos(th), s = Math.sin(th), r = Math.min(r0, r1), o = i * 6;
+      arr[o] = c * r; arr[o + 1] = s * r; arr[o + 2] = 0;
+      arr[o + 3] = c * r1; arr[o + 4] = s * r1; arr[o + 5] = 0;
     }
     attr.data.needsUpdate = true;
     this.mat.opacity = 1 - a;

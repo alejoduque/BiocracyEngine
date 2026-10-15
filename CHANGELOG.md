@@ -7,6 +7,44 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Slots 4–9: the tokenization automaton, a source-split spectrum, formulas that say what they compute (2026-10-14)
+
+#### Added
+- **The six slots tell the dossier's automaton (Fig. 3)** in key order: 4 SENSED, 5 PRESENT, 6 OVERLAP, 7 ADJUDICATED, 8 INSCRIBED, 9 OPAQUE. Each slot carries its stage as a line of type at the top of its world.
+- **Formulas that compute.** Each slot's two laws now run on live data, and the number beside a formula is that law's output:
+  - 4: a leaky integrate-and-fire membrane on the forest, and the block's gas;
+  - 5: Hebb weights over six forest bands that fade in 3 s, the value moved, and the BioToken product;
+  - 6: a dendrite on the forest/machine overlap, and a self-adjusting list (the list form of a splay tree);
+  - 7: a receptive field swept round the band circle, and Voronoi adjudication;
+  - 8: forgetting, and the average memory access time (AMAT) of a cache hierarchy over the spectrogram;
+  - 9: the fly's olfactory hash on the forest's 96 bands beside the block's keccak256, both drawn as bit grids, with the opacity clause withholding part of both.
+- **A plain-Spanish line under every formula** says what its number is (`computes` in `formulas.json`). When the forest's formula and the chain's meet, the blend gets its own line, then one sentence of the slot's `lexicon` (the voices of Estratos and Registro), in turn. All of it is vector type, revealed by Write; `texText` (`manim/tex.ts`) carries accents and symbols out of `\text{}`.
+- **`sources.ts`, a Demucs-style source split in the browser.** The 96-band master spectrum is split into BOSQUE, MÁQUINA, LECHO and AIRE with a Wiener soft mask built from the `/stems` levels. The templates learn during the show and relax toward their priors. The output is a shared 96 × 128 spectrogram texture plus overlap, share and centroid. No SC change.
+- **The blend ground of slots 4, 5, 7 and 8 is that spectrogram**: the forest as membrane, the machine as terraces, mixed by λ, computed in the vertex shader. Slot 7 adds the polar source-split spectrum with the receptive field's sweep; slot 8's rings are split per source.
+
+#### Changed
+- **`dataStructureVisuals.ts` (4043 lines) split into `src/projector/slots/`:**
+  - `stage.ts` holds the renderer, camera, orbit, post stack, knobs, resize and teardown once;
+  - `instruments.ts` holds the instrument registry;
+  - one file per slot.
+- **The blend layer** runs inside each slot's own loop (one fewer rAF loop per slot), builds its formulas once per mount and reuses them, and allocates nothing per frame.
+
+#### Fixed
+- **The spectrogram strip under every slot** allocated a full ImageData (~460 KB) on every scroll, 30 times a second. It now scrolls the canvas onto itself.
+- **Slot 8's hex backdrop** was re-uploaded (512²) every frame. It is now redrawn only when a word or its style changes, at most 6 Hz.
+- **Slot 7:** the kick's compression of the reticule was overwritten by its size, and the eco sweeps sat at the fractional part of unnormalised readings.
+- **Slot 9:** the chain-driven key size was overwritten by the play-head scale.
+- **Slot 5:** IUCN was held at 0.6. It now reads the panel's own BioToken terms (`window.__bioToken`).
+- **Per-frame allocations removed:** readings, closures and arrays in the six loops, the morph and flash in `manim/animate.ts`, and `scBins`.
+- **Timing and teardown:**
+  - voice envelopes decay on real elapsed time, not a fixed 16 ms;
+  - slot teardown releases its WebGL context.
+- **Every slot change used to keep the old slot's whole renderer in memory.** Measured over 50 switches, the heap climbed 41 → 92 MB; it now settles at 52 MB after the first visit to each slot and holds. Three holders:
+  - `dome/domeCapture.ts` recorded every rendered scene but only pruned while the dome was open;
+  - three.js shares one geometry among all Sprites (the captions), and each renderer's dispose listener on it kept that renderer alive;
+  - the same happened with the shared spectrogram texture and the shared digit shapes.
+- **Long typeset lines (hints, sentences, the stage header) are no longer cached**; only formulas are kept for reuse.
+
 ### GOLPE (32-step distorted hand percussion) and configs that state the whole matrix (2026-10-14)
 
 #### Added

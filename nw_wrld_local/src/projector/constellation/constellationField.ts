@@ -193,7 +193,7 @@ export function mountConstellationField(
   // Behind was the first design and it does not work: these slots render
   // through an EffectComposer whose final pass writes an opaque alpha, so a
   // transparent clear reveals nothing (measured — see makeRenderer in
-  // dataStructureVisuals.ts). `screen` only ever lightens, so over scenes this
+  // slots/stage.ts). `screen` only ever lightens, so over scenes this
   // dark the field reads as light in the room rather than as a veil across the
   // geometry, and it does not care what the composer does with alpha.
   //

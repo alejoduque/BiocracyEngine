@@ -100,8 +100,8 @@ export class VMobject extends Group3D {
     this.setFill(opts.fill ?? {});
   }
 
-  private segmentArray(contours: THREE.Vector3[][]): Float32Array {
-    const a = new Float32Array(contours.length * K * 6);
+  private segmentArray(contours: THREE.Vector3[][], into?: Float32Array): Float32Array {
+    const a = into ?? new Float32Array(contours.length * K * 6);
     let o = 0;
     for (const c of contours) {
       for (let i = 0; i < K; i++) {
@@ -113,12 +113,13 @@ export class VMobject extends Group3D {
     return a;
   }
 
-  /** Replace the contours in place (same count): the morph in Transform. */
+  /** Replace the contours in place (same count): the morph in Transform.
+   *  Written straight into the stroke's buffer — called every frame of a morph,
+   *  so it must not allocate. */
   setContours(contours: THREE.Vector3[][]) {
     this.contours = contours;
     const attr = this.strokeGeo.getAttribute("instanceStart") as THREE.InterleavedBufferAttribute;
-    const arr = attr.data.array as Float32Array;
-    arr.set(this.segmentArray(contours));
+    this.segmentArray(contours, attr.data.array as Float32Array);
     attr.data.needsUpdate = true;
   }
 
@@ -192,6 +193,8 @@ export type TexOptions = {
   align?: "center" | "left";
   /** Colours for \class parts, by key. */
   parts?: Record<string, THREE.ColorRepresentation>;
+  /** Keep the parse cached (default). False for long one-off lines of text. */
+  cache?: boolean;
 };
 
 export class TexMobject extends Group3D {
@@ -228,7 +231,7 @@ export class TexMobject extends Group3D {
   }
 
   static async create(src: string, o: TexOptions = {}): Promise<TexMobject> {
-    return new TexMobject(await tex(src), o);
+    return new TexMobject(await tex(src, o.cache ?? true), o);
   }
 
   /** The glyphs of one \class part. */

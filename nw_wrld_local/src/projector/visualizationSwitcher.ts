@@ -17,14 +17,12 @@
 import p5 from "p5";
 import parliamentStore from "./parliament/parliamentStore";
 import type { ParliamentState } from "./parliament/parliamentStore";
-import {
-  mountTimeTravel,
-  mountDynamicGraphs,
-  mountDynamicOptimality,
-  mountGeometry,
-  mountMemoryHierarchy,
-  mountHashing
-} from "./dataStructureVisuals";
+import { mountTimeTravel } from "./slots/s4TimeTravel";
+import { mountDynamicGraphs } from "./slots/s5DynamicGraphs";
+import { mountDynamicOptimality } from "./slots/s6DynamicOptimality";
+import { mountGeometry } from "./slots/s7Geometry";
+import { mountMemoryHierarchy } from "./slots/s8MemoryHierarchy";
+import { mountHashing } from "./slots/s9Hashing";
 import {
   mountPhenologyCalendar,
   destroyPhenologyCalendar,
