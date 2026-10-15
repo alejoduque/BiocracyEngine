@@ -750,6 +750,10 @@ s.waitForBoot {
                 ~corpusVoices = ~corpusVoices.reject { |v| v[\synth] === synth };
             });
 
+            // GOLPE answers a voice that opens when the bancada is CORO
+            // (19_golpe.scd): the tabla, on the next off-beat.
+            ~golpeAnswer !? { ~golpeAnswer.(clip) };
+
             // Article 47 again, this time outward: an opaque clip is not
             // announced to the visuals or the laser at all. It is heard and
             // not seen — no label, no token, nothing to project.

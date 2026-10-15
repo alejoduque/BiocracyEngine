@@ -97,5 +97,10 @@
     "pad_pan": 0.0,
     "sample_auto": 0.0,
     "sample_pan": 0.0
+  },
+  "golpe": {
+    "kit": "acustemologia",
+    "afinar": 0.0,
+    "peso": { "dum": 1.0, "tek": 1.0, "ka": 1.0, "tabla": 1.0, "riq": 1.0 }
   }
 }

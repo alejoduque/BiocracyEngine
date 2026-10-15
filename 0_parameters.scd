@@ -521,7 +521,38 @@
 };
 ~golpeToString = { |arr| arr.collect { |v| if(v > 0) { "x" } { "." } }.join };
 ~golpeRefresh = {
-    { if(~golpeGridView.notNil and: { ~golpeGridView.isClosed.not }) { ~golpeGridView.refresh } }.defer;
+    {
+        if(~golpeGridView.notNil and: { ~golpeGridView.isClosed.not }) { ~golpeGridView.refresh };
+        ~golpeKitRefresh !? { ~golpeKitRefresh.value };
+    }.defer;
+};
+
+// ─── GOLPE · the kits: one per state of listening ─────────────────────────
+// The pattern says WHEN; the kit says WHAT is struck and in what room. The
+// voices themselves are in 19_golpe.scd (~golpeKits); the names live here
+// because the GUI (file 4) draws them and the configs save them before 19
+// has loaded.
+//   muslimgauze   dry hand drums pushed into the red, dub
+//   deep          Oliveros' cistern: everything rings, little is struck
+//   acustemologia Feld: wood and water among the birds, lift-up-over
+//   campo         Lawrence English: heard through foliage, at a distance
+//   ceremonia     zikr and Gnawa: frame drums and iron, the trance
+//   maquina       the computational configs: the machine counting
+~golpeKitNames = [\muslimgauze, \deep, \acustemologia, \campo, \ceremonia, \maquina];
+~golpeKitLabels = (muslimgauze: "MUSLIM", deep: "DEEP", acustemologia: "ACUST",
+    campo: "CAMPO", ceremonia: "CEREM", maquina: "MAQ");
+~golpeKit = ~golpeKit ? \muslimgauze;
+// Per config, on top of the kit: afinar in semitones (added to PITCH/4), and
+// peso, a level per row (1 = the kit's own balance).
+~golpeAfinar = ~golpeAfinar ? 0;
+~golpePeso = ~golpePeso ?? { (dum: 1, tek: 1, ka: 1, tabla: 1, riq: 1) };
+~golpeKitSet = { |name|
+    var k = name.asString.asSymbol;
+    if(~golpeKitNames.includes(k)) {
+        ~golpeKit = k;
+        ~stateDirty = true;
+        ~golpeRefresh.value;
+    };
 };
 // One box. The grid's mouse and nothing else writes single steps.
 ~golpeSet = { |row, step, on|
@@ -535,6 +566,17 @@
 // from parseJSON) or an Event of arrays. Rows it does not name stay as they
 // are, like every other section a config leaves out.
 ~golpeLoad = { |src|
+    var kit = src[\kit] ?? { src["kit"] };
+    var afinar = src[\afinar] ?? { src["afinar"] };
+    var peso = src[\peso] ?? { src["peso"] };
+    if(kit.notNil) { ~golpeKitSet.(kit) };
+    if(afinar.notNil) { ~golpeAfinar = afinar.asFloat.clip(-6, 6) };
+    if(peso.notNil) {
+        ~golpeRows.do { |row|
+            var w = peso[row] ?? { peso[row.asString] };
+            if(w.notNil) { ~golpePeso[row] = w.asFloat.clip(0, 2) };
+        };
+    };
     ~golpeRows.do { |row|
         var v = src[row] ?? { src[row.asString] };
         if(v.notNil) {
@@ -897,9 +939,14 @@ if(File.exists(~presetDir).not) { File.mkdir(~presetDir) };
     // The GOLPE grid, one string per row ("x" hit, "." rest), so the file
     // shows the rhythm. jsonSection writes floats only, hence its own writer.
     if(~golpePattern.notNil) {
-        sections.add("  \"golpe\": {\n%\n  }".format(~golpeRows.collect { |row|
-            "    \"%\": \"%\"".format(row, ~golpeToString.(~golpePattern[row]))
-        }.join(",\n")));
+        sections.add("  \"golpe\": {\n%\n  }".format((
+            ["    \"kit\": \"%\"".format(~golpeKit ? \muslimgauze),
+             "    \"afinar\": %".format((~golpeAfinar ? 0).asFloat.round(0.01)),
+             "    \"peso\": { % }".format(~golpeRows.collect { |row|
+                 "\"%\": %".format(row, ((~golpePeso ? ())[row] ? 1).asFloat.round(0.01)) }.join(", "))]
+            ++ ~golpeRows.collect { |row|
+                "    \"%\": \"%\"".format(row, ~golpeToString.(~golpePattern[row]))
+            }).join(",\n")));
     };
     // (The "spatial" section — spatialX/Y, roomSize, distanceEffect — is no
     // longer written: those buses fed only the never-played \elektronBell.
