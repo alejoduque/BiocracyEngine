@@ -7,6 +7,79 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### SC GUI: one grid, controls coloured by what they do, CONFIGS and REC at the top (2026-10-15)
+
+#### Changed
+- **The knobs are regrouped by function** into four rows on one shared grid. Each row is a head and seven cells, twice, so the columns line up down the page:
+
+  | Row | Left half | Right half |
+  |---|---|---|
+  | 1 | SALIDA·FILTRO | ESPACIO |
+  | 2 | TIMBRE | DRONE·PAD, with the ring legend |
+  | 3 | RITMO | MAREA·CADENA·VIZ |
+  | 4 | CÁMARA | CORPUS |
+
+  The tide arcs, BANCADA and DÍA are compact stacked cells. Layout only: MIDI CCs, OSC paths and preset keys are unchanged.
+- **Colour says what a control does.** Every control carries its family colour (indicator, caption, a faint cell tint):
+
+  | Family | Colour |
+  |---|---|
+  | level | white |
+  | filter and noise | yellow |
+  | timbre | orange |
+  | space and time | blue |
+  | rhythm and MAREA | red |
+  | the chain | amber |
+  | the forest (Cámara, corpus) | green |
+  | projection only | grey |
+
+  Green and amber are the browser slots' own inks. The ring around a knob still shows which voices it reaches. Mixer strips (caption, fader, meter) take their layer's voice colour, the motors one violet; the sample knobs take the sampler's violet.
+- **Top bar:** CONFIGS (menu, LOAD, name, SAVE) and a smaller REC (status, 2 px timer, REC, 30s, 4ch) moved from two full-width footer bars into a compact bar at the top. The status lights and counters share one row.
+- **GOLPE:** fader, RITMO and KIT sit to the right of the 32-step grid, on one row.
+- **Height:** the surface is about 360 px shorter; it fits a laptop screen without scrolling.
+
+#### Fixed
+- Four in-place `alpha_` calls were fading shared colours for the whole session:
+  - the foreground, so every label after the first knob was at 20 %;
+  - the Cámara amber;
+  - three voice colours;
+  - dim.
+- **Closing the window** now stops the meter and REC-timer routines, frees their OSCdef and clears the pan and meter views.
+
+### GOLPE: listening-state kits, forest grains, Bancada and Marea (2026-10-15)
+
+#### Added
+- **Six kits**, each a state of listening that sets every row's material, tuning, decay and alternating strokes, plus the chain (drive, crush, LPF, dub, room, distance):
+
+  | Kit | Listening state | Rows |
+  |---|---|---|
+  | MUSLIMGAUZE | GOLPE as it was | darbuka, rim, palm, tabla, riq |
+  | DEEP LISTENING | Oliveros' cistern | soft membrane, tick, breath, inharmonic bowl, tiny bells |
+  | ACUSTEMOLOGÍA | Feld: wood and water | log drum, bamboo, forest grain, water drop, seed shaker |
+  | CAMPO | Lawrence English: heard far off, through foliage | muffled hits; RIQ is forest grain (insects and geophony) |
+  | CEREMONIA | zikr and Gnawa | bendir with snares, qraqeb, claps, high frame, riq |
+  | MÁQUINA | the machine counting | sine kick, digital click, band noise, FM ping, hat |
+
+  Kit levels are trimmed so all six sit within ±1.2 dB of MUSLIMGAUZE (GOLPE stem, MAQSUM).
+- **Forest grains (`\golpeGrain`):** 20–120 ms slices of the AudioMoth clips the engine already holds (`~sampleBuffers` / `~sampleMeta`), taken from the role the Bancada convenes. Opaque clips are never cut.
+- **The five voices became materials** with new arguments: snare buzz, mode ratios, second clack, claps, partial ratios and weights, FM ping, jingle scale. Every hit varies slightly in pitch and decay, and each row alternates its strokes, so no two hits are alike.
+- **Configs:** the `"golpe"` section gains `kit`, `afinar` (semitones) and `peso` (per-row level). Every base config and GOLPE_* states its kit, chosen by name:
+  - CAMPO: Lawrence English, Perlin Blob, Dark Forest, Brasas.
+  - DEEP LISTENING: Deep Listening, Asteroid Waves, Time Travel, Estratos, Ceniza.
+  - ACUSTEMOLOGÍA: Acustemología, Phenology, Tránsito, Antifonía, FOGATA_3 Marea.
+  - CEREMONIA: Parliament, CHINA_OK, FOGATA_2 Coro, GOLPE_4 Ayoub.
+  - MÁQUINA: the computational configs (06, 09–12, 18).
+  - MUSLIMGAUZE: Hashing and GOLPE_1–3; Baladi is two semitones down.
+
+#### Changed
+- **Bancada now shapes GOLPE:**
+  - NOCTURNA: −3 st, darker, a longer and heavier dub;
+  - INSECTOS: higher jingles, shorter decays, more ghost notes;
+  - CORO: the tabla answers each corpus voice the Cámara opens;
+  - TRANSICIÓN: fewer off-beats, and each block moves the accent to another row.
+- **Marea, besides density**, opens the dub and the room at its crest and brings the forest grains forward.
+- **SC GUI:** the GOLPE fader (with meter, mute, pan and AUTO) moved from the mixer into the GOLPE row, beside the rhythm buttons, the six kit buttons (the active one inverted) and a BANCADA · MAREA readout. The grid is narrowed so it fits the surface.
+
 ### Slots 4–9: the tokenization automaton, a source-split spectrum, formulas that say what they compute (2026-10-14)
 
 #### Added
