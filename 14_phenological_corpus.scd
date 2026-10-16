@@ -200,7 +200,18 @@ s.waitForBoot {
     // the two overlap. Both corpus envelopes use it for their attack AND their
     // release, so a fade-out and the fade-in underneath it are the same length
     // and the same shape — which is what makes \welch sum to constant power.
-    ~phenoXfade = 6.0;
+    // Ten seconds: at six, and shrunk to a third of any short file, a change
+    // of clip was heard as a change rather than as the forest moving on.
+    ~phenoXfade = 10.0;
+    // No voice is shorter than this, whatever the file: a short recording
+    // goes on past its end as a still cloud of itself (the grain tail in
+    // \corpusVoice), so it can carry a full fade on both sides with a body
+    // between them. Three fades: in, body, out.
+    ~phenoMinSpan = ~phenoXfade * 3;
+    // A hand on the Cámara (a knob re-seat, NEXT REC. DAY, /pheno/goto) is
+    // answered faster than the ring's own turn, but still as a crossfade:
+    // what leaves and what enters take the same four seconds.
+    ~phenoMoveXfade = 4.0;
 
     SynthDef(\corpusVoice, {
         // out: routed to the chain-processing bus when 17_ is running, and
@@ -231,11 +242,16 @@ s.waitForBoot {
             smpStretchBus = -1, smpPitchBus = -1, smpGrainBus = -1,
             smpReverbBus = -1, smpDelayBus = -1, smpDelayTimeBus = -1, smpDelayFbBus = -1,
             // CRUDO (0_parameters.scd): the file with none of the processing.
-            corpusCrudoBus = -1;
+            corpusCrudoBus = -1,
+            // How long the recording itself lasts, in seconds. When the voice
+            // is longer (a short file, see ~phenoPlayClip) the grains take
+            // over as the file runs out. 0: the voice fits the file.
+            fileDur = 0;
 
         var sig, env, wet, quadSig, level, floorVal, veil, lpf, res, room, spread, master;
         var fx, stretch, semis, grainSz, smpRev, dAmt, dTime, dFb;
         var pitched, grains, pointer, stretchAmt, echo;
+        var glen, glen0, trig, tail, mix;
         var raw, crudo;
 
         level    = Select.kr(corpusLevelBus    >= 0, [corpusLevel,   In.kr(corpusLevelBus, 1)]);
@@ -287,14 +303,51 @@ s.waitForBoot {
         // head, at 1/stretch of real time and at the shifted pitch. Crossfaded
         // in octaves of stretch, as in the sample voice, so at x1 the grains
         // are silent and GRAIN SIZE acts only once the recording is stretched.
-        pointer = (startPos + Sweep.kr(1, 1 / (stretch.max(0.05) * BufDur.kr(buf)))
-            + LFNoise2.kr(3).range(0, grainSz / BufDur.kr(buf))).wrap(0, 1);
-        // At x1 the crossfade below hides the grains completely, so none are
-        // made: the trigger rate is 0 until the recording is stretched.
+        //
+        // A wash, not a pulse. The grains were GRAIN SIZE long (0.08-0.9 s in
+        // the configs) at overlap 4 on Dust, and the forest swelled and sank
+        // several times a second whatever the bancada: measured offline on an
+        // audible clip at stretch x2, level spread 12.6 dB against 1.9 for the
+        // file, 12 swings of >6 dB a second. A regular clock flattened the
+        // level but left a short, even beat that read as quick panning. Now
+        // each grain lasts 0.8-4 s (~grainLen), eight overlap, the clock
+        // wanders by a fifth over seconds so no period settles into a tempo,
+        // and every grain starts up to its own length behind the head, ±8
+        // cents off: the smear paulstretch has. Same measurement: 1.75 dB
+        // spread against 1.76 for the file, no peak in the envelope spectrum.
+        //
+        // TAIL: in the second half of the release (natural, or forced by
+        // ~phenoGateOff's negative gate) the head slows to a stop, the grains
+        // grow to twice their length and take over from the recording, so the
+        // day leaves as a still cloud under the next one rather than as a cut
+        // of itself fading. The Welch envelope still carries the handover.
+        // CRUDO's path below never sees any of it.
+        //
+        // The same cloud carries a SHORT file past its own end. Over the last
+        // grain length of the recording the head slows to a stop and the
+        // grains take over, so a ten-second call can hold a voice of thirty
+        // with full fades instead of being squeezed into three-second ones.
+        // Grains are kept to half the buffer, so the shortest files (under a
+        // second) are never read past their end.
+        glen0 = ~grainLen.(grainSz).min(BufDur.kr(buf) * 0.5);
+        tail = max(max(
+            ((Sweep.kr(0, 1) - (atk.clip(0.005, 30.0) + hold.clip(0.05, 600)))
+                / (rel.clip(0.02, 30.0) * 0.5)).clip(0, 1),
+            Lag.kr(gate < 0, (gate.neg - 1).clip(0.02, 30) * 0.5)),
+            (fileDur > 0) * ((Sweep.kr(0, 1) - (fileDur - glen0).max(0)) / glen0).clip(0, 1));
         stretchAmt = stretch.log2.abs.clip(0, 1);
-        grains = GrainBuf.ar(1, Dust.kr((4 / grainSz) * (stretchAmt > 0)), grainSz, buf,
-            semis.midiratio * BufRateScale.kr(buf), pointer, 2);
-        sig = XFade2.ar(sig, grains, stretchAmt.linlin(0, 1, -1, 1));
+        mix  = max(stretchAmt, tail);
+        glen = (glen0 * (1 + tail)).min(BufDur.kr(buf) * 0.5);
+        // No grains are made while the crossfade below would hide them.
+        trig = Impulse.kr(8 / glen * LFNoise1.kr(0.13).range(0.8, 1.25) * (mix > 0.001));
+        pointer = (startPos
+            + Sweep.kr(0, (1 - tail) / (stretch.max(0.05) * BufDur.kr(buf)))
+            - TRand.kr(0, glen / BufDur.kr(buf), trig)).wrap(0, 1);
+        // 0.7: eight uncorrelated grains sit ~3 dB over the file.
+        grains = GrainBuf.ar(1, trig, glen, buf,
+            semis.midiratio * TRand.kr(-0.08, 0.08, trig).midiratio * BufRateScale.kr(buf),
+            pointer, 2) * 0.7;
+        sig = XFade2.ar(sig, grains, mix.linlin(0, 1, -1, 1));
 
         sig = HPF.ar(sig, 25);
         // spectralShift only reaches 2400 Hz, and this used it as the cutoff
@@ -335,7 +388,8 @@ s.waitForBoot {
         room = (room + (smpRev * 0.6)).clip(0, 0.9);
         wet = FreeVerb.ar(sig, room, 0.85, 0.25);
         sig = XFade2.ar(sig, wet, room.linlin(0, 0.9, -1, 0.4));
-        // CRUDO: the same gains, none of the processing above.
+        // CRUDO: the same gains, none of the processing above. The bus is
+        // ~crudoGlide's 5-10 s S-curve; the 0.15 Lag is only anti-zipper.
         crudo = Lag.kr(Select.kr(corpusCrudoBus >= 0, [0, In.kr(corpusCrudoBus, 1)]).clip(0, 1), 0.15);
         raw = raw * env * amp.clip(0, 1) * level.clip(0, 1) * veil
             * (~trimCorpus ? 0.299)
@@ -431,7 +485,32 @@ s.waitForBoot {
         Out.ar(out, quadSig);
     }).add;
 
+    // ─── CRUDO glides ──────────────────────────────────────────────────────
+    // The toggle is 0/1 and every reader (both voices here, \chainProcessor
+    // in 17_) used to follow it in 0.15 s: the forest went from processed to
+    // as-recorded at a cut. They read this bus instead — one curve for all of
+    // them, so a voice born mid-glide joins it where it is rather than at the
+    // target. A sine S-curve over three bars of GOLPE's 92 × TEMPO BPM,
+    // clipped to 5-10 s: 7.8 s at TEMPO 1, 10 s at 0.78 and below, 5 s from
+    // 1.57. ~setParam sets the time at the moment of switching (0_), so a
+    // tempo change between two switches is honoured. VarLag starts at the
+    // bus's own value: no glide at boot, nor when a config arrives already
+    // in the state it asks for.
+    ~crudoRampTime = {
+        (3 * 4 * 60 / (92 * ((~beatParams !? { ~beatParams.beatTempo }) ? 1.0))).clip(5, 10)
+    };
+    ~crudoGlideBus = ~crudoGlideBus ?? { Bus.control(s, 1) };
+    SynthDef(\crudoGlide, { |in = 0, out = 0, time = 7.8|
+        Out.kr(out, VarLag.kr(In.kr(in, 1).clip(0, 1), time, warp: \sine));
+    }).add;
+
     s.sync;
+
+    if(~crudoGlide.notNil) { try { ~crudoGlide.free } };
+    ~crudoGlide = if(~buses.notNil and: { ~buses[\corpusCrudo].notNil }) {
+        Synth.head(RootNode(s), \crudoGlide, [\in, ~buses[\corpusCrudo].index,
+            \out, ~crudoGlideBus.index, \time, ~crudoRampTime.value])
+    };
 
     // ─── Gain budget ────────────────────────────────────────────────────────
     // Its own trim rather than ~trimSample, and measured rather than guessed.
@@ -655,6 +734,8 @@ s.waitForBoot {
     var args = [];
     if(~buses.notNil) {
         ~buses.keysValuesDo { |name, bus|
+            // CRUDO arrives through its glide (see ~crudoGlide), not as 0/1.
+            if(name == \corpusCrudo and: { ~crudoGlide.notNil }) { bus = ~crudoGlideBus };
             args = args ++ [(name.asString ++ "Bus").asSymbol, bus.index];
         };
     };
@@ -678,11 +759,15 @@ s.waitForBoot {
     ];
 };
 
-~phenoPlayClip = { |clip, holdSecs|
+// atk: the fade in, when it is not the ring's own crossfade (a hand on the
+// Cámara enters over ~phenoMoveXfade, the time the voice it replaces leaves in).
+~phenoPlayClip = { |clip, holdSecs, atk|
     ~corpusAcquire.(clip, { |buf|
         if(buf.notNil) {
             var slot = ~corpusRam.detect { |sl| sl[\buf] === buf };
             var dur = buf.numFrames / buf.sampleRate.max(1);
+            var xf0 = ~phenoXfade ? 10.0;
+            var crudo = ((~controlValues !? { ~controlValues[\corpusCrudo] }) ? 0) > 0.5;
             // ── The envelope has to fit the recording ──────────────────────
             // dur was measured on the line above and then never used. The
             // envelope was built from holdSecs alone, so at the default rate it
@@ -696,16 +781,29 @@ s.waitForBoot {
             // Fitted to whichever is shorter, the day or the recording, and the
             // attack shortened: 12% of 54 s is a 6.5 s fade-in, so an eighth of
             // every clip was arriving under the audible threshold as well.
-            var span = holdSecs.min(dur * 0.98);
+            //
+            // Since the grain tail can carry a file past its end, the fit is
+            // no longer "never longer than the recording" but:
+            //  - a file that (nearly) fills the time asked for is held for all
+            //    of it, so a day's clips end exactly as the next day's arrive
+            //    and the last seconds of the file become the cloud;
+            //  - a shorter one lasts its own length, but never under
+            //    ~phenoMinSpan — a ten-second call is not a ten-second voice.
+            // Under CRUDO nothing may sound that was not recorded, so there the
+            // voice still fits the file as it always did.
+            var span = case
+                { crudo } { holdSecs.min(dur * 0.98) }
+                { (dur * 0.98) >= (holdSecs - (2 * xf0)) } { holdSecs }
+                { (dur * 0.98).max(~phenoMinSpan ? 30.0).min(holdSecs.max(~phenoMinSpan ? 30.0)) };
             // Attack and release are both the crossfade time now, rather than
             // percentages of the clip that happened to differ from each other
             // (6% in, 14% out). A handover only sums to constant power if the
             // outgoing release and the incoming attack are the same length, and
             // the scheduler starts the successor exactly this far before the
-            // end. Capped at a third of the clip so a short recording still has
-            // a body between its fades.
-            var xf   = (~phenoXfade ? 6.0).min(span * 0.33);
-            var atkS = xf.clip(0.3, 20);
+            // end. A third of the voice at most, which only binds under CRUDO
+            // or on a very short day: everywhere else the span is three fades.
+            var xf   = xf0.min(span / 3);
+            var atkS = (atk ? xf).min(xf).clip(0.3, 20);
             var relS = xf.clip(0.3, 20);
             var synth = Synth(\corpusVoice, [
                 \buf, buf,
@@ -713,6 +811,7 @@ s.waitForBoot {
                 \atk, atkS,
                 \hold, (span - atkS - relS).clip(0.5, 560),
                 \rel, relS,
+                \fileDur, if(crudo, 0, dur),
                 \startPos, 0,
                 \pan, 1.0.rand2 * 0.6,
                 \opacity, clip[\opacity],
@@ -734,7 +833,9 @@ s.waitForBoot {
             ~corpusVoices = ~corpusVoices.add((
                 synth: synth, slot: slot, key: clip[\key],
                 ringDay: ~phenoCursor.floor.asInteger,
-                endsAt: Main.elapsedTime + span
+                endsAt: Main.elapsedTime + span,
+                // its own release: the successor is started when it begins
+                rel: relS
             ));
 
             // ── The entry has to die with the synth ─────────────────────────
@@ -887,14 +988,17 @@ s.waitForBoot {
 ~phenoSyncVoices = { |doy, holdSecs, reseat = false|
     var all = ~phenoSelect.(doy);
     var best = all[..1].collect { |c| c[\key] };
-    var xfade = (~phenoXfade ? 6.0);
+    var xfade = (~phenoXfade ? 10.0);
+    var move = (~phenoMoveXfade ? 4.0);
     var now = Main.elapsedTime;
-    var candidates, needed, changed = false;
+    var candidates, needed, changed = false, handed = reseat;
     // Retired voices are still audible but they are on their way out, so they
     // must not count as "already sounding" — otherwise a clip that was just
-    // let go would block its own replacement for a second.
+    // let go would block its own replacement for a second. Nor does a voice
+    // that has begun its own release: its successor enters as it leaves, the
+    // two fades the same length.
     var sounding = ~corpusVoices.select { |v|
-        (v[\retired] != true) and: { ((v[\endsAt] ? inf) - now) > xfade }
+        (v[\retired] != true) and: { ((v[\endsAt] ? inf) - now) > (v[\rel] ? xfade) }
     };
 
     // 1. Retire clips no longer admitted by the filter (threshold/bancada/
@@ -904,9 +1008,12 @@ s.waitForBoot {
             all.any { |c| c[\key] == v[\key] }.not
                 or: { reseat and: { best.includes(v[\key]).not } }
         }) {
-            ~phenoGateOff.(v[\synth], 1.2);
-            ~phenoRetire.(v, 1.2);
+            // Four seconds, not 1.2: the Cámara answers the hand, but as a
+            // crossfade — the clip that takes this seat enters over the same.
+            ~phenoGateOff.(v[\synth], move);
+            ~phenoRetire.(v, move);
             changed = true;
+            handed = true;
         };
     };
     // NOT rejected here. The entry lives until synth.onFree removes it, so the
@@ -948,7 +1055,7 @@ s.waitForBoot {
                 .min((~corpusMaxVoices ? 4) - ~corpusVoices.size)
                 .max(0);
             candidates[..needed - 1].do { |clip|
-                ~phenoPlayClip.(clip, holdSecs);
+                ~phenoPlayClip.(clip, holdSecs, if(handed, move, nil));
                 changed = true;
             };
         };
@@ -1022,9 +1129,13 @@ s.waitForBoot {
                 knobsNow = knobSig.value;
                 moved = (knobsNow - knobsWas).abs.maxItem > 0.004;
                 if(moved) { knobsWas = knobsNow };
-                // What is left of the day, floored so a clip admitted near a
-                // boundary still gets long enough to be a clip.
-                ~phenoSyncVoices.(doy, ((secs - waited) * 0.9).max(3.0), moved);
+                // What is left of the day plus one crossfade, so a clip
+                // admitted mid-day leaves exactly as the next day's arrive.
+                // Floored at ~phenoMinSpan: near the boundary this used to
+                // admit ten-second fillers with three-second fades. A voice
+                // that outlives its day is let go when the next one starts.
+                ~phenoSyncVoices.(doy,
+                    (secs - waited + (~phenoXfade ? 10.0)).max(~phenoMinSpan ? 30.0), moved);
             };
             // pulseGain scales how hard the forest plays the synthesiser. It
             // was also once-a-day; deadbanded here so holding still does not
@@ -1118,12 +1229,32 @@ s.waitForBoot {
 
                 ~phenoReleaseVoices.value;
 
+                // The day turns as one crossfade. A clip from an earlier day
+                // that would still be sounding past the new day's fade-in (a
+                // mid-day voice that outlived its day) leaves over that same
+                // fade; the day's own clips are already ending on it.
+                ~corpusVoices.do { |v|
+                    var xf = ~phenoXfade ? 10.0;
+                    if((v[\ringDay] != doy) and: { v[\retired] != true }
+                        and: { ((v[\endsAt] ? 0) - Main.elapsedTime) > (xf + 1) }) {
+                        ~phenoGateOff.(v[\synth], xf);
+                        ~phenoRetire.(v, xf);
+                    };
+                };
+
                 if(admitted.size > 0) {
                     // A recorded day. Up to two clips sound at once — enough
                     // for the dawn chorus to overlap, few enough that no clip
                     // becomes an accompaniment to another.
+                    // The day and one crossfade: each clip ends as the next
+                    // day's begin, instead of 10% early, which left the last
+                    // seconds of every day to short fillers.
+                    // After a jump the voices left over ~phenoMoveXfade, so
+                    // the destination enters over the same.
+                    var atk = if(~phenoJumped == true) { ~phenoMoveXfade ? 4.0 };
+                    ~phenoJumped = false;
                     admitted[..1].do { |clip, i|
-                        ~phenoPlayClip.(clip, secsPerDay * 0.9);
+                        ~phenoPlayClip.(clip, secsPerDay + (~phenoXfade ? 10.0), atk);
                     };
                     // Bats are present on recorded days too, whenever the
                     // clip actually carries ultrasound.
@@ -1136,6 +1267,7 @@ s.waitForBoot {
                     // Above it, the nearest real recording is heard as
                     // ultrasound only — the forest is there, just not legible
                     // to human hearing. The deeper into the gap, the rarer.
+                    ~phenoJumped = false;
                     if(absence > 0.05) {
                         var chance = absence * (1.0 - (gap / 120).clip(0, 0.85));
                         if(chance.coin and: { ~corpusClips.size > 0 }) {
@@ -1207,7 +1339,7 @@ s.waitForBoot {
                 // Not a single long sleep any more. ~phenoDwell waits out the
                 // day in slices and answers the Cámara's controls while it
                 // does, returning early when NEXT REC. DAY has been pressed.
-                ~phenoDwell.(secsPerDay.max(0.25), doy, secsPerDay * 0.9);
+                ~phenoDwell.(secsPerDay.max(0.25), doy, secsPerDay + (~phenoXfade ? 10.0));
             } {
                 |err|
                 ("[pheno] frame error: " ++ err.errorString).postln;
@@ -1246,7 +1378,8 @@ OSCdef(\phenoGoto, { |msg|
     var doy = (msg[1] ? 1).asInteger.clip(1, 365);
     ~phenoCursor = (doy - 1).max(0).asFloat;
     ~phenoSkipNow = true;
-    ~phenoFadeVoices.(1.0);
+    ~phenoJumped = true;
+    ~phenoFadeVoices.(~phenoMoveXfade ? 4.0);
     ("[pheno] cursor -> doy % (%)".format(doy, ~phenoSeason.(doy))).postln;
 }, '/pheno/goto');
 
@@ -1269,7 +1402,8 @@ OSCdef(\phenoGoto, { |msg|
         // currently sounding so the jump is audible rather than buried under a
         // clip with fifty seconds left to run.
         ~phenoSkipNow = true;
-        ~phenoFadeVoices.(1.0);
+        ~phenoJumped = true;
+        ~phenoFadeVoices.(~phenoMoveXfade ? 4.0);
         ("[pheno] skip -> doy % (%)".format(next, ~phenoSeason.(next))).postln;
         next;
     };

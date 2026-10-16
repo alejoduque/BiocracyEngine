@@ -565,10 +565,20 @@
 // A whole pattern: a library entry, a config's "golpe" section (String keys
 // from parseJSON) or an Event of arrays. Rows it does not name stay as they
 // are, like every other section a config leaves out.
+//
+// A config's section (it names a kit) also restores the tuning and the step
+// locks, and resets them when it has none, so configs never inherit each
+// other's tuning. A rhythm from the library keeps the row tuning and clears
+// the locks: they belonged to the old pattern's steps.
 ~golpeLoad = { |src|
     var kit = src[\kit] ?? { src["kit"] };
     var afinar = src[\afinar] ?? { src["afinar"] };
     var peso = src[\peso] ?? { src["peso"] };
+    if(kit.notNil) {
+        ~golpeTuneLoad.(src[\tune] ?? { src["tune"] }, src[\locks] ?? { src["locks"] });
+    } {
+        ~golpeLocks = ();
+    };
     if(kit.notNil) { ~golpeKitSet.(kit) };
     if(afinar.notNil) { ~golpeAfinar = afinar.asFloat.clip(-6, 6) };
     if(peso.notNil) {
@@ -587,11 +597,172 @@
     ~stateDirty = true;
     ~golpeRefresh.value;
 };
-~golpeClear = { ~golpeRows.do { |row| ~golpePattern[row] = 0 ! ~golpeSteps }; ~stateDirty = true; ~golpeRefresh.value };
+~golpeClear = { ~golpeRows.do { |row| ~golpePattern[row] = 0 ! ~golpeSteps }; ~golpeLocks = (); ~stateDirty = true; ~golpeRefresh.value };
 ~golpePattern = ~golpePattern ?? {
     var p = ();
     ~golpeRows.do { |row| p[row] = ~golpeFromString.(~golpeLibrary[\maqsum][row]) };
     p
+};
+
+// ─── GOLPE · tuning, per row and per step ─────────────────────────────────
+// Four controls, the same four on every row, each adapted to the row's
+// material by ~golpeShape (19_golpe.scd):
+//   afinar  semitones, -12..12, on the fundamental (RIQ: its jingles)
+//   tono    -1..1: where the brightness sits — crack, palm, the tabla's upper
+//           partials and click, the riq's hiss, a grain's filters
+//   mod     -1..1: how much it moves — the dum's drop, the tabla's FM ping and
+//           glide, the tek's ring, the ka's clap, the riq's double, a grain's
+//           drive. Up adds movement even where the kit has none.
+//   caida   -1..1, applied as x2^(2c): decay x0.25..x4
+// ~golpeTune is the row's base, for every hit of that row. ~golpeLocks holds
+// a step's own values (only the controls that were touched; the rest come
+// from the row), for whatever that row plays on that step.
+//
+// There are no knobs of their own. Clicking a row name on the grid (or
+// right-clicking a box, for its step) hands four TIMBRE knobs over to it —
+// PITCH, HARM, TEXTURE, BODY, the ones that already shape GOLPE's pitch,
+// partials, drive and body — and the rest of the surface goes grey until
+// the same name or box is clicked again (4_gui.scd). ~setParam routes those
+// four here meanwhile, from the GUI and from MIDI; the breath, configs and
+// the browser still write the global values underneath.
+~golpeTuneKeys = [\afinar, \tono, \mod, \caida];
+~golpeTuneSpecs = (afinar: ControlSpec(-12, 12, \lin, 0.1), tono: ControlSpec(-1, 1),
+    mod: ControlSpec(-1, 1), caida: ControlSpec(-1, 1));
+~golpeEditKnobs = (pitchShift: \afinar, harmonicRich: \tono, textureDepth: \mod, resonantBody: \caida);
+~golpeTuneNames = (afinar: "AFINAR", tono: "TONO", mod: "MOD", caida: "CAÍDA");
+~golpeTuneNeutral = { (afinar: 0, tono: 0, mod: 0, caida: 0) };
+~golpeTune = ~golpeTune ?? { var t = (); ~golpeRows.do { |row| t[row] = ~golpeTuneNeutral.value }; t };
+~golpeLocks = ~golpeLocks ?? { () };
+~golpeEdit = nil;
+
+// What sounds on a row at a step: the row, overridden by the step's lock.
+~golpeTuneAt = { |row, step|
+    var t = (~golpeTune[row] ?? { ~golpeTuneNeutral.value }).copy;
+    var lock = if(step.notNil) { (~golpeLocks[row] ? ())[step] };
+    lock !? { lock.keysValuesDo { |k, v| t[k] = v } };
+    t
+};
+~golpeTuneText = { |ctl, v, locked = false|
+    var name = ~golpeTuneNames[ctl] ++ if(locked) { "•" } { "" };
+    name ++ "\n" ++ switch(ctl,
+        \afinar, { (if(v >= 0) { "+" } { "" }) ++ v.round(0.1) ++ " st" },
+        \caida,  { "×" ++ (2 ** (2 * v)).round(0.01) },
+        { (if(v >= 0) { "+" } { "" }) ++ v.round(0.01) })
+};
+
+// Whether ~setParam should hand this write to the tuning, and whether the
+// knob is showing the tuning (so ~setParam leaves its face alone).
+~golpeTakes = { |name, source| ~golpeEdit.notNil and: { [\gui, \midi].includes(source) }
+    and: { ~golpeEditKnobs[name].notNil } };
+~golpeShows = { |name| ~golpeEdit.notNil and: { ~golpeEditKnobs[name].notNil } };
+
+// The four knobs' faces: the tuning while editing, their own values after.
+~golpeEditShow = {
+    {
+        ~golpeEditKnobs.keysValuesDo { |name, ctl|
+            var knob = (~knobViews ? ())[name];
+            var label = (~controlLabels ? ())[name];
+            if(~golpeEdit.notNil) {
+                var e = ~golpeEdit;
+                var v = ~golpeTuneAt.(e[\row], e[\step])[ctl];
+                var locked = e[\step].notNil and: { ((~golpeLocks[e[\row]] ? ())[e[\step]] ? ())[ctl].notNil };
+                if(knob.notNil and: { knob.isClosed.not }) { knob.value = ~golpeTuneSpecs[ctl].unmap(v) };
+                if(label.notNil and: { label.isClosed.not }) { label.string = ~golpeTuneText.(ctl, v, locked) };
+            } {
+                var spec = ~paramDefsByName[name][\spec];
+                var val = (~controlValues ? ())[name] ? ~paramDefsByName[name][\default];
+                if(knob.notNil and: { knob.isClosed.not }) { knob.value = spec.unmap(val) };
+                if(label.notNil and: { label.isClosed.not }) { label.string = ~knobText.(name, val) };
+            };
+        };
+        ~guiLookRefresh !? { ~guiLookRefresh.value };
+    }.defer;
+};
+
+// Pick a row (step nil) or a step to tune; picking the same again leaves.
+~golpeEditSet = { |row, step|
+    var same = ~golpeEdit.notNil and: { ~golpeEdit[\row] == row } and: { ~golpeEdit[\step] == step };
+    ~golpeEdit = if(same) { nil } { (row: row, step: step) };
+    ~golpeEditShow.value;
+    ~golpeRefresh.value;
+};
+~golpeEditExit = { if(~golpeEdit.notNil) { ~golpeEdit = nil; ~golpeEditShow.value; ~golpeRefresh.value } };
+
+// One control of what is being tuned, from a knob's 0-1 position. A step
+// keeps only what was touched on it. Then a test hit of that row, once the
+// hand rests (19_ plays it, only while GOLPE sounds).
+~golpeTuneSet = { |ctl, norm|
+    var e = ~golpeEdit;
+    if(e.notNil and: { ctl.notNil }) {
+        var v = ~golpeTuneSpecs[ctl].map(norm.clip(0, 1));
+        if(e[\step].isNil) {
+            ~golpeTune[e[\row]][ctl] = v;
+        } {
+            var locks = ~golpeLocks[e[\row]] ?? { ~golpeLocks[e[\row]] = () ; ~golpeLocks[e[\row]] };
+            (locks[e[\step]] ?? { locks[e[\step]] = (); locks[e[\step]] })[ctl] = v;
+        };
+        ~stateDirty = true;
+        ~golpeEditShow.value;
+        ~golpeRefresh.value;
+        ~golpePreviewAt = Main.elapsedTime;
+        SystemClock.sched(0.25, {
+            if(Main.elapsedTime - (~golpePreviewAt ? 0) >= 0.24) { ~golpePreview !? { ~golpePreview.(e[\row], e[\step]) } };
+            nil
+        });
+    };
+};
+
+// Back to the kit as it is: a row's whole tuning, or a step's lock.
+~golpeTuneReset = { |row, step|
+    if(step.isNil) { ~golpeTune[row] = ~golpeTuneNeutral.value } {
+        (~golpeLocks[row] ? ()).removeAt(step);
+    };
+    ~stateDirty = true;
+    ~golpeEditShow.value;
+    ~golpeRefresh.value;
+};
+
+// From a config's "tune" and "locks" (String keys from parseJSON); neutral
+// where it names nothing.
+~golpeTuneLoad = { |tune, locks|
+    ~golpeRows.do { |row|
+        var src = tune !? { tune[row] ?? { tune[row.asString] } };
+        var t = ~golpeTuneNeutral.value;
+        src !? { ~golpeTuneKeys.do { |k| (src[k] ?? { src[k.asString] }) !? { |v|
+            t[k] = ~golpeTuneSpecs[k].constrain(v.asFloat) } } };
+        ~golpeTune[row] = t;
+    };
+    ~golpeLocks = ();
+    locks !? {
+        ~golpeRows.do { |row|
+            var src = locks[row] ?? { locks[row.asString] };
+            src !? {
+                var rl = ();
+                src.keysValuesDo { |step, vals|
+                    var i = step.asString.asInteger;
+                    var l = ();
+                    ~golpeTuneKeys.do { |k| (vals[k] ?? { vals[k.asString] }) !? { |v|
+                        l[k] = ~golpeTuneSpecs[k].constrain(v.asFloat) } };
+                    if(i.inclusivelyBetween(0, ~golpeSteps - 1) and: { l.size > 0 }) { rl[i] = l };
+                };
+                if(rl.size > 0) { ~golpeLocks[row] = rl };
+            };
+        };
+    };
+    if(~golpeEdit.notNil) { ~golpeEditShow.value };
+};
+// And to JSON, for ~saveConfig: rows left neutral and empty locks are omitted.
+~golpeTuneJSON = {
+    var obj = { |ev| "{ % }".format(~golpeTuneKeys.select { |k| ev[k].notNil }
+        .collect { |k| "\"%\": %".format(k, ev[k].asFloat.round(0.01)) }.join(", ")) };
+    var rows = ~golpeRows.select { |row| ~golpeTuneKeys.any { |k| (~golpeTune[row][k] ? 0) != 0 } };
+    var lrows = ~golpeRows.select { |row| (~golpeLocks[row] ? ()).size > 0 };
+    [
+        "    \"tune\": { % }".format(rows.collect { |row| "\"%\": %".format(row, obj.(~golpeTune[row])) }.join(", ")),
+        "    \"locks\": { % }".format(lrows.collect { |row|
+            "\"%\": { % }".format(row, ~golpeLocks[row].keys.asArray.sort.collect { |i|
+                "\"%\": %".format(i, obj.(~golpeLocks[row][i])) }.join(", ")) }.join(", "))
+    ]
 };
 
 // Upper-cases the first letter for GUI labels. Replaces String:capitalize,
@@ -735,18 +906,41 @@
 ~labelFormats[\samplePitch] = { |name, val|
     (~knobLabels[name] ? ~labelCase.(name)) ++ "\n" ++ ((val ? 0) / 12).round(0.01) ++ " st"
 };
+// GRAIN SIZE is a grain LENGTH, 0.8-4 s, in both the sample voice and the
+// corpus (10_, 14_): shorter grains on the forest read as a pulse. Numbers or
+// UGens, so the SynthDefs and the readout share one mapping.
+~grainLen = { |g| g.clip(0.05, 1.0).linexp(0.05, 1.0, 0.8, 4.0) };
+~labelFormats[\grainSize] = { |name, val|
+    (~knobLabels[name] ? ~labelCase.(name)) ++ "\n" ++ ~grainLen.(val ? 0.2).round(0.1) ++ " s"
+};
 
 // ─── The single write path ──────────────────────────────────────────────────
 // source: \midi | \osc | \gui | \code — used for the BRIDGE liveness light.
 // Value is in NATIVE units (Hz, semitones, …); use ~setParamNorm for 0–1.
 ~setParam = { |name, value, source=\code|
     var def = ~paramDefsByName[name];
-    if(def.isNil) {
+    case
+    { def.isNil } {
         ("~setParam: unknown parameter '%'".format(name)).warn;
         nil
-    } {
+    }
+    // 0 · GOLPE tuning (19_golpe.scd): while a row or a step of the grid is
+    //     being tuned, PITCH, HARM, TEXTURE and BODY tune it instead — from
+    //     the GUI and from MIDI. The breath, configs and the browser still
+    //     write the global value underneath.
+    { ~golpeTakes.notNil and: { ~golpeTakes.(name, source) } } {
+        ~golpeTuneSet.(~golpeEditKnobs[name], def[\spec].unmap(def[\spec].constrain(value)));
+        value
+    }
+    {
         var spec = def[\spec];
         var val = spec.constrain(value);
+
+        // 0b · CRUDO glides (14_, ~crudoGlide): its length is taken from the
+        //      tempo now, before the bus moves.
+        if(name == \corpusCrudo) {
+            ~crudoGlide !? { |g| g.set(\time, ~crudoRampTime.value) };
+        };
 
         // 1 · control bus (what the SynthDefs actually read)
         if((def[\hasBus] ? true) and: { ~buses.notNil } and: { ~buses[name].notNil }) {
@@ -789,7 +983,8 @@
 
         // 4 · GUI knob + label (event-driven — replaces the 50ms polling loop;
         //     knob.value = does NOT fire the knob's action, so no feedback loop)
-        {
+        //     Not while GOLPE tuning has the knob: it shows the tuning then.
+        { if(~golpeShows.isNil or: { ~golpeShows.(name).not }) {
             var knob = if(~knobViews.notNil) { ~knobViews[name] };
             var label = if(~controlLabels.notNil) { ~controlLabels[name] };
             if(knob.notNil) { knob.value = spec.unmap(val) };
@@ -804,7 +999,7 @@
                 // the first time anything touched the parameter.
                 label.string = ~knobText.(name, val);
             };
-        }.defer;
+        } }.defer;
 
         // 5 · echo to browser — ALWAYS normalized 0–1 on the CANONICAL path
         //     (HTML sliders are 0–1; setting slider.value fires no input event,
@@ -944,6 +1139,7 @@ if(File.exists(~presetDir).not) { File.mkdir(~presetDir) };
              "    \"afinar\": %".format((~golpeAfinar ? 0).asFloat.round(0.01)),
              "    \"peso\": { % }".format(~golpeRows.collect { |row|
                  "\"%\": %".format(row, ((~golpePeso ? ())[row] ? 1).asFloat.round(0.01)) }.join(", "))]
+            ++ (~golpeTuneJSON !? { ~golpeTuneJSON.value } ? [])
             ++ ~golpeRows.collect { |row|
                 "    \"%\": \"%\"".format(row, ~golpeToString.(~golpePattern[row]))
             }).join(",\n")));

@@ -331,7 +331,7 @@ s.doWhenBooted({
             if(carve) {
                 var c = Lag.kr(Select.kr(carveBus >= 0, [0, In.kr(carveBus.max(0), 1)]).clip(0, 1), 0.25)
                     * Line.kr(0, 1, fadeIn.max(0.001));
-                var key, keyEnv, keyRef, duckG, sum, env, lvl, tameG;
+                var key, keyEnv, keyRef, duckG, sum, env, lvl, tameG, fc;
                 if(duck) {
                     // The kick's own stem, low-passed: how hard it is hitting
                     // NOW against how hard it has been hitting lately, 0..1.
@@ -345,10 +345,17 @@ s.doWhenBooted({
                 env = Amplitude.ar(sum, 0.0005, 0.08);
                 lvl = Lag.ar(sum.squared, 0.4).sqrt;
                 tameG = Select.ar(tame > 0, [DC.ar(1), ((lvl * tame.dbamp) / env.max(1e-6)).clip(0, 1)]);
+                // The low cut's FREQUENCY follows the carve (8 Hz at 0, the
+                // profile's at 1), outside the crossfade below. Crossfaded as
+                // a signal, the dry stem and its own high-passed copy sit up to
+                // 180° apart near the cutoff and cancel: measured on pink
+                // noise, the drone at MEZCLA 0.5 lost 11.5 dB at 50 Hz where
+                // the full carve loses 4.8, the kick 11.6 dB at 31 Hz against
+                // 4.1. A cutoff that slides takes the lows away gradually.
+                fc = c.linexp(0, 1, 8, hpf.max(10)).min(SampleRate.ir * 0.45);
+                dry = dry.collect { |ch| Select.ar(hpf > 0, [ch, HPF.ar(HPF.ar(ch, fc), fc)]) };
                 x = dry.collect { |ch|
                     var y = ch, lo;
-                    // 4th-order low cut (two 2nd-order HPFs); bypassed when hpf is 0.
-                    y = Select.ar(hpf > 0, [y, HPF.ar(HPF.ar(y, hpf.max(10)), (hpf.max(10)).min(SampleRate.ir * 0.45))]);
                     y = BPeakEQ.ar(y, dipF.min(SampleRate.ir * 0.42), 1, dipDb);
                     y = BLowShelf.ar(y, lsF.min(SampleRate.ir * 0.42), 1, lsDb);
                     // Kept under Nyquist: a shelf above it turns the filter unstable
@@ -564,8 +571,15 @@ s.doWhenBooted({
         //     every speaker alike. Wide bass cancels between speakers on a
         //     dome — measured on a take, side was only 3 dB under mid below
         //     80 Hz — and the room's six subwoofers want one signal.
+        //     The cutoff slides with the carve (8 Hz → 24 Hz) instead of the
+        //     dry mix being crossfaded against its own filtered copy, which
+        //     cancelled near the cutoff (-17.5 dB at 25 Hz at MEZCLA 0.5,
+        //     against -10.8 at 1). The crossfade is kept only over the first
+        //     5% of the knob, where the cut is still at 8 Hz, so MEZCLA 0 is
+        //     the dry path exactly.
         clean = clean.asArray.collect { |ch|
-            LinXFade2.ar(ch, HPF.ar(HPF.ar(ch, 24), 24), carve * 2 - 1)
+            var fc = carve.linexp(0, 1, 8, 24);
+            LinXFade2.ar(ch, HPF.ar(HPF.ar(ch, fc), fc), (carve * 20).clip(0, 1) * 2 - 1)
         };
         lows = clean.collect { |ch| LPF.ar(LPF.ar(ch, 120), 120) };
         monoLow = Mix(lows) / ~limiterChans.max(1);

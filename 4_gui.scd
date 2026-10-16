@@ -295,6 +295,80 @@
             beatTempo: [\opalPerc, \opalKick, \opalDust]
         );
 
+        // ─── Lit when it acts, grey when it cannot ──────────────────────
+        // A knob goes grey when everything it is known to reach is silent:
+        // the voices on its ring, each through its own fader (~voiceLayer),
+        // and the layers that read the knobs outside the ring (~layerReach:
+        // GOLPE and the motors take ~controlValues and the buses in
+        // language-side code, which SynthDescLib cannot see). A layer is
+        // silent at fader 0 or muted. A key with no known reach — CÁMARA,
+        // VIZ, the faders themselves — never greys. Purely a look: a grey
+        // knob still works. While a GOLPE row or step is being tuned the four
+        // knobs that tune it light up and everything else greys (focus).
+        //
+        // ~layerReach is hand-kept: every ~motIn / ~motVal / k.(\…) read in
+        // 18_motores.scd and 19_golpe.scd. Keep it in step with them.
+        ~voiceLayer = (opalDrone: \mixDrone, elektronBell: \mixPad, opalPerc: \mixPerc,
+            opalKick: \mixKick, opalDust: \mixDust, samplePlayerMono: \mixSample,
+            corpusVoice: \mixCorpus, corpusUltrasonic: \mixUltra);
+        ~layerReach = (
+            mixGolpe: [\atmosphereMix, \beatTempo, \delayFeedback, \filterCutoff, \harmonicRich,
+                \masterAmp, \masterVolume, \memoryFeed, \noiseFilt, \noiseLevel, \percRate,
+                \pitchShift, \resonantBody, \spatialSpread, \spectralShift, \textureDepth,
+                \timeDilation, \transactionInfluence],
+            mixMotor: [\delayFeedback, \droneFade, \filterCutoff, \harmonicRich, \masterAmp,
+                \masterVolume, \memoryFeed, \noiseFilt, \noiseLevel, \opacityFloor, \pitchShift,
+                \pulseGain, \resonantBody, \spatialSpread, \spectralShift, \textureDepth,
+                \timeDilation, \transactionInfluence]
+        );
+        ~layerSounds = { |mix|
+            (((~controlValues ? ())[mix] ? 0) > 0.001) and: { (~mixerMuted ? ())[mix] != true }
+        };
+        // One control's look: \normal (its family), \dim (grey), \focus
+        // (its family, caption white). Restyled only when it changes.
+        ~knobLook = ();
+        ~controlLook = { |key, mode|
+            if((~knobLook[key] ? \normal) != mode) {
+                var view = (~knobViews ? ())[key];
+                var label = (~controlLabels ? ())[key];
+                var fam = if(mode == \dim) { Color.gray(0.3) } { ~famColor.(key) };
+                var famBg = ~famBg.(key);
+                ~knobLook[key] = mode;
+                if(view.notNil and: { view.isClosed.not }) {
+                    case
+                    { view.isKindOf(Knob) } {
+                        view.color = [famBg, fam, fam.blend(Color.white, 0.35), fam.copy.alpha_(0.2)];
+                    }
+                    { view.isKindOf(Button) } {
+                        var cap = view.states[0][0], v = view.value;
+                        view.states = [[cap, fam, famBg], [cap, Color.black, fam]];
+                        view.value = v;
+                    };
+                };
+                if(label.notNil and: { label.isClosed.not }) {
+                    label.stringColor = switch(mode,
+                        \dim, { Color.gray(0.42) }, \focus, { Color.white }, { ~famText.(key) });
+                };
+                (~knobRings ? ())[key] !? { |r| if(r.isClosed.not) { r.refresh } };
+            };
+        };
+        ~guiLookRefresh = {
+            var edit = ~golpeEdit;
+            (~knobViews ? ()).keysValuesDo { |key, view|
+                if(view.isKindOf(Knob) or: { view.isKindOf(Button) }) {
+                    ~controlLook.(key, if(edit.notNil) {
+                        if((~golpeEditKnobs ? ())[key].notNil) { \focus } { \dim }
+                    } {
+                        var w = (~paramVoices ? ())[key];
+                        var layers = Set.new;
+                        w !? { (w[\live] ++ w[\spawn]).do { |v| ~voiceLayer[v] !? { |m| layers.add(m) } } };
+                        ~layerReach.keysValuesDo { |m, keys| if(keys.includes(key)) { layers.add(m) } };
+                        if(layers.isEmpty or: { layers.any { |m| ~layerSounds.(m) } }) { \normal } { \dim }
+                    });
+                };
+            };
+        };
+
         // Derived once the server has the defs. Returns nil until then, which
         // the ring reads as "not known yet" and draws as a plain dim circle.
         ~computeParamVoices = {
@@ -566,17 +640,21 @@
                         var live  = wiring.notNil and: { wiring[\live].includes(v) };
                         var spawn = wiring.notNil and: { wiring[\spawn].includes(v) };
                         var col = (~voiceColors[v] ? Color.gray(0.5));
+                        var c;
                         // Lit: the voice reads this control live off a bus, so
                         // the knob changes a note already sounding. Hollow: it
                         // is applied when the note spawns, so the knob shapes
                         // the NEXT one. Nearly dark: no reach at all.
                         Pen.width = if(live) { 2.2 } { 1.2 };
-                        Pen.strokeColor = case
+                        c = case
                             { live }  { col }
                             // .copy: alpha_ changes a Color in place, and this
                             // faded the shared ~voiceColors entry for good.
                             { spawn } { col.copy.alpha_(0.38) }
                             { Color.gray(0.16) };
+                        // A grey knob (~controlLook) keeps its ring, faintly.
+                        if((~knobLook ? ())[paramName] == \dim) { c = c.copy.alpha_(c.alpha * 0.3) };
+                        Pen.strokeColor = c;
                         Pen.addAnnularWedge(Point(36, 36), 32.5, 34.5, a0, a1 - a0);
                         Pen.stroke;
                     };
@@ -1756,13 +1834,24 @@
             // 29 px a step and a 4 px gap every beat: the grid and its head fit
             // the 1100 px surface on one line (at 30/6 the row ran to ~1280).
             var capW = 46, cellW = 27, cellH = 16, pitch = 29, gap = 4, rowPitch = 19, top = 8;
-            var paint = 1;
+            var paint;
             var cellRect = { |r, i| Rect(capW + (i * pitch) + ((i div: 4) * gap), top + (r * rowPitch), cellW, cellH) };
             var hit = { |x, y|
                 var found;
                 ~golpeRows.do { |row, r|
                     ~golpeSteps.do { |i|
                         if(found.isNil and: { cellRect.(r, i).containsPoint(Point(x, y)) }) { found = [row, i] };
+                    };
+                };
+                found
+            };
+            // The row's name, left of its boxes: where a row is picked for tuning.
+            var nameHit = { |x, y|
+                var found;
+                if(x < (capW - 2)) {
+                    ~golpeRows.do { |row, r|
+                        var c = cellRect.(r, 0);
+                        if(found.isNil and: { y >= (c.top - 1) } and: { y < (c.top + rowPitch - 1) }) { found = row };
                     };
                 };
                 found
@@ -1780,6 +1869,9 @@
                     var now = shown !? { shown[\step] };
                     var lit = (shown !? { shown[\hits] }) ? ();
                     var amber = ~phenoAmber ? Color(1.0, 0.62, 0.10);
+                    // What is being tuned (0_parameters.scd, ~golpeEdit).
+                    var edit = ~golpeEdit;
+                    var tuneCol = ~guiFamily[\timbre];
                     Pen.smoothing = false;
                     Pen.fillColor = Color.black;
                     Pen.fillRect(Rect(0, 0, v.bounds.width, v.bounds.height));
@@ -1795,7 +1887,13 @@
                         Pen.fillRect(Rect(c.left - 2, top - 3, cellW + 4, ~golpeRows.size * rowPitch + 2));
                     };
                     ~golpeRows.do { |row, r|
-                        Pen.stringAtPoint(row.asString.toUpper, Point(2, cellRect.(r, 0).top + 2), Font(~monoFont, 9, true), mainTheme.accent);
+                        // The row being tuned: its name lit in the timbre
+                        // orange (the four knobs that tune it are orange too).
+                        // A row whose tuning is not neutral gets a dot.
+                        var tuned = ~golpeTuneKeys.notNil and: { ~golpeTuneKeys.any { |k| ((~golpeTune[row] ? ())[k] ? 0) != 0 } };
+                        Pen.stringAtPoint(row.asString.toUpper ++ if(tuned) { "•" } { "" },
+                            Point(2, cellRect.(r, 0).top + 2), Font(~monoFont, 9, true),
+                            if(edit.notNil and: { edit[\row] == row }) { tuneCol } { mainTheme.accent });
                         ~golpeSteps.do { |i|
                             var rect = cellRect.(r, i);
                             var on = ((~golpePattern[row] ? [])[i] ? 0) > 0;
@@ -1826,19 +1924,50 @@
                                 Pen.strokeColor = mainTheme.dim; Pen.width = 1;
                                 Pen.strokeRect(rect.insetBy(0.5, 0.5));
                             };
+                            // A step with its own tuning: an orange corner.
+                            if(((~golpeLocks ? ())[row] ? ())[i].notNil) {
+                                Pen.fillColor = tuneCol;
+                                Pen.fillRect(Rect(rect.right - 7, rect.top, 7, 4));
+                            };
+                            // The step being tuned: framed in orange.
+                            if(edit.notNil and: { edit[\row] == row } and: { edit[\step] == i }) {
+                                Pen.strokeColor = tuneCol; Pen.width = 2;
+                                Pen.strokeRect(rect.insetBy(-2, -2));
+                            };
                         };
                     };
                 })
-                .mouseDownAction_({ |v, x, y|
-                    hit.(x, y) !? { |c|
-                        paint = if(((~golpePattern[c[0]] ? [])[c[1]] ? 0) > 0) { 0 } { 1 };
-                        ~golpeSet.(c[0], c[1], paint);
+                // Click a row's name: tune that row (again: leave); double-click
+                // it: the row back to the kit. Right- or alt-click a box: tune
+                // that step (again: leave); double: its lock cleared. A plain
+                // click still toggles the box.
+                .mouseDownAction_({ |v, x, y, mods, button, clicks|
+                    var alt = (button == 1) or: { mods.isAlt };
+                    paint = nil;
+                    case
+                    { nameHit.(x, y).notNil } {
+                        var row = nameHit.(x, y);
+                        // The double's first click toggled; the reset keeps it open.
+                        if(clicks >= 2) { ~golpeEdit = (row: row, step: nil); ~golpeTuneReset.(row, nil) } {
+                            ~golpeEditSet.(row, nil) };
+                    }
+                    { alt } {
+                        hit.(x, y) !? { |c|
+                            if(clicks >= 2) { ~golpeEdit = (row: c[0], step: c[1]); ~golpeTuneReset.(c[0], c[1]) } {
+                                ~golpeEditSet.(c[0], c[1]) };
+                        };
+                    }
+                    {
+                        hit.(x, y) !? { |c|
+                            paint = if(((~golpePattern[c[0]] ? [])[c[1]] ? 0) > 0) { 0 } { 1 };
+                            ~golpeSet.(c[0], c[1], paint);
+                        };
                     };
                 })
                 .mouseMoveAction_({ |v, x, y|
-                    hit.(x, y) !? { |c|
+                    if(paint.notNil) { hit.(x, y) !? { |c|
                         if(((~golpePattern[c[0]] ? [])[c[1]] ? 0) != paint) { ~golpeSet.(c[0], c[1], paint) };
-                    };
+                    } };
                 });
             // ── Beside the grid: the fader and what it plays ────────────────
             // One row: the grid, the GOLPE strip (fader, meter, mute, pan,
@@ -1889,7 +2018,14 @@
                 // The bancada and the marea as GOLPE hears them, also while it
                 // is silent: the bancada from the registry, the marea from the
                 // beat engine's own reading.
-                if(info.isClosed.not) {
+                if(info.isClosed.not and: { ~golpeEdit.notNil }) {
+                    var e = ~golpeEdit;
+                    info.stringColor = ~guiFamily[\timbre].blend(Color.white, 0.3);
+                    info.string = "AFINANDO % · %\nTIMBRE: AFINAR TONO CAÍDA MOD".format(e[\row].asString.toUpper,
+                        if(e[\step].isNil) { "FILA" } { "PASO " ++ (e[\step] + 1) });
+                };
+                if(info.isClosed.not and: { ~golpeEdit.isNil }) {
+                    info.stringColor = mainTheme.dim;
                     info.string = "BANCADA % · MAREA %".format(
                         (~golpeBancadaNames ? [])[((~controlValues ? ())[\bancada] ? 0).round.asInteger] ? "-",
                         (((~beatParams !? { ~beatParams.tideValue }) ? 0.65)).round(0.01));
@@ -2121,6 +2257,8 @@
                     ~counters.midi.string  = (~midiCCCount   ? 0).asString;
 
                     ~statusLights.do(_.refresh);
+                    // Lit / grey, from the faders as they stand now.
+                    ~guiLookRefresh !? { ~guiLookRefresh.value };
                 }.defer;
                 0.5.wait;  // 2 Hz — status lights don't need the old 20 Hz
             }
@@ -2167,6 +2305,10 @@
             ~phenoSkipButton = nil;
             ~golpeGridView = nil;
             ~golpeKitRefresh = nil;
+            // Tuning hands the knobs back; nothing left to grey.
+            ~golpeEdit = nil;
+            ~guiLookRefresh = nil;
+            ~knobLook = nil;
             ~golpeKitButtons = nil;
             ~mixerStrips = nil;
             ~recordingStatus = nil;

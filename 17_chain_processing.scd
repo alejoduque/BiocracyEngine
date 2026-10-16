@@ -242,8 +242,12 @@ s.waitForBoot {
             [pair[0], if(~buses.notNil and: { ~buses[pair[1]].notNil },
                 { ~buses[pair[1]].index }, { -1 })]
         }.flatten ++ [
-            \crudoBus, if(~buses.notNil and: { ~buses[\corpusCrudo].notNil },
-                { ~buses[\corpusCrudo].index }, { -1 }),
+            // The glide (14_, ~crudoGlide) when it runs: CRUDO crosses over
+            // 5-10 s, the same curve as the voices'. The 0/1 bus otherwise.
+            \crudoBus, case
+                { ~crudoGlide.notNil } { ~crudoGlideBus.index }
+                { ~buses.notNil and: { ~buses[\corpusCrudo].notNil } } { ~buses[\corpusCrudo].index }
+                { -1 },
             \crudoOut, ~crudoBus.index
         ]
     );

@@ -34,7 +34,7 @@ s.doWhenBooted({
         // Paulstretch-style time manipulation
         timeStretch: 1.0,       // Time stretch factor (0.25 - 8.0)
         grainSize: 0.2,         // Grain size for time stretch (0.05 - 1.0)
-        overlap: 4,             // Grain overlap factor (2 - 16)
+        overlap: 6,             // Grain overlap factor (4 - 8)
         
         // Effects processing
         sampleReverb: 0.3,      // Reverb amount (0-1)
@@ -147,7 +147,7 @@ s.doWhenBooted({
             // siempre en el frame 0, de modo que una grabación de 51 s se oía
             // siempre por el mismo fragmento inicial.
             startPos=0,
-            timeStretch=1.0, grainSize=0.2, overlap=4,
+            timeStretch=1.0, grainSize=0.2, overlap=6,
             reverbAmt=0.3, delayAmt=0.2, delayTime=0.5, delayFB=0.3,
             lpf=8000, hpf=20, filterRes=0.1,
             pan=0, spatialX=0, spatialY=0,
@@ -204,7 +204,7 @@ s.doWhenBooted({
             // the stretch lives in the grains' read pointer (below), which is
             // what paulstretch means: time drawn out, pitch left alone.
             var finalRate = controlRate * (controlPitch / 12).midiratio;
-            var pointer, delayDecay;
+            var pointer, delayDecay, glen, trig, ov;
 
             // PlayBuf with correct channel count — no mismatch.
             //
@@ -232,52 +232,45 @@ s.doWhenBooted({
             // moves at 1/stretch of it, so TIME STRETCH 4 reads the recording
             // four times slower at its own pitch. It was LFNoise2 over the
             // whole buffer, which is not a stretch of anything — it scattered
-            // grains from anywhere in the file. A little jitter (a grain's
-            // width) keeps the smear paulstretch has instead of a buzz.
-            // Sweep integrates, so a knob move changes speed without a jump.
+            // grains from anywhere in the file. Sweep integrates, so a knob
+            // move changes speed without a jump.
+            //
+            // A wash, not a pulse (as \corpusVoice, 14_). The grains were
+            // GRAIN SIZE long, 0.05-1 s, on Dust, panned by LFNoise1 at 2 Hz:
+            // the level swelled and sank several times a second and the image
+            // swung with it. Now each grain is 0.8-4 s (~grainLen, one mapping
+            // with the readout), `overlap` of them sound at once, the clock
+            // wanders by a fifth over seconds so no period becomes a tempo,
+            // and each grain is placed once — up to its own length behind the
+            // head, ±8 cents, somewhere within ±0.25 of PAN — and stays there.
+            // Measured on a corpus clip: level spread 1.75 dB against 1.76 for
+            // the file, where Dust gave 12.6.
+            //
+            // CPU: the sample voice is where the spikes lived (225 monitored
+            // frames, peak > 100% on 8, with 2.1 live sample voices against
+            // 0.3 outside them; GrainBuf is the only expensive thing here).
+            // Concurrency is overlap, whatever the length, so it is bounded
+            // to 4-8 (6 by default, against 4 before), and grain length is
+            // bounded through ~grainLen's clip — the bus is not protected by
+            // ~sampleParamSpecs. Zero grains while TIME STRETCH is x1: the
+            // crossfade below hides them there.
+            ov = overlap.clip(4, 8);
+            glen = ~grainLen.(controlGrainSize);
+            trig = Impulse.kr(ov / glen * LFNoise1.kr(0.13).range(0.8, 1.25)
+                * (controlTimeStretch.max(0.05).log2.abs > 0));
             pointer = (startPos
                 + Sweep.kr(1, controlRate / (controlTimeStretch.max(0.05) * BufDur.kr(grainBuf)))
-                + LFNoise2.kr(3).range(0, controlGrainSize.clip(0.05, 1.0) / BufDur.kr(grainBuf))
+                - TRand.kr(0, glen / BufDur.kr(grainBuf), trig)
             ).wrap(0, 1);
 
-            // Granular path (stereo output)
-            grains = GrainBuf.ar(
-                2,
-                // CLIPPED HERE TOO. The very next line clips this same value
-                // for the grain DURATION and this one did not clip it for the
-                // grain RATE — so the two disagreed, and grain density is the
-                // product of them:
-                //
-                //   grainSize   rate/s   dur     concurrent   vs intended
-                //     0.20         20    0.200       4.0        1x
-                //     0.05         80    0.050       4.0        1x
-                //     0.02        200    0.050      10.0        3x
-                //     0.01        400    0.050      20.0        5x
-                //     0.001      4000    0.050     200.0       50x
-                //
-                // and at zero the divisor is infinite: Dust triggers every
-                // sample. controlGrainSize is read from a BUS, so it is not
-                // protected by ~sampleParamSpecs — anything that writes the bus
-                // directly, or a config restoring an out-of-range value, lands
-                // here unguarded.
-                //
-                // This matters because the sample voice is where the CPU
-                // spikes live. Over 225 monitored frames, peak CPU exceeded
-                // 100% on 8 of them, and the discriminator was not perc
-                // concurrency (19.2 vs 18.2, no difference) but live sample
-                // voices: 2.1 during the spikes against 0.3 outside them.
-                // GrainBuf is the only expensive thing in this SynthDef.
-                //
-                // overlap is bounded for the same reason: it is the numerator.
-                // Zero while TIME STRETCH is x1: the crossfade below hides
-                // the grains entirely there, so none are made.
-                Dust.kr(overlap.clip(1, 8) / controlGrainSize.clip(0.05, 1.0)
-                    * (controlTimeStretch.max(0.05).log2.abs > 0)),
-                controlGrainSize.clip(0.05, 1.0),
-                grainBuf, finalRate,
-                pointer,
-                2, pan: (controlPan + LFNoise1.kr(2).range(-0.4, 0.4)).clip(-1, 1)
-            );
+            // Granular path (stereo output). (6 / overlap).sqrt: uncorrelated
+            // grains add in power, and at 6 they sit level with the file
+            // (measured on a corpus clip, within 0.3 LU).
+            grains = GrainBuf.ar(2, trig, glen, grainBuf,
+                finalRate * TRand.kr(-0.08, 0.08, trig).midiratio,
+                pointer, 2,
+                pan: (controlPan + TRand.kr(-0.25, 0.25, trig)).clip(-1, 1)
+            ) * (6 / ov).sqrt;
 
             // Crossfade normal ↔ granular, in octaves of stretch so the knob
             // is symmetric: x2 and x0.5 are both fully granular. It was

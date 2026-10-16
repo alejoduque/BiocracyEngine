@@ -23,91 +23,62 @@
 
 # BiocracyEngine
 
-A live audiovisual instrument that opens a channel between machine intelligence and the ecosystem. It listens to a tropical dry forest (Reserva Manakai, Planeta Rica, Córdoba), a public blockchain and a multispecies assembly, and couples them in one feedback loop: every parameter moves both the sound in SuperCollider and the image in the browser.
+BiocracyEngine is a live audiovisual instrument. It connects three sources in one feedback loop:
 
-It does not aim to *represent* nature but to give it a place to speak from: the forest, the protocols, people and machines take part as agents of the same room, and what cannot be measured still counts.
+- **The forest:** AudioMoth recordings from a tropical dry forest (Reserva Manakai, Planeta Rica, Córdoba, Colombia).
+- **The blockchain:** live Ethereum transactions.
+- **The assembly:** a multispecies parliament of species, people and machines.
 
-![Slot F · DarkForest — the tropical dry forest of Reserva Manakai as a live stratigraphic data-scape, with species binomials, ecological flows and the incoming Ethereum stream.](BEngine.jpg)
+Each parameter changes the sound (SuperCollider) and the image (browser) at the same time.
 
-*Slot F · DarkForest — the forest reading itself while the chain flows.*
+![Slot F · DarkForest: the forest of Reserva Manakai as a live data landscape.](BEngine.jpg)
 
 ## Principles
 
-- **Opacity (Glissant):** a fraction of species names is never projected; the body stays, the name is withheld.
-- **Absence is voice:** what falls below the detection threshold is not erased; it persists as a faint signal.
-- **Phenological time:** the forest's own calendar — not a global taxonomy — governs the synthesis.
-- **BioToken:** an inscription of presence and care, not a tradable asset.
-- **Parliament, not surveillance:** the same sensing is one or the other depending on the architecture of power around it.
-
-→ [Foundations](docs/en/foundations.md)
+- **Opacity:** The system does not show some species names. Their sound stays.
+- **Absence:** A day with no recording is not empty. It sounds as a weak signal.
+- **Phenological time:** The calendar of the forest controls the synthesis.
+- **BioToken:** A BioToken records presence and care. You cannot sell it.
+- **Parliament:** The same sensors can watch or can give a voice. The structure of power decides which.
 
 ## How it works
 
 ```
-Ethereum ─► eth_sonify.py ─OSC─► SuperCollider ─OSC echo─► parliament-bridge.js ─WS─► browser
-                                   ▲    │                                             (parliament.html)
-AudioMoth (corpus) ────────────────┘    └─► audio          MIDI Faderfox LC2 ─► SuperCollider
+Ethereum ─► eth_sonify.py ─OSC─► SuperCollider ─OSC─► parliament-bridge.js ─WS─► browser
+AudioMoth corpus ────────────────►      │
+Faderfox LC2 (MIDI) ─────────────►      └─► audio
 ```
 
-SuperCollider is the source of truth for every parameter; the browser, the SC GUI and MIDI write through the same path and receive the same echo. → [Architecture and data flow](docs/en/architecture.md)
+SuperCollider keeps the value of each parameter. The browser, the SC GUI and MIDI send their changes on the same path. All of them get the same echo.
 
-## Visual modules
+## Start
 
-One key switches the module at the centre of `parliament.html`.
+You must have Node.js, Python 3 and SuperCollider (macOS or Linux).
 
-| Key | Module | What it shows |
-|---|---|---|
-| **0** | Phenological rings | a live calendar: year · day · now · wave, with today's species |
-| **O** | Rings · Reference | one turn = one phenological day; the year as recordings |
-| **T** | Rings · Taxa | five year lanes, one per taxon |
-| **1–3** | AsteroidWaves · LowEarthPoint · PerlinBlob | wave fields, point cloud, blob |
-| **4–9** | The six instruments | drone · bells · perc · kick · dust · samples |
-| **P** | Phenological calendar | the Cámara Fenológica's 365-day ring |
-| **F** | DarkForest | the forest's strata after Humboldt |
-| **B** | Tránsito | chain events as crossing voices; their flow returns to the drone |
-| **E** | Estratos | a generative map in strata |
-| **R** | Registro | ASCII field: the chain and the consensus as utterances |
-| **C** | Cámara | camera trap and spectral register |
-| **A** | Antifonía | the forest's acoustic parliament, in simulated LiDAR |
-
-<p align="center"><img src="docs/rings/slot0.jpg" width="32%" alt="Slot 0 · nested clocks"> <img src="docs/rings/slotO.jpg" width="32%" alt="Slot O · reference"> <img src="docs/rings/slotT.jpg" width="32%" alt="Slot T · taxa"></p>
-
-*Slots 0 · O · T (captured with a test OSC feed).* → [Visual modules](docs/en/modules.md)
-
-## Controls
-
-71 parameters (64 MIDI CCs, 75 OSC routes), each defined once in `0_parameters.scd` and reachable from MIDI, OSC, HTML sliders and the SC GUI. They include the Cámara Fenológica (the AudioMoth corpus on the 365-day ring), the matrix mixer and the density tide.
-
-→ [Controls and sound](docs/en/controls.md) · [Interactive control notebook](https://claude.ai/code/artifact/785cc1af-01a5-48a5-b915-272e957e80e2)
-
-## Quick start
-
-Requires Node.js, Python 3 and SuperCollider (Linux or macOS).
-
-```bash
-python3 -m venv eth_listener/venv && source eth_listener/venv/bin/activate && pip install web3 python-osc
-./start_ecosystem.sh            # LASER=1 adds laser projection
-```
-
-The engine is ready when `sclang_log.txt` shows `=== CONTROL BUS SETUP COMPLETE ===`. → [Setup and diagnostics](docs/en/diagnostics.md)
+1. Install the Python packages:
+   ```bash
+   python3 -m venv eth_listener/venv && source eth_listener/venv/bin/activate && pip install web3 python-osc
+   ```
+2. Start all the processes:
+   ```bash
+   ./start_ecosystem.sh
+   ```
+   For laser projection, use `LASER=1 ./start_ecosystem.sh`.
+3. Wait for `=== CONTROL BUS SETUP COMPLETE ===` in `sclang_log.txt`. The engine is then ready.
+4. The script opens `http://localhost:9001/parliament.html`. Push a key (0–9, letters) to change the visual module.
 
 ## Documentation
 
-- [Foundations](docs/en/foundations.md) — theory, the acoustic Chamber, public artifacts
-- [Architecture and data flow](docs/en/architecture.md) — processes, ports, bidirectional loop
-- [Visual modules](docs/en/modules.md) — instruments 4–9, Antifonía, phenological rings
-- [Controls and sound](docs/en/controls.md) — control matrix, corpus, mixing, SC GUI
-- [Laser projection](docs/en/laser.md) — pulsar plot, scanner limits, safety
-- [Dome](docs/en/dome.md) — planetarium dome: key D, record and render at 4096, 4-channel sound
-- [Setup and diagnostics](docs/en/diagnostics.md) — requirements, live monitor
-- [CHANGELOG](CHANGELOG.md)
-
-## Ecosystem
-
-- **BiocracyEngine** — this engine: synthesis, projection and the MIDI/OSC bridge.
-- **bioacoustic-scripts** — acoustic feature extraction and web3 parser.
-- **dIAP** — decentralized participatory action research and on-chain assemblies.
-- **Biomap SoundWalk** — listening walks that log ecological presence in Reserva Manakai.
+| Subject | Document |
+|---|---|
+| Theory and principles | [Foundations](docs/en/foundations.md) |
+| Processes, ports, data flow | [Architecture](docs/en/architecture.md) |
+| Visual modules and keys | [Modules](docs/en/modules.md) |
+| Parameters, mixer, corpus | [Controls and sound](docs/en/controls.md) |
+| Laser projection and safety | [Laser](docs/en/laser.md) |
+| Planetarium dome and render | [Dome](docs/en/dome.md) |
+| Requirements and monitor | [Diagnostics](docs/en/diagnostics.md) |
+| Changes | [CHANGELOG](CHANGELOG.md) |
 
 ## License
 

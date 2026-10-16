@@ -7,6 +7,80 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Corpus hand-overs take their time; MEZCLA no longer notches the lows (2026-10-15)
+
+#### Changed
+- **Corpus crossfade 6 → 10 s, and no voice shorter than 30 s** (`14_phenological_corpus.scd`).
+  - Before, the fade was capped at a third of the file. A 10 s file got 3 s fades and a 3 s file got 1 s fades. The fades also stopped matching each other: a 6 s attack ran against a 3 s release.
+  - Now a short file goes on past its end as a still grain cloud of itself (new `fileDur` argument on `\corpusVoice`). The grains are clipped to half the buffer, so even the 0.6 s files never read past their end.
+  - Rendered offline: an 8 s file holds a 30 s voice at an even level with no dip where the file ends; no NaN and no added clicks.
+  - CRUDO is unchanged: under CRUDO only what was recorded sounds, so the voice still fits the file.
+- **Day turns are a single crossfade.**
+  - A day's clips last the day plus one fade, so they end exactly while the next day's clips fade in. Before, they ended 10 % early, which left the last seconds of every day to ~10 s fillers with 3 s fades.
+  - Mid-day fillers get at least 30 s. A filler that outlives its day leaves over the next day's fade-in.
+  - The successor of a voice starts when that voice begins its own release.
+- **A hand on the Cámara gets 4 s, on both sides.** This covers the knob re-seat (was 1.2 s), NEXT REC. DAY and `/pheno/goto` (was 1.0 s): what leaves and what enters cross over the same four seconds.
+
+#### Fixed
+- **Partial MEZCLA no longer notches the lows** (`3_synthdefs.scd`).
+  - The carve used to crossfade each stem, and the master, against its own high-passed copy. Near the cutoff the two copies are up to 180° apart and cancel, so a MEZCLA between 0 and 1 took more bass out than MEZCLA 1.
+  - Measured on pink noise at MEZCLA 0.5:
+
+    | Path | MEZCLA 0.5 | MEZCLA 1 |
+    |---|---|---|
+    | Drone, 50 Hz | −11.5 dB | −4.8 dB |
+    | Kick, 31 Hz | −11.6 dB | −4.1 dB |
+    | Master, 25 Hz | −17.5 dB | −10.8 dB |
+
+  - Now the cutoff slides with the knob (8 Hz → the profile's cutoff), and the response falls steadily from 0 to 1.
+  - MEZCLA 0 is still the dry path exactly, and MEZCLA 1 is unchanged.
+
+### CRUDO glides; GOLPE tunable per row and per step; idle controls go grey (2026-10-15)
+
+#### Changed
+- **CRUDO crosses over gradually.** It used to switch in 0.15 s. Now all three readers (`\corpusVoice`, `\corpusUltrasonic`, `\chainProcessor`) follow one central glide (`\crudoGlide`, `14_phenological_corpus.scd`), an S-curve over three bars of GOLPE's 92 × TEMPO BPM, clipped to 5–10 s:
+
+  | TEMPO | Glide |
+  |---|---|
+  | 0.78 and below | 10 s |
+  | 1 | 7.8 s |
+  | 1.57 and above | 5 s |
+
+  - A voice that starts mid-glide joins the curve where it is.
+  - Loading a config that changes CRUDO glides too.
+
+#### Added
+- **GOLPE tuning, per row and per step, on knobs already on the surface.**
+  - **Tuning a row:** click a row name on the grid (DUM … RIQ). The first four TIMBRE knobs then tune that row: PITCH becomes AFINAR (±12 st), HARM becomes TONO, BODY becomes CAÍDA (×0.25–×4) and TEXTURE becomes MOD. Their captions show the tuning, and MIDI CCs on those knobs tune it too.
+  - **Tuning a step:** right-click (or alt-click) a box to tune only that step. The step keeps only the controls touched (orange corner; • on the caption).
+  - **Reset and leave:** double-click returns the row or the step to the kit; a second click leaves. A test hit plays when the hand rests (while GOLPE sounds).
+  - **What TONO and MOD act on:** each voice translates them to its own material (`~golpeShape`):
+    - TONO moves the brightness: crack, palm, the tabla's upper partials and click, the riq's hiss, a grain's filters.
+    - MOD moves the motion: dum drop, tabla FM ping and glide, tek ring, ka clap, riq double, grain drive.
+  - **Level compensation:** both are compensated so they change colour, not level. Measured on every synthetic row of every kit, all 16 extreme corners stay within +8 dB of neutral (+22 dB before compensation), with no NaN or Inf values.
+  - **Saved in the config:** under `"golpe"` as `"tune"` and `"locks"`. A config without them resets to neutral; a RITMO pattern or CLR clears the locks.
+- **Lit when it acts, grey when it can't.** A knob or toggle goes grey when every layer it reaches is silent (fader at 0 or muted). Reach comes from:
+  - the ring's voices;
+  - the GOLPE and motor reads (`~layerReach`).
+
+  While GOLPE is being tuned, only its four knobs stay lit. This is visual only: a grey control still works.
+### Grains: a long, drifting wash instead of a pulse; each forest recording freezes as it leaves (2026-10-15)
+
+#### Fixed
+- **The corpus no longer pulses when TIME STRETCH is off ×1.** Whatever the bancada, the forest swelled and sank several times a second, and only CRUDO escaped it.
+  - **Cause:** the stretch played grains as short as GRAIN SIZE (0.08–0.9 s in the configs), at overlap 4, on a random clock (`Dust`).
+  - **Measured offline** on an audible clip: level spread 12.6 dB against 1.9 dB for the file, with 12 swings of more than 6 dB a second.
+
+#### Changed
+- **TIME STRETCH is now a paulstretch-style wash, in both the corpus voice and the SAMPLE player.** Its recipe:
+  - **Length:** each grain lasts 0.8–4 s. GRAIN SIZE now sets that length, through one mapping shared by both voices and the readout (`~grainLen`, `0_parameters.scd`), so the knob shows seconds.
+  - **Overlap:** the corpus plays eight grains at once; the SAMPLE player, four to eight (six by default).
+  - **Clock:** it wanders by about a fifth over seconds, so no period settles into a tempo.
+  - **Per grain:** each one starts up to its own length behind the read head and is detuned by up to ±8 cents.
+  - **Result:** level spread 1.75 dB against 1.76 dB for the file, and no peak in the envelope spectrum.
+- **The SAMPLE player no longer sweeps its pan.** It used `LFNoise1` at 2 Hz. Each grain now sits at a fixed place within ±0.25 of PAN, so the image is wide and still.
+- **Corpus tail freeze.** In the second half of each recording's release, natural or forced, the read head slows to a stop and the grains grow to twice their length. The recording leaves as a still cloud under the next day. The 6 s Welch handover is unchanged, and CRUDO bypasses all of it.
+
 ### SC GUI: one grid, controls coloured by what they do, CONFIGS and REC at the top (2026-10-15)
 
 #### Changed

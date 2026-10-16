@@ -64,6 +64,21 @@
 //   percRate       fantasmas: golpes suaves de TEK/KA en los pasos vacíos
 //   OPACIDAD/CINTA ~tapeDrift estira y encoge cada paso
 //
+// ── La afinación, por fila y por paso (0_parameters.scd) ───────────────────
+// Clic en el nombre de una fila de la rejilla: las cuatro primeras perillas de
+// TIMBRE (PITCH, HARM, BODY, TEXTURE) pasan a afinar esa fila — AFINAR, TONO,
+// CAÍDA, MOD — y el resto de la superficie se apaga en gris hasta el siguiente
+// clic. Clic derecho (o alt) en una casilla: lo mismo para ese paso, que guarda
+// sólo lo que se tocó (esquina naranja). Doble clic: vuelve al kit. Al soltar
+// la perilla suena un golpe de prueba. Todo se guarda en la config.
+//   AFINAR  ±12 semitonos (en el RIQ, las sonajas)
+//   TONO    dónde está el brillo (~golpeShape traduce a cada material)
+//   MOD     cuánto se mueve: caída del dum, FM y glissando de la tabla, anillo
+//           del tek, palmas del ka, doble del riq, saturación del grano
+//   CAÍDA   ×0.25 a ×4
+// TONO y MOD compensan su nivel: brillo y movimiento, no volumen (medido en
+// cada fila sintética de cada kit: las 16 esquinas a +8 dB como máximo).
+//
 // ── La cadena ──────────────────────────────────────────────────────────────
 // Una transacción (como mucho una cada 0.25 s, con probabilidad
 // transactionInfluence) mete un floreo de TEK, RIQ o TABLA en el paso
@@ -370,14 +385,78 @@ if(~golpeGroup.notNil) { try { ~golpeGroup.free } };
     };
 };
 
+// ─── TONO y MOD sobre cada material ─────────────────────────────────────
+// Los dos controles de la afinación por fila y por paso (0_parameters.scd)
+// dicen lo mismo en las seis voces — dónde está el brillo, cuánto se mueve —
+// y cada voz lo traduce a sus propios parámetros. MOD hacia arriba agrega
+// movimiento aunque el kit no tenga ninguno (el "piso"); hacia abajo lo quita.
+// Lo que el kit no fija se lee del default del SynthDef. Ninguna frecuencia
+// sale de aquí sin pasar por ~golpeNyq dentro del SynthDef.
+~golpeShape = { |def, args, tn|
+    var t = tn[\tono] ? 0, m = tn[\mod] ? 0, af = tn[\afinar] ? 0;
+    if(t == 0 and: { m == 0 } and: { af >= 0 }) { args } {
+        var ev = ().putPairs(args);
+        var at = { |key| ev[key] ?? {
+            ((SynthDescLib.global[def] !? { |d| d.controlDict[key] }) !? { |c| c.defaultValue }) ? 0 } };
+        var more = { |key, floor, hi = 1| ev[key] = ((at.(key) * (1 + m)) + (m.max(0) * floor)).clip(0, hi) };
+        var swing = { |key| ev[key] = 1 + ((at.(key) - 1) * (1 + m)) };
+        // Brighter and busier are louder, and the membranes and rings get
+        // louder going down (more of the strike's energy lands in the ring).
+        // Compensated here so that tuning is about colour, not level:
+        // measured over every synthetic row of every kit, one control at a
+        // time at its extremes and all sixteen corners together.
+        var comp = 1;
+        switch(def,
+            \golpeDum, {
+                ev[\slap] = (at.(\slap) * (2 ** (1.5 * t))).clip(0, 2);
+                ev[\modeAmp] = at.(\modeAmp) * (2 ** t);
+                swing.(\bend);
+                comp = (2 ** (-0.7 * t.max(0))) * (2 ** (af.min(0) / 12));
+            },
+            \golpeTek, {
+                ev[\crackF] = at.(\crackF) * (2 ** t);
+                more.(\ringAmp, 0.3, 1.0);
+                comp = (2 ** (-0.6 * m.max(0))) * (2 ** (-0.3 * t.max(0)));
+            },
+            \golpeKa, {
+                ev[\palmF] = at.(\palmF) * (2 ** t);
+                ev[\palmLpf] = at.(\palmLpf) * (2 ** t);
+                more.(\clap, 0.6, 1.2);
+            },
+            \golpeTabla, {
+                [\pa2, \pa3, \pa4].do { |key| ev[key] = (at.(key) * (2 ** t)).clip(0, 3) };
+                ev[\click] = (at.(\click) * (2 ** (1.5 * t))).clip(0, 2);
+                more.(\fmAmp, 0.5, 1);
+                swing.(\bend);
+                comp = (2 ** (-0.4 * t.max(0))) * (2 ** (-0.4 * m.max(0))) * (2 ** (af.min(0) / 18));
+            },
+            \golpeRiq, {
+                ev[\hissAmp] = (at.(\hissAmp) * (2 ** (1.5 * t))).clip(0, 2);
+                more.(\dblAmp, 0.4, 1);
+                ev[\dbl] = (at.(\dbl) * (1 + (m * 0.5))).clip(0.001, 0.05);
+                comp = 2 ** (-0.7 * t.max(0));
+            },
+            \golpeGrain, {
+                ev[\hp] = (at.(\hp) * (2 ** t)).clip(20, 8000);
+                ev[\lp] = (at.(\lp) * (2 ** t)).clip(400, 20000);
+                ev[\gain] = at.(\gain) * (2 ** (2 * m));
+            }
+        );
+        ev[\amp] = at.(\amp) * comp;
+        ev.asPairs
+    }
+};
+
 // ─── Cada golpe, desde el kit y las perillas en el momento en que suena ──
 ~golpeStrokeN = ();
-~golpeArgs = { |row, vel, tint, tide = 0.65|
+~golpeArgs = { |row, vel, tint, tide = 0.65, step|
     var k = ~motVal;
     var kit = ~golpeKitNow.value;
     var v = kit[\rows][row];
-    var tune = ((k.(\pitchShift, 0) / 4) + (~golpeAfinar ? 0) + tint[\tune]).midiratio;
-    var body = k.(\resonantBody, 0.4).linlin(0.1, 0.8, 0.6, 1.8) * tint[\dec];
+    // The row's tuning, and the step's lock over it (0_parameters.scd).
+    var tn = ~golpeTuneAt.(row, step);
+    var tune = ((k.(\pitchShift, 0) / 4) + (~golpeAfinar ? 0) + tint[\tune] + tn[\afinar]).midiratio;
+    var body = k.(\resonantBody, 0.4).linlin(0.1, 0.8, 0.6, 1.8) * tint[\dec] * (2 ** (2 * tn[\caida]));
     var stretch = k.(\harmonicRich, 1.0).explin(0.1, 5, 0.85, 1.3);
     var lvl = v[\lvl] * ((~golpePeso ? ())[row] ? 1);
     var n = (~golpeStrokeN[row] ? 0);
@@ -397,32 +476,34 @@ if(~golpeGroup.notNil) { try { ~golpeGroup.free } };
         var buf = i !? { ~sampleBuffers[i] };
         // nil = no bank yet; ~golpeHit falls back to the synthetic voice.
         if(buf.isNil) { nil } {
-            args ++ [\amp, lvl * vel * (0.4 + (tide * 0.8)), \buf, buf.bufnum,
+            ~golpeShape.(\golpeGrain, args ++ [\amp, lvl * vel * (0.4 + (tide * 0.8)), \buf, buf.bufnum,
                 \start, rrand(0, (buf.numFrames ? 96000) * 0.75).asInteger,
-                \dur, v[\gdur] * rrand(0.7, 1.4) * dmul, \rate, rrand(0.92, 1.08) * fmul,
-                \hp, v[\hp] ? 200, \lp, v[\lp] ? 12000, \gain, v[\gain] ? 3]
+                \dur, v[\gdur] * rrand(0.7, 1.4) * dmul * (2 ** (2 * tn[\caida])),
+                \rate, rrand(0.92, 1.08) * fmul * tn[\afinar].midiratio,
+                \hp, v[\hp] ? 200, \lp, v[\lp] ? 12000, \gain, v[\gain] ? 3], tn)
         }
     } {
         var f = (v[\freq] ? 1) * tune * fmul * rrand(0.985, 1.015);
         var d = (v[\dec] ? 0.1) * body * dmul * rrand(0.88, 1.12);
         args = args ++ [\amp, lvl * vel] ++ (v[\fix] ? []) ++ extra;
-        switch(v[\def],
+        ~golpeShape.(v[\def], switch(v[\def],
             \golpeDum,   { args ++ [\freq, f, \dec, d, \bend, (v[\bend] ? 1.8) + (vel * (v[\bendVel] ? 1))] },
             \golpeTabla, { args ++ [\freq, f, \dec, d, \bend, (v[\bends] ? [1]).choose, \stretch, stretch] },
-            \golpeRiq,   { args ++ [\dec, d, \stretch, stretch * tint[\jing]] },
+            // The riq has no fundamental: AFINAR moves its jingles.
+            \golpeRiq,   { args ++ [\dec, d, \stretch, stretch * tint[\jing] * tn[\afinar].midiratio] },
             { args ++ [\freq, f, \dec, d] }
-        )
+        ), tn)
     }
 };
 // kind: \grid (a box of the grid), \ghost (STRIKE BEAT on an empty step of a
 // row that plays), \chain (a block's fill or a transaction's flam). The grid
 // lights each one when it is heard (~golpeShown, drawn by 4_gui.scd).
-~golpeHit = { |row, vel, delay = 0, hits, kind = \grid, tint, tide = 0.65|
+~golpeHit = { |row, vel, delay = 0, hits, kind = \grid, tint, tide = 0.65, step|
     var nl = ~motVal.(\noiseLevel, 0.1);
     var v = (vel * (1 + (nl * 0.6).rand2)).clip(0.05, 1.3);
     var jit = (nl * 0.024).rand + delay;
     var def = ~golpeKitNow.value[\rows][row][\def];
-    var args = ~golpeArgs.(row, v, tint ?? { ~golpeTint.(~golpeBancada.value) }, tide);
+    var args = ~golpeArgs.(row, v, tint ?? { ~golpeTint.(~golpeBancada.value) }, tide, step);
     // Un grano sin banco todavía (el corpus carga después) no suena; la
     // fila no queda muda por eso: toca su material sintético de siempre.
     if(args.isNil) {
@@ -433,6 +514,15 @@ if(~golpeGroup.notNil) { try { ~golpeGroup.free } };
         Synth(def, args, ~golpeGroup, \addToHead);
     });
     if(hits.notNil and: { hits[row].isNil or: { kind == \grid } }) { hits[row] = [v, kind] };
+};
+
+// La prueba de la afinación: un golpe de la fila (con el candado del paso, si
+// se afina un paso) cuando la mano se detiene sobre la perilla. Sólo mientras
+// GOLPE suena: sin su cadena, ~golpeBus no llega a ninguna parte.
+~golpePreview = { |row, step|
+    if(~motLive.notNil and: { ~motLive[\golpe].notNil }) {
+        ~golpeHit.(row, 0.9, 0, nil, \grid, nil, (~beatParams !? { ~beatParams.tideValue }) ? 0.65, step);
+    };
 };
 
 // 92 BPM a beatTempo 1; la cinta lo estira como estira el beat.
@@ -493,22 +583,22 @@ if(~golpeGroup.notNil) { try { ~golpeGroup.free } };
                 if(b == 4) { vel = vel * if(ri == (st[\emph] ? 0)) { 1.35 } { 0.85 } };
                 if(on > 0) {
                     // Los pulsos siempre; fuera del pulso, según la Marea.
-                    if(step % 4 == 0 or: { offP.coin }) { ~golpeHit.(row, vel, 0, hits, \grid, tint, tide) };
+                    if(step % 4 == 0 or: { offP.coin }) { ~golpeHit.(row, vel, 0, hits, \grid, tint, tide, step) };
                 } {
                     if([\tek, \ka].includes(row) and: { ~golpeRowOn.(row) } and: { ghostP.coin }) {
-                        ~golpeHit.(row, 0.25, 0, hits, \ghost, tint, tide)
+                        ~golpeHit.(row, 0.25, 0, hits, \ghost, tint, tide, step)
                     };
                 };
             };
             // CORO: la respuesta de la tabla, en el primer contratiempo.
             if(st[\answer] == true and: { step.odd } and: { ~golpeAnyOn.value }) {
                 st[\answer] = false;
-                ~golpeHit.(\tabla, 0.45, 0, hits, \chain, tint, tide);
+                ~golpeHit.(\tabla, 0.45, 0, hits, \chain, tint, tide, step);
             };
             // El redoble del bloque: TEK en cada semicorchea y fusa de RIQ.
             if(st[\fill] == true and: { step >= 28 }) {
-                if(~golpeRowOn.(\tek)) { ~golpeHit.(\tek, 0.6 + ((step - 28) * 0.1), 0, hits, \chain, tint, tide) };
-                if(~golpeRowOn.(\riq)) { ~golpeHit.(\riq, 0.5, dur * 0.5, hits, \chain, tint, tide) };
+                if(~golpeRowOn.(\tek)) { ~golpeHit.(\tek, 0.6 + ((step - 28) * 0.1), 0, hits, \chain, tint, tide, step) };
+                if(~golpeRowOn.(\riq)) { ~golpeHit.(\riq, 0.5, dur * 0.5, hits, \chain, tint, tide, step) };
                 if(step == 31) { st[\fill] = false };
             };
             // El floreo de una transacción, en este paso, sobre una fila que suena.
@@ -516,9 +606,9 @@ if(~golpeGroup.notNil) { try { ~golpeGroup.free } };
                 var row = ([h[\row]] ++ [\tek, \riq, \tabla] ++ ~golpeRows).detect { |r| ~golpeRowOn.(r) };
                 st[\txHit] = nil;
                 if(row.notNil) {
-                    ~golpeHit.(row, h[\vel], 0, hits, \chain, tint, tide);
-                    ~golpeHit.(row, h[\vel] * 0.6, dur * 0.25, nil, \chain, tint, tide);
-                    if(row == \riq) { ~golpeHit.(\riq, h[\vel] * 0.45, dur * 0.5, nil, \chain, tint, tide) };
+                    ~golpeHit.(row, h[\vel], 0, hits, \chain, tint, tide, step);
+                    ~golpeHit.(row, h[\vel] * 0.6, dur * 0.25, nil, \chain, tint, tide, step);
+                    if(row == \riq) { ~golpeHit.(\riq, h[\vel] * 0.45, dur * 0.5, nil, \chain, tint, tide, step) };
                 };
             };
             // La cadena: el kit, la bancada y la marea, en cada paso.

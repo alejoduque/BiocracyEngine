@@ -64,6 +64,6 @@ Performance-ready. Active development on the slot P / phenology bridge and the b
 
 ## See also
 
-- [README.md](README.md) — full technical documentation, control matrix, architecture diagrams, install/run instructions.
+- [README.md](README.md) — short overview, quick start and links to the docs in docs/en and docs/es.
 - [CHANGELOG.md](CHANGELOG.md) — versioned change history.
 - [nw_wrld_local/README.md](nw_wrld_local/README.md) — nw-wrld framework documentation (the visualizer host environment).
