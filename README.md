@@ -57,6 +57,7 @@ Necesita Node.js, Python 3 y SuperCollider (macOS o Linux).
 | Tema | Documento |
 |---|---|
 | Teoría y principios | [Fundamentos](docs/es/fundamentos.md) |
+| Cómo escucha: algoritmos y tesis doctoral (Domo del Planetario, 21 oct 2026) | [Escucha](docs/es/escucha.md) |
 | Procesos, puertos, flujo de datos | [Arquitectura](docs/es/arquitectura.md) |
 | Módulos visuales y teclas | [Módulos](docs/es/modulos.md) |
 | Parámetros, mezclador, corpus | [Controles y sonido](docs/es/controles.md) |

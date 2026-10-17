@@ -57,6 +57,7 @@ You must have Node.js, Python 3 and SuperCollider (macOS or Linux).
 | Subject | Document |
 |---|---|
 | Theory and principles | [Foundations](docs/en/foundations.md) |
+| How it listens: algorithms and the doctoral thesis (Spanish only) | [Escucha](docs/es/escucha.md) |
 | Processes, ports, data flow | [Architecture](docs/en/architecture.md) |
 | Visual modules and keys | [Modules](docs/en/modules.md) |
 | Parameters, mixer, corpus | [Controls and sound](docs/en/controls.md) |

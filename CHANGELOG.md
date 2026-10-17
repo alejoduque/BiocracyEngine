@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Docs: how the engine listens, for the thesis and the dome presentation (2026-10-17)
+
+#### Added
+- **`docs/es/escucha.md`** (Spanish only, ASD-STE100 style). It covers every algorithm the engine uses to listen, in eight stages from the AudioMoth to the opacity clause.
+  - Each algorithm gives what it does, its formula and the file that runs it.
+  - Each algorithm is tied to the doctoral thesis *[de] Bioacústica [a] Biocracia* (director Felipe Cesar Londoño): its chapters, and statute Articles 41–48.
+  - **Images:** module captures and dome simulations from 2026-10-17, plus four of the thesis's own figures, in `docs/es/escucha/` (2.5 MB).
+  - **Links:** both READMEs link to it.
+  - Prepared for *Biocracia en escucha*, Domo del Planetario de Bogotá, 21 October 2026.
+
 ### Corpus: the calls over the insects; BANCADA sets how far; unrecorded days hear the other bancadas too (2026-10-17)
 
 #### Context
