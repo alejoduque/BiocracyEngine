@@ -257,10 +257,10 @@ El anillo gira. Por defecto avanza un día fenológico por minuto. Cada día, la
 
 ### Presencia: una ventana gaussiana en el anillo · 🟠 Bosque
 
-Una grabación se oye desde los días cercanos del anillo. Su presencia baja con la distancia. La ventana nunca inventa audio para un día sin grabación. Solo deja que una grabación real llegue más lejos. La confianza del detector y la actividad del día la modulan. El sesgo estacional la inclina hacia la seca o hacia las lluvias.
+Una grabación se oye desde los días cercanos del anillo. Su presencia baja con la distancia. La ventana nunca inventa audio para un día sin grabación. Solo deja que una grabación real llegue más lejos. La confianza del detector y la actividad del día la modulan. La confianza entra como rango dentro de su bancada (0 la menos segura, 1 la más segura): mide cuán seguro está el detector de su etiqueta, no cuán presente está el bosque, y el rol TRANSICIÓN tiene confianza baja por construcción. Así cada bancada llega a la Cámara en igualdad. El sesgo estacional la inclina hacia la seca o hacia las lluvias.
 
 ```
-presencia = e^(−d² / 2σ²) · (0,45 + 0,35·confianza + 0,20·actividad) · (1 ∓ 0,45·sesgo)
+presencia = e^(−d² / 2σ²) · (0,45 + 0,35·rango_confianza + 0,20·actividad) · (1 ∓ 0,45·sesgo)
 σ = 3 · VENTANA días      alcance = 6 · VENTANA días
 ```
 
@@ -291,8 +291,11 @@ Dónde: `14_phenological_corpus.scd` · `~phenoForeground`
 
 En un día sin grabación, las grabaciones reales más cercanas pueden sonar solo como ultrasonido expandido. Cuanto más profunda es la ausencia, menos probable es. La selección sale de la bancada activa y prefiere las grabaciones cercanas al día. Cada bancada pesa según la raíz cuadrada de su tamaño. La parte de INSECTOS bajó del 74 % al 39 %.
 
+Esta capa es sobre todo el ruido propio de la grabadora: por encima de 38 kHz el AudioMoth se oye a sí mismo. Por eso la voz quita siempre el piso estable de cada banda (hasta 36 dB, sin ganancia de compensación) y solo deja pasar lo que sube sobre él: un murciélago, una ráfaga. Además, solo elige archivos con eventos: `tools/build_corpus.py --events` mide cuánto suben sus momentos más fuertes sobre su piso, y 41 de los 69 archivos no llegan a 3 dB.
+
 ```
-P(grabación) ∝ e^(−d² / 2·45²) / √n_bancada      probabilidad = AUSENCIA · (1 − mín(hueco/120, 0,85))
+P(grabación) ∝ e^(−d² / 2·45²) / √n_bancada · eventos/6      solo si eventos ≥ 3 dB
+probabilidad = AUSENCIA · (1 − mín(hueco/120, 0,85))
 ```
 
 **Tesis**, Art. 44: la voz es presencia y también ausencia. Lo que llena el silencio es justamente lo que el oído humano no alcanza.

@@ -7,6 +7,66 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Modules A and B: the corpus as a garden that plays itself; their labels on the dome and its NDI feed (2026-10-17)
+
+#### Added
+- **`garden/garden.ts`.** A layer inside A's and B's own scenes, after the Humusmus iOS app (eight recordings as flowers that play each other). It is drawn from the AVGN analysis:
+  - **Flowers:** up to eight corpus recordings. Recordings sounding in SuperCollider come first; the rest are the recordings nearest the ring's day.
+    - Each call in a recording is a petal, at the angle of its call type, so recordings that share call types look alike.
+    - Veiled recordings (Art. 47) are never planted.
+  - **Links:** a line between two flowers that share call types (Jaccard over their clusters).
+  - **Voices:** two coupled logistic maps pick two frequency bands for the garden to listen for. The three flowers nearest those bands walk their recordings; the others rest. Labels say "en escucha" (being listened to) and "hielo", never that a plant listens.
+  - **Gates:** a call in a flower being listened to fires an operation on a flower that shares its call type: congelación, bucle, inversión, dispersión or freno de cinta. They are named as operations on a recording, not as verbs a creature performs. A call type always fires the same operation.
+  - **Vines:** a gate can leave a vine between the two flowers. The vine grows and drifts, then is eaten from both ends, which wears down both flowers' petals.
+  - **Laser:** every 50–110 s, one flower takes the stage alone. Its beam sweeps a 70–130° arc, and the flowers it touches freeze into ice and stop listening until they thaw.
+- **The two looks:**
+
+  | Module | Look | Placement |
+  |---|---|---|
+  | A | LiDAR dots, additive, in A's palette | Scattered round the stand, open toward the viewer |
+  | B | Ink strokes on paper, toned rather than transparent | A loose row under the simplex |
+
+  - **No even spacing:** each flower has its own distance, height, lean and size; the size grows with its calls.
+  - **A:** the plants are scan returns, not ruled lines. Dots are nudged off the line, about a fifth are missing, and each returns at its own strength.
+  - **B:** strokes are 0.034 wide in the drawing's plane, because WebGL's one-pixel lines vanished on the paper.
+
+#### Added (module A)
+- **A detailed ceiba.** It gains about 10,800 points:
+  - the leader continuing up through the crown, leaning;
+  - wood along every branch of every tier, following its droop;
+  - two or three branchlets per branch, rising before they fall;
+  - leaf clumps at the tips;
+  - 16 bark ridges on the trunk;
+  - the outer edge of each buttress;
+  - lianas hanging from the low tiers.
+- **Three wine palms (Attalea butyracea) at the foot of the ceiba,** on the camera side, denser than the stand's palms so their arching crowns read against the trunk.
+- **Light activity:** glints.
+  - Single returns flash on the wood and the foliage, the way a scan reacquires a point.
+  - Their rate follows the chorus density, the upper master spectrum and the vote pulse.
+  - A few still flash at rest.
+- **Underground traffic.** 158 pixel-size returns travel along the mycelium threads, each at its own pace.
+  - They are white, with no colour; what changes is how visible they are. Each one fades in and out along its path and brightens with its sub-network's band.
+- **The threads light with the SC bus.** Each sub-network brightens with the sound in its band of the master bus and settles back over about 0.6 s.
+  - Thread opacity: 0.05–0.1 in silence, up to 0.55 with sound, so a lit region is visible.
+- **The stand is unchanged.** The new geometry uses its own generators. The added points are shuffled separately and interleaved evenly, so the level of detail thins everything alike.
+  - The random draws the shuffle makes before the mycelium is grown are made up to the old count, so the underground network is identical: 8,200 segments, as before.
+  - Heap on A over 3 min: 72.8–77.5 MB, no trend.
+
+#### Changed
+- **Module A's howler and paujil are schematic.** They are the top of a body, as an aerial scan returns it, plus one gesture: the howler's hanging tail, the paujil's upright neck.
+  - Point counts: howler 348 → 71, paujil 297 → 52.
+  - Removed: the jaw, crest, beak and legs, which read as caricature inside the scan.
+  - The flying birds are unchanged.
+
+#### Fixed
+- **Module A: the grey "horizon" line through the stand at understory height.** It had two causes:
+  - **Brightness steps.** Each stratum is its own point set, with its own colour, opacity, point size and wind sway, and every point went to the nearest stratum. The border at 13 m therefore showed as a step and could tear in the wind. Points are now shared between the two neighbouring strata in proportion to where they fall, using a hash of the position, so the stand's seed and shape do not change.
+  - **A density crease.** Height above ground mapped to scene height in straight segments, and the slope dropped from 0.34 to 0.13 at 6 m, so the cloud packed 2.6× denser just above the understory. The mapping is now a smooth monotone curve (Fritsch–Carlson) through the same stratum heights.
+- **Labels in the dome and on its NDI feed.** A's six stratum labels and all of B's state and pole labels were THREE.Sprite. Each cube face of the dome drew its own piece of a sprite, so the labels came out split and sheared at the seams ("EMERGE·NTES", "D·OSEL"), in the dome and on its NDI feed.
+  - They are now planes that face whichever camera draws them: `facingLabel` in `dome/domeFacing.ts`. The loaders inject it as `DomeText`, at the same world size.
+  - The garden's words (flower, effect, stage, what the garden listens for) use the same planes. They read on the screen, on the dome (the NDI Cúpula feed) and in the page (the NDI Página feed).
+- **Checked off-screen:** A and B, flat and in the dome simulation. Heap on A sampled over 3 min stays between 71.6 and 75.4 MB.
+
 ### Docs: how the engine listens, for the thesis and the dome presentation (2026-10-17)
 
 #### Added
@@ -16,6 +76,33 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - **Images:** module captures and dome simulations from 2026-10-17, plus four of the thesis's own figures, in `docs/es/escucha/` (2.5 MB).
   - **Links:** both READMEs link to it.
   - Prepared for *Biocracia en escucha*, Domo del Planetario de Bogotá, 21 October 2026.
+
+### ULTRA without the recorder's hiss; TRANSICIÓN reaches the Chamber (2026-10-17)
+
+#### Fixed
+- **The ULTRA layer (`\corpusUltrasonic`, the time-expanded tier) was mostly the recorder's own noise floor.**
+  - **Measured on the 69 files** (4–24 kHz, STFT 2048): in the typical file 95% of frames sit within ±3 dB of the file's median level, and spectral flatness is 0.38. In about a third of the files, the loudest 5% of frames rise less than 2 dB above the median.
+  - **Cause:** above the 38 kHz high-pass, an AudioMoth hears mostly itself. That floor was expanded ×8, raised 12 dB at render and by ×4.6 in the voice, and played by up to four voices on most unrecorded days. The result was a constant broadband hiss at 4.75–24 kHz.
+- **The fix:** ULTRA now always removes its stationary floor, whatever the BANCADA.
+  - It runs `~phenoForeground` at full amount, cutting up to 36 dB per band, with no make-up gain.
+  - Anything that rises above the floor, such as a bat's pass or a katydid's burst, opens its band and passes whole.
+  - **Measured offline (NRT) on four files:** the floor falls 20–29 dB. In the two files with real events, the loudest 1% loses about 2 dB, so the events now stand 30–40 dB clear of the floor.
+  - A file that is only floor becomes near silence.
+- **`~phenoForeground` takes `fixed`, `depthDb` and `makeup`.** The corpus voice still calls it as before.
+- **CRUDO still plays the file untouched**, so with CRUDO on, the hiss returns. That is the switch's contract.
+- **ULTRA only picks files with something above their floor.**
+  - `tools/build_corpus.py --events` measures each expanded file once: the 95th percentile minus the median of its level in quarter-second frames above 4 kHz. It writes the result into the existing manifest as `expanded_events_db`, in place, without re-rendering anything. A full build now measures too.
+  - 41 of the 69 files rise less than 3 dB above their floor. The absence voice skips them, along with the recorded-day bats, and weights the rest by how far their events stand out.
+- **TRANSICIÓN reaches the Chamber.** Presence weighed the detector's raw confidence. That number measures how sure the detector is of its label, not how present the forest is.
+  - `community_shift` (TRANSICIÓN) is the detector's label for transitions and for what it cannot place, so its confidence is low by construction: median 0.19, against 0.52–0.64 for the other roles.
+  - At UMBRAL 0.695 its best clip reached 0.69, so the bancada never sounded through CORPUS. Meanwhile the absence voice, which has no threshold, played its hiss through ULTRA.
+  - Confidence is now ranked within each bancada (0 for its least sure clip, 1 for its surest).
+  - Ring days that sound through CORPUS:
+
+    | Bancada | Saved settings, before → after | Defaults, before → after |
+    |---|---|---|
+    | TRANSICIÓN | 0 → 24 | 17 → 35 |
+    | Others | within a few days of before | within a few days of before |
 
 ### Corpus: the calls over the insects; BANCADA sets how far; unrecorded days hear the other bancadas too (2026-10-17)
 

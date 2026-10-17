@@ -23,6 +23,13 @@
 
 import * as THREE from "three";
 import { BaseThreeJsModule } from "../helpers/threeBase";
+import { facingLabel } from "../dome/domeFacing";
+import { plantGarden } from "../garden/garden";
+
+// Injected as DomeText: text planes that face the camera drawing them, so the
+// module's labels read on the dome (and its NDI feed) as well as on screen.
+// A THREE.Sprite cannot: each cube face of the domemaster draws its own piece.
+const DOME_TEXT = { facingLabel };
 import { parliamentStore } from "../parliament/parliamentStore";
 
 type TArg = Record<string, unknown> | undefined;
@@ -46,6 +53,7 @@ type TransitoInstance = {
   getOpacityLoad?: () => number;
   renderer?: { setSize: (w: number, h: number) => void; getPixelRatio?: () => number };
   camera?: { aspect: number; updateProjectionMatrix: () => void };
+  scene?: THREE.Scene;
   destroy: () => void;
 };
 
@@ -56,6 +64,7 @@ type TransitoHooks = {
 
 let _ctor: { new (container: HTMLElement): TransitoInstance } | null = null;
 let _instance: TransitoInstance | null = null;
+let _stopGarden: (() => void) | null = null;
 let _hooks: TransitoHooks | null = null;
 let _unsubscribeStore: (() => void) | null = null;
 let _ecoTimer: ReturnType<typeof setInterval> | null = null;
@@ -92,13 +101,14 @@ async function ensureConstructor() {
       "THREE",
       "BaseThreeJsModule",
       "loadJson",
+      "DomeText",
       `"use strict";\n${src}\n;return Transito;`
     );
   } catch (e) {
     console.error("[transito] SyntaxError in Transito.js:", e);
     throw e;
   }
-  _ctor = factory(THREE, BaseThreeJsModule, loadJsonAtRuntime);
+  _ctor = factory(THREE, BaseThreeJsModule, loadJsonAtRuntime, DOME_TEXT);
   if (!_ctor) throw new Error("[transito] Transito constructor came back undefined");
   return _ctor!;
 }
@@ -110,6 +120,9 @@ export async function mountTransito(
   destroyTransito();
   const Ctor = await ensureConstructor();
   _instance = new Ctor(container);
+  // The garden (garden/garden.ts): the corpus's recordings as a row of ink
+  // flowers under the simplex, tied by the call types they share.
+  _stopGarden = plantGarden(() => _instance?.scene, "vector", { kind: "row", center: new THREE.Vector3(0, -4.9, 0.6), width: 12, stem: 1.0, head: 0.72, status: new THREE.Vector3(0, -6.5, 0.6) });
   _hooks = hooks;
 
   wireEcoFromStore();
@@ -120,6 +133,7 @@ export async function mountTransito(
 }
 
 export function destroyTransito() {
+  if (_stopGarden) { _stopGarden(); _stopGarden = null; }
   if (_ecoTimer) { clearInterval(_ecoTimer); _ecoTimer = null; }
   if (_voteTimer) { clearInterval(_voteTimer); _voteTimer = null; }
   if (_reverseTimer) { clearInterval(_reverseTimer); _reverseTimer = null; }

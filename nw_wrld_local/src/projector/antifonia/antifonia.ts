@@ -32,6 +32,13 @@
 
 import * as THREE from "three";
 import { BaseThreeJsModule } from "../helpers/threeBase";
+import { facingLabel } from "../dome/domeFacing";
+import { plantGarden } from "../garden/garden";
+
+// Injected as DomeText: text planes that face the camera drawing them, so the
+// module's labels read on the dome (and its NDI feed) as well as on screen.
+// A THREE.Sprite cannot: each cube face of the domemaster draws its own piece.
+const DOME_TEXT = { facingLabel };
 import { parliamentStore } from "../parliament/parliamentStore";
 
 type AFArg = Record<string, unknown> | undefined;
@@ -74,6 +81,7 @@ type AntifoniaInstance = {
   getActiveSpecies?: () => ActiveSpecies | null;
   renderer?: { setSize: (w: number, h: number) => void; getPixelRatio?: () => number };
   camera?: { aspect: number; updateProjectionMatrix: () => void };
+  scene?: THREE.Scene;
   destroy: () => void;
 };
 
@@ -84,6 +92,7 @@ type AntifoniaHooks = {
 
 let _ctor: { new (container: HTMLElement): AntifoniaInstance } | null = null;
 let _instance: AntifoniaInstance | null = null;
+let _stopGarden: (() => void) | null = null;
 let _hooks: AntifoniaHooks | null = null;
 let _unsubscribeStore: (() => void) | null = null;
 let _voteTimer: ReturnType<typeof setInterval> | null = null;
@@ -133,13 +142,14 @@ async function ensureConstructor() {
       "THREE",
       "BaseThreeJsModule",
       "loadJson",
+      "DomeText",
       `"use strict";\n${src}\n;return Antifonia;`
     );
   } catch (e) {
     console.error("[antifonia] SyntaxError in Antifonia.js:", e);
     throw e;
   }
-  _ctor = factory(THREE, BaseThreeJsModule, loadJsonAtRuntime);
+  _ctor = factory(THREE, BaseThreeJsModule, loadJsonAtRuntime, DOME_TEXT);
   if (!_ctor) throw new Error("[antifonia] Antifonia constructor came back undefined");
   return _ctor!;
 }
@@ -151,6 +161,9 @@ export async function mountAntifonia(
   destroyAntifonia();
   const Ctor = await ensureConstructor();
   _instance = new Ctor(container);
+  // The garden (garden/garden.ts): the corpus's recordings as flowers round
+  // the stand, drawn as the same scan, tied by the call types they share.
+  _stopGarden = plantGarden(() => _instance?.scene, "lidar", { kind: "ring", center: new THREE.Vector3(0, -0.3, 0), radius: 6.8, stem: 1.3, head: 0.95, status: new THREE.Vector3(0, 3.6, 8.6) });
   _hooks = hooks;
 
   wireConsensusFromStore();
@@ -161,6 +174,7 @@ export async function mountAntifonia(
 }
 
 export function destroyAntifonia() {
+  if (_stopGarden) { _stopGarden(); _stopGarden = null; }
   if (_voteTimer) { clearInterval(_voteTimer); _voteTimer = null; }
   if (_reverseTimer) { clearInterval(_reverseTimer); _reverseTimer = null; }
   if (_callTimer) { clearInterval(_callTimer); _callTimer = null; }

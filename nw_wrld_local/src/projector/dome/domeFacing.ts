@@ -20,6 +20,9 @@
 //   aspect  width / height of the plane
 //   k       extra scale (default 1)
 //   ax, ay  shift, in plane widths and heights (anchor; default 0)
+//   world   when set, a fixed height in world units instead of a fixed
+//           angle: a label that belongs to the drawing (a stratum, a state
+//           of the automaton) and grows and shrinks with it, as a Sprite did
 // The geometry is labelPlane(): x from 0 to 1, y from −0.5 to 0.5, so with no
 // shift the label starts at its point and is centred on it vertically.
 
@@ -35,6 +38,7 @@ const _x = new THREE.Vector3();
 const _y = new THREE.Vector3();
 const _z = new THREE.Vector3();
 const _up = new THREE.Vector3();
+const _s = new THREE.Vector3();
 
 /** The plane every facing label uses (one per owner: dispose it with the owner). */
 export function labelPlane(): THREE.PlaneGeometry {
@@ -73,11 +77,40 @@ export function faceCamera(mesh: THREE.Mesh, scale: number): void {
       _z.setFromMatrixColumn(camera.matrixWorld, 2).normalize();
       angle = ANGLE_FLAT;
     }
-    const h = dist * angle * scale * u.k;
+    // A world-size label scales with its parent, as a Sprite did.
+    const h = (u.world ? u.world * _s.setFromMatrixScale(parent.matrixWorld).y : dist * angle * scale) * u.k;
+    if (u.world) _x.multiplyScalar(_s.x / (_s.y || 1));
     _x.multiplyScalar(h * u.aspect);
     _y.multiplyScalar(h);
     if (u.ax) _p.addScaledVector(_x, u.ax);
     if (u.ay) _p.addScaledVector(_y, u.ay);
     mesh.matrixWorld.makeBasis(_x, _y, _z).setPosition(_p);
   };
+}
+
+// One plane for every facingLabel; never disposed (it is shared by design).
+let _plane: THREE.PlaneGeometry | null = null;
+
+/**
+ * A THREE.Sprite replacement that also reads on the dome: a plane of
+ * `worldW` × `worldH` world units, centred on its position, facing whichever
+ * camera draws it. Sprites are laid out in the drawing camera's view space,
+ * so each cube face of the domemaster drew its own piece of one — sheared
+ * and split at the seams, in the dome and on its NDI feed. Dispose the
+ * material (and its map) with the owner; the geometry is shared.
+ */
+export function facingLabel(
+  map: THREE.Texture, worldW: number, worldH: number,
+  opts: { opacity?: number; depthTest?: boolean; fog?: boolean } = {}
+): THREE.Mesh {
+  _plane ??= labelPlane();
+  const mesh = new THREE.Mesh(_plane, new THREE.MeshBasicMaterial({
+    map, transparent: true, depthWrite: false, side: THREE.DoubleSide,
+    depthTest: opts.depthTest ?? true, fog: opts.fog ?? false, opacity: opts.opacity ?? 1,
+  }));
+  mesh.userData.world = worldH;
+  mesh.userData.aspect = worldW / worldH;
+  mesh.userData.ax = -0.5;
+  faceCamera(mesh, 1);
+  return mesh;
 }

@@ -1040,7 +1040,8 @@
    "cv_ndsi": 0.9696,
    "cv_aci": 0.1689,
    "audible": "audible/20250110_025700_001.flac",
-   "expanded": "expanded/20250110_025700_001.flac"
+   "expanded": "expanded/20250110_025700_001.flac",
+   "expanded_events_db": 0.55
   },
   {
    "key": "20250110_033900_001",
@@ -1078,7 +1079,8 @@
     "biophony": "stems/biophony/20250110_033900_001.flac",
     "ultrasonic": "stems/ultrasonic/20250110_033900_001.flac"
    },
-   "grain": "grains/20250110_033900_001.flac"
+   "grain": "grains/20250110_033900_001.flac",
+   "expanded_events_db": 13.14
   },
   {
    "key": "20250110_040000_001",
@@ -1110,7 +1112,8 @@
    "cv_ndsi": 0.9696,
    "cv_aci": 0.1689,
    "audible": "audible/20250110_040000_001.flac",
-   "expanded": "expanded/20250110_040000_001.flac"
+   "expanded": "expanded/20250110_040000_001.flac",
+   "expanded_events_db": 9.83
   },
   {
    "key": "20250110_044200_001",
@@ -1142,7 +1145,8 @@
    "cv_ndsi": 0.9696,
    "cv_aci": 0.1689,
    "audible": "audible/20250110_044200_001.flac",
-   "expanded": "expanded/20250110_044200_001.flac"
+   "expanded": "expanded/20250110_044200_001.flac",
+   "expanded_events_db": 11.79
   },
   {
    "key": "20250110_181200_001",
@@ -2608,7 +2612,8 @@
    "cv_ndsi": 0.9934,
    "cv_aci": 0.0268,
    "audible": "audible/20250114_000900_001.flac",
-   "expanded": "expanded/20250114_000900_001.flac"
+   "expanded": "expanded/20250114_000900_001.flac",
+   "expanded_events_db": 3.86
   },
   {
    "key": "20250114_003000_001",
@@ -2783,7 +2788,8 @@
    "cv_ndsi": 0.9934,
    "cv_aci": 0.0268,
    "audible": "audible/20250114_033900_001.flac",
-   "expanded": "expanded/20250114_033900_001.flac"
+   "expanded": "expanded/20250114_033900_001.flac",
+   "expanded_events_db": 5.52
   },
   {
    "key": "20250115_181200_001",
@@ -2821,7 +2827,8 @@
     "biophony": "stems/biophony/20250115_181200_001.flac",
     "ultrasonic": "stems/ultrasonic/20250115_181200_001.flac"
    },
-   "grain": "grains/20250115_181200_001.flac"
+   "grain": "grains/20250115_181200_001.flac",
+   "expanded_events_db": 18.13
   },
   {
    "key": "20250115_193600_001",
@@ -2928,7 +2935,8 @@
    "cv_aci": 0.17,
    "audible": "audible/20250117_181200_001.flac",
    "expanded": "expanded/20250117_181200_001.flac",
-   "grain": "grains/20250117_181200_001.flac"
+   "grain": "grains/20250117_181200_001.flac",
+   "expanded_events_db": 1.71
   },
   {
    "key": "20250117_183300_001",
@@ -3207,7 +3215,8 @@
     "biophony": "stems/biophony/20250118_181200_001.flac",
     "ultrasonic": "stems/ultrasonic/20250118_181200_001.flac"
    },
-   "grain": "grains/20250118_181200_001.flac"
+   "grain": "grains/20250118_181200_001.flac",
+   "expanded_events_db": 0.68
   },
   {
    "key": "20250118_183300_001",
@@ -3625,7 +3634,8 @@
    "cv_aci": 0.0949,
    "audible": "audible/20250119_005100_001.flac",
    "expanded": "expanded/20250119_005100_001.flac",
-   "grain": "grains/20250119_005100_001.flac"
+   "grain": "grains/20250119_005100_001.flac",
+   "expanded_events_db": 2.29
   },
   {
    "key": "20250119_013300_001",
@@ -3731,7 +3741,8 @@
    "cv_ndsi": 0.9335,
    "cv_aci": 0.0949,
    "audible": "audible/20250119_021500_001.flac",
-   "expanded": "expanded/20250119_021500_001.flac"
+   "expanded": "expanded/20250119_021500_001.flac",
+   "expanded_events_db": 0.77
   },
   {
    "key": "20250119_025700_001",
@@ -3936,7 +3947,8 @@
     "biophony": "stems/biophony/20250124_031800_001.flac",
     "ultrasonic": "stems/ultrasonic/20250124_031800_001.flac"
    },
-   "grain": "grains/20250124_031800_001.flac"
+   "grain": "grains/20250124_031800_001.flac",
+   "expanded_events_db": 7.81
   },
   {
    "key": "20250125_181200_001",
@@ -4284,7 +4296,8 @@
    "cv_ndsi": 0.9918,
    "cv_aci": 0.1766,
    "audible": "audible/20250126_214200_001.flac",
-   "expanded": "expanded/20250126_214200_001.flac"
+   "expanded": "expanded/20250126_214200_001.flac",
+   "expanded_events_db": 5.52
   },
   {
    "key": "20250126_230600_001",
@@ -4316,7 +4329,8 @@
    "cv_ndsi": 0.9918,
    "cv_aci": 0.1766,
    "audible": "audible/20250126_230600_001.flac",
-   "expanded": "expanded/20250126_230600_001.flac"
+   "expanded": "expanded/20250126_230600_001.flac",
+   "expanded_events_db": 5.83
   },
   {
    "key": "20250127_033900_001",
@@ -4348,7 +4362,8 @@
    "cv_ndsi": 0.9636,
    "cv_aci": 0.2519,
    "audible": "audible/20250127_033900_001.flac",
-   "expanded": "expanded/20250127_033900_001.flac"
+   "expanded": "expanded/20250127_033900_001.flac",
+   "expanded_events_db": 5.91
   },
   {
    "key": "20250127_042100_001",
@@ -4380,7 +4395,8 @@
    "cv_ndsi": 0.9636,
    "cv_aci": 0.2519,
    "audible": "audible/20250127_042100_001.flac",
-   "expanded": "expanded/20250127_042100_001.flac"
+   "expanded": "expanded/20250127_042100_001.flac",
+   "expanded_events_db": 5.7
   },
   {
    "key": "20250127_181200_001",
@@ -4412,7 +4428,8 @@
    "cv_ndsi": 0.9636,
    "cv_aci": 0.2519,
    "audible": "audible/20250127_181200_001.flac",
-   "expanded": "expanded/20250127_181200_001.flac"
+   "expanded": "expanded/20250127_181200_001.flac",
+   "expanded_events_db": 2.47
   },
   {
    "key": "20250127_183300_001",
@@ -4444,7 +4461,8 @@
    "cv_ndsi": 0.9636,
    "cv_aci": 0.2519,
    "audible": "audible/20250127_183300_001.flac",
-   "expanded": "expanded/20250127_183300_001.flac"
+   "expanded": "expanded/20250127_183300_001.flac",
+   "expanded_events_db": 6.57
   },
   {
    "key": "20250127_191500_001",
@@ -4743,7 +4761,8 @@
    "cv_ndsi": 0.9636,
    "cv_aci": 0.2519,
    "audible": "audible/20250127_220300_001.flac",
-   "expanded": "expanded/20250127_220300_001.flac"
+   "expanded": "expanded/20250127_220300_001.flac",
+   "expanded_events_db": 0.47
   },
   {
    "key": "20250127_224500_001",
@@ -5072,7 +5091,8 @@
    "cv_ndsi": 0.9818,
    "cv_aci": 0.1612,
    "audible": "audible/20250128_210000_001.flac",
-   "expanded": "expanded/20250128_210000_001.flac"
+   "expanded": "expanded/20250128_210000_001.flac",
+   "expanded_events_db": 1.47
   },
   {
    "key": "20250128_230600_001",
@@ -5321,7 +5341,8 @@
     "biophony": "stems/biophony/20240726_195700_001.flac",
     "ultrasonic": "stems/ultrasonic/20240726_195700_001.flac"
    },
-   "grain": "grains/20240726_195700_001.flac"
+   "grain": "grains/20240726_195700_001.flac",
+   "expanded_events_db": 0.5
   },
   {
    "key": "20240726_203900_001",
@@ -5385,7 +5406,8 @@
    "cv_ndsi": 0.9966,
    "cv_aci": 0.2633,
    "audible": "audible/20240726_212100_001.flac",
-   "expanded": "expanded/20240726_212100_001.flac"
+   "expanded": "expanded/20240726_212100_001.flac",
+   "expanded_events_db": 2.53
   },
   {
    "key": "20240726_214200_001",
@@ -5417,7 +5439,8 @@
    "cv_ndsi": 0.9966,
    "cv_aci": 0.2633,
    "audible": "audible/20240726_214200_001.flac",
-   "expanded": "expanded/20240726_214200_001.flac"
+   "expanded": "expanded/20240726_214200_001.flac",
+   "expanded_events_db": 3.38
   },
   {
    "key": "20240726_214200_002",
@@ -5449,7 +5472,8 @@
    "cv_ndsi": 0.9966,
    "cv_aci": 0.2633,
    "audible": "audible/20240726_214200_002.flac",
-   "expanded": "expanded/20240726_214200_002.flac"
+   "expanded": "expanded/20240726_214200_002.flac",
+   "expanded_events_db": 6.2
   },
   {
    "key": "20240726_220300_001",
@@ -5481,7 +5505,8 @@
    "cv_ndsi": 0.9966,
    "cv_aci": 0.2633,
    "audible": "audible/20240726_220300_001.flac",
-   "expanded": "expanded/20240726_220300_001.flac"
+   "expanded": "expanded/20240726_220300_001.flac",
+   "expanded_events_db": 0.96
   },
   {
    "key": "20240726_224500_001",
@@ -5513,7 +5538,8 @@
    "cv_ndsi": 0.9966,
    "cv_aci": 0.2633,
    "audible": "audible/20240726_224500_001.flac",
-   "expanded": "expanded/20240726_224500_001.flac"
+   "expanded": "expanded/20240726_224500_001.flac",
+   "expanded_events_db": 1.18
   },
   {
    "key": "20240726_234800_001",
@@ -5545,7 +5571,8 @@
    "cv_ndsi": 0.9966,
    "cv_aci": 0.2633,
    "audible": "audible/20240726_234800_001.flac",
-   "expanded": "expanded/20240726_234800_001.flac"
+   "expanded": "expanded/20240726_234800_001.flac",
+   "expanded_events_db": 1.53
   },
   {
    "key": "20240727_005100_001",
@@ -5577,7 +5604,8 @@
    "cv_ndsi": 0.8852,
    "cv_aci": 0.8734,
    "audible": "audible/20240727_005100_001.flac",
-   "expanded": "expanded/20240727_005100_001.flac"
+   "expanded": "expanded/20240727_005100_001.flac",
+   "expanded_events_db": 0.76
   },
   {
    "key": "20240727_013300_001",
@@ -5702,7 +5730,8 @@
    "cv_ndsi": 0.8852,
    "cv_aci": 0.8734,
    "audible": "audible/20240727_023600_001.flac",
-   "expanded": "expanded/20240727_023600_001.flac"
+   "expanded": "expanded/20240727_023600_001.flac",
+   "expanded_events_db": 5.03
   },
   {
    "key": "20240727_040000_001",
@@ -5734,7 +5763,8 @@
    "cv_ndsi": 0.8852,
    "cv_aci": 0.8734,
    "audible": "audible/20240727_040000_001.flac",
-   "expanded": "expanded/20240727_040000_001.flac"
+   "expanded": "expanded/20240727_040000_001.flac",
+   "expanded_events_db": 6.64
   },
   {
    "key": "20240727_183300_001",
@@ -5766,7 +5796,8 @@
    "cv_ndsi": 0.8852,
    "cv_aci": 0.8734,
    "audible": "audible/20240727_183300_001.flac",
-   "expanded": "expanded/20240727_183300_001.flac"
+   "expanded": "expanded/20240727_183300_001.flac",
+   "expanded_events_db": 3.71
   },
   {
    "key": "20240727_185400_001",
@@ -6158,7 +6189,8 @@
    "cv_ndsi": 0.8852,
    "cv_aci": 0.8734,
    "audible": "audible/20240727_224500_001.flac",
-   "expanded": "expanded/20240727_224500_001.flac"
+   "expanded": "expanded/20240727_224500_001.flac",
+   "expanded_events_db": 1.21
   },
   {
    "key": "20240727_224500_002",
@@ -6699,7 +6731,8 @@
    "cv_aci": 0.3604,
    "audible": "audible/20240728_195700_001.flac",
    "expanded": "expanded/20240728_195700_001.flac",
-   "grain": "grains/20240728_195700_001.flac"
+   "grain": "grains/20240728_195700_001.flac",
+   "expanded_events_db": 2.73
   },
   {
    "key": "20240728_201800_001",
@@ -6731,7 +6764,8 @@
    "cv_ndsi": 0.9792,
    "cv_aci": 0.3604,
    "audible": "audible/20240728_201800_001.flac",
-   "expanded": "expanded/20240728_201800_001.flac"
+   "expanded": "expanded/20240728_201800_001.flac",
+   "expanded_events_db": 2.55
   },
   {
    "key": "20240728_203900_001",
@@ -6763,7 +6797,8 @@
    "cv_ndsi": 0.9792,
    "cv_aci": 0.3604,
    "audible": "audible/20240728_203900_001.flac",
-   "expanded": "expanded/20240728_203900_001.flac"
+   "expanded": "expanded/20240728_203900_001.flac",
+   "expanded_events_db": 2.9
   },
   {
    "key": "20240728_210000_001",
@@ -6795,7 +6830,8 @@
    "cv_ndsi": 0.9792,
    "cv_aci": 0.3604,
    "audible": "audible/20240728_210000_001.flac",
-   "expanded": "expanded/20240728_210000_001.flac"
+   "expanded": "expanded/20240728_210000_001.flac",
+   "expanded_events_db": 2.25
   },
   {
    "key": "20240728_220300_001",
@@ -6827,7 +6863,8 @@
    "cv_ndsi": 0.9792,
    "cv_aci": 0.3604,
    "audible": "audible/20240728_220300_001.flac",
-   "expanded": "expanded/20240728_220300_001.flac"
+   "expanded": "expanded/20240728_220300_001.flac",
+   "expanded_events_db": 2.77
   },
   {
    "key": "20240728_222400_001",
@@ -6859,7 +6896,8 @@
    "cv_ndsi": 0.9792,
    "cv_aci": 0.3604,
    "audible": "audible/20240728_222400_001.flac",
-   "expanded": "expanded/20240728_222400_001.flac"
+   "expanded": "expanded/20240728_222400_001.flac",
+   "expanded_events_db": 2.97
   },
   {
    "key": "20240728_224500_001",
@@ -6891,7 +6929,8 @@
    "cv_ndsi": 0.9792,
    "cv_aci": 0.3604,
    "audible": "audible/20240728_224500_001.flac",
-   "expanded": "expanded/20240728_224500_001.flac"
+   "expanded": "expanded/20240728_224500_001.flac",
+   "expanded_events_db": 2.76
   },
   {
    "key": "20240728_230600_001",
@@ -6923,7 +6962,8 @@
    "cv_ndsi": 0.9792,
    "cv_aci": 0.3604,
    "audible": "audible/20240728_230600_001.flac",
-   "expanded": "expanded/20240728_230600_001.flac"
+   "expanded": "expanded/20240728_230600_001.flac",
+   "expanded_events_db": 2.38
   },
   {
    "key": "20240728_234800_001",
@@ -6992,7 +7032,8 @@
    "cv_ndsi": 0.9931,
    "cv_aci": 0.2816,
    "audible": "audible/20240729_000900_001.flac",
-   "expanded": "expanded/20240729_000900_001.flac"
+   "expanded": "expanded/20240729_000900_001.flac",
+   "expanded_events_db": 2.37
   },
   {
    "key": "20240729_003000_001",
@@ -7024,7 +7065,8 @@
    "cv_ndsi": 0.9931,
    "cv_aci": 0.2816,
    "audible": "audible/20240729_003000_001.flac",
-   "expanded": "expanded/20240729_003000_001.flac"
+   "expanded": "expanded/20240729_003000_001.flac",
+   "expanded_events_db": 2.98
   },
   {
    "key": "20240729_005100_001",
@@ -7056,7 +7098,8 @@
    "cv_ndsi": 0.9931,
    "cv_aci": 0.2816,
    "audible": "audible/20240729_005100_001.flac",
-   "expanded": "expanded/20240729_005100_001.flac"
+   "expanded": "expanded/20240729_005100_001.flac",
+   "expanded_events_db": 2.2
   },
   {
    "key": "20240729_011200_001",
@@ -7088,7 +7131,8 @@
    "cv_ndsi": 0.9931,
    "cv_aci": 0.2816,
    "audible": "audible/20240729_011200_001.flac",
-   "expanded": "expanded/20240729_011200_001.flac"
+   "expanded": "expanded/20240729_011200_001.flac",
+   "expanded_events_db": 4.43
   },
   {
    "key": "20240729_013300_001",
@@ -7120,7 +7164,8 @@
    "cv_ndsi": 0.9931,
    "cv_aci": 0.2816,
    "audible": "audible/20240729_013300_001.flac",
-   "expanded": "expanded/20240729_013300_001.flac"
+   "expanded": "expanded/20240729_013300_001.flac",
+   "expanded_events_db": 3.5
   },
   {
    "key": "20240729_015400_001",
@@ -7152,7 +7197,8 @@
    "cv_ndsi": 0.9931,
    "cv_aci": 0.2816,
    "audible": "audible/20240729_015400_001.flac",
-   "expanded": "expanded/20240729_015400_001.flac"
+   "expanded": "expanded/20240729_015400_001.flac",
+   "expanded_events_db": 2.27
   },
   {
    "key": "20240729_021500_001",
@@ -7184,7 +7230,8 @@
    "cv_ndsi": 0.9931,
    "cv_aci": 0.2816,
    "audible": "audible/20240729_021500_001.flac",
-   "expanded": "expanded/20240729_021500_001.flac"
+   "expanded": "expanded/20240729_021500_001.flac",
+   "expanded_events_db": 2.32
   },
   {
    "key": "20240729_023600_001",
@@ -7216,7 +7263,8 @@
    "cv_ndsi": 0.9931,
    "cv_aci": 0.2816,
    "audible": "audible/20240729_023600_001.flac",
-   "expanded": "expanded/20240729_023600_001.flac"
+   "expanded": "expanded/20240729_023600_001.flac",
+   "expanded_events_db": 2.93
   },
   {
    "key": "20240729_025700_001",
@@ -7249,7 +7297,8 @@
    "cv_aci": 0.2816,
    "audible": "audible/20240729_025700_001.flac",
    "expanded": "expanded/20240729_025700_001.flac",
-   "grain": "grains/20240729_025700_001.flac"
+   "grain": "grains/20240729_025700_001.flac",
+   "expanded_events_db": 5.37
   },
   {
    "key": "20240729_031800_001",
@@ -7281,7 +7330,8 @@
    "cv_ndsi": 0.9931,
    "cv_aci": 0.2816,
    "audible": "audible/20240729_031800_001.flac",
-   "expanded": "expanded/20240729_031800_001.flac"
+   "expanded": "expanded/20240729_031800_001.flac",
+   "expanded_events_db": 6.33
   },
   {
    "key": "20240729_033900_001",
@@ -7319,7 +7369,8 @@
     "biophony": "stems/biophony/20240729_033900_001.flac",
     "ultrasonic": "stems/ultrasonic/20240729_033900_001.flac"
    },
-   "grain": "grains/20240729_033900_001.flac"
+   "grain": "grains/20240729_033900_001.flac",
+   "expanded_events_db": 7.21
   },
   {
    "key": "20240729_040000_001",
@@ -7357,7 +7408,8 @@
     "biophony": "stems/biophony/20240729_040000_001.flac",
     "ultrasonic": "stems/ultrasonic/20240729_040000_001.flac"
    },
-   "grain": "grains/20240729_040000_001.flac"
+   "grain": "grains/20240729_040000_001.flac",
+   "expanded_events_db": 6.78
   },
   {
    "key": "20240729_044200_001",
@@ -7395,7 +7447,8 @@
     "biophony": "stems/biophony/20240729_044200_001.flac",
     "ultrasonic": "stems/ultrasonic/20240729_044200_001.flac"
    },
-   "grain": "grains/20240729_044200_001.flac"
+   "grain": "grains/20240729_044200_001.flac",
+   "expanded_events_db": 14.05
   },
   {
    "key": "20240729_210000_001",
@@ -7427,7 +7480,8 @@
    "cv_ndsi": 0.9931,
    "cv_aci": 0.2816,
    "audible": "audible/20240729_210000_001.flac",
-   "expanded": "expanded/20240729_210000_001.flac"
+   "expanded": "expanded/20240729_210000_001.flac",
+   "expanded_events_db": 6.5
   },
   {
    "key": "20240730_031800_001",
@@ -7465,7 +7519,8 @@
     "biophony": "stems/biophony/20240730_031800_001.flac",
     "ultrasonic": "stems/ultrasonic/20240730_031800_001.flac"
    },
-   "grain": "grains/20240730_031800_001.flac"
+   "grain": "grains/20240730_031800_001.flac",
+   "expanded_events_db": 0.93
   },
   {
    "key": "20240730_050300_001",
@@ -7503,7 +7558,8 @@
     "biophony": "stems/biophony/20240730_050300_001.flac",
     "ultrasonic": "stems/ultrasonic/20240730_050300_001.flac"
    },
-   "grain": "grains/20240730_050300_001.flac"
+   "grain": "grains/20240730_050300_001.flac",
+   "expanded_events_db": 0.53
   },
   {
    "key": "20240730_052400_001",
@@ -7541,7 +7597,8 @@
     "biophony": "stems/biophony/20240730_052400_001.flac",
     "ultrasonic": "stems/ultrasonic/20240730_052400_001.flac"
    },
-   "grain": "grains/20240730_052400_001.flac"
+   "grain": "grains/20240730_052400_001.flac",
+   "expanded_events_db": 1.83
   },
   {
    "key": "20240731_183300_001",
@@ -7648,7 +7705,8 @@
    "cv_aci": 1.0,
    "audible": "audible/20240801_183300_001.flac",
    "expanded": "expanded/20240801_183300_001.flac",
-   "grain": "grains/20240801_183300_001.flac"
+   "grain": "grains/20240801_183300_001.flac",
+   "expanded_events_db": 6.81
   },
   {
    "key": "20240801_185400_001",
@@ -7995,7 +8053,8 @@
    "cv_ndsi": 0.9673,
    "cv_aci": 0.4299,
    "audible": "audible/20240803_210000_001.flac",
-   "expanded": "expanded/20240803_210000_001.flac"
+   "expanded": "expanded/20240803_210000_001.flac",
+   "expanded_events_db": 0.84
   },
   {
    "key": "20240803_212100_001",
@@ -8226,7 +8285,8 @@
     "biophony": "stems/biophony/20240804_031800_001.flac",
     "ultrasonic": "stems/ultrasonic/20240804_031800_001.flac"
    },
-   "grain": "grains/20240804_031800_001.flac"
+   "grain": "grains/20240804_031800_001.flac",
+   "expanded_events_db": 0.3
   },
   {
    "key": "20240804_044200_001",
@@ -8301,7 +8361,8 @@
     "biophony": "stems/biophony/20240805_183300_001.flac",
     "ultrasonic": "stems/ultrasonic/20240805_183300_001.flac"
    },
-   "grain": "grains/20240805_183300_001.flac"
+   "grain": "grains/20240805_183300_001.flac",
+   "expanded_events_db": 1.17
   },
   {
    "key": "20240805_185400_001",
@@ -8339,7 +8400,8 @@
     "biophony": "stems/biophony/20240805_185400_001.flac",
     "ultrasonic": "stems/ultrasonic/20240805_185400_001.flac"
    },
-   "grain": "grains/20240805_185400_001.flac"
+   "grain": "grains/20240805_185400_001.flac",
+   "expanded_events_db": 0.73
   },
   {
    "key": "20240805_193600_001",
@@ -8371,7 +8433,8 @@
    "cv_ndsi": 0.8958,
    "cv_aci": 0.285,
    "audible": "audible/20240805_193600_001.flac",
-   "expanded": "expanded/20240805_193600_001.flac"
+   "expanded": "expanded/20240805_193600_001.flac",
+   "expanded_events_db": 1.22
   },
   {
    "key": "20240805_195700_001",
@@ -8471,7 +8534,8 @@
    "cv_ndsi": 0.8958,
    "cv_aci": 0.285,
    "audible": "audible/20240805_203900_001.flac",
-   "expanded": "expanded/20240805_203900_001.flac"
+   "expanded": "expanded/20240805_203900_001.flac",
+   "expanded_events_db": 1.92
   },
   {
    "key": "20240805_210000_001",
@@ -8597,7 +8661,8 @@
    "cv_ndsi": 0.8958,
    "cv_aci": 0.285,
    "audible": "audible/20240805_222400_001.flac",
-   "expanded": "expanded/20240805_222400_001.flac"
+   "expanded": "expanded/20240805_222400_001.flac",
+   "expanded_events_db": 5.04
   },
   {
    "key": "20240806_013300_001",
@@ -8635,7 +8700,8 @@
     "biophony": "stems/biophony/20240806_013300_001.flac",
     "ultrasonic": "stems/ultrasonic/20240806_013300_001.flac"
    },
-   "grain": "grains/20240806_013300_001.flac"
+   "grain": "grains/20240806_013300_001.flac",
+   "expanded_events_db": 1.57
   },
   {
    "key": "20240806_013300_002",
@@ -8668,7 +8734,8 @@
    "cv_aci": 0.2569,
    "audible": "audible/20240806_013300_002.flac",
    "expanded": "expanded/20240806_013300_002.flac",
-   "grain": "grains/20240806_013300_002.flac"
+   "grain": "grains/20240806_013300_002.flac",
+   "expanded_events_db": 2.25
   },
   {
    "key": "20240806_021500_001",
@@ -8706,7 +8773,8 @@
     "biophony": "stems/biophony/20240806_021500_001.flac",
     "ultrasonic": "stems/ultrasonic/20240806_021500_001.flac"
    },
-   "grain": "grains/20240806_021500_001.flac"
+   "grain": "grains/20240806_021500_001.flac",
+   "expanded_events_db": 6.36
   },
   {
    "key": "20240806_052400_001",
@@ -8955,7 +9023,8 @@
     "biophony": "stems/biophony/20240812_183300_001.flac",
     "ultrasonic": "stems/ultrasonic/20240812_183300_001.flac"
    },
-   "grain": "grains/20240812_183300_001.flac"
+   "grain": "grains/20240812_183300_001.flac",
+   "expanded_events_db": 0.29
   },
   {
    "key": "20240812_185400_001",

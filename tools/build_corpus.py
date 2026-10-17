@@ -27,6 +27,7 @@ Usage:
     python3 tools/build_corpus.py --dry-run
     python3 tools/build_corpus.py
     python3 tools/build_corpus.py --tiers audible,grains --jobs 8
+    python3 tools/build_corpus.py --events     # measure the expanded tier only
 """
 
 from __future__ import annotations
@@ -166,6 +167,72 @@ def probe_peak_db(path: Path) -> float | None:
     )
     match = re.search(r"max_volume:\s*(-?\d+(?:\.\d+)?) dB", proc.stderr)
     return float(match.group(1)) if match else None
+
+
+def measure_events_db(path: Path) -> float | None:
+    """
+    How far a file's loudest moments rise above its own floor, in dB: the 95th
+    percentile minus the median of its level in quarter-second frames, above
+    4 kHz.
+
+    Written for the expanded tier, which is mostly the recorder's floor: above
+    the 38 kHz high-pass an AudioMoth hears itself, and expanded x8 that is a
+    steady hiss. A file that is only floor measures 1-2 dB; one with bat passes
+    or katydid bursts, 6 dB and more. SuperCollider's absence voice uses it to
+    leave the hiss out (14_phenological_corpus.scd).
+    """
+    proc = subprocess.run(
+        ["ffmpeg", "-v", "error", "-i", str(path),
+         "-af", "highpass=f=4000,asetnsamples=n=12000:p=0,"
+                "astats=metadata=1:reset=1:measure_overall=RMS_level:measure_perchannel=none,"
+                "ametadata=mode=print:key=lavfi.astats.Overall.RMS_level:file=-",
+         "-f", "null", "-"],
+        capture_output=True, text=True,
+    )
+    levels = []
+    for line in proc.stdout.splitlines():
+        if "RMS_level=" in line:
+            try:
+                v = float(line.split("=", 1)[1])
+            except ValueError:
+                continue
+            if v > -200:
+                levels.append(v)
+    if len(levels) < 20:
+        return None
+    levels.sort()
+    med = levels[len(levels) // 2]
+    p95 = levels[min(len(levels) - 1, int(len(levels) * 0.95))]
+    return round(p95 - med, 2)
+
+
+def measure_events(jobs: int) -> int:
+    """
+    --events: measure every expanded file and write expanded_events_db into
+    the EXISTING manifest, in place. Nothing is re-rendered and nothing else
+    in the manifest changes, so hand edits (opacity, Art. 47) survive.
+    """
+    path = DEST / "manifest.json"
+    if not path.exists():
+        print(f"no manifest at {path}", file=sys.stderr)
+        return 1
+    manifest = json.loads(path.read_text(encoding="utf-8"))
+    todo = [c for c in manifest["clips"] if c.get("expanded") and (DEST / c["expanded"]).exists()]
+    print(f"measuring {len(todo)} expanded files ...")
+    with ProcessPoolExecutor(max_workers=jobs) as pool:
+        results = list(pool.map(measure_events_db, [DEST / c["expanded"] for c in todo]))
+    for c, v in zip(todo, results):
+        if v is None:
+            c.pop("expanded_events_db", None)
+        else:
+            c["expanded_events_db"] = v
+    path.write_text(json.dumps(manifest, ensure_ascii=False, indent=1), encoding="utf-8")
+    vals = sorted(v for v in results if v is not None)
+    if vals:
+        print(f"  events above floor: min {vals[0]:.1f}  median {vals[len(vals) // 2]:.1f}"
+              f"  max {vals[-1]:.1f} dB  ({sum(v < 3 for v in vals)} of {len(vals)} under 3 dB)")
+    print(f"manifest  {path}")
+    return 0
 
 
 # ── filter chains ───────────────────────────────────────────────────────────
@@ -520,11 +587,15 @@ def main() -> int:
     ap.add_argument("--jobs", type=int, default=8, help="parallel ffmpeg workers")
     ap.add_argument("--gain-probe", type=int, default=40,
                     help="clips sampled to measure the single global gain")
+    ap.add_argument("--events", action="store_true",
+                    help="only measure the expanded tier's events into the existing manifest")
     args = ap.parse_args()
 
     if not shutil.which("ffmpeg"):
         print("ffmpeg not found on PATH", file=sys.stderr)
         return 1
+    if args.events:
+        return measure_events(args.jobs)
     if not SOURCE.exists():
         print(f"corpus not found: {SOURCE}", file=sys.stderr)
         return 1
@@ -592,6 +663,7 @@ def main() -> int:
             rec.pop(flag, None)
 
     path = write_manifest(records, gain_db)
+    measure_events(args.jobs)
     total = sum(f.stat().st_size for f in DEST.rglob("*.flac"))
     print(f"\nmanifest  {path}")
     print(f"rendered  {done} files, {total / 1024**3:.2f} GB in {DEST}")

@@ -324,9 +324,19 @@ class Transito extends BaseThreeJsModule {
     const tex = new THREE.CanvasTexture(c);
     tex.minFilter = THREE.NearestFilter; tex.magFilter = THREE.NearestFilter;
     tex.generateMipmaps = false; tex.needsUpdate = true;
-    const mat = new THREE.SpriteMaterial({ map: tex, transparent: true, depthWrite: false, depthTest: false, fog: false, opacity: 0.92 });
-    const s = new THREE.Sprite(mat);
-    s.scale.set(scale, scale * ch / cw, 1);
+    // A plane facing whichever camera draws it (DomeText, from the loader),
+    // not a THREE.Sprite: each cube face of the dome drew its own piece of a
+    // sprite, so the labels arrived split and sheared at the seams, on the
+    // dome and on its NDI feed. Outside the loader it is still a sprite.
+    let s;
+    if (typeof DomeText !== "undefined" && DomeText) {
+      s = DomeText.facingLabel(tex, scale, scale * ch / cw, { opacity: 0.92, depthTest: false });
+      s.renderOrder = 10;
+    } else {
+      const mat = new THREE.SpriteMaterial({ map: tex, transparent: true, depthWrite: false, depthTest: false, fog: false, opacity: 0.92 });
+      s = new THREE.Sprite(mat);
+      s.scale.set(scale, scale * ch / cw, 1);
+    }
     this._sprites.push(s);
     return s;
   }

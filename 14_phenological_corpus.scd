@@ -94,9 +94,41 @@ if(~corpusReady == true) {
             grain:      if(c["grain"].notNil,    { ~corpusDir +/+ c["grain"] }),
             // The absence voice. Only the 69 ultrasonic-rich clips have one.
             expanded:   if(c["expanded"].notNil, { ~corpusDir +/+ c["expanded"] }),
+            // How far the expanded file's events rise above its own floor, dB
+            // (tools/build_corpus.py --events). nil when not measured.
+            events:     c["expanded_events_db"] !? { |v| v.asFloat },
             source:     c["source"]
         )
     };
+
+    // ─── Confidence, ranked within its bancada ───────────────────────────
+    // Presence weighs the detector's confidence, and confidence measures how
+    // sure the detector is of its LABEL, not how present the forest is.
+    // community_shift — TRANSICIÓN — is the detector's label for transitions
+    // and for what it cannot place, so its confidence is low by construction:
+    // median 0.19 against 0.52-0.64 for the other roles. At UMBRAL 0.695 its
+    // best clip reached 0.69 and the bancada never sounded through CORPUS,
+    // while the absence voice, which has no threshold, played its hiss.
+    // Ranked within each bancada (0 = its least sure clip, 1 = its surest),
+    // every bancada reaches the Chamber on equal terms. Clips without a
+    // bancada are ranked within their role.
+    {
+        var groups = ();
+        ~corpusClips.do { |c|
+            var g = if(c[\bancada] >= 0) { c[\bancada] } { c[\role].asSymbol };
+            groups[g] = (groups[g] ? []).add(c);
+        };
+        groups.do { |list|
+            var sorted = list.copy.sort { |a, b| a[\confidence] < b[\confidence] };
+            var n = sorted.size;
+            sorted.do { |c, i|
+                // ties share their mean rank
+                var lo = sorted.indexOf(sorted.detect { |d| d[\confidence] == c[\confidence] });
+                var hi = lo; while { (hi + 1 < n) and: { sorted[hi + 1][\confidence] == c[\confidence] } } { hi = hi + 1 };
+                c[\confRank] = if(n > 1) { ((lo + hi) / 2) / (n - 1) } { 0.5 };
+            };
+        };
+    }.value;
 
     // 365 slots. Most are empty, and that is the point.
     ~phenoRing = Array.fill(366, { [] });
@@ -252,8 +284,15 @@ s.waitForBoot {
     // halfway. It moves over 8 s when the bancada changes.
     ~phenoForegroundBands = Array.geom(11, 700, 2 ** 0.5);
     ~phenoForegroundAmt = [0.6, 1.0, 0.0, 1.0, 0.8];
-    ~phenoForeground = { |sig, bancada|
-        var amt = Lag.kr(Select.kr(bancada.round.clip(0, 4), ~phenoForegroundAmt), 8.0);
+    // The absence voice plays an expanded file only if its events rise at
+    // least this far above its floor (manifest expanded_events_db, dB).
+    ~phenoEventsMin = 3.0;
+    //
+    // ULTRA calls it with a fixed amount, a deeper cut and no make-up gain
+    // (fixed, depthDb, makeup): see \corpusUltrasonic.
+    ~phenoForeground = { |sig, bancada, fixed, depthDb = 15, makeup = true|
+        var amt = if(fixed.notNil) { fixed } {
+            Lag.kr(Select.kr(bancada.round.clip(0, 4), ~phenoForegroundAmt), 8.0) };
         // A voice starts with every floor at silence; they climb fast for
         // the first seconds (inside the fade-in) and slowly after.
         var up = Line.kr(2.0, 30.0, 12.0);
@@ -262,8 +301,8 @@ s.waitForBoot {
             var lvl = Amplitude.kr(BPF.ar(sig, fc, 0.35), 0.01, 0.25).max(1e-6).ampdb;
             var floor = LagUD.kr(lvl, up, 3.0);
             var open = ((lvl - floor - 4) / 6).clip(0, 1);
-            BPeakEQ.ar(out, fc, 0.35, Lag.kr((1 - open) * amt * f.explin(1400, 4000, -4.5, -15), 0.05))
-        }) * (amt * 6).dbamp;
+            BPeakEQ.ar(out, fc, 0.35, Lag.kr((1 - open) * amt * f.explin(1400, 4000, depthDb.neg * 0.3, depthDb.neg), 0.05))
+        }) * if(makeup) { (amt * 6).dbamp } { 1 };
     };
 
     SynthDef(\corpusVoice, {
@@ -510,10 +549,30 @@ s.waitForBoot {
 
         sig = HPF.ar(sig, 80);
         // Same mapping as \corpusVoice: the ×8-expanded calls live at
-        // 2.5-12 kHz and a 2.4 kHz ceiling removed most of them. CRUDO skips it,
-        // and the foreground with it: expanded, a chorus is as steady as before.
+        // 2.5-12 kHz and a 2.4 kHz ceiling removed most of them. CRUDO skips it.
+        //
+        // ─── The hiss ─────────────────────────────────────────────────────
+        // This tier is mostly the recorder's own floor. Measured on the 69
+        // files (4-24 kHz, STFT 2048): in the typical file 95% of the frames
+        // sit within ±3 dB of the file's median level, spectral flatness 0.38,
+        // and in about a third of them the loudest 5% of frames rise less than
+        // 2 dB above the median. The high-pass at 38 kHz keeps what is
+        // genuinely ultrasonic, and above 38 kHz an AudioMoth hears mostly
+        // itself; ×8 and +12 dB at render, ×4.6 here, up to four voices at once
+        // on most unrecorded days — the absence voice was a constant white
+        // noise under the whole piece.
+        //
+        // So the floor goes, always, whatever the bancada: the foreground at
+        // full, cutting 36 dB per band and with no make-up gain, which would
+        // only lift the residue. What rises above the floor — a bat's pass, a
+        // katydid's burst — opens its band and comes through whole. Measured
+        // offline (NRT) on four files: the floor falls 20-29 dB, and in the
+        // two with real events the loudest 1% loses about 2 dB (24 dB per
+        // band took the floor only 16-23 dB down). A file that is only floor is,
+        // after this, near silence: which on a day nobody recorded is what
+        // Article 44 asks of it anyway.
         crudo = Lag.kr(Select.kr(corpusCrudoBus >= 0, [0, In.kr(corpusCrudoBus, 1)]).clip(0, 1), 0.15);
-        sig = XFade2.ar(LPF.ar(~phenoForeground.(sig, Select.kr(bancadaBus >= 0, [bancada, In.kr(bancadaBus, 1)])),(lpf.explin(80, 2400, 1500, 18000)).min(SampleRate.ir * 0.45)), sig, crudo.linlin(0, 1, -1, 1));
+        sig = XFade2.ar(LPF.ar(~phenoForeground.(sig, 0, 1.0, 36, false),(lpf.explin(80, 2400, 1500, 18000)).min(SampleRate.ir * 0.45)), sig, crudo.linlin(0, 1, -1, 1));
 
         env = EnvGen.kr(
             Env.new([0, 1, 1, 0],
@@ -750,7 +809,7 @@ s.waitForBoot {
             // sits near zero for most of them, which would silence recorded
             // days outright and leave the threshold knob nothing to bite on.
             var presence = falloff
-                * (0.45 + (0.35 * clip[\confidence].clip(0, 1))
+                * (0.45 + (0.35 * (clip[\confRank] ? clip[\confidence]).clip(0, 1))
                         + (0.20 * clip[\activity].clip(0, 1)));
             // Scaled by 0.45 rather than applied whole: at full weight the
             // bias saturated by half travel — everything not of the favoured
@@ -1317,7 +1376,8 @@ s.waitForBoot {
                     };
                     // Bats are present on recorded days too, whenever the
                     // clip actually carries ultrasound.
-                    if((absence > 0.15) and: { admitted.first[\ultrasonic] > 0.35 }) {
+                    if((absence > 0.15) and: { admitted.first[\ultrasonic] > 0.35 }
+                        and: { (admitted.first[\events] ? 6) >= (~phenoEventsMin ? 3) }) {
                         ~phenoPlayUltrasonic.(admitted.first, secsPerDay * 0.8);
                     };
                 } {
@@ -1341,9 +1401,16 @@ s.waitForBoot {
                         // INSECTOS 39%, TRANSICIÓN 16%, CORO 8%, from 61 clips.
                         var floorVal = ~phenoVal.(\opacityFloor, 0.0);
                         var sel = ~phenoVal.(\bancada, 0).round.asInteger;
+                        // ...and only files with something above their floor.
+                        // 41 of the 69 expanded files rise less than 3 dB over
+                        // it: the recorder's own hiss above 38 kHz, which the
+                        // voice now strips anyway (\corpusUltrasonic) — so they
+                        // would only spend a gap on near silence. The more a
+                        // file's events stand out, the likelier it is picked.
                         var near = ~corpusClips.select { |c|
                             c[\expanded].notNil and: { c[\opacity] < (1.0 - floorVal) }
                                 and: { (sel == 0) or: { c[\bancada] == (sel - 1) } }
+                                and: { (c[\events] ? 6) >= (~phenoEventsMin ? 3) }
                         };
                         if(chance.coin and: { near.size > 0 }) {
                             var count = ();
@@ -1352,7 +1419,8 @@ s.waitForBoot {
                             pick = near.wchoose(near.collect { |c|
                                 var d = (c[\doy] - doy).abs;
                                 d = d.min(365 - d);
-                                (exp((d / 45).squared * -0.5) / count[c[\bancada]].sqrt) + 0.002
+                                (exp((d / 45).squared * -0.5) / count[c[\bancada]].sqrt
+                                    * ((c[\events] ? 6).clip(3, 18) / 6)) + 0.002
                             }.normalizeSum);
                             ~phenoPlayUltrasonic.(pick, secsPerDay * 1.6);
                         };

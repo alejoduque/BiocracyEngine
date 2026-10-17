@@ -344,6 +344,15 @@ class Antifonia extends BaseThreeJsModule {
         }
       }
       this._mycoNets = null;
+      for (const o of [this._glints, this._underPts]) {
+        if (o && o.pts) {
+          if (o.pts.parent) o.pts.parent.remove(o.pts);
+          o.pts.geometry.dispose();
+          o.pts.material.dispose();
+        }
+      }
+      this._glints = null;
+      this._underPts = null;
       for (const spr of (this._paujilSprites || [])) {
         if (spr && spr.parent) spr.parent.remove(spr);
         if (spr && spr.geometry) spr.geometry.dispose();
@@ -454,18 +463,33 @@ class Antifonia extends BaseThreeJsModule {
     // Un cubo por estrato: cada uno acaba siendo su propio THREE.Points, de
     // modo que responder a la actividad por estrato cuesta SEIS cambios de
     // material por cuadro en vez de reescribir 60 000 colores.
-    const buckets = Antifonia.STRATA.map(() => ({ pos: [], col: [] }));
+    const buckets = Antifonia.STRATA.map(() => ({ pos: [], col: [], xpos: [], xcol: [] }));
+    // Cuántos puntos tendría cada estrato si se asignaran al más cercano,
+    // como antes del reparto: el barajado gasta rnd por estrato, y la red
+    // subterránea, que se siembra después, tiene que recibir el mismo rnd.
+    const nearCount = new Array(Antifonia.STRATA.length).fill(0);
 
     const put = (x, agl, z, intensity) => {
       const y = this._yFromAGL(agl);
-      const si = this._stratumIndexFromAGL(agl);
+      // Repartido entre los dos estratos vecinos según dónde cae, no al más
+      // cercano. Cada estrato es su propio THREE.Points con su color, su
+      // opacidad, su tamaño de punto y su viento; asignados al más cercano,
+      // el borde entre dos (a 13 m, entre sotobosque y dosel) se veía como
+      // una raya de horizonte gris que cruzaba los árboles. Repartidos así, el
+      // paso es un degradado a lo largo de todo el tramo. El sorteo sale de un
+      // hash de la posición y no de rnd(), para no mover la semilla del rodal.
+      const si = this._stratumDither(agl, x * 12.9898 + z * 78.233 + agl * 37.719);
       const b = buckets[si];
-      b.pos.push(x, y, z);
+      // Lo agregado después (detalle de la ceiba, palmas tardías) va aparte:
+      // ver el barajado más abajo.
+      const P_ = this._putExtra ? b.xpos : b.pos, C_ = this._putExtra ? b.xcol : b.col;
+      if (!this._putExtra) nearCount[this._stratumIndexFromAGL(agl)]++;
+      P_.push(x, y, z);
       // Fósforo blanco: casi blanco con un sesgo verde-cian, modulado por la
       // intensidad de retorno. El follaje devuelve flojo, el suelo y la madera
       // devuelven fuerte — así la copa queda vaporosa y el suelo firme.
       const i = Math.max(0.16, Math.min(1, intensity));
-      b.col.push(0.80 * i + 0.10, 0.97 * i + 0.06, 0.90 * i + 0.10);
+      C_.push(0.80 * i + 0.10, 0.97 * i + 0.06, 0.90 * i + 0.10);
     };
     // Los constructores de árbol son métodos (para que cada arquitectura se
     // lea por separado) y necesitan este emisor; se pasa por referencia en vez
@@ -538,6 +562,9 @@ class Antifonia extends BaseThreeJsModule {
     // la giganta, descentrada
     const ceibaX = -2.35, ceibaZ = 1.15;
     this._tree_ceiba(rnd, ceibaX, ceibaZ, 1.0);
+    this._putExtra = true;
+    this._ceibaDetail();
+    this._putExtra = false;
     placed.push([ceibaX, ceibaZ]);
 
     // su cortejo inmediato: pegado, tocándola
@@ -611,6 +638,33 @@ class Antifonia extends BaseThreeJsModule {
 
 
 
+    // ── Palmas junto a la ceiba ──────────────────────────────────────────
+    // Tres palmas de vino al pie de la giganta, como crecen en el bosque de
+    // galería: su corona arqueada contra el fuste limpio es la escala que
+    // hace leer cuarenta metros. Van al final y con su propio generador, para
+    // que el resto del rodal no se resiembre (ver la nota de arriba sobre las
+    // palmas que desaparecieron). Se apartan de la lista de árboles hasta
+    // después del micelio, por la misma razón: las raíces se toman de esa
+    // lista y la red cambiaría entera.
+    {
+      const rp = this._rng(31337);
+      const before = this._trees.length;
+      this._putExtra = true;
+      for (let k = 0, tries = 0; k < 3 && tries < 60; tries++) {
+        // del lado de la cámara (+z), donde se leen contra el fuste
+        const a = Math.PI * (0.12 + rp() * 0.76), r = 1.2 + rp() * 1.4;
+        const x = ceibaX + Math.cos(a) * r, z = ceibaZ + Math.sin(a) * r;
+        let near = false;
+        for (const [px, pz] of placed) if (Math.hypot(px - x, pz - z) < (tries < 40 ? 0.5 : 0.3)) { near = true; break; }
+        if (near) continue;
+        placed.push([x, z]);
+        this._tree_palma(rp, x, z, 1.0 + rp() * 0.3, 2.6);
+        k++;
+      }
+      this._putExtra = false;
+      this._palmsLate = this._trees.splice(before);
+    }
+
     // ── sotobosque ───────────────────────────────────────────────────────
     const nShrub = Math.round(Antifonia.CLOUD.shrub * Antifonia.CLOUD.scale);
     for (let i = 0; i < nShrub; i++) {
@@ -628,12 +682,20 @@ class Antifonia extends BaseThreeJsModule {
     }
 
     // ── a la GPU ─────────────────────────────────────────────────────────
+    // Las tiradas que el barajado gastaría con la asignación al más cercano,
+    // contra las que gasta con el reparto: la diferencia se consume al final.
+    let drawsNear = 0, drawsNow = 0;
+    for (let si = 0; si < buckets.length; si++) {
+      if (nearCount[si] > 0) drawsNear += nearCount[si] - 1;
+      const nm = buckets[si].pos.length / 3;
+      if (nm > 0) drawsNow += nm - 1;
+    }
     this._cloudPoints = [];
     this._cloudMats = [];
     this._cloudGroup = new THREE.Group();
     for (let si = 0; si < buckets.length; si++) {
       const b = buckets[si];
-      if (b.pos.length === 0) { this._cloudPoints.push(null); this._cloudMats.push(null); continue; }
+      if (b.pos.length === 0 && b.xpos.length === 0) { this._cloudPoints.push(null); this._cloudMats.push(null); continue; }
       // Barajado Fisher-Yates sobre las ternas. Esto es lo que hace que el LOD
       // adaptativo sea gratis más abajo: si los puntos están en orden
       // aleatorio, dibujar un PREFIJO del buffer es una submuestra uniforme
@@ -645,6 +707,32 @@ class Antifonia extends BaseThreeJsModule {
           let t = b.pos[i * 3 + k]; b.pos[i * 3 + k] = b.pos[j * 3 + k]; b.pos[j * 3 + k] = t;
           t = b.col[i * 3 + k]; b.col[i * 3 + k] = b.col[j * 3 + k]; b.col[j * 3 + k] = t;
         }
+      }
+      // Los puntos agregados (b.xpos) se barajan con su propio generador y
+      // se intercalan parejo entre los del rodal. Barajarlos con rnd gastaba
+      // una tirada por punto antes del micelio, y la red subterránea salía
+      // otra; intercalados, un prefijo del buffer sigue siendo una muestra
+      // pareja de todo, y el LOD no se come primero el detalle de la ceiba.
+      if (b.xpos.length) {
+        const rx = this._rng(5150 + si);
+        const nx = b.xpos.length / 3;
+        for (let i = nx - 1; i > 0; i--) {
+          const j = (rx() * (i + 1)) | 0;
+          for (let k = 0; k < 3; k++) {
+            let t = b.xpos[i * 3 + k]; b.xpos[i * 3 + k] = b.xpos[j * 3 + k]; b.xpos[j * 3 + k] = t;
+            t = b.xcol[i * 3 + k]; b.xcol[i * 3 + k] = b.xcol[j * 3 + k]; b.xcol[j * 3 + k] = t;
+          }
+        }
+        const nm = b.pos.length / 3, tot = nm + nx;
+        const mp = [], mc = [];
+        let a = 0, x = 0;
+        for (let i = 0; i < tot; i++) {
+          const takeX = x < nx && (a >= nm || (x + 1) * tot <= (i + 1) * nx + 0.5 * tot);
+          const src = takeX ? b.xpos : b.pos, srcC = takeX ? b.xcol : b.col, q = takeX ? x++ : a++;
+          mp.push(src[q * 3], src[q * 3 + 1], src[q * 3 + 2]);
+          mc.push(srcC[q * 3], srcC[q * 3 + 1], srcC[q * 3 + 2]);
+        }
+        b.pos = mp; b.col = mc;
       }
       const g = new THREE.BufferGeometry();
       g.setAttribute("position", new THREE.Float32BufferAttribute(b.pos, 3));
@@ -660,13 +748,16 @@ class Antifonia extends BaseThreeJsModule {
       });
       const pts = new THREE.Points(g, m);
       pts.frustumCulled = false;
-      pts.userData.total = n;
+      pts.userData.total = b.pos.length / 3;
       this._cloudGroup.add(pts);
       this._cloudPoints.push(pts);
       this._cloudMats.push(m);
     }
     this.scene.add(this._cloudGroup);
+    for (let k = drawsNow; k < drawsNear; k++) rnd();
     this._buildMycelium(rnd, W);
+    if (this._palmsLate) { this._trees.push(...this._palmsLate); this._palmsLate = null; }
+    this._buildGlints();
 
     this._cloudTotal = this._cloudPoints.reduce((a, p) => a + (p ? p.userData.total : 0), 0);
 
@@ -755,6 +846,9 @@ class Antifonia extends BaseThreeJsModule {
     // desplaza del anterior siguiendo esa inclinación.
     const leanA = rnd() * Math.PI * 2;
     const leanR = (0.5 + rnd() * 0.9) * scale * M;
+    // Las ramas que se describen abajo quedan guardadas para _ceibaDetail,
+    // que les pone madera, ramillas y matas de follaje (sin tocar rnd).
+    this._ceibaShape = { cx, cz, H, boleTop, scale, leanA, leanR, tiers, arms: [] };
     for (let ti = 0; ti < tiers; ti++) {
       const u = ti / (tiers - 1);
       const h = boleTop + u * (H - boleTop);
@@ -789,6 +883,7 @@ class Antifonia extends BaseThreeJsModule {
         lenSum += len;
       }
       if (arms.length === 0) continue;
+      for (const br of arms) this._ceibaShape.arms.push({ ...br, tcx, tcz, h, tier: ti });
       for (let i = 0; i < n; i++) {
         // reparto por largo: una rama del doble de largo recibe el doble
         let pick = rnd() * lenSum, k = 0;
@@ -1047,37 +1142,32 @@ class Antifonia extends BaseThreeJsModule {
       }
     };
 
-    if (kind === "howler") {
-      // Alouatta seniculus, encorvado sobre la rama.
-      blob(0, 0, 0, 0.20, 0.15, 0.14, 130, 0.62);          // cuerpo
-      blob(0.24, 0.10, 0, 0.10, 0.10, 0.09, 60, 0.78);     // cabeza
-      blob(0.30, 0.03, 0, 0.07, 0.06, 0.06, 34, 0.85);     // mandíbula (hioides)
-      // COLA PREHENSIL enroscada — es lo que hace legible a un mono del Nuevo
-      // Mundo a cualquier distancia, así que lleva el doble de puntos que una
-      // pata y se enrosca de verdad.
-      limb((t) => {
-        const a = t * Math.PI * 1.7;
-        const r = 0.26 * (1 - t * 0.45);
-        return [-0.18 - t * 0.10, -0.02 + Math.sin(a) * r * 0.75, Math.cos(a) * r * 0.5 - 0.13];
-      }, 80, 0.022, 0.72);
-      // brazos agarrados a la rama
-      limb((t) => [0.10 - t * 0.02, -0.13 - t * 0.16, 0.10], 22, 0.02, 0.6);
-      limb((t) => [-0.02 - t * 0.02, -0.13 - t * 0.15, -0.10], 22, 0.02, 0.6);
-    } else if (kind === "paujil") {
-      // Crax alberti — cuerpo pesado, cuello erguido, cresta rizada.
-      blob(0, 0, 0, 0.20, 0.14, 0.13, 110, 0.60);          // cuerpo
-      limb((t) => [0.13 + t * 0.06, 0.10 + t * 0.20, 0], 26, 0.02, 0.68);  // cuello
-      blob(0.20, 0.32, 0, 0.07, 0.06, 0.06, 40, 0.80);     // cabeza
-      limb((t) => [0.26 + t * 0.09, 0.31, 0], 10, 0.012, 0.9);             // pico
-      // cresta rizada, el rasgo que le da el nombre
-      for (let k = 0; k < 5; k++) {
-        limb((t) => [0.17 + k * 0.012 - t * 0.03,
-                     0.38 + t * 0.10,
-                     (k - 2) * 0.014 + Math.sin(t * 4) * 0.012], 9, 0.008, 0.85);
+    // ESQUEMÁTICOS, como los devuelve un barrido aéreo: la cara de arriba
+    // de un cuerpo, pocos retornos, y un solo gesto que lo distingue. Antes
+    // llevaban mandíbula, cresta rizada, pico y patas con cientos de puntos:
+    // leían como dibujos animados dentro de una nube que no dibuja nada así.
+    // Un haz que baja casi vertical no ve ni patas ni cara.
+    const shell = (cx, cy, cz, rx, ry, rz, n, inten) => {
+      for (let i = 0; i < n; i++) {
+        const u = rnd() * Math.PI * 2;
+        const v = Math.acos(rnd());            // sólo el hemisferio de arriba
+        put(cx + Math.cos(u) * Math.sin(v) * rx,
+            cy + Math.cos(v) * ry,
+            cz + Math.sin(u) * Math.sin(v) * rz,
+            inten * (0.7 + rnd() * 0.4));
       }
-      limb((t) => [-0.03, -0.13 - t * 0.16, 0.045], 18, 0.015, 0.62);      // patas
-      limb((t) => [0.03, -0.13 - t * 0.16, -0.045], 18, 0.015, 0.62);
-      limb((t) => [-0.20 - t * 0.20, 0.02 + t * 0.10, 0], 30, 0.025, 0.55); // cola
+    };
+    if (kind === "howler") {
+      // Alouatta seniculus: una masa encorvada sobre la rama y la cola que
+      // cuelga. La cola es el gesto: con ella basta para leer un mono.
+      shell(0, 0, 0, 0.22, 0.13, 0.15, 46, 0.6);
+      shell(0.22, 0.06, 0, 0.08, 0.07, 0.08, 12, 0.7);
+      limb((t) => [-0.2 - t * 0.04, -0.04 - t * 0.38, -0.05 + Math.sin(t * 2.2) * 0.06], 13, 0.03, 0.6);
+    } else if (kind === "paujil") {
+      // Crax alberti: un cuerpo bajo y el cuello erguido. Nada más.
+      shell(0, 0, 0, 0.21, 0.12, 0.13, 38, 0.58);
+      limb((t) => [0.14 + t * 0.07, 0.08 + t * 0.24, 0], 8, 0.025, 0.7);
+      shell(0.22, 0.33, 0, 0.05, 0.04, 0.05, 6, 0.75);
     }
 
     const g = new THREE.BufferGeometry();
@@ -1394,9 +1484,13 @@ class Antifonia extends BaseThreeJsModule {
       roots.push([Math.cos(a) * rnd() * W * 0.7, Math.sin(a) * rnd() * W * 0.7]);
     }
 
+    // Cada hifa se guarda también como camino, para que los retornos que
+    // viajan bajo tierra (_updateUnderground) la recorran.
+    this._mycoPaths = [];
     const walk = (x, z, ang, life, depth) => {
       let cx = x, cz = z, ca = ang;
       const step = 0.16 + rnd() * 0.13;
+      const path = [];
       for (let i = 0; i < life; i++) {
         // giro browniano con una leve deriva hacia afuera: la red se expande
         const outward = Math.atan2(cz, cx);
@@ -1407,6 +1501,8 @@ class Antifonia extends BaseThreeJsModule {
         const d0 = -0.25 - Math.sin(i * 0.31 + x) * 0.35;
         const d1 = -0.25 - Math.sin((i + 1) * 0.31 + x) * 0.35;
         netPos[curNet].push(cx, yOf(d0), cz, nx, yOf(d1), nz);
+        if (path.length === 0) path.push(cx, yOf(d0), cz);
+        path.push(nx, yOf(d1), nz);
         netCx[curNet] += cx; netCz[curNet] += cz; netN[curNet] += 1;
         // Se apaga con la distancia al centro, PERO nunca del todo: el trozo
         // que sale del cuadro tiene que seguir visible al borde, o el efecto
@@ -1425,6 +1521,7 @@ class Antifonia extends BaseThreeJsModule {
         // se deja correr bien más allá del rodal antes de rendirse
         if (Math.hypot(cx, cz) > W * 1.85) break;
       }
+      if (path.length >= 12) this._mycoPaths.push({ pts: new Float32Array(path), net: curNet, depth });
     };
 
     for (let ri = 0; ri < roots.length; ri++) {
@@ -1532,11 +1629,13 @@ class Antifonia extends BaseThreeJsModule {
   // Attalea butyracea — palma de vino. Estípite columnar delgadísimo y una
   // corona de hojas que nacen todas del ápice y se arquean: un plumero. Es la
   // arquitectura más fácil de reconocer en una nube de puntos.
-  _tree_palma(rnd, cx, cz, scale) {
+  // dens: densidad de retornos (1 = la del rodal). Las palmas junto a la
+  // ceiba van más densas: contra el fuste se leen de cerca.
+  _tree_palma(rnd, cx, cz, scale, dens = 1) {
     const put = this._putRef;
     const M = Antifonia.M;
     const H = 17 * scale, crown = 13.5 * scale;
-    const S = Antifonia.CLOUD.scale;
+    const S = Antifonia.CLOUD.scale * dens;
 
     // estípite: columna regular, anillada
     const nStipe = Math.round(230 * S);
@@ -1571,6 +1670,257 @@ class Antifonia extends BaseThreeJsModule {
     this._trees.push({ kind: "palma", x: cx, z: cz, h: H, r: 5 * scale * M });
   }
 
+  // ══ la ceiba, de cerca ══════════════════════════════════════════════
+  //
+  // La giganta es el único árbol cuya arquitectura es el asunto, y con sólo
+  // follaje por bandejas se leía como un abeto de puntos. Esto le pone lo que
+  // un barrido cercano devuelve de una emergente: la MADERA (el eje que sigue
+  // por dentro de la copa, cada rama de cada bandeja con su caída, ramillas),
+  // la corteza en costillas, el filo de los contrafuertes, matas de follaje
+  // en las puntas, y lianas que cuelgan de las bandejas bajas. Generador
+  // propio: el resto del rodal no cambia.
+  _ceibaDetail() {
+    const c = this._ceibaShape;
+    if (!c) return;
+    const put = this._putRef;
+    const M = Antifonia.M;
+    const S = Antifonia.CLOUD.scale;
+    const rd = this._rng(4242);
+    const { cx, cz, H, boleTop, scale, leanA, leanR } = c;
+    const mPerU = 1 / M;                       // metros por unidad horizontal
+
+    // Una rama como tubo de puntos en su superficie: de (x0,h0,z0) a
+    // (x1,h1,z1), radio de r0 a r1 en metros, con una curva de caída.
+    const limb = (x0, h0, z0, x1, h1, z1, r0, r1, n, inten, sag = 0) => {
+      for (let i = 0; i < n; i++) {
+        const t = rd();
+        const x = x0 + (x1 - x0) * t, z = z0 + (z1 - z0) * t;
+        const h = h0 + (h1 - h0) * t - sag * t * t;
+        const r = (r0 + (r1 - r0) * t) * M;
+        const a = rd() * Math.PI * 2;
+        // la cara de arriba devuelve más que la de abajo
+        const up = Math.sin(a) > -0.2 ? 1 : 0.55;
+        put(x + Math.cos(a) * r, h + Math.sin(a) * r * mPerU, z + Math.sin(a + 1.3) * r * 0.6,
+            (inten + rd() * 0.2) * up);
+      }
+    };
+
+    // el eje: sigue por dentro de la copa, recostado
+    const topX = cx + Math.cos(leanA + 2.8) * leanR * 1.4;
+    const topZ = cz + Math.sin(leanA + 2.8) * leanR * 1.4;
+    limb(cx, boleTop - 1, cz, topX, H * 0.94, topZ, 0.95 * scale, 0.32 * scale, Math.round(900 * S), 0.62);
+
+    // costillas de corteza: crestas verticales levemente torcidas
+    for (let k = 0; k < 16; k++) {
+      const a0 = (k / 16) * Math.PI * 2 + rd() * 0.2;
+      const n = Math.round(120 * S);
+      for (let i = 0; i < n; i++) {
+        const t = rd();
+        const h = 3.0 * scale + t * (boleTop - 3.0 * scale);
+        const r = (1.08 - t * 0.35) * scale * M;
+        const a = a0 + t * 0.35 + Math.sin(t * 9 + k) * 0.03;
+        put(cx + Math.cos(a) * r, h, cz + Math.sin(a) * r, 0.78 + rd() * 0.22);
+      }
+    }
+
+    // filo de los contrafuertes: la curva exterior de cada aleta
+    for (let f = 0; f < 7; f++) {
+      const a = (f / 7) * Math.PI * 2 + rd() * 0.2;
+      const n = Math.round(70 * S);
+      for (let i = 0; i < n; i++) {
+        const t = rd();
+        const h = t * 3.4 * scale;
+        const out = (1 - t) * (1 - t) * 3.0 * scale * M;
+        put(cx + Math.cos(a) * (0.9 * scale * M + out), h + 0.1,
+            cz + Math.sin(a) * (0.9 * scale * M + out), 0.9 + rd() * 0.1);
+      }
+    }
+
+    // la madera de cada rama, sus ramillas y las matas de las puntas
+    const clump = (x, h, z, rH, rV, n) => {
+      for (let i = 0; i < n; i++) {
+        const u = rd() * Math.PI * 2, v = Math.acos(2 * rd() - 1), t = Math.cbrt(rd());
+        put(x + Math.cos(u) * Math.sin(v) * rH * M * t,
+            h + Math.cos(v) * rV * t,
+            z + Math.sin(u) * Math.sin(v) * rH * M * t,
+            0.2 + rd() * 0.32);
+      }
+    };
+    for (const br of c.arms) {
+      const sag = br.droop * 3.2 * scale;
+      const end = (t) => {
+        const a = br.a + br.curve * t * t;
+        return [br.tcx + Math.cos(a) * br.len * t, br.h - sag * t * t, br.tcz + Math.sin(a) * br.len * t];
+      };
+      // la rama: del eje a la punta, en tramos para seguir su curva
+      const segs = 5;
+      const thick0 = (0.42 + 0.18 * (1 - br.tier / 4)) * scale;
+      for (let q = 0; q < segs; q++) {
+        const [x0, h0, z0] = end(q / segs), [x1, h1, z1] = end((q + 1) / segs);
+        limb(x0, h0, z0, x1, h1, z1, thick0 * (1 - q / segs * 0.8), thick0 * (1 - (q + 1) / segs * 0.8),
+             Math.round(34 * S * (br.len * mPerU / 8)), 0.58);
+      }
+      // ramillas: dos o tres salen de la segunda mitad y suben antes de caer
+      const nt = 2 + ((rd() * 2) | 0);
+      for (let j = 0; j < nt; j++) {
+        const t0 = 0.4 + rd() * 0.45;
+        const [x0, h0, z0] = end(t0);
+        const a = br.a + br.curve * t0 * t0 + (rd() < 0.5 ? 1 : -1) * (0.45 + rd() * 0.6);
+        const L = br.len * (0.22 + rd() * 0.25);
+        const x1 = x0 + Math.cos(a) * L, z1 = z0 + Math.sin(a) * L;
+        const h1 = h0 + (0.6 + rd() * 1.4) * scale;
+        limb(x0, h0, z0, x1, h1, z1, 0.14 * scale, 0.05 * scale, Math.round(26 * S * (L * mPerU / 4)), 0.5, -0.4);
+        clump(x1, h1 + 0.4, z1, (1.4 + rd() * 1.2) * scale, (0.6 + rd() * 0.5) * scale, Math.round(70 * S));
+      }
+      const [xe, he, ze] = end(1);
+      clump(xe, he + 0.3, ze, (1.6 + rd() * 1.4) * scale, (0.7 + rd() * 0.5) * scale, Math.round(90 * S));
+    }
+
+    // lianas: cuelgan de las bandejas bajas y se mecen apenas
+    const low = c.arms.filter((b) => b.tier <= 1);
+    for (let k = 0; k < Math.min(4, low.length); k++) {
+      const br = low[(rd() * low.length) | 0];
+      const t = 0.5 + rd() * 0.4;
+      const a = br.a + br.curve * t * t;
+      const x = br.tcx + Math.cos(a) * br.len * t, z = br.tcz + Math.sin(a) * br.len * t;
+      const h0 = br.h - br.droop * 3.2 * scale * t * t;
+      const drop = (6 + rd() * 9) * scale;
+      const n = Math.round(80 * S);
+      for (let i = 0; i < n; i++) {
+        const u = rd();
+        put(x + Math.sin(u * 5 + k) * 0.6 * M, h0 - u * drop, z + Math.cos(u * 4 + k) * 0.5 * M, 0.45 + rd() * 0.25);
+      }
+    }
+  }
+
+  // ══ destellos ═══════════════════════════════════════════════════════════
+  //
+  // Actividad de luz en el rodal: retornos sueltos que se encienden y se
+  // apagan sobre la madera y el follaje, como un barrido que vuelve a
+  // adquirir un punto. Más y más seguidos cuanto más denso el coro y más
+  // fuerte el espectro; de noche y en calma, casi ninguno.
+  _buildGlints() {
+    const rg = this._rng(777);
+    const src = [];
+    for (const p of this._cloudPoints || []) {
+      if (!p) continue;
+      const a = p.geometry.getAttribute("position").array;
+      const n = a.length / 3;
+      for (let i = 0; i < 900 && n > 0; i++) {
+        const j = (rg() * n) | 0;
+        if (a[j * 3 + 1] < -0.2) continue;      // sobre el suelo
+        src.push(a[j * 3], a[j * 3 + 1], a[j * 3 + 2]);
+      }
+    }
+    if (src.length < 30) return;
+    const N = 180;
+    const g = new THREE.BufferGeometry();
+    g.setAttribute("position", new THREE.BufferAttribute(new Float32Array(N * 3), 3).setUsage(THREE.DynamicDrawUsage));
+    g.setAttribute("color", new THREE.BufferAttribute(new Float32Array(N * 3), 3).setUsage(THREE.DynamicDrawUsage));
+    const pts = new THREE.Points(g, new THREE.PointsMaterial({
+      size: 0.065, sizeAttenuation: true, vertexColors: true, transparent: true,
+      depthWrite: false, blending: THREE.AdditiveBlending,
+    }));
+    pts.frustumCulled = false;
+    pts.renderOrder = 501;
+    this.scene.add(pts);
+    this._glints = { pts, src: new Float32Array(src), age: new Float32Array(N).fill(99), life: new Float32Array(N).fill(1), rg };
+  }
+
+  _updateGlints(dt) {
+    const G = this._glints;
+    if (!G) return;
+    let au = null;
+    try { au = window.__scAudio || null; } catch (e) { au = null; }
+    const spec = (au && au.bands) ? this._bandMean(au.bands, 0.35, 1.0) : 0;
+    const act = Math.min(1, this.getChorusDensity() * 0.7 + spec * 1.4 + this.pulseEnergy * 0.3);
+    const rate = 0.14 + act * 0.9;               // nacimientos por punto y segundo
+    const P = G.pts.geometry.getAttribute("position"), C = G.pts.geometry.getAttribute("color");
+    const pa = P.array, ca = C.array, n = G.src.length / 3;
+    let moved = false;
+    for (let i = 0; i < G.age.length; i++) {
+      G.age[i] += dt;
+      if (G.age[i] > G.life[i] && G.rg() < rate * dt) {
+        const j = (G.rg() * n) | 0;
+        pa[i * 3] = G.src[j * 3]; pa[i * 3 + 1] = G.src[j * 3 + 1]; pa[i * 3 + 2] = G.src[j * 3 + 2];
+        G.age[i] = 0; G.life[i] = 0.35 + G.rg() * 1.2;
+        moved = true;
+      }
+      const t = G.age[i] / G.life[i];
+      const e = t >= 1 ? 0 : (t < 0.12 ? t / 0.12 : Math.pow(1 - (t - 0.12) / 0.88, 2));
+      ca[i * 3] = 0.95 * e; ca[i * 3 + 1] = 1.25 * e; ca[i * 3 + 2] = 1.12 * e;
+    }
+    if (moved) P.needsUpdate = true;
+    C.needsUpdate = true;
+  }
+
+  // ══ bajo tierra ════════════════════════════════════════════════════════
+  //
+  // Retornos del tamaño de un píxel que viajan por las hifas: el micelio
+  // transporta, no sólo se enciende. Cada uno recorre su camino a su paso y,
+  // al final, toma otro. Su brillo es el de su sub-red, que escucha su banda
+  // del espectro (ver _updateCloud), así que el tráfico sube con lo grave.
+  _updateUnderground(dt) {
+    const paths = this._mycoPaths;
+    if (!paths || paths.length === 0) return;
+    if (!this._underPts) {
+      const N = 158, ru = this._rng(9001);
+      const g = new THREE.BufferGeometry();
+      g.setAttribute("position", new THREE.BufferAttribute(new Float32Array(N * 3), 3).setUsage(THREE.DynamicDrawUsage));
+      g.setAttribute("color", new THREE.BufferAttribute(new Float32Array(N * 3), 3).setUsage(THREE.DynamicDrawUsage));
+      const pts = new THREE.Points(g, new THREE.PointsMaterial({
+        // Translúcidos: se leen como algo que pasa por la hifa, no como
+        // luces encima de ella.
+        size: 2.0, sizeAttenuation: false, vertexColors: true, transparent: true, opacity: 0.75,
+        depthWrite: false, blending: THREE.AdditiveBlending,
+      }));
+      pts.frustumCulled = false;
+      this.scene.add(pts);
+      this._underPts = {
+        pts, ru,
+        path: new Int32Array(N), s: new Float32Array(N), v: new Float32Array(N),
+      };
+      const U = this._underPts;
+      for (let i = 0; i < N; i++) {
+        U.path[i] = (ru() * paths.length) | 0;
+        U.s[i] = ru() * (paths[U.path[i]].pts.length / 3 - 1);
+        U.v[i] = (2 + ru() * 6) * (ru() < 0.5 ? 1 : -1);
+      }
+    }
+    const U = this._underPts;
+    const P = U.pts.geometry.getAttribute("position"), C = U.pts.geometry.getAttribute("color");
+    const pa = P.array, ca = C.array;
+    const nets = this._mycoNets || [];
+    for (let i = 0; i < U.path.length; i++) {
+      let pth = paths[U.path[i]];
+      const lit = nets[pth.net] ? nets[pth.net].lit : 0;
+      U.s[i] += U.v[i] * dt * (0.6 + lit * 1.6);
+      const last = pth.pts.length / 3 - 1;
+      if (U.s[i] < 0 || U.s[i] > last) {
+        U.path[i] = (U.ru() * paths.length) | 0;
+        pth = paths[U.path[i]];
+        const L = pth.pts.length / 3 - 1;
+        U.v[i] = (2 + U.ru() * 6) * (U.ru() < 0.5 ? 1 : -1);
+        U.s[i] = U.v[i] > 0 ? 0 : L;
+      }
+      const L = pth.pts.length / 3 - 1;
+      const k = Math.max(0, Math.min(L - 1, Math.floor(U.s[i]))), f = Math.min(1, Math.max(0, U.s[i] - k));
+      const q = pth.pts;
+      pa[i * 3] = q[k * 3] + (q[k * 3 + 3] - q[k * 3]) * f;
+      pa[i * 3 + 1] = q[k * 3 + 1] + (q[k * 3 + 4] - q[k * 3 + 1]) * f;
+      pa[i * 3 + 2] = q[k * 3 + 2] + (q[k * 3 + 5] - q[k * 3 + 2]) * f;
+      // Blancos, sin color: lo que cambia es cuánto se ven. Con mezcla
+      // aditiva el gris ES la opacidad — cada punto se enciende con su
+      // sub-red y, a lo largo de su camino, aparece y se apaga despacio.
+      const lt = nets[pth.net] ? nets[pth.net].glow ?? nets[pth.net].lit : 0;
+      const fade = Math.sin(Math.PI * Math.min(1, Math.max(0, U.s[i] / Math.max(1, L))));
+      const e = (0.18 + Math.min(1, lt) * 0.82) * (0.35 + 0.65 * fade) * (pth.depth === 0 ? 1 : 0.75);
+      ca[i * 3] = e; ca[i * 3 + 1] = e; ca[i * 3 + 2] = e;
+    }
+    P.needsUpdate = true;
+    C.needsUpdate = true;
+  }
+
   _textSprite(label, sub, idx) {
     const P = Antifonia.PALETTE;
     const cv = document.createElement("canvas");
@@ -1587,6 +1937,16 @@ class Antifonia extends BaseThreeJsModule {
     const tex = new THREE.CanvasTexture(cv);
     tex.minFilter = THREE.LinearFilter;
     this._labelTexes.push(tex);
+    // Un plano que mira a la cámara que lo dibuja (DomeText, del cargador),
+    // no un THREE.Sprite: cada cara del cubo de la cúpula dibujaba su propio
+    // pedazo de sprite, y los nombres llegaban partidos y cizallados en las
+    // costuras ("EMERGE·NTES"), en el domo y en su NDI. Fuera del cargador
+    // (sin DomeText) sigue siendo un sprite.
+    if (typeof DomeText !== "undefined" && DomeText) {
+      const lab = DomeText.facingLabel(tex, 4.6, 1.15, { opacity: 0.62, fog: true });
+      lab.userData.stratum = idx;
+      return lab;
+    }
     const spr = new THREE.Sprite(new THREE.SpriteMaterial({
       map: tex, transparent: true, opacity: 0.62, depthWrite: false,
     }));
@@ -1765,17 +2125,49 @@ class Antifonia extends BaseThreeJsModule {
   // Altura sobre el suelo → y de escena, interpolando entre estratos. Es la
   // pieza que mantiene a Antifonía, DarkForest y Estratos mirando el mismo
   // bosque: una llamada a 20 m cae en el dosel en los tres.
+  //
+  // Curva monótona suave (Hermite cúbica, Fritsch–Carlson) por las alturas de
+  // los estratos, no rectas entre ellos. Con rectas la pendiente saltaba de
+  // golpe en cada estrato — a 6 m pasaba de 0.34 a 0.13 unidades por metro —
+  // y la nube se apretaba 2.6 veces justo encima del sotobosque: una línea de
+  // densidad distinta cruzando todo el rodal. Los estratos siguen en su sitio;
+  // sólo el paso entre ellos se vuelve gradual.
   _yFromAGL(m) {
+    if (!Antifonia._ySpline) {
+      const S = [...Antifonia.STRATA].sort((a, b) => a.mAGL - b.mAGL);
+      const x = S.map((s) => s.mAGL), y = S.map((s) => s.y);
+      const n = x.length, d = [], t = new Array(n).fill(0);
+      for (let i = 0; i < n - 1; i++) d.push((y[i + 1] - y[i]) / (x[i + 1] - x[i]));
+      t[0] = d[0]; t[n - 1] = d[n - 2];
+      for (let i = 1; i < n - 1; i++) t[i] = d[i - 1] * d[i] <= 0 ? 0 : (2 * d[i - 1] * d[i]) / (d[i - 1] + d[i]);
+      Antifonia._ySpline = { x, y, t };
+    }
+    const { x, y, t } = Antifonia._ySpline;
+    if (m <= x[0]) return y[0];
+    if (m >= x[x.length - 1]) return y[y.length - 1];
+    let i = 0;
+    while (i < x.length - 2 && m > x[i + 1]) i++;
+    const h = x[i + 1] - x[i], u = (m - x[i]) / h;
+    const u2 = u * u, u3 = u2 * u;
+    return (2 * u3 - 3 * u2 + 1) * y[i] + (u3 - 2 * u2 + u) * h * t[i]
+         + (-2 * u3 + 3 * u2) * y[i + 1] + (u3 - u2) * h * t[i + 1];
+  }
+
+  // El estrato de un punto de la nube, sorteado entre los dos vecinos en
+  // proporción a la distancia (ver put en _buildCloud).
+  _stratumDither(m, seed) {
     const S = Antifonia.STRATA;
-    if (m >= S[0].mAGL) return S[0].y;
+    if (m >= S[0].mAGL) return 0;
+    if (m <= S[S.length - 1].mAGL) return S.length - 1;
     for (let i = 0; i < S.length - 1; i++) {
       const a = S[i], b = S[i + 1];
       if (m <= a.mAGL && m >= b.mAGL) {
-        const t = (m - b.mAGL) / Math.max(0.001, a.mAGL - b.mAGL);
-        return b.y + t * (a.y - b.y);
+        const tt = (m - b.mAGL) / Math.max(0.001, a.mAGL - b.mAGL);
+        const r = Math.sin(seed) * 43758.5453;
+        return (r - Math.floor(r)) < tt ? i : i + 1;
       }
     }
-    return S[S.length - 1].y;
+    return this._stratumIndexFromAGL(m);
   }
 
   _stratumIndexFromAGL(m) {
@@ -1847,6 +2239,8 @@ class Antifonia extends BaseThreeJsModule {
     this._updateGroundFauna(dt);
     this._updateCalls(dt);
     this._updateCloud(dt);
+    this._updateGlints(dt);
+    this._updateUnderground(dt);
     this._drawNiche();
     this._updateHUD();
 
@@ -2303,8 +2697,14 @@ class Antifonia extends BaseThreeJsModule {
           ants = Math.max(0, 1 - d / (Antifonia.PLOT * 0.55)) * 0.16;
         }
         net.lit += (band * 1.9 + hit * 0.9 - net.lit) * Math.min(1, dt * 5.5);
-        net.mat.opacity = Math.min(0.62,
-          0.055 + wMic * 0.10 + net.lit * 0.34 + lit0 * 0.10 + ants);
+        // Una luz leve, no un destello: el hilo se aclara con lo que pasa por
+        // el bus de SC en su banda y vuelve a su penumbra (~0.6 s, para que
+        // no parpadee con cada cuadro del espectro). En silencio queda en
+        // 0.05-0.1; con sonido en su banda la región se ve encendida, hasta
+        // 0.55 — a 0.3 la luz no se distinguía.
+        net.glow = (net.glow ?? 0) + (net.lit - (net.glow ?? 0)) * Math.min(1, dt * 1.6);
+        net.mat.opacity = Math.min(0.55,
+          0.05 + wMic * 0.06 + net.glow * 0.42 + lit0 * 0.05 + ants * 0.6);
       }
     }
 
