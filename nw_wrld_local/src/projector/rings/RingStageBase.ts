@@ -30,6 +30,8 @@ import { animationManager } from "../helpers/animationManager";
 import parliamentStore from "../parliament/parliamentStore";
 import { LiveFeeds } from "./liveFeeds";
 import { RingLabels, type LabelSpec } from "./ringLabels";
+import { DomeRingLabels } from "./domeRingLabels";
+import { domeRunning } from "../dome/domeCapture";
 import { getPhenoData, loadPhenoData, type PhenoData } from "./phenoData";
 import { ChromaticAberrationShader, ColorGradeShader } from "./postfx";
 import { approach, lerp, smoothstep } from "./ringMath";
@@ -78,6 +80,8 @@ export class RingStageBase extends BaseThreeJsModule {
 
   feeds = new LiveFeeds();
   labels: RingLabels | null = null;
+  /** The same labels as text planes for the dome, made the first time it renders. */
+  private domeLabels: DomeRingLabels | null = null;
   overlayEl: HTMLDivElement | null = null;
   statusEl: HTMLDivElement | null = null;
   defaultView: ViewSpec = { fitRadius: 9.8, polarDeg: 10, azimuthDeg: 0 };
@@ -363,6 +367,9 @@ export class RingStageBase extends BaseThreeJsModule {
       this.labels.begin();
       this.collectLabels((s) => this.labels!.add(s), data);
       this.labels.end(this.camera, this.elem.offsetWidth, this.elem.offsetHeight);
+      const eye = this.scene.userData.domeEye as THREE.Vector3 | undefined;
+      if (domeRunning() && eye) (this.domeLabels ??= new DomeRingLabels(this.scene)).update(this.labels.all, eye);
+      else this.domeLabels?.hide();
     }
     if (t - this._statusAt > 0.25) { this._statusAt = t; this.updateStatus(); }
     getYearMemory().maybeSave();
@@ -445,6 +452,8 @@ export class RingStageBase extends BaseThreeJsModule {
     this._ro = null;
     try { this.disposeRings(); } catch (e) { console.warn("[rings] disposeRings:", e); }
     this.labels?.dispose();
+    this.domeLabels?.dispose();
+    this.domeLabels = null;
     this.labels = null;
     this.overlayEl?.remove();
     this.overlayEl = null;

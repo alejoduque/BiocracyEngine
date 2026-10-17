@@ -14,6 +14,11 @@
 //           clips sounding now in amber.
 //   INNER   the waveform of the bus with its voice nodes and arcs, round the
 //           consensus core.
+//   ABOVE   the corpus's calls after AVGN (avgn/avgnMap.ts): a disc of every
+//           call the recordings hold, placed by UMAP so alike calls sit
+//           together, floating over the centre. The clips sounding now are
+//           walked call by call in amber, and a thread drops from the call
+//           being walked to its recording's blob on the year ring.
 //
 // Today's species move in the lanes between, as on slot 0.
 
@@ -30,6 +35,8 @@ import type { LabelSpec } from "./ringLabels";
 import {
   AMBER, bandGeometry, Band, circleLine, PLAYHEAD, playhead, radialTicks, RING_GREY, setPlayhead, TICK_GREY,
 } from "./ringPrims";
+import { loadAvgn } from "../avgn/avgnData";
+import { AvgnMap, clusterLabel } from "../avgn/avgnMap";
 import {
   doyAngle, hhmm, inSeason, MONTH_START_DOY, MONTHS_ES, polar, SEASONS, seasonMidDoy, seasonSpan, TAU,
 } from "./ringMath";
@@ -43,6 +50,8 @@ const L = {
   event: { rIn: 2.82, rOut: 2.92, y: 0.16 },
   year: { rIn: 3.0, rOut: 4.7, y: 0.1, bandR0: 4.74, bandR1: 4.84, labelR: 5.08 },
   outer: { rIn: 5.35, rOut: 9.1, y: 0.0 },
+  // Over the inner clocks, under the dome's seat (y 2.4).
+  avgn: { r: 1.95, y: 0.95 },
 };
 const SEASON_COLOR: Record<string, number> = {
   seca: 0x6a6f6c,
@@ -75,6 +84,9 @@ export class ReferenceRingsStage extends RingStageBase {
   private col = new Float32Array(ROWS);
   private m4 = new THREE.Matrix4();
   private c3 = new THREE.Color();
+  private avgn: AvgnMap | null = null;
+  private avgnThreads: THREE.LineSegments;
+  private v3 = new THREE.Vector3();
 
   constructor(container: HTMLElement) {
     super(container);
@@ -123,10 +135,25 @@ export class ReferenceRingsStage extends RingStageBase {
       voiceTarget: (voice) => this.wave.latest(voice),
     }, 36);
 
+    // One thread per walked clip, from its call above to its blob below.
+    const tg = new THREE.BufferGeometry();
+    tg.setAttribute("position", new THREE.BufferAttribute(new Float32Array(8 * 2 * 3), 3));
+    tg.setDrawRange(0, 0);
+    this.avgnThreads = new THREE.LineSegments(tg, new THREE.LineBasicMaterial({
+      color: AMBER, transparent: true, opacity: 0.45, depthWrite: false, blending: THREE.AdditiveBlending,
+    }));
+    this.avgnThreads.frustumCulled = false;
+
     this.scene.add(
       this.outer.group, yearGroup, this.wave.group, this.wavePlay, this.core.group, this.orbiters.group,
-      circleLine(L.wave.r + 0.62, L.wave.y, RING_GREY, 0.5)
+      circleLine(L.wave.r + 0.62, L.wave.y, RING_GREY, 0.5), this.avgnThreads
     );
+    // Absent until tools/build_avgn.py has been run; the dial is whole without it.
+    void loadAvgn().then((d) => {
+      if (!d || this.destroyed) return;
+      this.avgn = new AvgnMap(d, { dims: 2, radius: L.avgn.r, y: L.avgn.y }, { pointSize: 0.03 });
+      this.scene.add(this.avgn.group);
+    });
     this.start();
   }
 
@@ -238,6 +265,27 @@ export class ReferenceRingsStage extends RingStageBase {
 
     this.orbiters.update(f, data, dt, t, p);
     this.core.update(this._smoothConsensus, this.voteFlash, this.voteAlarm);
+
+    if (this.avgn) {
+      // The disc turns with the dial's own day, slowly, so the clusters keep
+      // their places long enough to be read.
+      this.avgn.group.rotation.y = -frac * 0.35;
+      this.avgn.group.updateMatrixWorld();
+      this.avgn.update(f, t, 0.35 + this._smoothConsensus * 0.5);
+      const pos = this.avgnThreads.geometry.getAttribute("position") as THREE.BufferAttribute;
+      const arr = pos.array as Float32Array;
+      let n = 0;
+      for (const w of this.avgn.walkingNow()) {
+        const blob = this.blobIndex.get(w.key);
+        if (!blob || n >= 8) continue;
+        this.avgn.headPos(w.head, this.v3).applyMatrix4(this.avgn.group.matrixWorld);
+        this.v3.toArray(arr, n * 6);
+        blob.pos.toArray(arr, n * 6 + 3);
+        n++;
+      }
+      this.avgnThreads.geometry.setDrawRange(0, n * 2);
+      if (n) pos.needsUpdate = true;
+    }
   }
 
   collectLabels(add: (s: LabelSpec) => void, data: PhenoData | null): void {
@@ -282,6 +330,30 @@ export class ReferenceRingsStage extends RingStageBase {
       }
     }
     this.orbiters.labels(add, f.opacityFloor);
+
+    // AVGN: the call types, and the clip being walked.
+    if (this.avgn) {
+      const a = this.avgn;
+      a.group.updateMatrixWorld();
+      a.clusters().forEach((cl, i) => {
+        if (a.visibleIn(cl.id) === 0) return;
+        const on = a.isLit(cl.id);
+        const [l1, l2] = clusterLabel(cl);
+        add({
+          id: `o-a${cl.id}`, pos: a.clusterPos(i, new THREE.Vector3()).applyMatrix4(a.group.matrixWorld),
+          text: l1, sub: on ? l2 : undefined, cls: "clip" + (on ? " live" : ""),
+          color: on ? undefined : "#" + this.c3.setHex(roleInfo(cl.role).color).lerp(new THREE.Color(0xffffff), 0.35).getHexString(),
+          priority: on ? 28 : 6, maxDist: on ? undefined : 9, opacity: on ? 1 : 0.7,
+        });
+      });
+      const head = a.liveHead(new THREE.Vector3());
+      if (head) {
+        add({
+          id: "o-ahead", pos: head.applyMatrix4(a.group.matrixWorld), text: a.liveLine(),
+          cls: "head small", priority: 36, anchor: "l", dx: 8, dy: -10,
+        });
+      }
+    }
   }
 
   statusExtra(): string {
@@ -294,6 +366,10 @@ export class ReferenceRingsStage extends RingStageBase {
     this.yearSpec?.dispose();
     this.wave?.dispose();
     this.orbiters?.dispose();
+    this.avgn?.dispose();
+    this.avgn = null;
+    this.avgnThreads?.geometry.dispose();
+    (this.avgnThreads?.material as THREE.Material | undefined)?.dispose();
   }
 }
 

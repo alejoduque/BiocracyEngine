@@ -303,8 +303,11 @@
         // language-side code, which SynthDescLib cannot see). A layer is
         // silent at fader 0 or muted. A key with no known reach — CÁMARA,
         // VIZ, the faders themselves — never greys. Purely a look: a grey
-        // knob still works. While a GOLPE row or step is being tuned the four
+        // knob still works. While a GOLPE row or step is being tuned the five
         // knobs that tune it light up and everything else greys (focus).
+        // Moving a layer's fader (GUI or MIDI) does the same for that layer:
+        // the knobs that reach it light up, the rest grey, while the hand is
+        // on it and ~mixFocusHold seconds after — where to reach next.
         //
         // ~layerReach is hand-kept: every ~motIn / ~motVal / k.(\…) read in
         // 18_motores.scd and 19_golpe.scd. Keep it in step with them.
@@ -319,8 +322,43 @@
             mixMotor: [\delayFeedback, \droneFade, \filterCutoff, \harmonicRich, \masterAmp,
                 \masterVolume, \memoryFeed, \noiseFilt, \noiseLevel, \opacityFloor, \pitchShift,
                 \pulseGain, \resonantBody, \spatialSpread, \spectralShift, \textureDepth,
-                \timeDilation, \transactionInfluence]
+                \timeDilation, \transactionInfluence],
+            // 14_phenological_corpus.scd reads the Cámara in language
+            // (~phenoVal), not through the voices' buses.
+            mixCorpus: [\activityThreshold, \windowWidth, \seasonalBias, \pulseGain,
+                \opacityFloor, \phenoRate, \phenoSeek, \bancada, \dia, \corpusFx, \corpusCrudo, \corpusLevel],
+            mixUltra: [\activityThreshold, \windowWidth, \seasonalBias, \absenceWeight,
+                \opacityFloor, \phenoRate, \phenoSeek, \bancada, \dia, \corpusLevel]
         );
+        // GOLPE's bancada (19_golpe.scd, ~golpeBancada) is also a Cámara knob.
+        ~layerReach[\mixGolpe] = ~layerReach[\mixGolpe] ++ [\bancada];
+        // The five motor faders and SEQ under MOTOR share its reach.
+        ~layerAlias = (mixRemuestreo: \mixMotor, mixEspectro: \mixMotor, mixCaos: \mixMotor,
+            mixRuptura: \mixMotor, mixMasa: \mixMotor, mixSeq: \mixMotor);
+        // The layers a control reaches: its ring voices through their faders,
+        // and the hand-kept reach above.
+        ~keyLayers = { |key|
+            var w = (~paramVoices ? ())[key];
+            var layers = Set.new;
+            w !? { (w[\live] ++ w[\spawn]).do { |v| ~voiceLayer[v] !? { |m| layers.add(m) } } };
+            ~layerReach.keysValuesDo { |m, keys| if(keys.includes(key)) { layers.add(m) } };
+            layers
+        };
+        // The fader being moved, and when it last moved.
+        ~mixFocus = nil;
+        ~mixFocusHold = 3.0;
+        ~mixFocusLayers = ~voiceLayer.values.asSet ++ ~layerReach.keys ++ ~layerAlias.keys;
+        ~mixFocusOn = { |name|
+            if(~mixFocusLayers.includes(name)) {
+                var layer = ~layerAlias[name] ? name;
+                var fresh = ~mixFocus.isNil or: { ~mixFocus[\layer] != layer }
+                    or: { (Main.elapsedTime - ~mixFocus[\at]) > ~mixFocusHold };
+                ~mixFocus = (layer: layer, at: Main.elapsedTime);
+                // Restyle at once when the focus starts or changes; while the
+                // hand stays on the same fader the 2 Hz refresh keeps it.
+                if(fresh) { { ~guiLookRefresh !? { ~guiLookRefresh.value } }.defer };
+            };
+        };
         ~layerSounds = { |mix|
             (((~controlValues ? ())[mix] ? 0) > 0.001) and: { (~mixerMuted ? ())[mix] != true }
         };
@@ -354,17 +392,14 @@
         };
         ~guiLookRefresh = {
             var edit = ~golpeEdit;
+            var mf = ~mixFocus !? { |f| if((Main.elapsedTime - f[\at]) <= ~mixFocusHold) { f[\layer] } };
             (~knobViews ? ()).keysValuesDo { |key, view|
                 if(view.isKindOf(Knob) or: { view.isKindOf(Button) }) {
-                    ~controlLook.(key, if(edit.notNil) {
-                        if((~golpeEditKnobs ? ())[key].notNil) { \focus } { \dim }
-                    } {
-                        var w = (~paramVoices ? ())[key];
-                        var layers = Set.new;
-                        w !? { (w[\live] ++ w[\spawn]).do { |v| ~voiceLayer[v] !? { |m| layers.add(m) } } };
-                        ~layerReach.keysValuesDo { |m, keys| if(keys.includes(key)) { layers.add(m) } };
-                        if(layers.isEmpty or: { layers.any { |m| ~layerSounds.(m) } }) { \normal } { \dim }
-                    });
+                    var layers = ~keyLayers.(key);
+                    ~controlLook.(key, case
+                        { edit.notNil } { if((~golpeEditKnobs ? ())[key].notNil) { \focus } { \dim } }
+                        { mf.notNil } { if(layers.includes(mf)) { \focus } { \dim } }
+                        { if(layers.isEmpty or: { layers.any { |m| ~layerSounds.(m) } }) { \normal } { \dim } });
                 };
             };
         };
@@ -1823,8 +1858,9 @@
         // ─── GOLPE · the 32-step grid (19_golpe.scd plays it) ────────────
         // One UserView, drawn 1-bit like the REC timer, rather than 160
         // Buttons: a box of the grid is grey, and lights white the moment it
-        // is heard (framed when accented); a ghost or a chain hit lights amber
-        // where it lands; the playhead is a dim column. Click toggles a box;
+        // is heard (framed when accented); a ghost or a chain hit on a box the
+        // Marea let rest lights amber (ornaments only ever land on boxes that
+        // are on); the playhead is a dim column. Click toggles a box;
         // dragging paints the value the first click gave, so a run of hits is
         // one gesture. The state is ~golpePattern (0_parameters.scd), written
         // only through ~golpeSet / ~golpeLoad, which refresh this view.
@@ -1908,8 +1944,9 @@
                                     Pen.fillColor = Color.white; Pen.fillRect(rect.insetBy(4, 4));
                                 };
                             }
-                            // Heard but not in the grid: a ghost (STRIKE BEAT) or
-                            // the chain (block fill, transaction flam), in amber.
+                            // An ornament on a box whose own hit the Marea let
+                            // rest: a ghost (STRIKE BEAT) or the chain (block
+                            // fill, transaction flam, CORO), in amber.
                             { hit.notNil } {
                                 if(on) { Pen.fillColor = Color.gray(0.5); Pen.fillRect(rect) } {
                                     Pen.strokeColor = mainTheme.dim; Pen.width = 1;
@@ -1939,12 +1976,20 @@
                 })
                 // Click a row's name: tune that row (again: leave); double-click
                 // it: the row back to the kit. Right- or alt-click a box: tune
-                // that step (again: leave); double: its lock cleared. A plain
-                // click still toggles the box.
+                // that step (again: leave); double: its lock cleared. Shift-
+                // click (or shift-drag) a box: the step tuned last is stamped
+                // there, lock and hit. A plain click still toggles the box.
                 .mouseDownAction_({ |v, x, y, mods, button, clicks|
                     var alt = (button == 1) or: { mods.isAlt };
                     paint = nil;
                     case
+                    { mods.isShift and: { hit.(x, y).notNil } and: { ~golpeLockLast.notNil } } {
+                        var c = hit.(x, y);
+                        if(~golpeLockPaste.(c[0], c[1])) { paint = \stamp } {
+                            paint = if(((~golpePattern[c[0]] ? [])[c[1]] ? 0) > 0) { 0 } { 1 };
+                            ~golpeSet.(c[0], c[1], paint);
+                        };
+                    }
                     { nameHit.(x, y).notNil } {
                         var row = nameHit.(x, y);
                         // The double's first click toggled; the reset keeps it open.
@@ -1966,7 +2011,15 @@
                 })
                 .mouseMoveAction_({ |v, x, y|
                     if(paint.notNil) { hit.(x, y) !? { |c|
-                        if(((~golpePattern[c[0]] ? [])[c[1]] ? 0) != paint) { ~golpeSet.(c[0], c[1], paint) };
+                        case
+                        { paint == \stamp } {
+                            var l = ~golpeLockLast;
+                            var have = (~golpeLocks[c[0]] ? ())[c[1]];
+                            var src = l !? { (~golpeLocks[l[\row]] ? ())[l[\step]] };
+                            if(have != src or: { ((~golpePattern[c[0]] ? [])[c[1]] ? 0) == 0 }) {
+                                ~golpeLockPaste.(c[0], c[1]) };
+                        }
+                        { ((~golpePattern[c[0]] ? [])[c[1]] ? 0) != paint } { ~golpeSet.(c[0], c[1], paint) };
                     } };
                 });
             // ── Beside the grid: the fader and what it plays ────────────────
@@ -2021,7 +2074,7 @@
                 if(info.isClosed.not and: { ~golpeEdit.notNil }) {
                     var e = ~golpeEdit;
                     info.stringColor = ~guiFamily[\timbre].blend(Color.white, 0.3);
-                    info.string = "AFINANDO % · %\nTIMBRE: AFINAR TONO CAÍDA MOD".format(e[\row].asString.toUpper,
+                    info.string = "AFINANDO % · %\nTIMBRE: AFINAR TONO CAÍDA MOD · PAD PITCH: OCTAVA".format(e[\row].asString.toUpper,
                         if(e[\step].isNil) { "FILA" } { "PASO " ++ (e[\step] + 1) });
                 };
                 if(info.isClosed.not and: { ~golpeEdit.isNil }) {
@@ -2309,6 +2362,8 @@
             ~golpeEdit = nil;
             ~guiLookRefresh = nil;
             ~knobLook = nil;
+            ~mixFocus = nil;
+            ~mixFocusOn = nil;
             ~golpeKitButtons = nil;
             ~mixerStrips = nil;
             ~recordingStatus = nil;

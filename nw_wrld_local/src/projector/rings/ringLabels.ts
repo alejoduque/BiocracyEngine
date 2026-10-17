@@ -52,6 +52,9 @@ export class RingLabels {
 
   add(spec: LabelSpec): void { this.specs.push(spec); }
 
+  /** This frame's labels, as collected (the dome draws its own choice of them). */
+  get all(): readonly LabelSpec[] { return this.specs; }
+
   end(camera: THREE.PerspectiveCamera, w: number, h: number): void {
     type Cand = { s: LabelSpec; x: number; y: number; x0: number; x1: number; y0: number; y1: number; p: number };
     const cands: Cand[] = [];

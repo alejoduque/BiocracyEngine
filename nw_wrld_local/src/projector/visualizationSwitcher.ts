@@ -63,6 +63,9 @@ import { getVizMotion, readVoteFlash, isAlarm } from "./vizMotion";
 import * as THREE from "three";
 import { installDomeSeat } from "./dome/domeSeat";
 import { mountDomeCard } from "./dome/domeCard";
+import { loadAvgn } from "./avgn/avgnData";
+import { AvgnMap } from "./avgn/avgnMap";
+import { LiveFeeds } from "./rings/liveFeeds";
 
 // Hardcoded fallback roster (used when IUCN API is unreachable)
 const FALLBACK_ROSTER: [string, string, string][] = [
@@ -428,6 +431,37 @@ async function mountLowEarthPoint(): Promise<Viz> {
 
   console.log("[switcher] LowEarthPoint mounted, wrapper size:", wrapper.offsetWidth, "×", wrapper.offsetHeight);
 
+  // ── AVGN: the corpus's calls, inside the cloud ─────────────────────────
+  // A third cloud among the white and the red: every call the forest made in
+  // the corpus, where UMAP put it (avgn/avgnMap.ts). The curves are each
+  // recording's sequence, in the vocabulary of the slot's own Bézier web;
+  // the clips SC sounds light up and are walked call by call. Its labels are
+  // planes in the scene, so the dome's cameras draw them too. Absent until
+  // tools/build_avgn.py has been run; the slot is as before without it.
+  const avgnData = await loadAvgn();
+  let avgnMap: AvgnMap | null = null;
+  let avgnGain = 0.8;
+  let avgnRaf = 0;
+  if (avgnData && stage.scene && !stage.destroyed) {
+    avgnMap = new AvgnMap(avgnData, { dims: 3, radius: 4.6 }, { web: true, labels: 1, pointSize: 0.08 });
+    stage.scene.add(avgnMap.group);
+    const avgnFeeds = new LiveFeeds();
+    let last = performance.now();
+    const tick = () => {
+      if (!avgnMap || stage.destroyed) return;
+      avgnRaf = requestAnimationFrame(tick);
+      const now = performance.now();
+      const dt = Math.min(0.1, (now - last) / 1000);
+      last = now;
+      avgnFeeds.update({});
+      const speed = stage.cameraSettings?.cameraSpeed ?? 1;
+      avgnMap.group.rotation.y += dt * 0.012 * speed;
+      avgnMap.group.rotation.x = Math.sin(now / 47000) * 0.25;
+      avgnMap.update(avgnFeeds, now / 1000, avgnGain);
+    };
+    avgnRaf = requestAnimationFrame(tick);
+  }
+
   // Apply state once at mount with whatever data is already in the store
   function applyState(st: ParliamentState | null) {
     if (!st || !Array.isArray(st.species) || stage.destroyed) return;
@@ -448,6 +482,8 @@ async function mountLowEarthPoint(): Promise<Viz> {
     // other.
     const vm2 = getVizMotion();
     stage.cameraSettings.cameraSpeed = 0.1 + avgActivity * 7.9 + vm2.speed * 6;
+    // The AVGN map rests brighter with presence, as the white cloud does.
+    avgnGain = 0.45 + avgPresence * 0.8;
 
     // White point cloud: presence → scale (0.4 → 1.8), opacity
     if (stage.pointCloud?.material) {
@@ -644,12 +680,23 @@ async function mountLowEarthPoint(): Promise<Viz> {
     title: "prueba · conocimiento cero · pares verificados",
     text: () => (zkRecent.length ? zkRecent : ["…"]),
   });
+  // The parliament's names (bottom-left in the page) are HTML too, so the
+  // dome would never see them: the same rows, as a card on the left.
+  const rosterCardOff = mountDomeCard(wrapper, {
+    az: -58, el: 14, w: 34, cols: 30, rows: 8, color: "#e6e6dc", keep: "start",
+    title: "parlamento · especies",
+    text: () => s2Rows.map((r) => r.textContent ?? ""),
+  });
 
   return {
     name: "Low Earth Point",
     key: "2",
     destroy: () => {
       zkCardOff();
+      rosterCardOff();
+      cancelAnimationFrame(avgnRaf);
+      avgnMap?.dispose();
+      avgnMap = null;
       clearInterval(_slot2Vote);
       (window as any).__activeVizStage2 = null;
       if (zkMatchInterval) clearInterval(zkMatchInterval);

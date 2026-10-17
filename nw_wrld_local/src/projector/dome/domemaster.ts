@@ -10,7 +10,7 @@
 //
 //   slot scene ──CubeCamera──► sceneCube ─┐
 //                                          ├─ fisheye pass ─► domeRT (N × N)
-//   overlay (text, 2-D panel) ─CubeCamera─► overlayCube ─┘        │
+//   overlay (cards, 2-D panel) ─CubeCamera─► overlayCube ─┘       │
 //                                                                  ├─► screen: domemaster (+ guides)
 //                                                                  └─► screen: dome simulation
 //
@@ -31,7 +31,7 @@ import * as THREE from "three";
 import { UnrealBloomPass } from "three/examples/jsm/postprocessing/UnrealBloomPass.js";
 import { AfterimagePass } from "three/examples/jsm/postprocessing/AfterimagePass.js";
 import type { CapturedView, CapturedPost, DomeLayer } from "./domeCapture";
-import { ignoreRenderer, domeLayerVersion } from "./domeCapture";
+import { ignoreRenderer, domeLayerVersion, DOME_LAYER } from "./domeCapture";
 
 const DEG = Math.PI / 180;
 
@@ -40,19 +40,20 @@ export type DomeParams = {
   size: 1536 | 2048 | 4096;
   /** Full fisheye aperture, degrees. 180 = a hemisphere. */
   aperture: number;
-  /** Elevation above the horizon where the slot camera's forward lands. */
+  /**
+   * Elevation above the horizon where the slot camera's forward lands. For a
+   * seated slot (scene.userData.domeEye) it tips the seat instead: 30 is the
+   * seat as authored, more raises what lies in front, less lowers it.
+   */
   frontElevation: number;
-  /** Dome-native text: on/off, cap height in degrees, its elevation. */
-  showText: boolean;
-  textDeg: number;
-  textElevation: number;
   /** Angular width of the flat panel used for 2-D slots. */
   panelDeg: number;
   /**
    * 0–0.95: how far the dome camera moves from the slot camera toward the
    * middle of the scene. A slot camera frames its world for a flat screen, so
    * from its own position the world fills a small patch of the dome; moving
-   * in puts the audience inside it instead of in front of it.
+   * in puts the audience inside it instead of in front of it. For a seated
+   * slot it moves the seat toward the world's centre (0.5 = as authored).
    */
   immersion: number;
   /** Simulation only: forward tilt of the dome. */
@@ -63,9 +64,6 @@ export const DEFAULT_PARAMS: DomeParams = {
   size: 2048,
   aperture: 180,
   frontElevation: 30,
-  showText: true,
-  textDeg: 2.5,
-  textElevation: 12,
   panelDeg: 90,
   immersion: 0.5,
   tilt: 0,
@@ -300,7 +298,6 @@ void main() {
 `;
 
 // The ticker's rings: elevation (deg), turn (deg/s, sign = direction), opacity.
-// Clear of the slot title, which sits at 12°.
 const RING_SPECS = [
   { el: 5, turn: 1.2, opacity: 0.95 },
   { el: 24, turn: -0.8, opacity: 0.6 },
@@ -380,24 +377,6 @@ function quad(material: THREE.ShaderMaterial): THREE.Scene {
 }
 
 /** Text on a transparent canvas: bold, white, with a dark outline so it holds on any image. */
-function drawTextCanvas(canvas: HTMLCanvasElement, text: string, fontPx: number) {
-  const ctx = canvas.getContext("2d")!;
-  const font = `600 ${fontPx}px "Helvetica Neue", Helvetica, Arial, sans-serif`;
-  ctx.font = font;
-  const w = Math.max(8, Math.ceil(ctx.measureText(text).width + fontPx));
-  const h = Math.ceil(fontPx * 1.6);
-  canvas.width = w; canvas.height = h;
-  ctx.font = font;
-  ctx.textBaseline = "middle";
-  ctx.textAlign = "center";
-  ctx.lineJoin = "round";
-  ctx.lineWidth = Math.max(2, fontPx * 0.14);
-  ctx.strokeStyle = "rgba(0,0,0,0.85)";
-  ctx.strokeText(text, w / 2, h / 2);
-  ctx.fillStyle = "rgba(255,255,255,0.95)";
-  ctx.fillText(text, w / 2, h / 2);
-}
-
 // ── The domemaster ──────────────────────────────────────────────────────────
 
 export class Domemaster {
@@ -447,13 +426,8 @@ export class Domemaster {
   private pbos: { buf: WebGLBuffer; fence: WebGLSync | null; size: number }[] = [];
   private pboNext = 0;
 
-  // overlay: dome-native text + a flat panel for 2-D slots
+  // overlay: a flat panel for 2-D slots, text cards, the band
   private overScene = new THREE.Scene();
-  private textCanvas = document.createElement("canvas");
-  private textTex: THREE.CanvasTexture;
-  private textMesh: THREE.Mesh;
-  private textValue = "";
-  private textFontPx = 0;
   private panelFeed: CanvasFeed | null = null;
   private panelMesh: THREE.Mesh;
   // Text cards (layers of mode "card"): a few planes, each with its own feed.
@@ -538,19 +512,12 @@ export class Domemaster {
     this.simScene.add(this.simDome);
     this.simCamera = new THREE.PerspectiveCamera(100, 1, 0.1, 100);
 
-    this.textTex = new THREE.CanvasTexture(this.textCanvas);
-    this.textTex.colorSpace = THREE.SRGBColorSpace;
-    this.textMesh = new THREE.Mesh(
-      new THREE.PlaneGeometry(1, 1),
-      new THREE.MeshBasicMaterial({ map: this.textTex, transparent: true, depthTest: false, depthWrite: false }),
-    );
     this.panelMesh = new THREE.Mesh(
       new THREE.PlaneGeometry(1, 1),
       new THREE.MeshBasicMaterial({ transparent: false, depthTest: false, depthWrite: false }),
     );
     this.panelMesh.renderOrder = 0;
-    this.textMesh.renderOrder = 1;
-    this.overScene.add(this.panelMesh, this.textMesh, ...this.bandRings);
+    this.overScene.add(this.panelMesh, ...this.bandRings);
     for (let i = 0; i < Domemaster.MAX_CARDS; i++) {
       const mesh = new THREE.Mesh(
         new THREE.PlaneGeometry(1, 1),
@@ -692,6 +659,18 @@ export class Domemaster {
     this.right.crossVectors(this.front, this.zen).normalize();
   }
 
+  /**
+   * Tip a seated slot's basis about its right axis by `a` radians: the
+   * world's front then lands `a` above the horizon (below it when negative).
+   */
+  private tipSeat(a: number) {
+    if (Math.abs(a) < 1e-4) return;
+    const c = Math.cos(a), s = Math.sin(a);
+    const f = this.front.clone(), z = this.zen.clone();
+    this.front.copy(f).multiplyScalar(c).addScaledVector(z, -s).normalize();
+    this.zen.copy(f).multiplyScalar(s).addScaledVector(z, c).normalize();
+  }
+
   private setBasisFrom(camera: THREE.PerspectiveCamera | null) {
     const f = new THREE.Vector3(0, 0, -1), u = new THREE.Vector3(0, 1, 0), r = new THREE.Vector3(1, 0, 0);
     if (camera) {
@@ -711,10 +690,9 @@ export class Domemaster {
    * Render one domemaster frame into domeRT.
    * `view`: the slot's captured 3-D scene, or null for a 2-D slot.
    * `panel`: the slot's 2-D canvas when there is no 3-D scene.
-   * `title`: the dome-native text line.
    */
   renderFrame(
-    view: CapturedView | null, panel: HTMLCanvasElement | null, title: string,
+    view: CapturedView | null, panel: HTMLCanvasElement | null,
     post: CapturedPost = { bloom: null, afterimage: null }, layers: DomeLayer[] = [],
   ) {
     const R = this.renderer;
@@ -722,15 +700,22 @@ export class Domemaster {
     // A slot built around its audience names the seat itself: scene.userData
     // .domeEye (and optionally .domeForward and .domeUp). Its world is then
     // authored in dome coordinates — +Y the zenith unless .domeUp says
-    // otherwise — and is not re-aimed or moved in.
+    // otherwise. "frente" and "inmersión" then act on that seat: frente tips
+    // it (30 = as authored), inmersión moves it toward the world's centre
+    // (0.5 = as authored). Before, both were ignored for these slots, and the
+    // two sliders looked dead on 0, 2, O and T.
     const eye: THREE.Vector3 | undefined = view?.scene.userData?.domeEye;
-    if (view && eye && (eye as any).isVector3) this.setBasisWorld(view.scene.userData.domeForward, view.scene.userData.domeUp);
-    else this.setBasisFrom(view ? view.camera : null);
+    const seated = !!(view && eye && (eye as any).isVector3);
+    if (seated) {
+      this.setBasisWorld(view!.scene.userData.domeForward, view!.scene.userData.domeUp);
+      this.tipSeat((P.frontElevation - DEFAULT_PARAMS.frontElevation) * DEG);
+    } else this.setBasisFrom(view ? view.camera : null);
 
     // 1. the slot's scene into the cube, from the slot camera's position
     if (view) {
       const cam = view.camera;
-      this.sceneCam.position.copy(eye && (eye as any).isVector3 ? eye : this._pos);
+      if (seated) this.sceneCam.position.copy(eye!).multiplyScalar(Math.pow(2, (0.5 - P.immersion) * 2));
+      else this.sceneCam.position.copy(this._pos);
       // Immersion: slide along the camera's line of sight toward the scene's
       // middle — only forward, and never past it.
       const centre = !eye && P.immersion > 0 ? this.sceneCentre(view.scene, cam) : null;
@@ -741,7 +726,7 @@ export class Domemaster {
       }
       for (const c of this.sceneCam.children as THREE.PerspectiveCamera[]) {
         if (c.near !== cam.near || c.far !== cam.far) { c.near = cam.near; c.far = cam.far; c.updateProjectionMatrix(); }
-        c.layers.mask = cam.layers.mask;
+        c.layers.mask = cam.layers.mask | (1 << DOME_LAYER);
       }
       this.sceneCam.updateMatrixWorld();
       R.setClearColor(view.clearColor, 1);
@@ -765,25 +750,7 @@ export class Domemaster {
       finally { for (const mm of this._pts) mm.size /= k; this._pts.length = 0; }
     }
 
-    // 2. the overlay: text, and the panel when there is no 3-D scene
-    if (P.showText && title) {
-      const fontPx = Math.round(this.params.size / 32);
-      if (title !== this.textValue || fontPx !== this.textFontPx) {
-        drawTextCanvas(this.textCanvas, title, fontPx);
-        this.textTex.dispose();                         // new canvas size → new GPU texture
-        this.textTex.needsUpdate = true;
-        this.textValue = title; this.textFontPx = fontPx;
-      }
-      // The canvas is 1.6 × the font size tall and cap height is ~0.72 of it:
-      // scale so the capitals subtend textDeg degrees.
-      const aspect = this.textCanvas.width / this.textCanvas.height;
-      const hDeg = P.textDeg * (this.textCanvas.height / (0.72 * fontPx));
-      this.place(this.textMesh, 0, P.textElevation, hDeg * aspect, aspect);
-      this.textMesh.visible = true;
-    } else {
-      this.textMesh.visible = false;
-    }
-
+    // 2. the overlay: the panel when there is no 3-D scene
     if (!view && panel && panel.width > 0 && panel.height > 0) {
       // A new canvas, or the same one resized (p5 does on window resize):
       // three allocates texture storage once, so a size change needs a new one.
@@ -1101,7 +1068,7 @@ export class Domemaster {
     this.hdrA.dispose(); this.hdrB.dispose();
     this.skyFeed?.dispose(); this.bandFeed?.dispose();
     this.sceneCube.dispose(); this.overCube.dispose(); this.domeRT.dispose();
-    this.textTex.dispose(); this.panelFeed?.dispose();
+    this.panelFeed?.dispose();
     for (const c of this.cards) { c.feed?.dispose(); c.mesh.geometry.dispose(); (c.mesh.material as THREE.Material).dispose(); }
     this.fisheyeMat.dispose(); this.displayMat.dispose(); this.simMat.dispose();
     this.renderer.dispose();

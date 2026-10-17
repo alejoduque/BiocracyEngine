@@ -53,6 +53,9 @@ corpus/*
 # never been in this repo — so this 18 KB file is the only record here that
 # the captures exist, what was in them and where they fall on the ring.
 !corpus/cameratrap.json
+# The corpus's calls after AVGN (tools/build_avgn.py, ~0.5 MB), read by slots
+# 2 and O. Tracked: rebuilding it needs umap-learn, which the engine does not.
+!corpus/avgn.json
 # corpus/visual/ (~115 MB of derived h264 + index.json) stays out entirely:
 # rebuildable with tools/build_visual.py, and the index is meaningless without
 # the video beside it. Slot C prints the build command when it finds neither.

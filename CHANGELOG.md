@@ -7,6 +7,140 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Corpus: the calls over the insects; BANCADA sets how far; unrecorded days hear the other bancadas too (2026-10-17)
+
+#### Context
+- The corpus is mostly insects. Measured on the 261 clips (A-weighted, 250 ms frames): a median 94% of the energy is at 4–24 kHz. In 226 clips that band dominates more than 80% of the time, and it stays within ±3 dB of its own level.
+- This holds in every role, NOCTURNA included. Every clip was recorded at night (18:00–06:00), and only in the two dry seasons.
+
+#### Added
+- **Foreground (`~phenoForeground`, in `\corpusVoice` and `\corpusUltrasonic`).**
+  - Eleven half-octave bands, 700 Hz to 22 kHz. Each band tracks its own floor: the floor follows the level down fast and up slowly (about 4 s).
+  - A steady chorus becomes the floor within seconds and is cut, by up to 15 dB per band and about 20 dB where neighbouring bands close together.
+  - A call 4–10 dB over the floor passes. Under 1.4 kHz a band cuts only 4.5 dB, where the frogs, birds and mammals are.
+  - The cut is a peaking EQ per band, in series, so at 0 the voice is exactly the file. Up to +6 dB of make-up brings the calls forward.
+  - CRUDO bypasses it.
+- **BANCADA sets the amount,** moving over 8 s:
+
+  | BANCADA | Amount |
+  |---|---|
+  | TODAS | 0.6 |
+  | NOCTURNA | 1 |
+  | INSECTOS | 0 (the file untouched) |
+  | CORO | 1 |
+  | TRANSICIÓN | 0.8 |
+
+  - **Measured offline at NOCTURNA, on three clips:** chorus bands −8 to −12 dB, the 0.5–2 kHz band +1 to +2 dB, the loudest 2–4 kHz calls unchanged. At INSECTOS the output equals the file (difference about 1e-16).
+
+#### Changed
+- **The ultrasound on unrecorded days.**
+  - **Before:** any clip over 0.3 ultrasonic share, weighted by that share. That was 31 clips, and 74% of the picks came from INSECTOS.
+  - **Now:**
+    - every clip with an expanded tier, 61 clips;
+    - only from the selected bancada;
+    - nearer recordings more likely (σ 45 ring days);
+    - each bancada weighted by the square root of its size.
+  - **Result at TODAS over the 331 unrecorded days:** NOCTURNA 38%, INSECTOS 39%, TRANSICIÓN 16%, CORO 8%.
+
+### Dome (D): the ring modules' labels on the dome; every control reachable; the title text removed (2026-10-16)
+
+#### Fixed
+- **Modules 0, O and T: their labels now render on the dome.**
+  - The ring labels are HTML over the canvas, and the dome's cameras never saw them. They are now drawn a second time as text planes in the scene, on a layer only the dome's cameras render (`DOME_LAYER`), so the screen is unchanged.
+  - Which labels the dome shows is chosen from the seat: level of detail by distance from the seat, highest priority first, and no two names closer than 2.6°.
+  - Each label has its own small canvas, uploaded only when its words change.
+  - Nothing runs while the dome is not rendering.
+  - Measured: heap over 90 s with the dome open, −4.7 MB on module 0.
+- **The dome bar wraps to a second row.** As one row it ran past the right edge of the screen: at 1,600 px the guides, fps, NDI/Syphon, alfa, NEGRO and "salida limpia" could not be reached.
+- **"frente" and "inmersión" act on the seated modules (0, 2, O, T).**
+  - These modules set the dome's seat themselves, and the domemaster ignored both sliders for them, so the sliders looked dead.
+  - "frente" now tips the seat. At 30° it is as authored; more raises what lies in front.
+  - "inmersión" moves the seat toward the world's centre. At 50% it is as authored.
+
+#### Changed
+- **The camera-facing label code is shared.** It is now `dome/domeFacing.ts`, used by the AVGN labels in module 2 and by the ring stages' dome labels.
+
+#### Removed
+- **The dome's title text:** the module's name drawn at 12°, and its "texto / sin texto", "letra" and "altura texto" controls.
+
+### AVGN: the corpus's calls as a latent space, in modules 2 and O (2026-10-16)
+
+#### Added
+- **`tools/build_avgn.py`.** It runs the AVGN method (Sainburg, Thielk & Gentner 2020; github.com/timsainb/AVGN, MIT) over the AudioMoth corpus and writes `corpus/avgn.json` (~0.5 MB, tracked).
+  - **Segmentation:** dynamic thresholding after each band's floor is removed, because the night chorus never stops.
+  - **Projection and clusters:** log-mel unit tiles, UMAP in 3-D and 2-D, HDBSCAN.
+  - **Result:** 8,792 calls (45–165 ms) from 245 clips, in 28 call types.
+  - **Article 47:** the 16 opaque clips are not analysed. Every unit keeps its clip's opacity, so the projector withholds it at the same OPACITY FLR that SuperCollider uses.
+  - **Needs:** numpy, scipy, soundfile, librosa, scikit-learn and umap-learn. None of these is used by the engine.
+- **Module 2 (Low Earth Point):** a third cloud among the white and the red, which all stay.
+  - Every call sits where UMAP put it, in the colour of its cluster's role. Each recording's call sequence is a faint Bézier curve, as in AVGN's transition plots.
+  - The clips that SC sounds (`/pheno/clip`) light amber. A head walks each one call by call, with a fading trail.
+- **Module 2 labels:**
+  - The 12 commonest call types are named round the outside of the cloud, with leader lines, as in AVGN's figures. A type that sounds is always named.
+  - The walked clip is named at its head, for example "▶ 21:42 · voz nocturna · C1 → C1 → C5".
+- **Module O (Anillos · Referencia):** the 2-D projection as a disc floating over the inner clocks, under the dome's seat.
+  - The sounding clips are walked in amber.
+  - A thread drops from the call being walked to its recording's blob on the year ring.
+  - The call types are named in the ring labels; the sounding ones are always named.
+- **The walk's clock:** each head walks the recording's own clock, from the moment its clip began. SC's grain voice may stretch or seek the file, and the walk does not follow that.
+
+#### Fixed
+- **Module 2's labels reach the dome (D).**
+  - The new names are planes in the scene. Each frame they turn to whichever camera draws them. On the dome they stand upright for an audience facing the front, the domemaster's convention.
+  - They are not THREE.Sprite: the dome's cube cameras draw with a −90° field of view, and a sprite came out turned 180°.
+  - The parliament's species names, bottom-left in the page, were HTML and never reached the dome. They are now a dome card on the left, beside the proof card.
+- **Measured off-screen:**
+  - heap over 90 s with the dome open and a clip walked: −0.7 MB on module 2, +0.2 MB on module O;
+  - 30 slot switches across 2, O and 0: +1.1 MB.
+
+### GOLPE: OCTAVA in the tuning; an empty box never sounds; fader focus; deeper master lows (2026-10-16)
+
+#### Added
+- **Fader focus.**
+  - Moving a layer's fader (in the SC GUI or on MIDI) lights the knobs that reach that layer and greys the rest. This lasts while the hand is on it and 3 s after, as a map of where to reach next.
+  - The five motor faders and SEQ share MOTOR's reach.
+  - The Cámara and CORPUS knobs now count as reaching CORPUS and ULTRA, and BANCADA as reaching GOLPE. So they also grey when those layers are silent.
+- **Shift-click on a GOLPE box stamps the step tuned last there:** its lock is copied and the box switched on. Shift-drag stamps a run of boxes. Without a tuned step, shift-click is a plain click.
+
+#### Changed
+- **The master's DC filter is a 4th-order high-pass at 20 Hz instead of LeakDC.**
+  - LeakDC rolls off at 6 dB/oct from about 38 Hz.
+  - Measured on pink noise at MEZCLA 0:
+
+    | Band | LeakDC | 20 Hz high-pass |
+    |---|---|---|
+    | 50–63 Hz | −2 dB | 0 dB |
+    | 25–31 Hz | −4 to −5 dB | −1.5 to −2.4 dB |
+    | 12 Hz | −9 dB | −18 dB |
+
+  - So the kick and the dum get their weight back, and the sub rumble below 20 Hz is cut harder.
+- **OCTAVA (±2 whole octaves) in GOLPE tuning, per row and per step,** added to AFINAR (so ±36 st in all).
+  - It is on the PAD PITCH knob, beside the other four TIMBRE knobs, which lights orange with them while a row or a step is being tuned. Its caption reads "OCTAVA −1 oct".
+  - It is saved in the config with the rest of the tuning.
+- **Level compensation now covers the wider range.**
+  - The drop for lower pitch stops at one octave.
+  - The tabla is lifted going up, and the riq is held back.
+  - Measured on every synthetic row of every kit at ±2 octaves and at ±2 octaves ±12 st: −9 to +8 dB from the row's neutral level (before: −20 to +9); no NaN.
+
+#### Fixed
+- **An empty box of the GOLPE grid no longer sounds.**
+  - The ornaments used to fall on empty steps of rows that played, so a grey box lit amber and sounded. These are the STRIKE BEAT ghosts, the block fill, the transaction flam and the CORO answer.
+  - Now each one lands on a box that is on:
+
+    | Ornament | Where it now plays |
+    |---|---|
+    | Ghost | Half a step after a TEK or KA hit |
+    | Fill | Rolls on the active TEK and RIQ boxes of the last beat |
+    | CORO answer | Waits for an active TABLA box |
+    | Transaction flam | Waits for an active box of its own rows, then any row after half a bar |
+
+  - Over three bars of a sparse pattern, 54 hits fell on 0 empty boxes.
+- **The OCTAVA knob could not leave the centre.**
+  - The GUI redrew the needle at the rounded value after every small drag.
+  - Now the knob the hand is turning keeps its needle, and only its caption follows the tuning.
+  - A simulated slow drag reaches +2 and −2.
+- **GOLPE stops when its fader reaches 0** (after 0.5 s, so a fader passing through 0 does not cut the bar). Before, its grid ran on for the motors' 20 s.
+
 ### Corpus hand-overs take their time; MEZCLA no longer notches the lows (2026-10-15)
 
 #### Changed

@@ -27,7 +27,7 @@
 // Same renderer loop, driven from this page; keys pressed in the dome window
 // are handed back to the page, so 0–9 P F B E R A C still switch slots.
 
-import { installDomeCapture, currentView, currentPost, currentLayers, panelKind, setDomeEconomy } from "./domeCapture";
+import { installDomeCapture, currentView, currentPost, currentLayers, panelKind, setDomeEconomy, setDomeRunning } from "./domeCapture";
 import { Domemaster, DEFAULT_PARAMS, type DomeParams } from "./domemaster";
 import { RENDER_MODE } from "./renderMode";
 import { sessionEvent } from "./session";
@@ -261,11 +261,6 @@ function panelCanvas(): HTMLCanvasElement | null {
   return best;
 }
 
-function slotTitle(): string {
-  const hud = document.getElementById("viz-hud");
-  return (hud?.textContent || "").trim();
-}
-
 // ── Loop ────────────────────────────────────────────────────────────────────
 
 // The cardinal points of the venue's orientation, around the domemaster view:
@@ -294,6 +289,10 @@ function placeCompass() {
 
 function resize() {
   if (!_canvas || !_dome) return;
+  // The bar wraps to a second row on a narrow screen; one long row used to
+  // run past the right edge, and the outputs, NEGRO and "salida limpia"
+  // could not be reached.
+  if (_root && _ui.bar) _root.style.setProperty("--bar-h", `${_ui.bar.offsetHeight || 40}px`);
   const r = _canvas.getBoundingClientRect();
   // The preview at density 1 while an output is live: it is a check of the
   // output, not the output (a quarter of the pixels on a Retina screen).
@@ -311,7 +310,7 @@ function frame(t: number) {
   const view = currentView();
   const panel = view ? null : panelCanvas();
   try {
-    _dome.renderFrame(view, panel, slotTitle(), currentPost(), currentLayers());
+    _dome.renderFrame(view, panel, currentPost(), currentLayers());
   } catch (e) {
     // A slot's objects are not ours: one that breaks mid-switch costs this
     // frame, not the loop. Warn once per burst, not sixty times a second.
@@ -363,11 +362,11 @@ const CSS = `
 #dome-view { position:fixed; inset:0; z-index:9000; background:#000; display:none;
   font:12px/1.4 ui-monospace, Menlo, monospace; color:rgba(255,136,0,.85); }
 #dome-view.open { display:block; }
-#dome-view canvas { position:absolute; left:0; right:0; bottom:0; top:40px; width:100%; height:calc(100% - 40px); display:block; }
+#dome-view canvas { position:absolute; left:0; right:0; bottom:0; top:var(--bar-h, 40px); width:100%; height:calc(100% - var(--bar-h, 40px)); display:block; }
 #dome-view.clean canvas { top:0; height:100%; }
-#dome-bar { position:absolute; top:0; left:0; right:0; height:40px; display:flex; align-items:center;
-  gap:14px; padding:0 12px; border-bottom:1px solid rgba(255,136,0,.25); background:#000804;
-  white-space:nowrap; overflow-x:auto; }
+#dome-bar { position:absolute; top:0; left:0; right:0; min-height:40px; box-sizing:border-box; display:flex;
+  flex-wrap:wrap; align-items:center; gap:6px 14px; padding:5px 12px; border-bottom:1px solid rgba(255,136,0,.25);
+  background:#000804; white-space:nowrap; }
 #dome-view.clean #dome-bar, #dome-view.clean #dome-help { display:none; }
 #dome-bar .t { color:#ffcc44; letter-spacing:.1em; }
 #dome-bar button { background:#000; color:rgba(255,136,0,.85); border:1px solid rgba(255,136,0,.35);
@@ -434,6 +433,7 @@ function build() {
 
   _root = el("div", { id: "dome-view" }) as HTMLDivElement;
   const bar = el("div", { id: "dome-bar" });
+  _ui.bar = bar;
   _canvas = el("canvas") as HTMLCanvasElement;
   const help = el("div", { id: "dome-help" },
     "D cerrar · 0–9 P F B E R A C cambiar módulo · simulación: dos dedos o arrastrar para mirar, pellizcar (o Alt + rueda) para acercar, Mayús + dos dedos inclina el domo · salida limpia: Esc para volver");
@@ -464,9 +464,6 @@ function build() {
       return l;
     })(),
     slider("inclinación", 0, 30, 1, () => _s.tilt, (v) => { _s.tilt = v; apply(); }),
-    segmented("texto", [["on", "texto"], ["off", "sin texto"]], () => (_s.showText ? "on" : "off"), (v) => { _s.showText = v === "on"; apply(); }),
-    slider("letra", 1, 6, 0.5, () => _s.textDeg, (v) => { _s.textDeg = v; apply(); }),
-    slider("altura texto", 0, 60, 1, () => _s.textElevation, (v) => { _s.textElevation = v; apply(); }),
     segmented("guías", [["on", "guías"], ["off", "sin guías"]], () => (_s.guides ? "on" : "off"), (v) => { _s.guides = v === "on"; placeCompass(); }),
     (() => {
       // The planetarium's grid (their "Dome Master 4k Pattern"), from a file:
@@ -619,10 +616,12 @@ function syncLoop() {
   if (want && !_running) {
     ensureBuilt();
     _running = true;
+    setDomeRunning(true);
     _last = 0; _fpsT = performance.now(); _fpsN = 0;
     _raf = requestAnimationFrame(frame);
   } else if (!want && _running) {
     _running = false;
+    setDomeRunning(false);
     cancelAnimationFrame(_raf);
   }
   if (_badge && (_open || _s.output === "none")) _badge.hidden = true;
@@ -758,12 +757,10 @@ export function initDome(stage: HTMLElement) {
 // each stepped frame and reads the domemaster straight back. Settings start
 // from the defaults — not this profile's localStorage — and follow the
 // session's snapshot and logged changes; only the size is the renderer's own.
-// The module's name is never written on a render: the clips and stills are
-// the image alone, whatever the "texto" toggle was live.
 function initRender() {
   const q = new URLSearchParams(location.search);
   const size = (q.get("dome") === "2048" ? 2048 : 4096) as 2048 | 4096;
-  _s = { ...DEFAULTS, size, output: "none", showText: false };
+  _s = { ...DEFAULTS, size, output: "none" };
   build();
   _dome = new Domemaster(_canvas!, _s);
   _dome.renderer.setPixelRatio(1);
@@ -773,6 +770,7 @@ function initRender() {
   // (dome-render.js --stills captures the window itself).
   _open = true;
   _clean = true;
+  setDomeRunning(true);
   let buf: Uint8Array | null = null;
 
   (window as any).__domeRender = {
@@ -780,7 +778,7 @@ function initRender() {
     renderOnce() {
       if (!_dome) return;
       const view = currentView();
-      _dome.renderFrame(view, view ? null : panelCanvas(), slotTitle(), currentPost(), currentLayers());
+      _dome.renderFrame(view, view ? null : panelCanvas(), currentPost(), currentLayers());
     },
     read() {
       const N = _dome!.params.size;
@@ -790,7 +788,7 @@ function initRender() {
     },
     apply(settings: Record<string, unknown>) {
       for (const k of Object.keys(DEFAULT_PARAMS) as (keyof DomeParams)[]) {
-        if (k !== "size" && k !== "showText" && k in settings) (_s as any)[k] = settings[k];
+        if (k !== "size" && k in settings) (_s as any)[k] = settings[k];
       }
       _dome?.setParams(_s);
     },

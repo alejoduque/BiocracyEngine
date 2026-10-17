@@ -900,6 +900,10 @@ if(~stems.notNil) {
 ~motLive = ~motLive ? ();
 ~motZeroSince = ();
 ~motOffAfter = 20;       // segundos en cero antes de apagar del todo
+// Los que deben callar al llegar a cero, no veinte segundos después: GOLPE es
+// un secuenciador, y con el fader abajo su rejilla seguía corriendo. Medio
+// segundo, para que un fader que pasa por cero no corte la vuelta.
+~motOffAfterFor = (golpe: 0.5);
 
 // Los stems de cada motor. Con el motor apagado no suenan, así que su suma se
 // pausa (~stemRun, 3_synthdefs.scd): un nodo pausado deja el bus tal cual, que
@@ -991,7 +995,7 @@ fork { s.sync; ~motStems.keysDo { |k| if(~motLive[k].isNil) { ~motStemsRun.(k, f
                 // En cero ya no se oye (la ganancia lo multiplica); el apagado
                 // sólo libera CPU, y espera por si el fader vuelve a subir.
                 if(~motZeroSince[key].isNil) { ~motZeroSince[key] = now };
-                if((now - ~motZeroSince[key]) > ~motOffAfter) {
+                if((now - ~motZeroSince[key]) > (~motOffAfterFor[key] ? ~motOffAfter)) {
                     ~motZeroSince[key] = nil;
                     ~motStop.(key);
                 };

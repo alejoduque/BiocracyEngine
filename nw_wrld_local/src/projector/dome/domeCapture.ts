@@ -45,6 +45,17 @@ export type CapturedView = {
   at: number;
 };
 
+/**
+ * The layer only the dome's cameras draw: things a slot puts in its scene for
+ * the dome alone (text the page shows as HTML), never seen by its own camera.
+ */
+export const DOME_LAYER = 9;
+
+let _domeRunning = false;
+/** Whether the dome is rendering now (viewport open, an output live, or an offline render). */
+export function domeRunning(): boolean { return _domeRunning; }
+export function setDomeRunning(on: boolean) { _domeRunning = on; }
+
 /** A capture older than this means the slot stopped rendering (or is 2-D). */
 export const CAPTURE_STALE_MS = 500;
 

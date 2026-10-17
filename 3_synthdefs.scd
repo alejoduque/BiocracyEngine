@@ -559,13 +559,19 @@ s.doWhenBooted({
         // CRUDO) can still carry a NaN; one would turn the limiter's output to
         // silence for good, since its envelope never recovers from it.
         var sig = Sanitize.ar(In.ar(0, ~limiterChans)) * makeup;
-        var clean = LeakDC.ar(sig);
+        // DC out with a steep cut at 20 Hz (4th order) instead of LeakDC.
+        // LeakDC is 6 dB/oct around 38 Hz: measured on pink noise it took
+        // 2 dB at 50 Hz and 5 dB at 25 Hz from everything, the kick and the
+        // dum included, and still let the 12-20 Hz sub through. This keeps the
+        // band above 30 Hz (-1.3 dB at 31.5, -0.2 at 50) and cuts what only
+        // the dome's subwoofers turn into rumble.
+        var clean = HPF.ar(HPF.ar(sig, 20), 20);
         // MEZCLA (mixCarve): at 0 all three of these are bypassed exactly.
         var carve = Lag.kr(Select.kr(carveBus >= 0, [0, In.kr(carveBus.max(0), 1)]).clip(0, 1), 0.25);
         var key, comped, sat, lim, mono, lows, monoLow;
-        // 1 · A real low cut, 4th order at 24 Hz. LeakDC alone was the only
-        //     one: 6 dB/oct around 38 Hz, so 12-20 Hz from the kick's sub,
-        //     the drone's 0.5 ratio, the pad and masa reached the speakers.
+        // 1 · A low cut at 24 Hz on top of the 20 Hz one above, so the
+        //     12-20 Hz from the kick's sub, the drone's 0.5 ratio, the pad and
+        //     masa are gone for good.
         // 2 · The lows in mono: below 120 Hz (Linkwitz-Riley, 4th order, so
         //     lows + highs sum back flat) the channels are summed and sent to
         //     every speaker alike. Wide bass cancels between speakers on a

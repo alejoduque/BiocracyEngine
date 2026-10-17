@@ -605,9 +605,11 @@
 };
 
 // ─── GOLPE · tuning, per row and per step ─────────────────────────────────
-// Four controls, the same four on every row, each adapted to the row's
+// Five controls, the same five on every row, each adapted to the row's
 // material by ~golpeShape (19_golpe.scd):
 //   afinar  semitones, -12..12, on the fundamental (RIQ: its jingles)
+//   octava  whole octaves, -2..2, added to afinar: a tabla an octave down is
+//           a different drum, not a detuned one
 //   tono    -1..1: where the brightness sits — crack, palm, the tabla's upper
 //           partials and click, the riq's hiss, a grain's filters
 //   mod     -1..1: how much it moves — the dum's drop, the tabla's FM ping and
@@ -621,16 +623,19 @@
 // There are no knobs of their own. Clicking a row name on the grid (or
 // right-clicking a box, for its step) hands four TIMBRE knobs over to it —
 // PITCH, HARM, TEXTURE, BODY, the ones that already shape GOLPE's pitch,
-// partials, drive and body — and the rest of the surface goes grey until
-// the same name or box is clicked again (4_gui.scd). ~setParam routes those
-// four here meanwhile, from the GUI and from MIDI; the breath, configs and
+// partials, drive and body, and PAD PITCH beside them for the octave — and
+// the rest of the surface goes grey until the same name or box is clicked
+// again (4_gui.scd). ~setParam routes those five here meanwhile, from the GUI and from MIDI; the breath, configs and
 // the browser still write the global values underneath.
-~golpeTuneKeys = [\afinar, \tono, \mod, \caida];
+~golpeTuneKeys = [\afinar, \tono, \mod, \caida, \octava];
 ~golpeTuneSpecs = (afinar: ControlSpec(-12, 12, \lin, 0.1), tono: ControlSpec(-1, 1),
-    mod: ControlSpec(-1, 1), caida: ControlSpec(-1, 1));
-~golpeEditKnobs = (pitchShift: \afinar, harmonicRich: \tono, textureDepth: \mod, resonantBody: \caida);
-~golpeTuneNames = (afinar: "AFINAR", tono: "TONO", mod: "MOD", caida: "CAÍDA");
-~golpeTuneNeutral = { (afinar: 0, tono: 0, mod: 0, caida: 0) };
+    mod: ControlSpec(-1, 1), caida: ControlSpec(-1, 1), octava: ControlSpec(-2, 2, \lin, 1));
+~golpeEditKnobs = (pitchShift: \afinar, harmonicRich: \tono, textureDepth: \mod, resonantBody: \caida,
+    padPitch: \octava);
+~golpeTuneNames = (afinar: "AFINAR", tono: "TONO", mod: "MOD", caida: "CAÍDA", octava: "OCTAVA");
+~golpeTuneNeutral = { (afinar: 0, tono: 0, mod: 0, caida: 0, octava: 0) };
+// The pitch a row plays at, in semitones: AFINAR plus whole octaves.
+~golpeSemis = { |tn| (tn[\afinar] ? 0) + (12 * (tn[\octava] ? 0)) };
 ~golpeTune = ~golpeTune ?? { var t = (); ~golpeRows.do { |row| t[row] = ~golpeTuneNeutral.value }; t };
 ~golpeLocks = ~golpeLocks ?? { () };
 ~golpeEdit = nil;
@@ -647,6 +652,7 @@
     name ++ "\n" ++ switch(ctl,
         \afinar, { (if(v >= 0) { "+" } { "" }) ++ v.round(0.1) ++ " st" },
         \caida,  { "×" ++ (2 ** (2 * v)).round(0.01) },
+        \octava, { (if(v >= 0) { "+" } { "" }) ++ v.round.asInteger ++ " oct" },
         { (if(v >= 0) { "+" } { "" }) ++ v.round(0.01) })
 };
 
@@ -656,8 +662,12 @@
     and: { ~golpeEditKnobs[name].notNil } };
 ~golpeShows = { |name| ~golpeEdit.notNil and: { ~golpeEditKnobs[name].notNil } };
 
-// The four knobs' faces: the tuning while editing, their own values after.
-~golpeEditShow = {
+// The knobs' faces: the tuning while editing, their own values after.
+// moving: the control the hand is turning right now. Its needle is left where
+// the hand put it and only its caption follows. OCTAVA rounds to whole
+// octaves, so a needle redrawn at the rounded value went back to the centre
+// after every small drag and the knob could never leave it.
+~golpeEditShow = { |moving|
     {
         ~golpeEditKnobs.keysValuesDo { |name, ctl|
             var knob = (~knobViews ? ())[name];
@@ -666,7 +676,7 @@
                 var e = ~golpeEdit;
                 var v = ~golpeTuneAt.(e[\row], e[\step])[ctl];
                 var locked = e[\step].notNil and: { ((~golpeLocks[e[\row]] ? ())[e[\step]] ? ())[ctl].notNil };
-                if(knob.notNil and: { knob.isClosed.not }) { knob.value = ~golpeTuneSpecs[ctl].unmap(v) };
+                if(knob.notNil and: { knob.isClosed.not } and: { ctl != moving }) { knob.value = ~golpeTuneSpecs[ctl].unmap(v) };
                 if(label.notNil and: { label.isClosed.not }) { label.string = ~golpeTuneText.(ctl, v, locked) };
             } {
                 var spec = ~paramDefsByName[name][\spec];
@@ -700,15 +710,35 @@
         } {
             var locks = ~golpeLocks[e[\row]] ?? { ~golpeLocks[e[\row]] = () ; ~golpeLocks[e[\row]] };
             (locks[e[\step]] ?? { locks[e[\step]] = (); locks[e[\step]] })[ctl] = v;
+            // The step tuned last: what shift-click pastes (~golpeLockPaste).
+            ~golpeLockLast = (row: e[\row], step: e[\step]);
         };
         ~stateDirty = true;
-        ~golpeEditShow.value;
+        ~golpeEditShow.(ctl);
         ~golpeRefresh.value;
         ~golpePreviewAt = Main.elapsedTime;
         SystemClock.sched(0.25, {
             if(Main.elapsedTime - (~golpePreviewAt ? 0) >= 0.24) { ~golpePreview !? { ~golpePreview.(e[\row], e[\step]) } };
             nil
         });
+    };
+};
+
+// Shift-click on a box: the step tuned last is stamped there — its lock
+// copied (any row takes any lock: the controls mean the same on every row)
+// and the box switched on, so the copy is heard. nil when nothing has been
+// tuned yet, or that lock was cleared since: the click is then a plain one.
+~golpeLockLast = nil;
+~golpeLockPaste = { |row, step|
+    var src = ~golpeLockLast !? { |l| (~golpeLocks[l[\row]] ? ())[l[\step]] };
+    if(src.isNil) { false } {
+        if((~golpeLockLast[\row] != row) or: { ~golpeLockLast[\step] != step }) {
+            (~golpeLocks[row] ?? { ~golpeLocks[row] = (); ~golpeLocks[row] })[step] = src.copy;
+        };
+        if(((~golpePattern[row] ? [])[step] ? 0) == 0) { ~golpeSet.(row, step, 1) };
+        ~stateDirty = true;
+        ~golpeRefresh.value;
+        true
     };
 };
 
@@ -935,6 +965,10 @@
     {
         var spec = def[\spec];
         var val = spec.constrain(value);
+
+        // 0a · A hand on a layer's fader lights the knobs that reach that
+        //      layer and greys the rest for a moment (4_gui.scd).
+        if([\gui, \midi].includes(source)) { ~mixFocusOn !? { ~mixFocusOn.(name) } };
 
         // 0b · CRUDO glides (14_, ~crudoGlide): its length is taken from the
         //      tempo now, before the bus moves.

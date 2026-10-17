@@ -25,7 +25,10 @@
 //                     harmonicRich / textureDepth / /bio/consensus
 //   opacityFloor      Art. 47 — raising it withholds more of the corpus from
 //                     analysis, tokenisation and projection
-//   bancada           Art. 43 — filters by ecological role (0 = todas)
+//   bancada           Art. 43 — filters by ecological role (0 = todas); also
+//                     how far the calls come forward over the insects'
+//                     chorus (~phenoForeground), and which recordings
+//                     an unrecorded day may hear as ultrasound
 //
 // RESOURCES
 // A 60 s clip at 384 kHz is 92 MB as a server Buffer, so the raw corpus can
@@ -213,6 +216,56 @@ s.waitForBoot {
     // what leaves and what enters take the same four seconds.
     ~phenoMoveXfade = 4.0;
 
+    // ─── Foreground: the calls over the chorus ──────────────────────────────
+    // Measured on the 261 clips (A-weighted, 250 ms frames): a median 94% of
+    // the energy is at 4-24 kHz, and in 226 clips that band rules more than
+    // 80% of the time, within ±3 dB of its own level — the dry-season night's
+    // steady stridulation, in every role, NOCTURNA included. Under it, what
+    // arrives and leaves (frogs, birds, a katydid's burst) is masked.
+    //
+    // This takes each band's own floor out, as tools/build_avgn.py does
+    // before it finds the calls: eleven half-octave bands, 700 Hz-22 kHz, each
+    // with its level (0.25 s) and a floor that follows the level down fast
+    // and up slowly (~4 s), so a chorus becomes the floor within seconds and
+    // a call of a second or two stays above it. A band 4 dB over its floor
+    // starts to open, 10 dB over it is whole; below, it falls by up to 20 dB
+    // × the amount. The cut is a peaking EQ per band, the eleven in series:
+    // at 0 dB each passes the signal through untouched, and neighbours that
+    // close together deepen together (15 dB each, ~20 between them). Under
+    // 1.4 kHz a band cuts only 4.5 dB, rising to the full 15 at 4 kHz: the
+    // stridulation is above, and the frogs, birds and mammals that are not
+    // are the voices this is for — a frog bout lasting tens of seconds
+    // becomes its own floor like any chorus, and lost 11 dB before. Taking
+    // the bands out of the signal instead (sig - Σ band) did not work: the
+    // band-passes overlap, so the deepest setting over-subtracted, the
+    // residue flipped and came back louder than at a lighter one. CRUDO's
+    // path never sees any of it.
+    //
+    // The chorus is most of the energy, so taking it out took the layer down
+    // with it; up to 6 dB × the amount comes back over the whole, and the
+    // calls end louder than they were. Measured offline at NOCTURNA, before
+    // that gain: chorus bands -10 to -17 dB, the frogs' 0.5-2 kHz -1 to -2 dB,
+    // the loudest calls -3 to -5 dB.
+    //
+    // The amount is the bancada's: INSECTOS convenes the chorus and keeps it
+    // whole; NOCTURNA, CORO and TRANSICIÓN bring their calls forward; TODAS
+    // halfway. It moves over 8 s when the bancada changes.
+    ~phenoForegroundBands = Array.geom(11, 700, 2 ** 0.5);
+    ~phenoForegroundAmt = [0.6, 1.0, 0.0, 1.0, 0.8];
+    ~phenoForeground = { |sig, bancada|
+        var amt = Lag.kr(Select.kr(bancada.round.clip(0, 4), ~phenoForegroundAmt), 8.0);
+        // A voice starts with every floor at silence; they climb fast for
+        // the first seconds (inside the fade-in) and slowly after.
+        var up = Line.kr(2.0, 30.0, 12.0);
+        ~phenoForegroundBands.inject(sig, { |out, f|
+            var fc = f.min(SampleRate.ir * 0.45);
+            var lvl = Amplitude.kr(BPF.ar(sig, fc, 0.35), 0.01, 0.25).max(1e-6).ampdb;
+            var floor = LagUD.kr(lvl, up, 3.0);
+            var open = ((lvl - floor - 4) / 6).clip(0, 1);
+            BPeakEQ.ar(out, fc, 0.35, Lag.kr((1 - open) * amt * f.explin(1400, 4000, -4.5, -15), 0.05))
+        }) * (amt * 6).dbamp;
+    };
+
     SynthDef(\corpusVoice, {
         // out: routed to the chain-processing bus when 17_ is running, and
         // straight to the main output when it is not. Hard-wired to 0 before,
@@ -243,6 +296,8 @@ s.waitForBoot {
             smpReverbBus = -1, smpDelayBus = -1, smpDelayTimeBus = -1, smpDelayFbBus = -1,
             // CRUDO (0_parameters.scd): the file with none of the processing.
             corpusCrudoBus = -1,
+            // The bancada sets how far ~phenoForeground brings the calls out.
+            bancada = 0, bancadaBus = -1,
             // How long the recording itself lasts, in seconds. When the voice
             // is longer (a short file, see ~phenoPlayClip) the grains take
             // over as the file runs out. 0: the voice fits the file.
@@ -349,6 +404,8 @@ s.waitForBoot {
             pointer, 2) * 0.7;
         sig = XFade2.ar(sig, grains, mix.linlin(0, 1, -1, 1));
 
+        sig = ~phenoForeground.(sig, Select.kr(bancadaBus >= 0, [bancada, In.kr(bancadaBus, 1)]));
+
         sig = HPF.ar(sig, 25);
         // spectralShift only reaches 2400 Hz, and this used it as the cutoff
         // directly — so the forest was ALWAYS low-passed under 2.4 kHz (under
@@ -426,7 +483,8 @@ s.waitForBoot {
             // Matrix mixer. The absence voice gets its own fader rather than
             // sharing mixCorpus: it is the layer most likely to want muting
             // outright, being the one that plays when nothing was recorded.
-            mixUltraBus = -1, corpusCrudoBus = -1;
+            mixUltraBus = -1, corpusCrudoBus = -1,
+            bancada = 0, bancadaBus = -1;
 
         var sig, env, quadSig, weight, level, floorVal, veil, lpf, room, master, crudo;
 
@@ -452,9 +510,10 @@ s.waitForBoot {
 
         sig = HPF.ar(sig, 80);
         // Same mapping as \corpusVoice: the ×8-expanded calls live at
-        // 2.5-12 kHz and a 2.4 kHz ceiling removed most of them. CRUDO skips it.
+        // 2.5-12 kHz and a 2.4 kHz ceiling removed most of them. CRUDO skips it,
+        // and the foreground with it: expanded, a chorus is as steady as before.
         crudo = Lag.kr(Select.kr(corpusCrudoBus >= 0, [0, In.kr(corpusCrudoBus, 1)]).clip(0, 1), 0.15);
-        sig = XFade2.ar(LPF.ar(sig, (lpf.explin(80, 2400, 1500, 18000)).min(SampleRate.ir * 0.45)), sig, crudo.linlin(0, 1, -1, 1));
+        sig = XFade2.ar(LPF.ar(~phenoForeground.(sig, Select.kr(bancadaBus >= 0, [bancada, In.kr(bancadaBus, 1)])),(lpf.explin(80, 2400, 1500, 18000)).min(SampleRate.ir * 0.45)), sig, crudo.linlin(0, 1, -1, 1));
 
         env = EnvGen.kr(
             Env.new([0, 1, 1, 0],
@@ -1270,15 +1329,32 @@ s.waitForBoot {
                     ~phenoJumped = false;
                     if(absence > 0.05) {
                         var chance = absence * (1.0 - (gap / 120).clip(0, 0.85));
-                        if(chance.coin and: { ~corpusClips.size > 0 }) {
-                            var near = ~corpusClips.select { |c| c[\ultrasonic] > 0.3 };
-                            if(near.size > 0) {
-                                var pick = near.wchoose(
-                                    near.collect { |c| c[\ultrasonic] }.normalizeSum);
-                                if(pick[\opacity] < (1.0 - ~phenoVal.(\opacityFloor, 0.0))) {
-                                    ~phenoPlayUltrasonic.(pick, secsPerDay * 1.6);
-                                };
-                            };
+                        // Which recording. It was any clip over 0.3 ultrasonic
+                        // share, weighted by that share: 31 clips, and 74% of
+                        // the picks from INSECTOS, whose chorus carries the
+                        // most ultrasound — every gap was the same insects.
+                        // Now: every clip with an expanded tier, the bancada's
+                        // only, nearer recordings more likely (σ 45 ring days,
+                        // as the comment above always said), and each bancada
+                        // weighted by the square root of its size, not by its
+                        // size. Over the 331 gaps at TODAS: NOCTURNA 38%,
+                        // INSECTOS 39%, TRANSICIÓN 16%, CORO 8%, from 61 clips.
+                        var floorVal = ~phenoVal.(\opacityFloor, 0.0);
+                        var sel = ~phenoVal.(\bancada, 0).round.asInteger;
+                        var near = ~corpusClips.select { |c|
+                            c[\expanded].notNil and: { c[\opacity] < (1.0 - floorVal) }
+                                and: { (sel == 0) or: { c[\bancada] == (sel - 1) } }
+                        };
+                        if(chance.coin and: { near.size > 0 }) {
+                            var count = ();
+                            var pick;
+                            near.do { |c| count[c[\bancada]] = (count[c[\bancada]] ? 0) + 1 };
+                            pick = near.wchoose(near.collect { |c|
+                                var d = (c[\doy] - doy).abs;
+                                d = d.min(365 - d);
+                                (exp((d / 45).squared * -0.5) / count[c[\bancada]].sqrt) + 0.002
+                            }.normalizeSum);
+                            ~phenoPlayUltrasonic.(pick, secsPerDay * 1.6);
                         };
                     };
                 };
