@@ -19,6 +19,7 @@ placeholder los habría pisado.
 | `eth_sonification_20260928_223908.wav` | 1222 s | 4 ch · 24 bit · 48 kHz | `crecida` 785–1210 s (web y Bandcamp; reemplaza a `enjambre` como botón) · `vigilia` 0–785 s (sólo Bandcamp, `bandcamp/album.json`) |
 | `eth_sonification_20260929_200008.wav` | 580 s | 4 ch · 24 bit · 48 kHz | `destello` 0–580 s, la sesión entera (web y Bandcamp; reemplaza a `cierre`) |
 | `eth_sonification_20260929_211604.wav` | 626 s | 2 ch · 24 bit · 48 kHz | `FTMZD` 0–626 s, la sesión entera (sólo Bandcamp, pista 0) |
+| `eth_sonification_20261018_125653.wav` | 221 s | 2 ch · 24 bit · 48 kHz | `ciénaga` 0–218 s, la sesión entera hasta el silencio (sólo Bandcamp, pista 1; reemplaza a `oleaje`, que sigue en la web) |
 
 Los cortes, su texto y el orden de los botones viven en `web/composiciones.json`.
 Los de un minuto son los del 22/09: sus grabaciones se perdieron y no pueden

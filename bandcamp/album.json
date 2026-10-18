@@ -36,7 +36,15 @@
     },
     {
       "n": 1,
-      "composicion": "oleaje"
+      "titulo": "ciénaga",
+      "sesion": "eth_sonification_20261018_125653.wav",
+      "inicio": 0,
+      "duracion": 218,
+      "fundido": [
+        1,
+        0
+      ],
+      "hace": "La sesión del 18 de octubre a las 12:56, entera. Entra ya sonando, alta y brillante, con el drone y GOLPE al frente; hacia los dos minutos el corpus toma la sala y todo cae al grave, bajo 1 kHz, como agua quieta. Desde los dos minutos y cuarenta se hunde despacio, y a los tres y media sólo queda el fondo, hasta el silencio."
     },
     {
       "n": 2,

@@ -31,7 +31,7 @@ Código: github.com/alejoduque/BiocracyEngine
 | # | Título | Duración | Archivo | Nivel | Pico |
 |---|---|---|---|---|---|
 | 0 | FTMZD | 10:25 | `00 - FTMZD.wav` (180 MB) | -17.3 LUFS | -1.0 dBFS |
-| 1 | oleaje | 5:38 | `01 - oleaje.wav` (97 MB) | -17.7 LUFS | -1.0 dBFS |
+| 1 | ciénaga | 3:38 | `01 - ciénaga.wav` (63 MB) | -16.1 LUFS | -1.0 dBFS |
 | 2 | destello | 9:40 | `02 - destello.wav` (167 MB) | -16.1 LUFS | -0.9 dBFS |
 | 3 | hondo | 8:05 | `03 - hondo.wav` (140 MB) | -16.6 LUFS | -0.9 dBFS |
 | 4 | vigilia | 13:05 | `04 - vigilia.wav` (226 MB) | -20.1 LUFS | -1.0 dBFS |
@@ -59,11 +59,11 @@ La sesión del 29 de septiembre a las 21:16, entera. Sale del silencio durante e
 
 Sesión del motor BiocracyEngine grabada el 2026-09-29 a las 21:16, corte 0–626 s (`eth_sonification_20260929_211604.wav`).
 
-### 01 · oleaje
+### 01 · ciénaga
 
 | Campo en Bandcamp | Valor |
 |---|---|
-| track name | oleaje |
+| track name | ciénaga |
 | track number | 1 |
 | artist | planktum |
 | lyrics | — (instrumental) |
@@ -71,11 +71,11 @@ Sesión del motor BiocracyEngine grabada el 2026-09-29 a las 21:16, corte 0–62
 
 **about this track**
 
-La actuación en Santa Anita de principio a fin. El brillo sube y baja en oleadas —del grave al registro medio y otra vez abajo—, hace su pico de flujo pasados los cuatro minutos y cierra con un último empuje antes de apagarse.
+La sesión del 18 de octubre a las 12:56, entera. Entra ya sonando, alta y brillante, con el drone y GOLPE al frente; hacia los dos minutos el corpus toma la sala y todo cae al grave, bajo 1 kHz, como agua quieta. Desde los dos minutos y cuarenta se hunde despacio, y a los tres y media sólo queda el fondo, hasta el silencio.
 
 **track credits**
 
-Sesión del motor BiocracyEngine grabada el 2026-08-18 a las 21:20, corte 0–338 s (`eth_sonification_20260818_212001_5min_SantaAnitaPerf.wav`).
+Sesión del motor BiocracyEngine grabada el 2026-10-18 a las 12:56, corte 0–218 s (`eth_sonification_20261018_125653.wav`).
 
 ### 02 · destello
 

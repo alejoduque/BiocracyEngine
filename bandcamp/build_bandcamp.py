@@ -77,9 +77,12 @@ def masterizar(c, src, dst, tags, gan=None):
             meta += ["-metadata", f"{k}={v}"]
     # -map_metadata -1: sin él el WAV hereda las etiquetas de la sesión
     # (encoder de SuperCollider, fecha de grabación) por encima de las del disco.
+    # El limitador corre a 4× (192 kHz): a 48 kHz sólo ve las muestras, y un
+    # golpe de GOLPE pasaba el techo entre ellas (−0.4 dBTP en «ciénaga»).
     bc.ffmpeg("-ss", str(ini), "-t", str(dur), "-i", str(src), "-af",
-              f"{cadena},volume={gan:.2f}dB,"
-              f"alimiter=limit={techo:.4f}:attack=5:release=80:level=false",
+              f"{cadena},volume={gan:.2f}dB,aresample=192000,"
+              f"alimiter=limit={techo:.4f}:attack=5:release=80:level=false,"
+              "aresample=48000",
               "-map_metadata", "-1", *meta,
               "-ar", "48000", "-c:a", "pcm_s24le", "-y", str(dst))
     sobre = float(j["input_tp"]) + gan - TP
