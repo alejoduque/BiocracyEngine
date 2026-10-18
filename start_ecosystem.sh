@@ -102,6 +102,24 @@ if [ "$1" = "render" ]; then
     exit 0
 fi
 
+# ── Asistente de arranque · Biocracia en escucha ───────────────────────────
+# En una terminal, antes de lanzar nada, pregunta con qué flags arranca el
+# motor (PERFORMANCE, DOME_LIVE, DOME, DOME_AUDIO, LASER, ETH_VERBOSE y los
+# PERF_* de la rutina) y los carga como si se hubieran escrito delante del
+# comando. No aparece desde el lanzador (no hay terminal), con WIZARD=0, ni si
+# la carpeta de la performance no está. Ver web/performance_domo/asistente.py.
+ASISTENTE="$SCRIPT_DIR/web/performance_domo/asistente.py"
+if [ -t 0 ] && [ -t 1 ] && [ "${WIZARD:-1}" != "0" ] && [ -f "$ASISTENTE" ]; then
+    FLAGS_ASISTENTE=$(mktemp -t biocracy-asistente)
+    if python3 "$ASISTENTE" --salida "$FLAGS_ASISTENTE"; then
+        set -a; . "$FLAGS_ASISTENTE"; set +a
+        rm -f "$FLAGS_ASISTENTE"
+    else
+        rm -f "$FLAGS_ASISTENTE"
+        exit 0
+    fi
+fi
+
 # ── (1) Verificación de dependencias antes de matar nada ───────────────────
 # Si algo crítico falta, mejor avisar y salir limpio que matar procesos del
 # usuario y dejarlo sin Node/Python solo para descubrir que falta sclang.
@@ -267,13 +285,15 @@ SC_PID=""
 LASER_PID=""
 DOME_PID=""
 DOME_LIVE_PID=""
+CONTADOR_PID=""
+CUENTA_PID=""
 
 cleanup() {
     echo ""
     echo "=============================================="
     echo "    CERRANDO ECOSISTEMA TRES-PARTES..."
     echo "=============================================="
-    for pid in $NW_PID $BRIDGE_PID $SC_PID $LASER_PID $DOME_PID $DOME_LIVE_PID; do
+    for pid in $NW_PID $BRIDGE_PID $SC_PID $LASER_PID $DOME_PID $DOME_LIVE_PID $CONTADOR_PID $CUENTA_PID; do
         if [ -n "$pid" ] && kill -0 "$pid" 2>/dev/null; then
             kill "$pid" 2>/dev/null
         fi
@@ -288,6 +308,8 @@ cleanup() {
     pkill -f "dome-live\.js" 2>/dev/null
     pkill -f "webpack-dev-server|^webpack( |$)" 2>/dev/null
     pkill -f "eth_sonify\.py" 2>/dev/null
+    pkill -f "performance_domo/contar_linternas\.py" 2>/dev/null
+    pkill -f "performance_domo/cuenta_regresiva\.py" 2>/dev/null
     rm -f "$LOCKFILE"
     echo "Adiós."
     exit 0
@@ -445,6 +467,25 @@ elif command -v open &>/dev/null; then
 else
     echo "   (sin xdg-open/open — ábrela a mano)"
 fi
+fi
+
+# 2.6 Performance (PERFORMANCE=1): el contador de linternas y el comienzo.
+#   PERF_CONTADOR=<n>  abre contar_linternas.py con la cámara n (su ventana es
+#                      para calibrar: r marca el público, + y − el umbral)
+#   PERF_AUTO=1        cuenta_regresiva.py espera a la cúpula, cuenta en grande
+#                      en esta terminal y envía /rutina/iniciar a SC
+# Corren con el python3 del sistema (OpenCV), antes de activar el venv.
+if [ "$PERFORMANCE" = "1" ] && [ -n "$PERF_CONTADOR" ]; then
+    echo ""
+    echo ">> Paso 2.6: Contador de linternas (cámara $PERF_CONTADOR)..."
+    python3 "$SCRIPT_DIR/web/performance_domo/contar_linternas.py" --camara "$PERF_CONTADOR" \
+        > "${TMPDIR:-/tmp}/biocracy-linternas.log" 2>&1 &
+    CONTADOR_PID=$!
+    echo "   contar_linternas.py escucha en 57140 (PID: $CONTADOR_PID). Log: ${TMPDIR:-/tmp}/biocracy-linternas.log"
+fi
+if [ "$PERFORMANCE" = "1" ] && [ "$PERF_AUTO" = "1" ]; then
+    python3 "$SCRIPT_DIR/web/performance_domo/cuenta_regresiva.py" &
+    CUENTA_PID=$!
 fi
 
 # 3. Levantar el Scraper Python de Ethereum (En Foreground)

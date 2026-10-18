@@ -84,3 +84,4 @@ tools/ffmpeg-hap/*
 web/performance_domo/voz/
 web/performance_domo.zip
 *.antes-performance
+web/performance_domo/.asistente.json
