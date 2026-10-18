@@ -36,6 +36,30 @@ Faderfox LC2 (MIDI) ─────────────►      └─► au
 
 SuperCollider guarda el valor de cada parámetro. El navegador, la GUI de SC y el MIDI envían sus cambios por la misma ruta. Todos reciben el mismo eco.
 
+## La composición en la cúpula
+
+Para el Domo del Planetario de Bogotá, el motor arranca en su mezcla de cúpula (MEZCLA en 1).
+
+- **Las capas principales llenan el espectro y la sala.** Cada una tiene su altura en el espectro y su lugar en los cuatro canales:
+  - el bombo es el piso;
+  - el drone es la tierra, alrededor y hacia el frente;
+  - el pad es una lámina pareja que respira de adelante hacia atrás;
+  - el dust es el aire, atrás y arriba.
+- **Las demás capas tienen un sitio propio.**
+  - El bosque (corpus) envuelve los lados y la espalda, como un lugar envuelve a quien escucha.
+  - ULTRA llega desde atrás.
+  - GOLPE está en el escenario.
+  - Cada motor tiene su casa en el anillo. Cuando crece, se acerca al frente y luego vuelve.
+- **PERC y KICK son un hsaing waing birmano.**
+  - BOWL es el círculo afinado: gongs en el golpe largo y tambores pat waing en el corto.
+  - CHINA son los platillos linkwin y si.
+  - KICK es el pat ma, el gran tambor, con el wa de bambú.
+  - Las notas caen en una pentatónica sobre la raíz del drone. Cada golpe suena desde el lugar del anillo que le da su altura, así que una escala camina alrededor de la sala.
+- **El módulo C en la cúpula.** Las cámaras trampa se ven en una pantalla curva que sigue el borde del domo y gira despacio, para que cada asiento las vea de frente. Detrás está la Biblioteca de Babel: galerías hexagonales que suben sin fin, con las 30 capturas y los 612 espectrogramas como libros, y cada galería gira por su cuenta.
+- **Los módulos 5 a 9 giran cada uno a su manera.** ROTATION SPD va de −2 a +2: el centro detiene y la izquierda invierte.
+
+MEZCLA en 0 (la configuración MEZCLA_0_Barro) devuelve el sonido de antes, todo al frente.
+
 ## Arranque
 
 Necesita Node.js, Python 3 y SuperCollider (macOS o Linux).

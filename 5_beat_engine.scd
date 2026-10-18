@@ -302,6 +302,10 @@
             args ++ [\chamberAux, (~chamberAuxBus !? { |b| b.index } ? -1),
                 \famPresence, pres,
                 \mixDustBus, ~bi.(\mixDust), \mixKickBus, ~bi.(\mixKick),
+                // The circle's tuning: the gongs and drums fall on a
+                // pentatonic built on the drone's root (\opalPerc, "Hsaing
+                // waing"), so every site strikes in the bed's key.
+                \root, (~droneRoot ? 55),
                 // Its stem, appended last like the rest so no site's own
                 // \out, 0 can override it.
                 \out, ~stemOut.(\perc)],

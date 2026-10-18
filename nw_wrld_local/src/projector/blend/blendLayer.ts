@@ -41,8 +41,8 @@ import * as THREE from "three";
 import F from "../manim/formulas.json";
 import { Animator, Write, Unwrite, TransformMatchingParts, FadeGlyphs, Flash } from "../manim/animate";
 import { TexMobject, DecimalNumber } from "../manim/vmobject";
-import { texText } from "../manim/tex";
 import { getEthLive, getEthBlockLog } from "../ethLive";
+import { getVizMotion } from "../vizMotion";
 import { getStem, normLevel, slew } from "../scAudio";
 import { getSources, sourcesTexture, sourceRow, NB, ROWS } from "../sources";
 
@@ -651,10 +651,14 @@ export function attachBlendLayer(slot: SlotKey, scene: THREE.Scene, camera: THRE
 
   async function build() {
     const law = (side: Side) => TexMobject.create(text[side].law, { size: EM, color: INK[side], stroke: EM * 0.04 });
+    // The plain lines are in slot E's monospace (mono), the formulas in TeX's
+    // sans. A monospace runs ~15 % wider than TeX's roman at the same em, and
+    // its x-height is taller, so the lines are set a little smaller: the same
+    // width on screen, letters no smaller to read.
     const hint = (side: Side | "blend", line: string) =>
-      TexMobject.create(texText(line), { size: EM * 0.42, color: INK[side], stroke: EM * 0.02, cache: false });
+      TexMobject.create(line, { size: EM * 0.36, color: INK[side], stroke: EM * 0.018, mono: true });
     const [hd, nL, sL, nH, sH, bl, bH, nN, sN, bN] = await Promise.all([
-      TexMobject.create(text.header, { size: EM * 0.5, color: INK.blend, stroke: EM * 0.02, cache: false }),
+      TexMobject.create(text.header, { size: EM * 0.44, color: INK.blend, stroke: EM * 0.018, mono: true }),
       law("neuronal"), law("silicon"),
       hint("neuronal", text.computes.neuronal), hint("silicon", text.computes.silicon),
       TexMobject.create(text.blend?.mixed ?? text.generic, {
@@ -752,7 +756,7 @@ export function attachBlendLayer(slot: SlotKey, scene: THREE.Scene, camera: THRE
     const lines = text.lexicon;
     const line = lines[lexNext[slot] % lines.length];
     lexNext[slot]++;
-    const lex = await TexMobject.create(texText(line), { size: EM * 0.55, color: INK.accent, stroke: EM * 0.025, cache: false });
+    const lex = await TexMobject.create(line, { size: EM * 0.48, color: INK.accent, stroke: EM * 0.022, mono: true });
     if (destroyed) { lex.dispose(); return; }
     for (const g of lex.glyphs) g.setAlpha(0, 0);
     lex.position.set(0, meetHint.position.y - EM * 1.3, 0);
@@ -817,11 +821,12 @@ export function attachBlendLayer(slot: SlotKey, scene: THREE.Scene, camera: THRE
       u.uLam.value = R.lam;
       u.uForest.value = R.forest;
       u.uOpacity.value = Math.min(0.42, u.uOpacity.value + 0.004);   // under the structure, never over it
-      surface.rotation.y += 0.0009 * dt * 60;
+      // The ground turns with the slot, the way ROTATION SPD points.
+      surface.rotation.y += 0.0009 * dt * 60 * getVizMotion().rotation;
     } else if (TREES) {
       updateGrove(R.lam, now, R.forest, chain);
       groveMat.opacity = Math.min(0.55, groveMat.opacity + 0.006);   // beside the structure, not over it
-      grove.rotation.y += 0.0006 * dt * 60;
+      grove.rotation.y += 0.0006 * dt * 60 * getVizMotion().rotation;
       // the forest's small events reach the trees too, not only the launches
       if (Math.random() < R.forest * 0.02) pulse(INK.neuronal);
       if (R.tx && Math.random() < 0.15) pulse(INK.silicon);

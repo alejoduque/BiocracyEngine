@@ -14,6 +14,7 @@ import { mountSlotTicker } from "../slotTicker";
 import { Viz, pickSpecies, showStage } from "../visualizationSwitcher";
 import { INSTRUMENTS, SLOT_NOUNS, readInstrument, makeOnsetEdge, lerp, fixed2 } from "./instruments";
 import { makeSlotStage, makeKnobs } from "./stage";
+import { pendulum } from "./turns";
 
 // ─── Slot 8: Memory Hierarchy ─────────────────────────────────────────────────
 // Concept preserved: 3 layers of memory blocks; hex noise matrix background;
@@ -62,6 +63,7 @@ export function mountMemoryHierarchy(stageEl: HTMLElement, getLatestState: () =>
     // and the whole world can be lifted or turned without touching the
     // camera, which now belongs to the viewer.
     const root8 = new THREE.Group();
+    const turn8 = pendulum();
     scene.add(root8);
 
     // Instrumental identity. Six slots, six voices of the engine, no
@@ -638,11 +640,13 @@ export function mountMemoryHierarchy(stageEl: HTMLElement, getLatestState: () =>
         // sets how fast it settles, GIRO AUTO turns the stack.
         motes8.step(1 / 60,
             (droneMix - 0.5) * 50 + Math.sin(c8.blockPhase * Math.PI * 2) * 22,
-            vm8.rotation * 0.05 + c8.turn * 0.012,
+            vm8.rotation * 0.05,
             -(6 + memFeed * 34));
         motes8.material.opacity = (0.08 + texDep * 0.26) * masterA;
         motes8.material.size = Math.max(W, H) * (0.0012 + resBody * 0.0030);
-        root8.rotation.y = vm8.angle * c8.turn * (0.38 + c8.fullness * 0.3);
+        // A stack does not spin: it swings, and the swing drifts the way the
+        // slider points (turns.ts).
+        root8.rotation.y = turn8(calm8.dt, vm8.speed);
         ticker8.draw((0.35 + vol * 0.65) * masterA);
         const dmR = lerp(0.78, 1.0, droneMix); const dmG = lerp(1.0, 0.67, droneMix);
         dropMat.color.setRGB(dmR, dmG, 0);

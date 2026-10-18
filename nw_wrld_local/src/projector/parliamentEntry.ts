@@ -294,12 +294,12 @@ function connectControlWS() {
           address === "/parliament/rotation" ? "disp-rotation" : "disp-consensus");
         if (dispEl) dispEl.textContent = cadenceLabel(address, v) ?? v.toFixed(2);
         // Straight into the store: patchStoreFromSlider lives inside the
-        // setup closure and this handler does not. ROT_MIN/ROT_SPAN are the
-        // same ControlSpec(0.1, 2.0) SC maps through — vizMotion multiplies by
-        // state.rotation in those units, not in the normalised one.
+        // setup closure and this handler does not. The same ControlSpec(−2, 2)
+        // SC maps through — vizMotion multiplies by state.rotation in those
+        // units, not in the normalised one.
         const st = parliamentStore.state;
         if (st) {
-          if (address === "/parliament/rotation") st.rotation = 0.1 + v * 1.9;
+          if (address === "/parliament/rotation") st.rotation = -2 + v * 4;
           else st.consensus = v;
         }
         return;
@@ -876,7 +876,11 @@ function cadenceLabel(addr: string, n: number): string | null {
     // Registry-backed as of \vizRotation, so it travels normalised like the
     // rest and needs its own spec to read as anything. The multiplier is what
     // the performer is actually setting: 1.00x is one turn every ~3 minutes.
-    case "/parliament/rotation": return `${lin(0.1, 2.0).toFixed(2)}x`;
+    // Signed: the centre is stopped, left of it turns the other way.
+    case "/parliament/rotation": {
+      const r = lin(-2.0, 2.0);
+      return Math.abs(r) < 0.005 ? "0 · stop" : `${r > 0 ? "+" : "−"}${Math.abs(r).toFixed(2)}x`;
+    }
     default:                    return null;
   }
 }
@@ -1482,17 +1486,18 @@ async function init() {
   // Expose so visualizationSwitcher.ts can reach it at runtime via window
   (window as any).__sonethParams = sonethParams;
 
-  // ControlSpec(0.1, 2.0, \lin) — the same numbers 0_parameters.scd holds for
+  // ControlSpec(-2.0, 2.0, \lin) — the same numbers 0_parameters.scd holds for
   // \vizRotation. One definition on each side of the bridge and no third.
-  const ROT_MIN = 0.1;
-  const ROT_SPAN = 1.9;
+  // Signed: 0.5 on the wire is stopped, below it the slots turn backwards.
+  const ROT_MIN = -2.0;
+  const ROT_SPAN = 4.0;
 
   function patchStoreFromSlider(addr: string, id: number | null, v: number) {
     const st = parliamentStore.state;
     if (!st) return;
     if (addr === "/parliament/consensus") { st.consensus = v; }
     // 0-1 on the wire, like every other registry-backed slider, mapped here
-    // through the same ControlSpec(0.1, 2.0) SuperCollider holds. state.rotation
+    // through the same ControlSpec(-2.0, 2.0) SuperCollider holds. state.rotation
     // stays in its own units because vizMotion multiplies by it directly.
     else if (addr === "/parliament/rotation") { st.rotation = ROT_MIN + v * ROT_SPAN; }
     else if (addr === "/agents/species/activity" && id !== null && st.species?.[id]) { st.species[id].activity = v; }
@@ -2082,8 +2087,9 @@ async function init() {
 
   const REPLICA_MACROS: Record<string, (v: number) => void> = {
     // Rotation of the assembly = the cyclical cadence → beat tempo.
-    // (slider range is 0.1–2.0; normalise to 0–1 for the beatTempo fader)
-    "/parliament/rotation": (v) => driveSonethSlider("beatTempo", v),
+    // The slider is signed now (−2…+2); tempo has no direction, so it follows
+    // the magnitude, mapped as the old 0.1–2.0 range was.
+    "/parliament/rotation": (v) => driveSonethSlider("beatTempo", (Math.abs(-2 + v * 4) - 0.1) / 1.9),
     // Consensus = harmonic resolution: fuller harmonics + a quieter noise floor.
     "/parliament/consensus": (v) => {
       driveSonethSlider("harmonicrich", 0.35 + v * 0.5);
@@ -2587,7 +2593,7 @@ async function init() {
     // Parliament state bars
     setBar("bar-consensus", state.consensus); setVal("val-consensus", state.consensus.toFixed(3));
     setBar("bar-wave", state.consensusWave); setVal("val-wave", state.consensusWave.toFixed(3));
-    setBar("bar-rotation", Math.min(state.rotation / 2, 1)); setVal("val-rotation", state.rotation.toFixed(3));
+    setBar("bar-rotation", Math.min(Math.abs(state.rotation) / 2, 1)); setVal("val-rotation", state.rotation.toFixed(3));
     setBar("bar-votes", state.votes / 26); setVal("val-votes", String(state.votes));
 
     // BioToken breakdown — every factor of the product, live. bioTokenTerms()

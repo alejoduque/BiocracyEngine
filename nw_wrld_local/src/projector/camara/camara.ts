@@ -3,8 +3,9 @@
 // The Chamber's visual register, on key [C]. Two sources fold onto the one
 // 365-day ring of Article 42:
 //
-//   cameratrap  Reserva MANAKAI, 22 captures, doy 222-234. Ocelote, puma,
-//               aullador, mapache, garza — animals, seen.
+//   cameratrap  Reserva MANAKAI, two cameras, 30 captures, doy 222-278.
+//               Ocelote, puma, aullador, mapache, garza, tamandúa —
+//               animals, seen.
 //   audiomoth   the scrolling spectrogram rendered beside every corpus event.
 //               Not new evidence: the same clip corpus/manifest.json already
 //               schedules, seen instead of heard.
@@ -32,6 +33,21 @@
 // The picture is silent by construction: build_visual.py strips the audio
 // track, because the corpus already sounds through SuperCollider and a second
 // copy playing from a <video> element would double it.
+//
+// ON THE DOME
+// -----------
+// The CRT is a page: header, picture, record. Sent to the dome whole, as the
+// flat panel every 2-D slot gets, the footage came out about 60° by 34° — a
+// postcard at the front of the room. So while the dome runs, the footage goes
+// to it on its own: drawn into a canvas of its own (paintScreen) and handed
+// over as a "screen" layer, which the dome lays along its rim as a sector of
+// the ring, "pantalla" degrees wide (160° by default), turning slowly round
+// the zenith at the modules' idle rate. The record moves to a card beside it.
+// Behind and above the screen the rest of the register stands as the Library
+// of Babel (babel.ts): every capture and spectrogram shelved round a shaft
+// that rises for ever, each gallery turning its own way, and loose ones
+// falling down it past the audience. Camera-trap clips switch to their dome tier (960 px, against
+// the CRT's 480) for as long as the dome is on.
 
 import {
   CRT_DEFAULTS,
@@ -42,6 +58,9 @@ import {
   type CrtOptions,
   type CrtSurface,
 } from "./crt";
+import { domeRunning, registerDomeLayer } from "../dome/domeCapture";
+import { mountDomeCard } from "../dome/domeCard";
+import { createBabel, type Babel } from "./babel";
 
 type Species = {
   taxon: string | null;
@@ -61,6 +80,9 @@ type Clip = {
   duration_s: number;
   sensitivity: number;
   video: string;
+  /** Camera trap only: the same clip at 960 px, for the dome. */
+  video_dome?: string;
+  station?: string;
   poster: string | null;
   diel?: string;
   species?: Species[];
@@ -144,6 +166,15 @@ let _lastDoy = -1;
  * Released by clicking the readout, which is also where the mode is legible.
  */
 let _camtrapOnly = false;
+/** The footage alone, for the dome's curved screen. */
+let _screen: HTMLCanvasElement | null = null;
+let _screenCtx: CanvasRenderingContext2D | null = null;
+let _unScreen: (() => void) | null = null;
+let _unCard: (() => void) | null = null;
+/** Whether the clip on screen was loaded from its dome tier. */
+let _domeTier = false;
+/** The Library round the dome (babel.ts): built the first time the dome runs. */
+let _babel: Babel | null = null;
 let _loadFailed: string | null = null;
 let _pendingKey: string | null = null;
 let _lastReported = "";
@@ -216,7 +247,8 @@ function show(i: number): void {
   (window as unknown as { __camaraHoldMs?: number }).__camaraHoldMs = _holdMs;
 
   const v = _video;
-  v.src = ASSET_BASE + clip.video;
+  _domeTier = domeRunning() && !!clip.video_dome;
+  v.src = ASSET_BASE + (_domeTier ? clip.video_dome! : clip.video);
   // Silent by construction; muted as well as trackless so no autoplay policy
   // can block the element on audio grounds.
   v.muted = true;
@@ -441,7 +473,7 @@ function fit(vw: number, vh: number, bw: number, bh: number) {
 }
 
 /** Phosphor snow, for a clip the Chamber has decided to hold back. */
-function noise(ctx: CanvasRenderingContext2D, x: number, y: number, bw: number, bh: number, t: number): void {
+function noise(ctx: CanvasRenderingContext2D, x: number, y: number, bw: number, bh: number, t: number, step = 3): void {
   ctx.save();
   ctx.beginPath();
   ctx.rect(x, y, bw, bh);
@@ -451,7 +483,6 @@ function noise(ctx: CanvasRenderingContext2D, x: number, y: number, bw: number, 
   // folding the large multiplier inside the sin() instead of after it makes the
   // argument alias against the loop stride and the field comes out as a moiré
   // of diagonal stripes rather than snow.
-  const step = 3;
   for (let iy = 0; iy < bh; iy += step) {
     for (let ix = 0; ix < bw; ix += step) {
       const s = Math.sin(ix * 12.9898 + iy * 78.233 + t * 5.3) * 43758.5453;
@@ -676,6 +707,93 @@ function paint(ctx: CanvasRenderingContext2D, W: number, H: number, now: number)
   ctx.fillRect(rx + (rw * (clip.doy - 1)) / 365 - 1, ry - 3, 3, 8);
 }
 
+// ─── The dome ───────────────────────────────────────────────────────────────
+
+/**
+ * The dome turned on or off mid-clip: move the clip to the other tier where
+ * it stands, rather than waiting for the next one.
+ */
+function syncTier(): void {
+  const clip = _order[_cursor];
+  const v = _video;
+  if (!clip || !v || !clip.video_dome) return;
+  const want = domeRunning();
+  if (want === _domeTier) return;
+  _domeTier = want;
+  const t = v.currentTime;
+  v.src = ASSET_BASE + (want ? clip.video_dome : clip.video);
+  v.addEventListener("loadedmetadata", () => { try { v.currentTime = t; } catch { /* ignore */ } }, { once: true });
+  const p = v.play();
+  if (p && typeof p.catch === "function") p.catch(() => { /* ignore */ });
+}
+
+/**
+ * The footage for the dome's curved screen: the picture only, at the
+ * clip's own reveal, withheld as snow exactly as on the CRT. Its edges fade
+ * to black so the screen melts into the dome instead of ending in a seam.
+ */
+function paintScreen(now: number): void {
+  const ctx = _screenCtx, c = _screen;
+  if (!ctx || !c) return;
+  const W = c.width, H = c.height;
+  ctx.globalAlpha = 1;
+  ctx.fillStyle = "#000";
+  ctx.fillRect(0, 0, W, H);
+  const clip = _order[_cursor];
+  if (!clip) return;
+  const rev = reveal(clip);
+  if (rev < RETAIN_AT) {
+    noise(ctx, 0, 0, W, H, now * 0.001, 8);
+    ctx.font = crtFont(H * 0.07, 700);
+    ctx.fillStyle = "#ffba5e";
+    ctx.textBaseline = "middle";
+    const label = "RETENIDO";
+    ctx.fillText(label, (W - ctx.measureText(label).width) / 2, H / 2);
+  } else if (_video && _video.readyState >= 2 && _video.videoWidth > 0) {
+    const { dw, dh, dx, dy } = fit(_video.videoWidth, _video.videoHeight, W, H);
+    ctx.globalAlpha = rev;
+    ctx.drawImage(_video, dx, dy, dw, dh);
+    ctx.globalAlpha = 1;
+  }
+  const f = Math.round(W * 0.045);
+  const edge = (x0: number, y0: number, x1: number, y1: number, rx: number, ry: number, rw: number, rh: number) => {
+    const g = ctx.createLinearGradient(x0, y0, x1, y1);
+    g.addColorStop(0, "rgba(0,0,0,1)");
+    g.addColorStop(1, "rgba(0,0,0,0)");
+    ctx.fillStyle = g;
+    ctx.fillRect(rx, ry, rw, rh);
+  };
+  edge(0, 0, f, 0, 0, 0, f, H);
+  edge(W, 0, W - f, 0, W - f, 0, f, H);
+  edge(0, 0, 0, f, 0, 0, W, f);
+  edge(0, H, 0, H - f, 0, H - f, W, f);
+}
+
+/** The record, as the dome's card prints it: what the CRT prints under its picture. */
+function recordLines(): string[] {
+  if (_loadFailed) return ["SIN REGISTRO", _loadFailed];
+  const clip = _order[_cursor];
+  if (!clip) return ["cargando registro…"];
+  const rev = reveal(clip);
+  const ctrl = opacityControl();
+  const out = [
+    `doy ${String(clip.doy).padStart(3, "0")} · ${clip.date} · ${clip.temporada}`,
+    clip.register === "cameratrap"
+      ? `CT · ${clip.station ?? "MANAKAI"} · ${clip.diel ?? "—"} · ${clip.duration_s.toFixed(1)}s`
+      : `AM · ${clip.role || clip.domain || "—"}`,
+  ];
+  const sp = clip.species ?? [];
+  for (const s of sp.slice(0, 2)) {
+    const name = s.count > 1 ? `${s.common} ×${s.count}` : s.common;
+    out.push(s.taxon ? `${name} · ${s.taxon}` : name);
+  }
+  if (!sp.length && clip.register === "cameratrap") out.push("sin etiqueta — captura sin identificar");
+  out.push(rev < RETAIN_AT
+    ? `retenido por la Cámara · ${(ctrl * 100).toFixed(0)}%`
+    : `proyectando ${(rev * 100).toFixed(0)}% · ${(ctrl * 100).toFixed(0)}% cámara`);
+  return out;
+}
+
 // ─── Mount / destroy ────────────────────────────────────────────────────────
 
 export async function mountCamara(host: HTMLElement, hooks: CamaraHooks = {}) {
@@ -708,6 +826,25 @@ export async function mountCamara(host: HTMLElement, hooks: CamaraHooks = {}) {
   });
   _video = video;
 
+  // The dome's share: the footage on its own canvas, the record on a card
+  // left of it. The screen is a sector of the ring, its edge at half the
+  // "pantalla" span (±110° at the widest), so the card stands at −135°, clear
+  // of it at every setting; the dome turns the card round with the screen.
+  const screen = document.createElement("canvas");
+  screen.width = 960;
+  screen.height = 540;
+  screen.style.display = "none";
+  screen.setAttribute("aria-hidden", "true");
+  host.appendChild(screen);
+  _screen = screen;
+  _screenCtx = screen.getContext("2d");
+  _unScreen = registerDomeLayer(screen, { mode: "screen", blend: "over" });
+  _unCard = mountDomeCard(host, {
+    az: -135, el: 14, w: 40,
+    title: "Cámara fenológica · MANAKAI",
+    text: recordLines, cols: 40, rows: 6, keep: "start", color: "#8df0b4",
+  });
+
   await loadIndex();
 
   _surface = createCrtSurface(host, canvas, () => _opts, paint);
@@ -720,6 +857,12 @@ export async function mountCamara(host: HTMLElement, hooks: CamaraHooks = {}) {
 
   const loop = (now: number) => {
     _surface?.render(now);
+    syncTier();
+    if (domeRunning()) {
+      paintScreen(now);
+      if (!_babel && _host) _babel = createBabel(_host, ASSET_BASE);
+      _babel?.frame(now);
+    }
     _raf = requestAnimationFrame(loop);
   };
   _raf = requestAnimationFrame(loop);
@@ -756,6 +899,12 @@ export function destroyCamara(): void {
   _ro = null;
   _surface?.dispose();
   _surface = null;
+
+  _unScreen?.(); _unScreen = null;
+  _babel?.dispose(); _babel = null;
+  _unCard?.(); _unCard = null;
+  _screen = null; _screenCtx = null;
+  _domeTier = false;
 
   if (_video) {
     _video.pause();

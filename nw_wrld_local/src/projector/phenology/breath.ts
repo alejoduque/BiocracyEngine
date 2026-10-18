@@ -175,7 +175,9 @@ function wireRotationFromStore() {
   let lastCons = -1;
   _unsubscribeStore = parliamentStore.subscribe((state) => {
     if (!_instance) return;
-    const r = state.rotation;
+    // The slider is signed (it turns slots 5–9 both ways); the year's sweep
+    // has a rate, not a direction, and keeps its old 0.1x floor.
+    const r = Math.max(0.1, Math.abs(state.rotation));
     if (_instance.setRotation && Math.abs(r - lastSent) >= 0.01) {
       lastSent = r;
       try { _instance.setRotation!({ rotation: r }); } catch { /* ignore */ }

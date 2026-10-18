@@ -9,6 +9,7 @@ import { mountSlotTicker } from "../slotTicker";
 import { Viz, pickSpecies, showStage } from "../visualizationSwitcher";
 import { INSTRUMENTS, SLOT_NOUNS, readInstrument, makeOnsetEdge, makeCircle, lerp, snoise } from "./instruments";
 import { makeSlotStage, makeKnobs } from "./stage";
+import { escapement } from "./turns";
 
 // ─── Slot 7: Geometry (Sweep Lines / Radar) ───────────────────────────────────
 // Concept preserved: horizontal rays scroll vertically, crosshair targets appear
@@ -56,6 +57,7 @@ export function mountGeometry(stageEl: HTMLElement, getLatestState: () => Parlia
     // and the whole world can be lifted or turned without touching the
     // camera, which now belongs to the viewer.
     const root7 = new THREE.Group();
+    const turn7 = escapement();
     scene.add(root7);
 
     // Instrumental identity. Six slots, six voices of the engine, no
@@ -462,11 +464,12 @@ export function mountGeometry(stageEl: HTMLElement, getLatestState: () => Parlia
         // through. SPATIAL SPRD sets how fast, GIRO AUTO turns the field.
         motes7.step(1 / 60,
             -(0.2 + spatSp) * 110 - c7.blockPhase * 40,
-            vm7.rotation * 0.06 + c7.turn * 0.015,
+            vm7.rotation * 0.06,
             (droneSpace - 0.5) * 18);
         motes7.material.opacity = (0.09 + texDep * 0.24) * masterA;
         motes7.material.size = Math.max(W, H) * (0.0013 + resBody * 0.0034);
-        root7.rotation.y = vm7.angle * c7.turn * (0.5 + c7.fullness * 0.35);
+        // One verdict at a time: the yaw steps in uneven ticks (turns.ts).
+        root7.rotation.y = turn7(calm7.dt, vm7.speed, c7);
         ticker7.draw((0.35 + vol * 0.65) * masterA);
         // ── BOMBO speaks ──────────────────────────────────────────────────
         // A target acquisition — a ray crossing a sweep — is this slot's

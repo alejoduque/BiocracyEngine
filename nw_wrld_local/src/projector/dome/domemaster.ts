@@ -32,6 +32,7 @@ import { UnrealBloomPass } from "three/examples/jsm/postprocessing/UnrealBloomPa
 import { AfterimagePass } from "three/examples/jsm/postprocessing/AfterimagePass.js";
 import type { CapturedView, CapturedPost, DomeLayer } from "./domeCapture";
 import { ignoreRenderer, domeLayerVersion, DOME_LAYER } from "./domeCapture";
+import { getVizMotion } from "../vizMotion";
 
 const DEG = Math.PI / 180;
 
@@ -48,6 +49,8 @@ export type DomeParams = {
   frontElevation: number;
   /** Angular width of the flat panel used for 2-D slots. */
   panelDeg: number;
+  /** Azimuth a slot's curved screen spans (a "screen" layer: slot C's footage). */
+  screenDeg: number;
   /**
    * 0–0.95: how far the dome camera moves from the slot camera toward the
    * middle of the scene. A slot camera frames its world for a flat screen, so
@@ -65,9 +68,14 @@ export const DEFAULT_PARAMS: DomeParams = {
   aperture: 180,
   frontElevation: 30,
   panelDeg: 90,
+  screenDeg: 160,
   immersion: 0.5,
   tilt: 0,
 };
+
+/** Grid of the curved screen: fine enough that its bend reads as a curve. */
+const SCREEN_SEG_X = 64;
+const SCREEN_SEG_Y = 36;
 
 // ── Shaders ─────────────────────────────────────────────────────────────────
 
@@ -435,6 +443,20 @@ export class Domemaster {
   private static readonly MAX_CARDS = 4;
   private panelSource: HTMLCanvasElement | null = null;
   private panelKey = "";
+  // A "screen" layer: footage on a curved screen (see placeScreen).
+  private screenMesh: THREE.Mesh;
+  private screenFeed: CanvasFeed | null = null;
+  private screenSource: HTMLCanvasElement | null = null;
+  private screenKey = "";
+  private screenGeoKey = "";
+  /**
+   * Where the screen has turned to, degrees of azimuth. It drifts round the
+   * zenith at the modules' own idle rate (vizMotion.speed: 1°/s at ROTATION
+   * SPD 1.00x, signed, still while anyone is operating the instrument), so
+   * over a few minutes every seat gets the picture straight ahead of it.
+   */
+  private screenAz = 0;
+  private screenT = 0;
 
   // dome basis in world space (from the slot camera, or a default)
   private zen = new THREE.Vector3(0, 1, 0);
@@ -518,6 +540,14 @@ export class Domemaster {
     );
     this.panelMesh.renderOrder = 0;
     this.overScene.add(this.panelMesh, ...this.bandRings);
+    this.screenMesh = new THREE.Mesh(
+      new THREE.PlaneGeometry(1, 1, SCREEN_SEG_X, SCREEN_SEG_Y),
+      new THREE.MeshBasicMaterial({ premultipliedAlpha: true, depthTest: false, depthWrite: false, side: THREE.DoubleSide }),
+    );
+    this.screenMesh.renderOrder = 1;
+    this.screenMesh.visible = false;
+    this.screenMesh.frustumCulled = false;
+    this.overScene.add(this.screenMesh);
     for (let i = 0; i < Domemaster.MAX_CARDS; i++) {
       const mesh = new THREE.Mesh(
         new THREE.PlaneGeometry(1, 1),
@@ -593,6 +623,46 @@ export class Domemaster {
     mesh.up.copy(this.zen);
     mesh.lookAt(0, 0, 0);
     mesh.updateMatrixWorld();
+  }
+
+  /**
+   * Bend the screen mesh over the dome as a sector of its ring: `spanDeg` of
+   * azimuth, its foot on the circle of elevation `footDeg`, centred on the
+   * front. The domemaster is a disc, so the picture takes the disc's shape —
+   * its lower edge rides the rim, its sides run along radii, every row of it
+   * is a circle of elevation.
+   *
+   * Rows are spaced the way Mercator spaces latitudes, which keeps the
+   * picture CONFORMAL: shapes stay true at every height (an ocelot does not
+   * squash as it climbs the frame), only the scale shrinks toward the top,
+   * as perspective already does on a dome. The height follows from the span
+   * and the picture's aspect — 160° of a 16:9 frame runs from the rim to
+   * about 67° — and no row comes near the zenith, where a sector would pinch.
+   *
+   * Built once in the dome's basis with its middle at the front; turning it
+   * round the zenith is the mesh's rotation (see screenAz), not a rebuild.
+   */
+  private placeScreen(footDeg: number, spanDeg: number, aspect: number) {
+    const key = `${footDeg.toFixed(2)}|${spanDeg}|${aspect.toFixed(3)}|`
+      + `${this.front.toArray().map((v) => v.toFixed(4))}|${this.zen.toArray().map((v) => v.toFixed(4))}`;
+    if (key === this.screenGeoKey) return;
+    this.screenGeoKey = key;
+    const merc = (e: number) => Math.log(Math.tan(Math.PI / 4 + e / 2));
+    const gd = (m: number) => 2 * Math.atan(Math.exp(m)) - Math.PI / 2;
+    const m0 = merc(footDeg * DEG);
+    const dy = (spanDeg * DEG) / Math.max(0.2, aspect);
+    const geo = this.screenMesh.geometry as THREE.BufferGeometry;
+    const pos = geo.getAttribute("position") as THREE.BufferAttribute;
+    const uv = geo.getAttribute("uv") as THREE.BufferAttribute;
+    const d = new THREE.Vector3();
+    for (let i = 0; i < pos.count; i++) {
+      const az = (uv.getX(i) - 0.5) * spanDeg;
+      const el = Math.min(84, gd(m0 + uv.getY(i) * dy) / DEG);
+      this.dirAt(az, el, d);
+      pos.setXYZ(i, d.x * 10, d.y * 10, d.z * 10);
+    }
+    pos.needsUpdate = true;
+    geo.computeBoundingSphere();
   }
 
   // Camera pose is read from matrixWorld as the slot's own last render left
@@ -750,8 +820,43 @@ export class Domemaster {
       finally { for (const mm of this._pts) mm.size /= k; this._pts.length = 0; }
     }
 
-    // 2. the overlay: the panel when there is no 3-D scene
-    if (!view && panel && panel.width > 0 && panel.height > 0) {
+    // 2. the overlay: a slot's curved screen, if it has one — over its 3-D
+    // world when it has one too (slot C's Library)…
+    const screen = layers.find((l) => l.mode === "screen");
+    if (screen) {
+      const c = screen.canvas;
+      const key = `${c.width}x${c.height}`;
+      if (this.screenSource !== c || this.screenKey !== key) {
+        this.screenKey = key;
+        this.screenFeed?.dispose();
+        this.screenFeed = new CanvasFeed(THREE.SRGBColorSpace);
+        this.screenFeed.texture.repeat.y = -1;
+        this.screenFeed.texture.offset.y = 1;
+        const m = this.screenMesh.material as THREE.MeshBasicMaterial;
+        m.map = this.screenFeed.texture;
+        m.needsUpdate = true;
+        this.screenSource = c;
+      }
+      this.screenFeed!.pull(c);
+      // Its foot a degree above the rim; "frente" past its default lifts it.
+      this.placeScreen(1 + Math.max(0, P.frontElevation - DEFAULT_PARAMS.frontElevation),
+        Math.min(220, P.screenDeg), c.width / c.height);
+      const now = performance.now();
+      const dt = this.screenT ? Math.min(0.1, (now - this.screenT) / 1000) : 0;
+      this.screenT = now;
+      this.screenAz = ((this.screenAz + (getVizMotion().speed / DEG) * dt + 540) % 360) - 180;
+      // dirAt's +az is to the right; a turn about the zenith carries the
+      // front to the right for a negative angle.
+      this.screenMesh.quaternion.setFromAxisAngle(this.zen, -this.screenAz * DEG);
+      this.screenMesh.updateMatrixWorld();
+      this.screenMesh.visible = this.screenFeed!.ready;
+    } else {
+      this.screenMesh.visible = false;
+      this.screenT = 0;
+    }
+
+    // …else the panel when there is no 3-D scene
+    if (!view && !screen && panel && panel.width > 0 && panel.height > 0) {
       // A new canvas, or the same one resized (p5 does on window resize):
       // three allocates texture storage once, so a size change needs a new one.
       const key = `${panel.width}x${panel.height}`;
@@ -791,7 +896,9 @@ export class Domemaster {
           c.source = l.canvas; c.key = key;
         }
         c.feed!.pull(l.canvas);
-        this.place(c.mesh, l.place.az, l.place.el, l.place.w, l.canvas.width / l.canvas.height);
+        // A slot's screen carries its cards round with it.
+        const turn = screen ? this.screenAz : 0;
+        this.place(c.mesh, l.place.az + turn, l.place.el, l.place.w, l.canvas.width / l.canvas.height);
         c.mesh.visible = c.feed!.ready;
       }
       for (; i < this.cards.length; i++) this.cards[i].mesh.visible = false;
@@ -1069,6 +1176,9 @@ export class Domemaster {
     this.skyFeed?.dispose(); this.bandFeed?.dispose();
     this.sceneCube.dispose(); this.overCube.dispose(); this.domeRT.dispose();
     this.panelFeed?.dispose();
+    this.screenFeed?.dispose();
+    this.screenMesh.geometry.dispose();
+    (this.screenMesh.material as THREE.Material).dispose();
     for (const c of this.cards) { c.feed?.dispose(); c.mesh.geometry.dispose(); (c.mesh.material as THREE.Material).dispose(); }
     this.fisheyeMat.dispose(); this.displayMat.dispose(); this.simMat.dispose();
     this.renderer.dispose();

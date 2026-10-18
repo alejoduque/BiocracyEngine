@@ -9,6 +9,7 @@ import { mountSlotTicker } from "../slotTicker";
 import { Viz, pickSpecies, showStage, SPECIES_ROSTER } from "../visualizationSwitcher";
 import { INSTRUMENTS, SLOT_NOUNS, readInstrument, makeOnsetEdge, lerp } from "./instruments";
 import { makeSlotStage, makeKnobs } from "./stage";
+import { oblique } from "./turns";
 
 // ─── Slot 6: Dynamic Optimality (Splay Tree) ─────────────────────────────────
 // Concept preserved: tree layout with root at top, children radiating down,
@@ -55,6 +56,7 @@ export function mountDynamicOptimality(stageEl: HTMLElement, getLatestState: () 
     // and the whole world can be lifted or turned without touching the
     // camera, which now belongs to the viewer.
     const root6 = new THREE.Group();
+    const turn6 = oblique();
     scene.add(root6);
 
     // Instrumental identity. Six slots, six voices of the engine, no
@@ -263,6 +265,8 @@ export function mountDynamicOptimality(stageEl: HTMLElement, getLatestState: () 
         calm6.step("__slot6Soneth");
         const e6 = calm6.eth;
         const c6 = calm6.chain;
+        // Node spin per frame-at-60, signed by ROTATION SPD (1.00x = as it was).
+        const spinRate6 = vm6.rotation * calm6.dt * 60;
         pick6.update(camera);
         floor6.grid.position.y = -H * 0.45;
         floor6.material.opacity = (0.04 + texDep * 0.09) * masterA;
@@ -379,7 +383,9 @@ export function mountDynamicOptimality(stageEl: HTMLElement, getLatestState: () 
             // Deflect, then settle. A struck body leans off its axis; it does
             // not merely translate. Drift folded in, and the vote's rebalance
             // shows in the boxes as well as in the snap rate above.
-            spin6[i] += 0.005 + texDep * 0.04 * (1 + act * 8) + vm6.speed * 0.02
+            // Each node at its own rate (golden-ratio spread), all of them
+            // the way ROTATION SPD points and stopped at its centre.
+            spin6[i] += (0.005 + texDep * 0.04 * (1 + act * 8)) * spinRate6 * (0.6 + ((i * 0.618) % 1) * 0.8)
               + (vf6 ? vf6.flash * 0.10 * (isAlarm(vf6.type) ? -1 : 1) : 0);
             // Tilted on two axes, not one. A cube spun only about z from a
             // camera on the z axis is a rotating square; this is what makes it
@@ -410,13 +416,13 @@ export function mountDynamicOptimality(stageEl: HTMLElement, getLatestState: () 
         // TIME DILAT carries the air through the tree, GIRO AUTO turns it.
         motes6.step(1 / 60,
             (tDil - 0.5) * 70 + Math.sin(c6.blockPhase * Math.PI * 2) * 28,
-            vm6.rotation * 0.07 + c6.turn * 0.015,
+            vm6.rotation * 0.07,
             (pitchSh - 0.5) * 22);
         motes6.material.opacity = (0.08 + texDep * 0.26) * masterA;
         motes6.material.size = Math.max(W, H) * (0.0014 + resBody * 0.0038);
-        // Reverses at every block boundary, like slot 5 — one clock for the
-        // whole right-hand half of the instrument, and it is the chain's.
-        root6.rotation.y = vm6.angle * c6.turn * (0.42 + c6.fullness * 0.35);
+        // A heavy body on a leaning axis (turns.ts): the slider sets where
+        // its rate is heading, and it takes seconds to get there.
+        turn6(root6, calm6.dt, vm6.speed, c6);
         ticker6.draw((0.35 + vol * 0.65) * masterA);
 
         // RAÍZ names the node the tree is splayed around; the rest carry their

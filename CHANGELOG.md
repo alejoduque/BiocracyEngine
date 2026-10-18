@@ -7,6 +7,55 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### The dome mix, the hsaing waing, module C's Library of Babel (2026-10-18)
+
+#### Added
+- **DISPOSICIÓN** (on MEZCLA, `~stemPlace` in 3_synthdefs.scd). Before this, every voice was panned by the one SPREAD knob, so the engine stood at the dome's front centre and the rear pair carried only the room.
+  - **Roles:** each stem has a role and is built as its own def (`\stemSum{,Duck}{,_env,_point}`).
+    - **env:** the stem fills all four speakers, front against rear (equal power). The rear copy is decorrelated, and the balance breathes slowly.
+    - **point:** the stem has a home azimuth, an arc and a wander. With `attend`, it steps toward the front while it surges above its own 20 s level, then drifts home over about 6 s.
+  - **Map:** drone env .30, pad env .50, dust env .72, corpus env .62, masa env .50; ultra 180°, golpe 0°, sample −60°; remuestreo +90°, espectro −90°, caos +140°, ruptura −140°, seq +45°, all with attend. Kick and perc keep their own placement.
+  - **Spectral homes, under the same carve:** drone −2 dB above 6 kHz, pad −2 dB below 160 Hz, dust +2 dB above 11 kHz.
+  - **Checked offline:** at MEZCLA 0 the stems are unchanged, and total power is conserved within the test noise.
+- **Hsaing waing** in `\opalPerc` and `\opalKick`.
+  - **BOWL** is the tuned circle. A full strike is bossed gongs (kyi waing and maung hsaing): sparse modes, slow beating and a small rise in pitch. A short strike, such as the retrig bursts, is pat waing drums: paste-tuned modes and a palm overshoot.
+  - **Tuning:** both fall on an anhemitonic pentatonic over `~droneRoot`, which `~percSpawn` passes as `root`.
+  - **The circle:** with MEZCLA up, each strike stands round the ring at its own pitch. An octave lands on the same seat.
+  - **CHINA** is linkwin (14 gentler modes) plus si, the small bell-cymbals that keep ringing. The square-wave chug is gone, and the fold is gentler.
+  - **KICK** is the pat ma: struck sharp and settling with no chirp, with circular-membrane modes under the same 280 Hz ceiling. The wa bamboo clapper is added after the ceiling.
+  - **Levels:** set in NRT against the old voices (`~gongNorm`, `~drumNorm`, `~linkwinNorm`, `~siNorm`, `~patMaNorm`, `~waNorm`). Everything is within about 1–2 dB, apart from the si's intended tail. No NaN at 48 or 16 kHz.
+- **Module C on the dome:**
+  - **Screen:** the footage is a ring sector along the dome's rim (new dome layer mode `"screen"`). Rows are spaced conformally, Mercator-style, and the span is the new "pantalla" slider (90–220°, default 160°). The screen turns round the zenith at the modules' idle rate, and the record card turns with it.
+  - **Dome tier:** camera-trap clips have a 960 px version (`<key>.dome.mp4`, field `video_dome`), played while the dome runs.
+  - **The Library of Babel** (`camara/babel.ts`): a seated three.js world of hexagonal galleries round a shaft that rises for ever.
+    - About 1,300 books: all 642 posters, from two atlases built by `tools/build_babel.py`.
+    - Loose books fall down the shaft.
+    - Each of the 28 rings turns its own way and reverses at random. The rate follows ROTATION SPD and idle, the sound level and inmersión, and a vote reverses them all.
+    - Six draw calls.
+- **Eight new camera-trap captures** from CAM_01 and CAM_02, August to October.
+  - WhatsApp stripped their dates, so each is dated from the stamp burnt into the frame (`STAMPED` in build_cameratrap.py), and their audio is stripped.
+  - New label: `tamandua` (genus rank).
+  - The register is now 30 clips, from doy 222 to 278.
+
+#### Changed
+- **MEZCLA boots at 1** (registry default). MEZCLA_0_Barro still returns the old sound.
+- **Modules 5–9 rotation.** Each module used to turn by its drift angle times the block parity, so it swung from +angle to −angle at every Ethereum block. Each module now turns its own way (`slots/turns.ts`):
+  - gyroscope;
+  - oblique axis with inertia;
+  - escapement with uneven ticks;
+  - pendulum;
+  - irregular, non-periodic rate.
+- **ROTATION SPD is signed**, −2 to +2: the centre stops and the left reverses. Saved configs keep their positive values. Readers that need a rate use the magnitude.
+- **Modules 4–9 type:** set in module E's monospace (JetBrains Mono, OFL, in assets/fonts), and formulas in TeX sans.
+- **Module E:** a near-black background in every palette. Its labels are dome-facing planes, so they reach the dome and its NDI feed.
+- **The build scripts no longer drop data that is offline.**
+  - `build_cameratrap.py` keeps records whose originals are offline.
+  - `build_visual.py` keeps index entries it did not rebuild in a run, and caps output at 30 fps.
+
+#### Fixed
+- **The rotation slider cancelled its own drift.** Its beat-tempo macro dispatched a synthetic `input`, which counted as interaction. vizMotion now ignores untrusted events.
+- **SC GUI on a second monitor.** UserViews (the GOLPE grid, the REC clock, the LEDs) kept a pixmap at the old screen's pixel ratio after a drag between screens. `~dprWatch` now nudges them when the window comes to rest.
+
 ### Modules A and B: the corpus as a garden that plays itself; their labels on the dome and its NDI feed (2026-10-17)
 
 #### Added

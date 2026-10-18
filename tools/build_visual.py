@@ -97,6 +97,16 @@ WIDTH = 480
 CRF = 30
 PRESET = "veryfast"
 
+# The dome tier, camera trap only. On the dome the footage is a curved screen
+# about 150° wide — some 1700 px of a 2048 domemaster — and 480 px stretched
+# across that is soft. 960 is what survives of the August captures (their
+# 1080p originals are offline; the web archive kept 960 px copies, used here
+# as the source) and a little more than the WhatsApp batch carries, which is
+# never upscaled. Silent too.
+DOME_WIDTH = 960
+DOME_CRF = 26
+WEB_CAMARA = ROOT / "web" / "media" / "archivo" / "camara"
+
 
 def run(cmd: list[str]) -> None:
     proc = subprocess.run(cmd, capture_output=True, text=True)
@@ -124,6 +134,8 @@ def transcode(job: dict) -> tuple[str, str | None]:
             "-i", str(src),
             "-an",
             "-vf", f"scale={WIDTH}:-2:flags=bicubic",
+            # Some captures run at 60 fps; the CRT draws at 30.
+            "-fpsmax", "30",
             "-c:v", "libx264", "-crf", str(CRF), "-preset", PRESET,
             "-pix_fmt", "yuv420p", "-movflags", "+faststart",
             str(out),
@@ -143,6 +155,33 @@ def transcode(job: dict) -> tuple[str, str | None]:
     except RuntimeError as e:
         return job["key"], str(e)
     return job["key"], None
+
+
+def transcode_dome(job: dict) -> tuple[str, str | None]:
+    """One camera-trap clip → its silent dome-tier mp4. Runs in a worker process."""
+    try:
+        run([
+            "ffmpeg", "-nostdin", "-y", "-loglevel", "error",
+            "-i", job["dome_source"],
+            "-an",
+            "-vf", f"scale='min({DOME_WIDTH},iw)':-2:flags=bicubic",
+            "-fpsmax", "30",
+            "-c:v", "libx264", "-crf", str(DOME_CRF), "-preset", PRESET,
+            "-pix_fmt", "yuv420p", "-movflags", "+faststart",
+            job["dome_out"],
+        ])
+    except RuntimeError as e:
+        return job["key"], str(e)
+    return job["key"], None
+
+
+def dome_source(job: dict) -> str | None:
+    """The best source for the dome tier: the original, else the web archive's copy."""
+    src = Path(job["source"])
+    if src.exists():
+        return str(src)
+    web = WEB_CAMARA / f"{job['key']}.mp4"
+    return str(web) if web.exists() else None
 
 
 def load(path: Path, what: str) -> dict | None:
@@ -266,6 +305,7 @@ def collect_cameratrap() -> list[dict]:
             "date": rec["date"],
             "temporada": rec["temporada"],
             "diel": rec.get("diel", ""),
+            "station": rec.get("station", ""),
             "species": rec.get("species", []),
             "unlabelled": rec.get("unlabelled", False),
             "duration_s": float(rec.get("duration_s") or 10.0),
@@ -301,6 +341,27 @@ def write_index(entries: list[dict]) -> Path:
     return path
 
 
+def carried(built: list[dict]) -> list[dict]:
+    """
+    Entries of the last index that this run did not rebuild but whose video is
+    still on disk.
+
+    The index used to be written from this run's jobs alone, so
+    `--register cameratrap` dropped every AudioMoth clip, and a run without
+    the external AudioMoth drive dropped that deployment. The derived files
+    were still there; only the index forgot them.
+    """
+    path = DEST / "index.json"
+    if not path.exists():
+        return []
+    have = {e["key"] for e in built}
+    old = json.loads(path.read_text(encoding="utf-8")).get("clips", [])
+    keep = [e for e in old if e["key"] not in have and (CORPUS / e["video"]).exists()]
+    if keep:
+        print(f"carried      {len(keep)} index entries not rebuilt this run")
+    return keep
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--dry-run", action="store_true",
@@ -331,8 +392,13 @@ def main() -> int:
     for j in jobs:
         j["out"] = str(DEST / j["register"] / f"{j['key']}.mp4")
         j["poster"] = str(DEST / j["register"] / f"{j['key']}.jpg")
+        if j["register"] == "cameratrap":
+            j["dome_out"] = str(DEST / j["register"] / f"{j['key']}.dome.mp4")
+            j["dome_source"] = dome_source(j)
 
     todo = jobs if args.force else [j for j in jobs if not Path(j["out"]).exists()]
+    todo_dome = [j for j in jobs if j.get("dome_source")
+                 and (args.force or not Path(j["dome_out"]).exists())]
     src_bytes = sum(Path(j["source"]).stat().st_size for j in jobs
                     if Path(j["source"]).exists())
 
@@ -343,6 +409,7 @@ def main() -> int:
     print(f"clips        {len(jobs)}  ({tally})")
     print(f"originals    {src_bytes / 1e9:.2f} GB")
     print(f"to encode    {len(todo)}  ({len(jobs) - len(todo)} already present)")
+    print(f"dome tier    {len(todo_dome)} to encode at {DOME_WIDTH}px")
     print(f"target       {WIDTH}px wide, h264 crf {CRF}, no audio")
     print(f"dest         {DEST}")
 
@@ -364,6 +431,15 @@ def main() -> int:
                 else:
                     print(f"  [{done}/{len(todo)}] {key}")
 
+    if todo_dome:
+        with ProcessPoolExecutor(max_workers=args.jobs) as pool:
+            futures = [pool.submit(transcode_dome, j) for j in todo_dome]
+            for i, fut in enumerate(as_completed(futures), 1):
+                key, err = fut.result()
+                if err:
+                    failures.append((key + " (dome)", err))
+                print(f"  dome [{i}/{len(todo_dome)}] {'FAIL ' if err else ''}{key}")
+
     # Index only what actually landed, so a partial run yields a manifest that
     # matches the disk rather than one that promises files it never wrote.
     entries = []
@@ -371,15 +447,27 @@ def main() -> int:
         out = Path(j["out"])
         if not out.exists():
             continue
-        e = {k: v for k, v in j.items() if k not in ("source", "out", "poster")}
+        e = {k: v for k, v in j.items()
+             if k not in ("source", "out", "poster", "dome_out", "dome_source")}
         e["video"] = str(out.relative_to(CORPUS))
+        dome = Path(j.get("dome_out", ""))
+        if j.get("dome_out") and dome.exists():
+            e["video_dome"] = str(dome.relative_to(CORPUS))
         p = Path(j["poster"])
         e["poster"] = str(p.relative_to(CORPUS)) if p.exists() else None
         e["bytes"] = out.stat().st_size
         entries.append(e)
 
+    entries += carried(entries)
     entries.sort(key=lambda e: (e["doy"], e["register"], e["key"]))
     path = write_index(entries)
+
+    # The Library's shelves (slot C on the dome) are cut from these posters.
+    try:
+        import build_babel
+        build_babel.main()
+    except Exception as e:  # the index is the product; the atlases follow it
+        print(f"babel atlases not rebuilt: {e}", file=sys.stderr)
 
     out_bytes = sum(e["bytes"] for e in entries)
     print(f"\nindexed      {len(entries)} clips")

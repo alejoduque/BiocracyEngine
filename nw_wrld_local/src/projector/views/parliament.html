@@ -719,15 +719,16 @@
                  this panel that a preset forgot.
 
                  Both are 0-1 like every registry-backed slider — SC maps
-                 through the spec — so Rotation reads 0.10x..2.00x rather than
-                 showing its own raw position. -->
+                 through the spec — so Rotation reads −2.00x..+2.00x rather
+                 than showing its own raw position. Signed: the centre stops
+                 the drift, left of it turns the slots the other way. -->
             <div class="tele-section">
                 <div class="tele-section-title">Parliament → VIZ</div>
                 <div class="ctrl-row">
                     <label>Rotation Spd</label>
-                    <input type="range" min="0" max="1" step="0.01" value="0.47"
+                    <input type="range" min="0" max="1" step="0.005" value="0.75"
                         data-osc="/parliament/rotation" data-sc="rotationSpeed">
-                    <span class="ctrl-val" id="disp-rotation">1.00x</span>
+                    <span class="ctrl-val" id="disp-rotation">+1.00x</span>
                 </div>
                 <div class="ctrl-row">
                     <label>Consensus</label>

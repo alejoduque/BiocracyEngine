@@ -1,7 +1,13 @@
 {
- "generated": "2026-08-30T22:12:56-05:00",
- "source": "/Users/a/Desktop/camaratrampaAgosto2026",
- "station": "CT-MANAKAI-01",
+ "generated": "2026-10-17T22:25:08-05:00",
+ "source": [
+  "/Users/a/Desktop/camaratrampaAgosto2026",
+  "/Users/a/Documents/code/BiocracyEngine/corpus/cameratrap_src/camtrampaLR"
+ ],
+ "station": [
+  "CT-MANAKAI-01",
+  "CT-MANAKAI-02"
+ ],
  "locality": "Reserva MANAKAI",
  "register": "cameratrap",
  "withholding": "none",
@@ -36,7 +42,13 @@
    230,
    231,
    232,
-   234
+   233,
+   234,
+   239,
+   241,
+   261,
+   262,
+   278
   ],
   "days": [
    {
@@ -134,6 +146,13 @@
     ]
    },
    {
+    "doy": 233,
+    "date": "2026-08-21",
+    "temporada": "medio_seco",
+    "clips": 1,
+    "species": []
+   },
+   {
     "doy": 234,
     "date": "2026-08-22",
     "temporada": "medio_seco",
@@ -141,6 +160,48 @@
     "species": [
      "mosca"
     ]
+   },
+   {
+    "doy": 239,
+    "date": "2026-08-27",
+    "temporada": "medio_seco",
+    "clips": 3,
+    "species": [
+     "puma",
+     "ocelote"
+    ]
+   },
+   {
+    "doy": 241,
+    "date": "2026-08-29",
+    "temporada": "medio_seco",
+    "clips": 1,
+    "species": [
+     "oso hormiguero (tamandúa)"
+    ]
+   },
+   {
+    "doy": 261,
+    "date": "2026-09-18",
+    "temporada": "segundas_lluvias",
+    "clips": 1,
+    "species": [
+     "oso hormiguero (tamandúa)"
+    ]
+   },
+   {
+    "doy": 262,
+    "date": "2026-09-19",
+    "temporada": "segundas_lluvias",
+    "clips": 1,
+    "species": []
+   },
+   {
+    "doy": 278,
+    "date": "2026-10-05",
+    "temporada": "segundas_lluvias",
+    "clips": 1,
+    "species": []
    }
   ]
  },
@@ -264,10 +325,23 @@
    "rank": "species",
    "group": "felid",
    "sensitivity": 1.0,
-   "clips": 2,
+   "clips": 3,
    "days": [
     226,
-    230
+    230,
+    239
+   ]
+  },
+  {
+   "common": "oso hormiguero (tamandúa)",
+   "taxon": "Tamandua",
+   "rank": "genus",
+   "group": "mammal",
+   "sensitivity": 0.5,
+   "clips": 2,
+   "days": [
+    241,
+    261
    ]
   },
   {
@@ -276,10 +350,11 @@
    "rank": "species",
    "group": "felid",
    "sensitivity": 1.0,
-   "clips": 4,
+   "clips": 5,
    "days": [
     228,
-    232
+    232,
+    239
    ]
   }
  ],
@@ -929,6 +1004,27 @@
    "sensitivity": 0.3
   },
   {
+   "key": "ct_08212320",
+   "source": "/Users/a/Documents/code/BiocracyEngine/corpus/cameratrap_src/camtrampaLR/08212320.mp4",
+   "station": "CT-MANAKAI-01",
+   "locality": "Reserva MANAKAI",
+   "register": "cameratrap",
+   "doy": 233,
+   "date": "2026-08-21",
+   "hour": 23,
+   "minute": 20,
+   "temporada": "medio_seco",
+   "duration_s": 10.5,
+   "width": 848,
+   "height": 480,
+   "fps": 20.0,
+   "diel": "noche",
+   "species": [],
+   "labels": [],
+   "unlabelled": true,
+   "sensitivity": 1.0
+  },
+  {
    "key": "ct_08220046_sonidomosca",
    "source": "/Users/a/Desktop/camaratrampaAgosto2026/08220046_sonidomosca.MOV",
    "station": "CT-MANAKAI-01",
@@ -959,6 +1055,197 @@
    ],
    "unlabelled": false,
    "sensitivity": 0.0
+  },
+  {
+   "key": "ct_08271058_puma",
+   "source": "/Users/a/Documents/code/BiocracyEngine/corpus/cameratrap_src/camtrampaLR/08271058_puma.mp4",
+   "station": "CT-MANAKAI-02",
+   "locality": "Reserva MANAKAI",
+   "register": "cameratrap",
+   "doy": 239,
+   "date": "2026-08-27",
+   "hour": 10,
+   "minute": 58,
+   "temporada": "medio_seco",
+   "duration_s": 20.25,
+   "width": 832,
+   "height": 464,
+   "fps": 60.0,
+   "diel": "dia",
+   "species": [
+    {
+     "taxon": "Puma concolor",
+     "rank": "species",
+     "common": "puma",
+     "group": "felid",
+     "count": 1,
+     "sensitivity": 1.0
+    }
+   ],
+   "labels": [
+    "puma"
+   ],
+   "unlabelled": false,
+   "sensitivity": 1.0
+  },
+  {
+   "key": "ct_08271410",
+   "source": "/Users/a/Documents/code/BiocracyEngine/corpus/cameratrap_src/camtrampaLR/08271410.mp4",
+   "station": "CT-MANAKAI-02",
+   "locality": "Reserva MANAKAI",
+   "register": "cameratrap",
+   "doy": 239,
+   "date": "2026-08-27",
+   "hour": 14,
+   "minute": 10,
+   "temporada": "medio_seco",
+   "duration_s": 20.25,
+   "width": 832,
+   "height": 464,
+   "fps": 60.0,
+   "diel": "dia",
+   "species": [],
+   "labels": [],
+   "unlabelled": true,
+   "sensitivity": 1.0
+  },
+  {
+   "key": "ct_08272358_ocelote",
+   "source": "/Users/a/Documents/code/BiocracyEngine/corpus/cameratrap_src/camtrampaLR/08272358_ocelote.mp4",
+   "station": "CT-MANAKAI-02",
+   "locality": "Reserva MANAKAI",
+   "register": "cameratrap",
+   "doy": 239,
+   "date": "2026-08-27",
+   "hour": 23,
+   "minute": 58,
+   "temporada": "medio_seco",
+   "duration_s": 15.75,
+   "width": 848,
+   "height": 480,
+   "fps": 20.0,
+   "diel": "noche",
+   "species": [
+    {
+     "taxon": "Leopardus pardalis",
+     "rank": "species",
+     "common": "ocelote",
+     "group": "felid",
+     "count": 1,
+     "sensitivity": 1.0
+    }
+   ],
+   "labels": [
+    "ocelote"
+   ],
+   "unlabelled": false,
+   "sensitivity": 1.0
+  },
+  {
+   "key": "ct_08291841_tamandua",
+   "source": "/Users/a/Documents/code/BiocracyEngine/corpus/cameratrap_src/camtrampaLR/08291841_tamandua.mp4",
+   "station": "CT-MANAKAI-02",
+   "locality": "Reserva MANAKAI",
+   "register": "cameratrap",
+   "doy": 241,
+   "date": "2026-08-29",
+   "hour": 18,
+   "minute": 41,
+   "temporada": "medio_seco",
+   "duration_s": 15.75,
+   "width": 848,
+   "height": 480,
+   "fps": 20.0,
+   "diel": "noche",
+   "species": [
+    {
+     "taxon": "Tamandua",
+     "rank": "genus",
+     "common": "oso hormiguero (tamandúa)",
+     "group": "mammal",
+     "count": 1,
+     "sensitivity": 0.5
+    }
+   ],
+   "labels": [
+    "tamandua"
+   ],
+   "unlabelled": false,
+   "sensitivity": 0.5
+  },
+  {
+   "key": "ct_09182133_tamandua",
+   "source": "/Users/a/Documents/code/BiocracyEngine/corpus/cameratrap_src/camtrampaLR/09182133_tamandua.mp4",
+   "station": "CT-MANAKAI-01",
+   "locality": "Reserva MANAKAI",
+   "register": "cameratrap",
+   "doy": 261,
+   "date": "2026-09-18",
+   "hour": 21,
+   "minute": 33,
+   "temporada": "segundas_lluvias",
+   "duration_s": 10.5,
+   "width": 848,
+   "height": 480,
+   "fps": 20.0,
+   "diel": "noche",
+   "species": [
+    {
+     "taxon": "Tamandua",
+     "rank": "genus",
+     "common": "oso hormiguero (tamandúa)",
+     "group": "mammal",
+     "count": 1,
+     "sensitivity": 0.5
+    }
+   ],
+   "labels": [
+    "tamandua"
+   ],
+   "unlabelled": false,
+   "sensitivity": 0.5
+  },
+  {
+   "key": "ct_09191827",
+   "source": "/Users/a/Documents/code/BiocracyEngine/corpus/cameratrap_src/camtrampaLR/09191827.mp4",
+   "station": "CT-MANAKAI-01",
+   "locality": "Reserva MANAKAI",
+   "register": "cameratrap",
+   "doy": 262,
+   "date": "2026-09-19",
+   "hour": 18,
+   "minute": 27,
+   "temporada": "segundas_lluvias",
+   "duration_s": 10.5,
+   "width": 848,
+   "height": 480,
+   "fps": 20.0,
+   "diel": "noche",
+   "species": [],
+   "labels": [],
+   "unlabelled": true,
+   "sensitivity": 1.0
+  },
+  {
+   "key": "ct_10050453",
+   "source": "/Users/a/Documents/code/BiocracyEngine/corpus/cameratrap_src/camtrampaLR/10050453.mp4",
+   "station": "CT-MANAKAI-01",
+   "locality": "Reserva MANAKAI",
+   "register": "cameratrap",
+   "doy": 278,
+   "date": "2026-10-05",
+   "hour": 4,
+   "minute": 53,
+   "temporada": "segundas_lluvias",
+   "duration_s": 10.5,
+   "width": 848,
+   "height": 480,
+   "fps": 20.0,
+   "diel": "noche",
+   "species": [],
+   "labels": [],
+   "unlabelled": true,
+   "sensitivity": 1.0
   }
  ]
 }

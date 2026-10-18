@@ -8,6 +8,7 @@ import { makeNodeField, makeTubeLinks, makeParticles, makeLabelField, makeCalm, 
 import { Viz, pickSpecies, showStage } from "../visualizationSwitcher";
 import { INSTRUMENTS, SLOT_NOUNS, readInstrument, mountSlotField, lerp } from "./instruments";
 import { makeSlotStage, makeKnobs } from "./stage";
+import { irregular } from "./turns";
 
 // ─── Slot 9: Hashing ──────────────────────────────────────────────────────────
 // Concept preserved: key column → hash → bucket column; bezier/jagged paths;
@@ -57,6 +58,7 @@ export function mountHashing(stageEl: HTMLElement, getLatestState: () => Parliam
     // and the whole world can be lifted or turned without touching the
     // camera, which now belongs to the viewer.
     const root9 = new THREE.Group();
+    const turn9 = irregular();
     scene.add(root9);
 
     // Instrumental identity. Six slots, six voices of the engine, no
@@ -248,6 +250,8 @@ export function mountHashing(stageEl: HTMLElement, getLatestState: () => Parliam
         calm9.step("__slot9Soneth");
         const e9 = calm9.eth;
         const c9 = calm9.chain;
+        // Node spin per frame-at-60, signed by ROTATION SPD (1.00x = as it was).
+        const spinRate9 = vm9.rotation * calm9.dt * 60;
 
         // Compute hashes — the CHAIN drives the mapping now, not a noise walk
         bucketHits.fill(0);
@@ -336,7 +340,9 @@ export function mountHashing(stageEl: HTMLElement, getLatestState: () => Parliam
                 // it: this used to overwrite it, so calldata never showed.
                 keyBoxes[i].scale.set(sc9, sc9, 1 + rz9 * 0.3).multiplyScalar(kbSize / 20);
             }
-            keyBoxes[i].spin += 0.005 + droneD * 0.02 + vm9.speed * 0.02
+            // Every key used to tumble in lockstep; each has its own rate
+            // now, and ROTATION SPD sets the sense and stops them at centre.
+            keyBoxes[i].spin += (0.005 + droneD * 0.02) * spinRate9 * (0.55 + ((i * 0.618) % 1) * 0.9)
               + (vf9 ? vf9.flash * 0.14 * (isAlarm(vf9.type) ? -1 : 1) : 0);
             // Touch. Hovering a key swells it and lights its path; holding one
             // pins it, which on a hash table is the honest gesture — a key is
@@ -488,11 +494,12 @@ export function mountHashing(stageEl: HTMLElement, getLatestState: () => Parliam
         // flow, GIRO AUTO the swirl, PITCH SHIFT the lift.
         motes9.step(1 / 60,
             (droneMix - 0.5) * 60 + Math.sin(c9.blockPhase * Math.PI * 2) * 26,
-            vm9.rotation * 0.08 + c9.turn * 0.018,
+            vm9.rotation * 0.08,
             (pShift - 0.5) * 24);
         motes9.material.opacity = (0.08 + texDep * 0.24) * masterA;
         motes9.material.size = Math.max(W, H) * (0.0012 + resBody * 0.0032);
-        root9.rotation.y = vm9.angle * c9.turn * (0.45 + c9.fullness * 0.35);
+        // A rate nobody can read ahead, and the ring banks into it (turns.ts).
+        turn9(root9, calm9.dt, vm9.speed, c9);
         keys9.mesh.material.opacity = (0.32 + vol * 0.26) * masterA
             * (0.72 + c9.gasN * 0.45 + c9.blockEnv * 0.22);
         keys9.commit();

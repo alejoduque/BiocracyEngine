@@ -22,7 +22,7 @@
       "rule": "\\class{U}{U} \\geq \\class{th}{\\theta} \\;\\Rightarrow\\; \\text{disparo} \\,/\\, \\text{sello}"
     },
     "stage": "SENSED",
-    "header": "1/6 \\cdot \\textbf{SENSED} \\cdot \\text{el AudioMoth escucha} \\;\\to\\; \\text{PRESENT}",
+    "header": "1/6 · SENSED · el AudioMoth escucha → PRESENT",
     "computes": {
       "neuronal": "V/θ: la membrana suma el canto del bosque; en 1 dispara",
       "silicon": "G/Gmax: el gas del bloque se acumula; lleno, se sella",
@@ -58,7 +58,7 @@
       "rule": "\\text{valor} = \\class{f0}{\\text{pres}}\\cdot\\class{f1}{\\text{act}}\\cdot\\class{f2}{\\text{eDNA}}\\cdot\\class{f3}{\\text{hongos}}\\cdot\\class{f4}{\\text{IA}}\\cdot\\class{f5}{\\text{IUCN}}"
     },
     "stage": "PRESENT",
-    "header": "2/6 \\cdot \\textbf{PRESENT} \\cdot \\text{la voz cede a los 3 s} \\;\\to\\; \\text{OVERLAP}",
+    "header": "2/6 · PRESENT · la voz cede a los 3 s → OVERLAP",
     "computes": {
       "neuronal": "w: co-presencia de seis bandas del bosque; se olvida en 3 s",
       "silicon": "v: valor movido por la última transacción",
@@ -99,7 +99,7 @@
       "law": "\\hat{c}(\\class{x}{x}) \\leq 3\\,(r(\\text{ra}\\acute{\\imath}\\text{z}) - r(\\class{x}{x})) + 1"
     },
     "stage": "OVERLAP",
-    "header": "3/6 \\cdot \\textbf{OVERLAP} \\cdot \\text{simular antes de ejecutar} \\;\\to\\; \\text{ADJUDICATED}",
+    "header": "3/6 · OVERLAP · simular antes de ejecutar → ADJUDICATED",
     "computes": {
       "neuronal": "w: crece donde bosque y máquina suenan juntos; γ la apaga",
       "silicon": "ĉ: costo de llegar a la voz dominante; lo usado sube a la raíz",
@@ -126,7 +126,7 @@
       "law": "\\class{r}{V_i} = \\{x : \\lVert x - p_i \\rVert \\leq \\lVert x - p_j \\rVert\\ \\forall j\\}"
     },
     "stage": "ADJUDICATED",
-    "header": "4/6 \\cdot \\textbf{ADJUDICATED} \\cdot \\text{una retenci}\\acute{\\mathrm{o}}\\text{n que abre} \\;\\to\\; \\text{INSCRIBED} \\mid \\text{OPAQUE}",
+    "header": "4/6 · ADJUDICATED · una retención que abre → INSCRIBED | OPAQUE",
     "computes": {
       "neuronal": "r(θ): responde cuando el barrido pasa por el centro del bosque",
       "silicon": "V: bandas que la celda más cercana adjudica a la máquina",
@@ -153,7 +153,7 @@
       "law": "\\class{d}{\\text{AMAT}} = t_{\\text{hit}} + m \\cdot t_{\\text{miss}}"
     },
     "stage": "INSCRIBED",
-    "header": "5/6 \\cdot \\textbf{INSCRIBED} \\;(\\neg\\,\\text{opaco}) \\cdot \\text{BioToken} \\to \\text{cadena}",
+    "header": "5/6 · INSCRIBED (¬ opaco) · BioToken → cadena",
     "computes": {
       "neuronal": "R: lo que queda del último canto; el bosque olvida",
       "silicon": "AMAT: demora media para hallar el canto en L1 · L2 · L3",
@@ -180,7 +180,7 @@
       "law": "\\class{h}{h(x)} = \\mathrm{keccak256}(x)"
     },
     "stage": "OPAQUE",
-    "header": "6/6 \\cdot \\textbf{OPAQUE} \\;(\\mathrm{rand} < p_{\\text{opaca}}) \\cdot \\text{resto no inscribible}",
+    "header": "6/6 · OPAQUE (rand < p opaca) · resto no inscribible",
     "computes": {
       "neuronal": "huella: 12 de 256 neuronas ganan; parecido con la anterior",
       "silicon": "keccak256: bits que cambian de un bloque al siguiente",
@@ -194,5 +194,5 @@
       "los datos son a la vez don y veneno"
     ]
   },
-  "_stages": "Slots 4-9 tell the dossier's automaton (Fig. 3) in key order: SENSED, PRESENT, OVERLAP, ADJUDICATED, then the two terminals INSCRIBED and OPAQUE. `header` is TeX (ASCII rule above) shown at the top of the slot; `computes` are plain Spanish, one line per formula, saying what the live number beside it is; `lexicon` are sentences in the voice of Estratos (slot E) and Registro (slot R), written under the blend in turn. blend/blendLayer.ts converts the plain lines with texText (manim/tex.ts)."
+  "_stages": "Slots 4-9 tell the dossier's automaton (Fig. 3) in key order: SENSED, PRESENT, OVERLAP, ADJUDICATED, then the two terminals INSCRIBED and OPAQUE. `header` is the stage line held at the top of the slot; `computes` say in one line per formula what the live number beside it is; `lexicon` are sentences in the voice of Estratos (slot E) and Registro (slot R), written under the blend in turn. All three are plain Spanish, set in the monospace of slot E's sentences (monoText, manim/tex.ts); only the formulas go through TeX, in its sans-serif."
 }

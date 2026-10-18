@@ -2385,6 +2385,63 @@
             ~laserToggle = nil;
         };
 
+        // ─── A second screen ───────────────────────────────────────────
+        // Every hand-drawn view on this surface — the GOLPE grid, the REC
+        // clock, the status lights and the laser lamps — is a UserView, and
+        // SC's UserView paints into an offscreen pixmap that it allocates at
+        // its size × the screen's pixel ratio, but ONLY on a resize
+        // (QcCanvas::paintEvent, SC 3.14). Dragged from the Retina panel
+        // (ratio 2) to a 1080p monitor (ratio 1), nothing resizes: the old
+        // 2× pixmap is blitted with the new ratio, and each drawing shows a
+        // quarter of itself blown up to fill the view — the grid's tiles
+        // doubled and cut, the clock's digits cropped, the lights swollen.
+        // Knobs and buttons are native Qt widgets and never had the problem.
+        //
+        // So when the window has moved and come to rest, every UserView in it
+        // is resized by a pixel and straight back. Its geometry ends where it
+        // was; the resize is flagged, and the next paint reallocates the
+        // pixmap at the ratio of the screen the window is on now.
+        ~dprUserViews = { |view|
+            var out = List.new, walk;
+            walk = { |v|
+                if(v.isKindOf(UserView)) { out.add(v) };
+                v.children.do { |c| walk.(c) };
+            };
+            walk.(view);
+            out
+        };
+        ~dprNudge = { |win|
+            if(win.notNil and: { win.isClosed.not }) {
+                ~dprUserViews.(win.view).do { |v|
+                    var b;
+                    if(v.isClosed.not) {
+                        b = v.bounds;
+                        v.bounds = Rect(b.left, b.top, b.width + 1, b.height);
+                        v.bounds = b;
+                        v.refresh;
+                    };
+                };
+            };
+        };
+        // Polled, at 4 Hz: Qt's screen-change signal is not reachable from
+        // sclang. Half a second at rest is a drop, not a pause mid-drag.
+        ~dprWatch = { |win|
+            var last = win.bounds, still = 0, moved = false;
+            Routine({
+                while { win.isClosed.not } {
+                    var b = win.bounds;
+                    if(b.origin != last.origin) { moved = true; still = 0; last = b } {
+                        if(moved) {
+                            still = still + 1;
+                            if(still >= 2) { moved = false; ~dprNudge.(win) };
+                        };
+                    };
+                    0.25.wait;
+                };
+            }).play(AppClock);
+        };
+        ~dprWatch.(~mainWindow);
+
         ~mainWindow.front;
         "Enhanced GUI System loaded successfully.".postln;
         "GUI includes: Status lights, Counters, MIDI-synced knobs, Sample triggers".postln;

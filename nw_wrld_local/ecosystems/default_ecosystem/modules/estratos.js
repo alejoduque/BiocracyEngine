@@ -114,6 +114,14 @@ function liftAccent(hex) {
 }
 
 const ACCENT_KEYS = ["blue", "red", "green", "yellow"];
+
+// El papel de la proyección nocturna: casi negro, el mismo fondo de los
+// módulos 4–9 (0x000804). Invertir papel↔tinta dejaba como fondo la TINTA de
+// cada paleta — el sepia #2a2017 de tierra, el azul pizarra #1b2430 de
+// mineral — y el abismo y el neón traían su propio azul noche: el módulo E
+// era el único con un fondo teñido entre los demás. Las paletas siguen
+// coloreando especies, tinta y acentos; el fondo ya no cambia con ellas.
+const NIGHT_PAPER = "#030604";
 const RISO_ACCENTS = ["#1038ff", "#ff1616", "#04be36", "#ffd400"];
 
 // Invierte una paleta de papel claro para proyección oscura. Intercambiar
@@ -843,7 +851,7 @@ class Estratos extends BaseThreeJsModule {
         const key = this.currentPalette === "auto" ? this._weightedPalette(rng) : this.currentPalette;
         if (key === "aleatoria") {
             return this.nocturno
-                ? makeRandomProxy("#0d0d10", "#f2f2ea", true, rng)
+                ? makeRandomProxy(NIGHT_PAPER, "#f2f2ea", true, rng)
                 : makeRandomProxy("#fffdf6", "#0b0b0b", false, rng);
         }
         const C = PALETTES[key] || PALETTES.riso;
@@ -852,8 +860,10 @@ class Estratos extends BaseThreeJsModule {
         // lanzan la escena a blanco cuando el consenso cruza un umbral, ni
         // dejan las especies invisibles sobre el fondo invertido.
         // Luminancia en sRGB, no en los canales lineales de THREE.Color.
-        if (this.nocturno && srgbLuminance(C.paper) > 0.45) return invertPalette(C);
-        return C;
+        if (!this.nocturno) return C;
+        const N = srgbLuminance(C.paper) > 0.45 ? invertPalette(C) : Object.assign({}, C);
+        N.paper = NIGHT_PAPER;
+        return N;
     }
 
     _weightedPalette(rng = this.rng) {
@@ -926,7 +936,9 @@ class Estratos extends BaseThreeJsModule {
 
             const label = this._makeTextSprite(ZONE_LABEL[zone], this.C.ink, { h: 44, font: "700 26px 'Courier New',monospace" });
             label.position.set(-halfX - 0.4, yMid, z0 - 0.4);
-            label.center.set(1, 0.5);
+            // Anclada por la derecha, junto al marco del estrato.
+            if (label.isSprite) label.center.set(1, 0.5);
+            else label.userData.ax = -1;
             this.world.add(label);
             this._disposables.push({ material: label.material, texture: label.material.map });
         });
@@ -965,13 +977,11 @@ class Estratos extends BaseThreeJsModule {
         canvas.height = spec.h;
 
         const tex = this._pixelTexture(canvas);
-        const mat = new THREE.SpriteMaterial({ map: tex, transparent: true, depthWrite: false, fog: true });
-        const sprite = new THREE.Sprite(mat);
-        sprite.scale.set(spec.w * PX2W * scale, spec.h * PX2W * scale, 1);
+        const sprite = this._facing(tex, spec.w * PX2W * scale, spec.h * PX2W * scale, true);
         sprite.position.set(x, y, z);
         sprite.renderOrder = RO.species;
         this.world.add(sprite);
-        this._disposables.push({ material: mat, texture: tex });
+        this._disposables.push({ material: sprite.material, texture: tex });
 
         const rec = {
             obj: sprite, anchor: new THREE.Vector3(x, y, z),
@@ -1162,7 +1172,7 @@ class Estratos extends BaseThreeJsModule {
             for (let a = 0; a < placed.length; a++) {
                 for (let b = a + 1; b < placed.length; b++) {
                     const A = placed[a].sprite, B = placed[b].sprite;
-                    const halfW = (A.scale.x + B.scale.x) / 2;
+                    const halfW = (A.userData.w + B.userData.w) / 2;
                     if (Math.abs(A.position.x - B.position.x) >= halfW) continue;
                     const dy = A.position.y - B.position.y;
                     // Corrección de perspectiva: el par que está lejos en z
@@ -1260,9 +1270,7 @@ class Estratos extends BaseThreeJsModule {
         canvas.height = h;
 
         const tex = this._pixelTexture(canvas);
-        const mat = new THREE.SpriteMaterial({ map: tex, transparent: true, depthWrite: false, fog: false });
-        const sprite = new THREE.Sprite(mat);
-        sprite.scale.set(w * 0.011, h * 0.011, 1);
+        const sprite = this._facing(tex, w * 0.011, h * 0.011, false);
         sprite.renderOrder = RO.text;
 
         const rec = {
@@ -1308,12 +1316,29 @@ class Estratos extends BaseThreeJsModule {
         canvas.height = h;
         this._paintText(canvas, text, colorHex, font, h);
         const tex = this._pixelTexture(canvas);
-        const mat = new THREE.SpriteMaterial({ map: tex, transparent: true, depthWrite: false, fog: false });
-        const sprite = new THREE.Sprite(mat);
-        sprite.scale.set(w * 0.011, h * 0.011, 1);
+        const sprite = this._facing(tex, w * 0.011, h * 0.011, false);
         sprite.renderOrder = RO.text;
         this._texts.push({ canvas, tex, text, font, h });
         return sprite;
+    }
+
+    // Todo lo que mira a la cámara — especies, frases, rótulos — pasa por aquí.
+    // Con el cargador es un plano que mira a la cámara que lo dibuja
+    // (DomeText.facingLabel), no un THREE.Sprite: cada cara del cubo de la
+    // cúpula dibujaba su propio pedazo de sprite, y en el domo y su NDI el
+    // texto y los dibujos llegaban girados 180° y partidos en las costuras.
+    // Fuera del cargador (sin DomeText) sigue siendo un sprite. userData.w es
+    // el ancho en mundo de cualquiera de los dos, para el reparto de frases.
+    _facing(tex, w, h, fog) {
+        let obj;
+        if (typeof DomeText !== "undefined" && DomeText) {
+            obj = DomeText.facingLabel(tex, w, h, { fog });
+        } else {
+            obj = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, transparent: true, depthWrite: false, fog }));
+            obj.scale.set(w, h, 1);
+        }
+        obj.userData.w = w;
+        return obj;
     }
 
     // ── ciclo de animación propio (no pasa por animationManager) ──────────

@@ -453,6 +453,9 @@ function build() {
     // what reaches the sound card. 4096 is for dome-render.js, offline.
     segmented("resolución", [["1536", "1536"], ["2048", "2048"]], () => String(_s.size), (v) => { _s.size = +v as DomeParams["size"]; apply(); }),
     slider("frente", 0, 90, 1, () => _s.frontElevation, (v) => { _s.frontElevation = v; apply(); }),
+    // Slot C's footage: how much of the ring its screen spans. No effect on
+    // other slots.
+    slider("pantalla", 90, 220, 5, () => _s.screenDeg, (v) => { _s.screenDeg = v; apply(); }),
     slider("inmersión", 0, 95, 5, () => Math.round(_s.immersion * 100), (v) => { _s.immersion = v / 100; apply(); }, "%"),
     (() => {
       const l = el("label", {}, "apertura");

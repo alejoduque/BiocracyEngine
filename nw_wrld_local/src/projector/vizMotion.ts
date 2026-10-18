@@ -22,7 +22,10 @@
 import { parliamentStore } from "./parliament/parliamentStore";
 
 export type VizMotion = {
-  /** 0.1–2.0, straight off the ROTATION SPD slider. */
+  /**
+   * −2.0…+2.0, straight off the ROTATION SPD slider. Signed: left of centre
+   * turns every slot the other way, the centre stops it.
+   */
   rotation: number;
   /** Seconds since the user last touched anything. */
   idle: number;
@@ -118,6 +121,11 @@ function bindListeners(): void {
       // The rotation fader is exempt — and more than exempt, it arms the
       // drift. See noteRotationIntent. Guarded because `target` on a captured
       // document listener can be anything, including a node with no dataset.
+      // A synthetic event is the panel talking to itself, not a performer:
+      // the rotation fader's own macro dispatches `input` on the beat-tempo
+      // fader, and counting that cancelled the drift the same gesture had
+      // just armed.
+      if (!e.isTrusted) return;
       const t = e.target as HTMLElement | null;
       if (t && t.dataset && t.dataset.osc === "/parliament/rotation") {
         noteRotationIntent();

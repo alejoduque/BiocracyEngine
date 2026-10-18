@@ -10,15 +10,16 @@
 // animations in animate.ts move only the alphas and the drawn fraction.
 //
 // TexMobject is a formula: one VMobject per glyph, so a formula can be written
-// glyph by glyph and its \class parts picked out. DecimalNumber shows a live
-// value from a pool of prebuilt digit glyphs — a number that changes every
-// frame never goes back to MathJax.
+// glyph by glyph and its \class parts picked out; with `mono` it is a plain
+// line in slot E's monospace instead. DecimalNumber shows a live value from a
+// pool of prebuilt digit glyphs, in that monospace — a number that changes
+// every frame never goes back to the typesetter.
 
 import * as THREE from "three";
 import { LineSegments2 } from "three/examples/jsm/lines/LineSegments2.js";
 import { LineSegmentsGeometry } from "three/examples/jsm/lines/LineSegmentsGeometry.js";
 import { LineMaterial } from "three/examples/jsm/lines/LineMaterial.js";
-import { tex, type TexResult } from "./tex";
+import { tex, monoText, type TexResult } from "./tex";
 
 // three carries no type declarations in this project: THREE is `any`, and a
 // class extending `any` gets no members at all. The base is declared as what
@@ -195,6 +196,8 @@ export type TexOptions = {
   parts?: Record<string, THREE.ColorRepresentation>;
   /** Keep the parse cached (default). False for long one-off lines of text. */
   cache?: boolean;
+  /** `src` is plain text, set in slot E's monospace (never cached), not TeX. */
+  mono?: boolean;
 };
 
 export class TexMobject extends Group3D {
@@ -231,7 +234,7 @@ export class TexMobject extends Group3D {
   }
 
   static async create(src: string, o: TexOptions = {}): Promise<TexMobject> {
-    return new TexMobject(await tex(src, o.cache ?? true), o);
+    return new TexMobject(await (o.mono ? monoText(src) : tex(src, o.cache ?? true)), o);
   }
 
   /** The glyphs of one \class part. */
@@ -251,14 +254,17 @@ let digitSet: Promise<DigitSet> | null = null;
 
 function loadDigits(): Promise<DigitSet> {
   return (digitSet ??= Promise.all([...NUM_CHARS].map(async (ch) => {
-    const r = await tex(ch === "-" ? "-" : ch);
+    const r = await monoText(ch);
     const shapes: THREE.Shape[] = [];
     for (const g of r.glyphs) shapes.push(...g.shapes);
-    return { ch, geo: new THREE.ShapeGeometry(shapes, 4), adv: Math.max(0.28, r.max.x - Math.min(0, r.min.x)) };
+    // A monospace has one advance for every character; the TeX fallback does
+    // not, and keeps the old spacing (digits 0.5, the rest their own width).
+    const own = Math.max(0.28, r.max.x - Math.min(0, r.min.x));
+    return { ch, geo: new THREE.ShapeGeometry(shapes, 4), adv: r.advance ?? (ch >= "0" && ch <= "9" ? 0.5 : own + 0.06) };
   })).then((list) => {
     const geo = new Map<string, THREE.ShapeGeometry>();
     const adv = new Map<string, number>();
-    for (const d of list) { geo.set(d.ch, d.geo); adv.set(d.ch, d.ch >= "0" && d.ch <= "9" ? 0.5 : d.adv + 0.06); }
+    for (const d of list) { geo.set(d.ch, d.geo); adv.set(d.ch, d.adv); }
     return { geo, adv };
   }));
 }

@@ -9,6 +9,12 @@
 //             substring, and what TransformMatchingParts matches on
 // Units are ems; +y up; the formula's left end on x = 0, baseline on y = 0.
 //
+// Every formula is set in TeX's sans-serif (sans() below). Plain lines — the
+// stage header, the hints, the lexicon — are not TeX at all: monoText() takes
+// their outlines from JetBrains Mono, the open face in slot E's font stack,
+// so the blended slots and Estratos read as one typography. Both come out as
+// the same TexResult, and Write, Unwrite and Transform treat them alike.
+//
 // Parsing costs milliseconds per formula, so results are cached by source and
 // a slot typesets everything it will show when it mounts, never per frame.
 
@@ -30,6 +36,8 @@ export type TexResult = {
   /** Bounds of the whole formula, ems. */
   min: THREE.Vector2;
   max: THREE.Vector2;
+  /** Advance per character, ems — monoText only. */
+  advance?: number;
 };
 
 type Core = typeof import("./mathjaxCore");
@@ -92,26 +100,78 @@ function parse(tex: string, svg: string): TexResult {
 }
 
 /**
+ * The whole formula in TeX's sans-serif. \mathsf carries into fractions,
+ * scripts and \class parts; \text and \mathrm name their own face, so
+ * they are swapped for the sans one. Lowercase Greek has no sans form in
+ * MathJax's fonts and stays as it was.
+ */
+function sans(src: string): string {
+  return `\\mathsf{${src.replace(/\\text\{/g, "\\textsf{").replace(/\\mathrm\{/g, "\\mathsf{")}}`;
+}
+
+/**
  * Typeset `tex` (display mode). Cached by default; the same source resolves to
  * the same result. `keep = false` for long one-off lines (the blended slots'
  * hints and sentences): their outlines run to megabytes, and kept they stayed
  * for the session after their slot was gone.
  */
 export function tex(src: string, keep = true): Promise<TexResult> {
-  if (!keep) return cache.get(src) ?? loadCore().then((c) => parse(src, c.texToSvg(src)));
+  const run = () => loadCore().then((c) => parse(src, c.texToSvg(sans(src))));
+  if (!keep) return cache.get(src) ?? run();
   let hit = cache.get(src);
   if (!hit) {
-    hit = loadCore().then((c) => parse(src, c.texToSvg(src)));
+    hit = run();
     cache.set(src, hit);
   }
   return hit;
 }
 
+// ── Plain lines in slot E's monospace ────────────────────────────────────────
+// Estratos writes its sentences in ui-monospace (SF Mono on the show's Mac) at
+// weight 600, onto a canvas. These lines must be outlines instead, to be
+// written and unwritten like the formulas, so the face is a file: JetBrains
+// Mono SemiBold (OFL, next to it in the assets), the open member of the same
+// stack. Each character becomes one <path> at 1000 units to the em, y down —
+// MathJax's own units — and goes through parse() like a formula.
+const MONO_URL = "/ecosystems/default_ecosystem/assets/fonts/JetBrainsMonoNL-SemiBold.ttf";
+let mono: Promise<any> | null = null;
+const loadMono = () => (mono ??= Promise.all([
+  fetch(MONO_URL).then((r) => {
+    if (!r.ok) throw new Error(`mono font ${r.status}`);
+    return r.arrayBuffer();
+  }),
+  import(/* webpackChunkName: "opentype" */ "three/examples/jsm/libs/opentype.module.js"),
+]).then(([buf, ot]) => (ot as any).parse(buf)));
+
+/**
+ * A line of plain text as outlines in slot E's monospace. Not cached: these
+ * are the long one-off lines. If the font cannot be had, the line is set in
+ * TeX's sans instead, so a slot never comes up without its text.
+ */
+export function monoText(line: string): Promise<TexResult> {
+  return loadMono().then((font) => {
+    const k = 1000 / font.unitsPerEm;
+    let x = 0, svg = '<svg xmlns="http://www.w3.org/2000/svg">';
+    for (const ch of line) {
+      const g = font.charToGlyph(ch);
+      const d = g.getPath(x, 0, 1000).toPathData(1);
+      if (d) svg += `<path d="${d}"/>`;
+      x += (g.advanceWidth ?? font.unitsPerEm * 0.6) * k;
+    }
+    const r = parse(line, svg + "</svg>");
+    r.advance = (font.charToGlyph("0").advanceWidth ?? 600) / font.unitsPerEm;
+    return r;
+  }, (e) => {
+    console.warn("[tex] monospace unavailable, setting the line in TeX", e);
+    return tex(texText(line), false);
+  });
+}
+
 // ── Plain Spanish as TeX ─────────────────────────────────────────────────────
-// The hints and sentences on the blended slots are written in formulas.json as
-// ordinary Spanish. MathJax draws a non-ASCII letter inside \text{} as an SVG
-// <text> node, which SVGLoader drops, so every accent, tilde and symbol leaves
-// the \text run and is typeset as math: á → \acute{\mathrm{a}}, θ → \theta.
+// monoText's fallback when the font cannot be loaded. MathJax draws a
+// non-ASCII letter inside \text{} as an SVG <text> node, which SVGLoader
+// drops, so every accent, tilde and symbol leaves the \text run and is
+// typeset as math: á → \acute{\mathrm{a}}, θ → \theta.
 const MATH: Record<string, string> = {
   "á": "\\acute{\\mathrm{a}}", "é": "\\acute{\\mathrm{e}}", "í": "\\acute{\\mathrm{\\imath}}",
   "ó": "\\acute{\\mathrm{o}}", "ú": "\\acute{\\mathrm{u}}", "ü": "\\ddot{\\mathrm{u}}",

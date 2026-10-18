@@ -204,9 +204,11 @@
     // business. But the REGISTRY is not the audio engine, it is the place a
     // control exists at all, and these are controls.
     //
-    // Rotation is the automatic drift rate every module turns at; consensus is
-    // the chamber's agreement, which the vote already reads.
-    (name: \vizRotation,       spec: ControlSpec(0.1, 2.0, \lin),   default: 1.0,  path: "/parliament/rotation",     cc: 55, hasBus: false),
+    // Rotation is the automatic drift rate every module turns at, SIGNED: the
+    // centre stops it, below it the modules turn the other way (configs hold
+    // real values, 0.25..1.8, so they keep their meaning). Consensus is the
+    // chamber's agreement, which the vote already reads.
+    (name: \vizRotation,       spec: ControlSpec(-2.0, 2.0, \lin),  default: 1.0,  path: "/parliament/rotation",     cc: 55, hasBus: false),
     (name: \vizConsensus,      spec: ControlSpec(0, 1, \lin),       default: 0.5,  path: "/parliament/consensus",    cc: 56, hasBus: false),
 
     // ── Row 8: Matrix mixer — one live fader per audible layer ──────────
@@ -258,8 +260,18 @@
     // over each layer's own level. Everything crossfades on this one number
     // (3_synthdefs.scd \stemSum, \masterLimiter, \resonantChamber and the
     // voices' reverbs), so any value between is a mix between the two.
+    // It is also the DISPOSICIÓN (2026-10-18): the same number places each
+    // layer in the dome — the bed all round (drone leaning front, pad even and
+    // breathing, dust behind and over, the forest round the sides and back),
+    // the hsaing circle round the room by pitch, ultra behind, golpe on the
+    // stage, the motors each at home on the ring and stepping forward while
+    // they surge (~stemPlace, 3_synthdefs.scd). At 0 everything is front
+    // centre, as it always was.
     // Loaded by the MEZCLA_* add-on configs; base configs leave it alone.
-    (name: \mixCarve,      spec: ControlSpec(0, 1, \lin), default: 0.0, path: "/mix/carve"),
+    // Boots at 1 since 2026-10-18: the dome is the venue, and the disposition
+    // is how the engine should stand in it. MEZCLA_0_Barro still takes it back
+    // to the old sound in one load.
+    (name: \mixCarve,      spec: ControlSpec(0, 1, \lin), default: 1.0, path: "/mix/carve"),
 
     // ── Beat engine (no control bus — lives in ~beatParams) ─────────────
     (name: \beatTempo, spec: ControlSpec(0.5, 2.0, \exp), default: 1.0, path: "/soneth/beatTempo",
@@ -377,10 +389,12 @@
         hasBus: false, beatParam: \bellEvery,  cc: 30),
 
     // ── The struck voice's two halves, each switchable ──────────────────
-    // \opalPerc is a fusion: a Tibetan bowl that rings for ~30 s, and a china
-    // trash cymbal that colours the first second. These take either half out
-    // of the sum entirely, so the voice can be a pure bowl, a pure cymbal, or
-    // both. textureDepth still morphs between them when both are on.
+    // \opalPerc is a hsaing waing (since 2026-10-18; was a Tibetan bowl and a
+    // china): BOWL is the tuned circle — bossed gongs on a full strike, pat
+    // waing drums on a short one, on a pentatonic over the drone's root — and
+    // CHINA the ensemble's cymbals, linkwin and si. These take either half out
+    // of the sum entirely, so the voice can be all gong and drum, all cymbal,
+    // or both. textureDepth still morphs between them when both are on.
     //
     // CONTINUOUS, not stepped. They were 0-or-1 and the step was never needed:
     // both reach the SynthDef as a plain multiplier — bowlGate and chinaGate,

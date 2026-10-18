@@ -481,7 +481,8 @@ async function mountLowEarthPoint(): Promise<Viz> {
     // base and the idle drift is added, rather than either replacing the
     // other.
     const vm2 = getVizMotion();
-    stage.cameraSettings.cameraSpeed = 0.1 + avgActivity * 7.9 + vm2.speed * 6;
+    // |speed|: ROTATION SPD is signed, and this is a speed, not a sense.
+    stage.cameraSettings.cameraSpeed = 0.1 + avgActivity * 7.9 + Math.abs(vm2.speed) * 6;
     // The AVGN map rests brighter with presence, as the white cloud does.
     avgnGain = 0.45 + avgPresence * 0.8;
 

@@ -8,6 +8,7 @@ import { makeNodeField, makeTubeLinks, makeDepthGrid, makeParticles, makeLabelFi
 import { Viz, pickSpecies, showStage } from "../visualizationSwitcher";
 import { INSTRUMENTS, SLOT_NOUNS, readInstrument, mountSlotField, makeCircle, lerp, snoise, fixed2 } from "./instruments";
 import { makeSlotStage, makeKnobs } from "./stage";
+import { gyroscope } from "./turns";
 
 // ─── Slot 5: Dynamic Graphs (Force-directed node network) ────────────────────
 // Concept preserved: nodes repel/attract, edges drawn when probability passes,
@@ -55,6 +56,7 @@ export function mountDynamicGraphs(stageEl: HTMLElement, getLatestState: () => P
     // and the whole world can be lifted or turned without touching the
     // camera, which now belongs to the viewer.
     const root5 = new THREE.Group();
+    const turn5 = gyroscope();
     scene.add(root5);
 
     // Instrumental identity. Six slots, six voices of the engine, no
@@ -475,7 +477,7 @@ export function mountDynamicGraphs(stageEl: HTMLElement, getLatestState: () => P
         // performer sets the drift, the chain modulates it.
         motes5.step(1 / 60,
             (spatSp - 0.5) * 90 + Math.sin(c5.blockPhase * Math.PI * 2) * 34,
-            vm5.rotation * 0.09 + c5.turn * 0.02,
+            vm5.rotation * 0.09,
             (droneSpace - 0.5) * 26);
         motes5.material.opacity = (0.10 + texDep * 0.30) * masterA;
         motes5.material.size = Math.max(W, H) * (0.0016 + resBody * 0.0042);
@@ -484,16 +486,10 @@ export function mountDynamicGraphs(stageEl: HTMLElement, getLatestState: () => P
         // setting the structure itself sat still while the viewer moved around
         // it — which is the one thing a rotation control should not do.
         //
-        // The CHAIN decides which way. Blocks alternate parity, so the graph
-        // reverses its turn at every block boundary — a twelve-second period
-        // that belongs to Ethereum and to nothing in this renderer. Between
-        // boundaries the rate leans with how full the block is.
-        // `turn` is parity RAMPED across two seconds, so the assembly slows,
-        // stops and comes back the other way instead of reversing between two
-        // frames. And the rate leans on the smoothed fullness, not the step.
-        const spin5 = c5.turn * (0.55 + c5.fullness * 0.5);
-        root5.rotation.y = vm5.angle * spin5;
-        root5.rotation.x = Math.sin(vm5.angle * 0.31) * 0.10 * (0.3 + spatSp);
+        // The slider decides which way and how fast (turns.ts); the graph
+        // spins like a top whose axis circles, SPATIAL SPRD sets the lean,
+        // and the block's fullness leans on the rate.
+        turn5(root5, calm5.dt, vm5.speed, c5, 0.05 + spatSp * 0.10);
 
         // Captions ride above their bodies and fade with the layer's own level.
         // ── The BioToken, as the graph computes it ───────────────────────
@@ -549,7 +545,10 @@ export function mountDynamicGraphs(stageEl: HTMLElement, getLatestState: () => P
                 * (i === pick5.hover || i === pick5.grabbed ? 1.6 : 1));
         }
 
-        // Radar arc rotation — dronemix controls visible arc count
+        // Radar arc rotation — dronemix controls visible arc count. Alternate
+        // arcs counter-rotate; ROTATION SPD scales and reverses the pair, and
+        // each arc's rate wanders on its own slow period.
+        const arcRate5 = vm5.rotation * calm5.dt * 60;
         const arcCount = Math.max(1, Math.floor(droneMix * 6));
         for (let i = 0; i < radarArcs.length; i++) {
             const arc = radarArcs[i];
@@ -557,7 +556,8 @@ export function mountDynamicGraphs(stageEl: HTMLElement, getLatestState: () => P
             arc.visible = visible;
             if (visible) {
                 const dir = (i % 2 === 0) ? 1 : -1;
-                arc.rotation.z += 0.008 * dir * (1 + tDil * 1.5) * (1 + i * 0.2);
+                arc.rotation.z += 0.008 * dir * (1 + tDil * 1.5) * (1 + i * 0.2) * arcRate5
+                    * (0.7 + 0.3 * Math.sin(calm5.clock * (0.05 + i * 0.017) + i * 1.9));
                 (arc.material as THREE.LineBasicMaterial).opacity = (0.06 + texDep * 0.08) * masterA;
             }
         }

@@ -227,7 +227,7 @@ export class ShanShuiStage extends RingStageBase {
   private sampleSound(dt: number) {
     const f = this.feeds;
     // Rotation is reactiveness: how fast the front follows the bus.
-    const rot = Math.max(0.1, Math.min(2, this.rotation));
+    const rot = Math.max(0.1, Math.min(2, Math.abs(this.rotation)));
     const up = 1 - Math.exp(-dt / (0.18 / rot));
     const down = 1 - Math.exp(-dt / (0.9 / rot));
     for (let i = 0; i < PTS; i++) {
@@ -361,7 +361,7 @@ export class ShanShuiStage extends RingStageBase {
     const st = parliamentStore.state;
     this.consensus = f.consensus;
     this.rotation = st && Number.isFinite(st.rotation) ? st.rotation : 1;
-    const rot = Math.max(0.1, Math.min(2, this.rotation));
+    const rot = Math.max(0.1, Math.min(2, Math.abs(this.rotation)));
 
     this.sampleSound(dt);
     this.collectChain();

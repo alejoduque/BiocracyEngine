@@ -27,6 +27,12 @@
 import * as THREE from "three";
 import { BaseThreeJsModule } from "../helpers/threeBase";
 import { parliamentStore } from "../parliament/parliamentStore";
+import { facingLabel } from "../dome/domeFacing";
+
+// Injected as DomeText: planes that face the camera drawing them, so the
+// strata's species, sentences and labels read on the dome and its NDI feed
+// (a THREE.Sprite is split and turned at the cube camera's seams).
+const DOME_TEXT = { facingLabel };
 
 type EArg = Record<string, unknown> | undefined;
 type EstratosInstance = {
@@ -136,13 +142,14 @@ async function ensureConstructor() {
     factory = new Function(
       "THREE",
       "BaseThreeJsModule",
+      "DomeText",
       `"use strict";\n${src}\n;return Estratos;`
     );
   } catch (e) {
     console.error("[estratos] SyntaxError in estratos.js:", e);
     throw e;
   }
-  _ctor = factory(THREE, BaseThreeJsModule);
+  _ctor = factory(THREE, BaseThreeJsModule, DOME_TEXT);
   if (!_ctor) throw new Error("[estratos] Estratos constructor came back undefined");
   return _ctor!;
 }

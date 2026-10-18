@@ -29,7 +29,8 @@
 import * as THREE from "three";
 
 /** A label's height per unit of distance: ~1.9° on screen, ~2.3° on the dome. */
-const ANGLE_FLAT = 0.033;
+export const FACE_ANGLE_FLAT = 0.033;
+const ANGLE_FLAT = FACE_ANGLE_FLAT;
 const ANGLE_DOME = 0.04;
 
 const _p = new THREE.Vector3();

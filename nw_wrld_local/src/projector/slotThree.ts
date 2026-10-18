@@ -30,6 +30,7 @@
 // picked index published so a slot can respond however its own idiom wants.
 
 import * as THREE from "three";
+import { faceCamera, labelPlane, FACE_ANGLE_FLAT } from "./dome/domeFacing";
 
 // ─── Node field ──────────────────────────────────────────────────────────────
 
@@ -483,11 +484,16 @@ export type LabelField = {
  * who had read the source, so a "bucket" and a "layer" and a "target" were all
  * just boxes. A label says which is which in the module's OWN vocabulary.
  *
- * Sprites rather than DOM: they belong to the scene, so they sit at the body's
- * depth, go behind what is in front of them, and need no per-frame projection
- * to screen space. `sizeAttenuation` off keeps them the same size at any
- * distance, which is what a caption wants — it is being read, not being drawn
- * in perspective.
+ * In the scene rather than DOM: they sit at the body's depth, go behind what
+ * is in front of them, and need no per-frame projection to screen space. They
+ * keep one size at any distance, which is what a caption wants — it is being
+ * read, not being drawn in perspective.
+ *
+ * Planes that face whichever camera draws them (dome/domeFacing.ts), not
+ * THREE.Sprites. A sprite is laid out in the drawing camera's view space, so
+ * each face of the dome's cube camera drew its own piece of it: on the dome
+ * and its NDI feed the captions came out turned 180° and split at the seams.
+ * faceCamera holds a fixed reading angle, the same as a non-attenuated sprite.
  */
 /**
  * How a slot's captions are SET, not just what they say.
@@ -529,20 +535,26 @@ export function makeLabelField(
     parent: THREE.Object3D, capacity: number, color = 0xffcc88, px = 15,
     style: LabelStyle = {},
 ): LabelField {
-    const sprites: THREE.Sprite[] = [];
+    const sprites: THREE.Mesh[] = [];
     const canvases: HTMLCanvasElement[] = [];
     const hex = "#" + new THREE.Color(color).getHexString();
+    // One plane for the field, disposed with it.
+    const plane = labelPlane();
 
     for (let i = 0; i < capacity; i++) {
         const cv = document.createElement("canvas");
         cv.width = 384; cv.height = 72;
-        const spr = new THREE.Sprite(new THREE.SpriteMaterial({
+        const spr = new THREE.Mesh(plane, new THREE.MeshBasicMaterial({
             map: new THREE.CanvasTexture(cv),
             transparent: true, depthWrite: false, depthTest: true,
-            sizeAttenuation: false, opacity: 0,
+            side: THREE.DoubleSide, opacity: 0,
         }));
-        // In screen units, since attenuation is off. Roughly px tall.
-        spr.scale.set(px * 0.020, px * 0.00375, 1);
+        // Roughly px tall: the height the non-attenuated sprite had, px·0.00375
+        // per unit of distance, over faceCamera's reading angle. Centred on
+        // its point, as the sprite was.
+        spr.userData.aspect = cv.width / cv.height;
+        spr.userData.ax = -0.5;
+        faceCamera(spr, (px * 0.00375) / FACE_ANGLE_FLAT);
         spr.visible = false;
         parent.add(spr);
         sprites.push(spr);
@@ -643,7 +655,7 @@ export function makeLabelField(
             g.stroke();
             g.globalAlpha = 1;
         }
-        (sprites[i].material as THREE.SpriteMaterial).map!.needsUpdate = true;
+        (sprites[i].material as THREE.MeshBasicMaterial).map!.needsUpdate = true;
     }
 
     return {
@@ -652,17 +664,18 @@ export function makeLabelField(
             const spr = sprites[i];
             spr.position.copy(pos);
             spr.visible = alpha > 0.01;
-            (spr.material as THREE.SpriteMaterial).opacity = Math.min(1, Math.max(0, alpha));
+            (spr.material as THREE.MeshBasicMaterial).opacity = Math.min(1, Math.max(0, alpha));
         },
         text(i, s) { if (i >= 0 && i < capacity) draw(i, s); },
         count(n) { for (let i = n; i < capacity; i++) sprites[i].visible = false; },
         dispose() {
             for (const spr of sprites) {
                 parent.remove(spr);
-                const m = spr.material as THREE.SpriteMaterial;
+                const m = spr.material as THREE.MeshBasicMaterial;
                 m.map?.dispose();
                 m.dispose();
             }
+            plane.dispose();
         },
     };
 }

@@ -36,6 +36,30 @@ Faderfox LC2 (MIDI) ─────────────►      └─► au
 
 SuperCollider keeps the value of each parameter. The browser, the SC GUI and MIDI send their changes on the same path. All of them get the same echo.
 
+## The composition in the dome
+
+For the dome of the Planetario de Bogotá, the engine starts in its dome mix (MEZCLA at 1).
+
+- **The main layers fill the spectrum and the room.** Each one has its own height in the spectrum and its own place in the four channels:
+  - the kick is the floor;
+  - the drone is the ground, all round and leaning to the front;
+  - the pad is an even sheet that breathes from front to back;
+  - the dust is the air, behind and above.
+- **The other layers each have a place.**
+  - The forest (corpus) wraps the sides and the back, as a place wraps the one who listens.
+  - ULTRA comes from behind.
+  - GOLPE is on the stage.
+  - Each motor has a home on the ring. When it swells, it comes to the front and then goes back.
+- **PERC and KICK are a Burmese hsaing waing.**
+  - BOWL is the tuned circle: gongs on a long strike and pat waing drums on a short one.
+  - CHINA is the linkwin and si cymbals.
+  - KICK is the pat ma, the great drum, with the bamboo wa.
+  - The notes fall on a pentatonic scale over the root of the drone. Each strike sounds from the place on the ring that its pitch gives it, so a scale walks round the room.
+- **Module C in the dome.** The camera traps show on a curved screen that follows the edge of the dome and turns slowly, so each seat sees them face on. Behind it is the Library of Babel: hexagonal galleries that rise without end, with the 30 captures and the 612 spectrograms as books, and each gallery turns on its own.
+- **Modules 5 to 9 each turn in their own way.** ROTATION SPD goes from −2 to +2: the centre stops the turn and the left reverses it.
+
+MEZCLA at 0 (the MEZCLA_0_Barro config) gives the old sound, all at the front.
+
 ## Start
 
 You must have Node.js, Python 3 and SuperCollider (macOS or Linux).

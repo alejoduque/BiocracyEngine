@@ -154,7 +154,14 @@ export function currentPost(): CapturedPost {
 //   "card"  a flat page of text at a set azimuth and elevation, sized in
 //           degrees — for text meant to be READ (dome/domeCard.ts)
 // and the domemaster composites it as the page does ("screen", or "over").
-export type DomeLayerMode = "sky" | "band" | "card";
+/**
+ * "screen": a picture the slot wants LARGE — footage, not text. Drawn on a
+ * curved screen as a sector of the dome's ring (domemaster.ts), sized by the dome's
+ * own `screenDeg`, so it can span far more of the dome than a flat plane can.
+ * While a slot has one, its 2-D panel is not drawn: the slot is expected to
+ * put its words on a card instead.
+ */
+export type DomeLayerMode = "sky" | "band" | "card" | "screen";
 /** Where a card sits: azimuth (0 = front, + = right), elevation and width, degrees. */
 export type DomeCardPlace = { az: number; el: number; w: number };
 export type DomeLayer = { canvas: HTMLCanvasElement; mode: DomeLayerMode; blend: "screen" | "over"; place?: DomeCardPlace };

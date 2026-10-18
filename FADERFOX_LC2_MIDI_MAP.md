@@ -111,5 +111,5 @@ En el GUI de SC están juntos en la tira **VIZ**, al final de la fila CADENCIA. 
 | CC | Parámetro | Rango | Función |
 |---|---|---|---|
 | `CC 24` | `camaraOpacity` | `0.0 .. 1.0` | **CÁMARA OPAC**: cuánto de la cámara trampa proyecta el módulo C |
-| `CC 55` | `vizRotation` | `0.1 .. 2.0` | **ROTATION**: velocidad de giro de la proyección |
+| `CC 55` | `vizRotation` | `-2.0 .. 2.0` | **ROTATION**: velocidad y sentido de giro de la proyección (centro = detenido, izquierda = al revés) |
 | `CC 56` | `vizConsensus` | `0.0 .. 1.0` | **CONSENSUS**: consenso visual del parlamento |

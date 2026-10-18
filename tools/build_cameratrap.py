@@ -2,8 +2,9 @@
 """
 Build the camera-trap register for the Cámara Fenológica (slot C).
 
-Reads the Reserva MANAKAI camera-trap directory — 22 ten-second 1920x1080 MOV
-files — and places each one on the same 365-day phenological ring of Article 42
+Reads the Reserva MANAKAI camera-trap directories — 22 ten-second 1920x1080 MOV
+files from August, and eight later captures from both cameras (see STAMPED) —
+and places each one on the same 365-day phenological ring of Article 42
 that tools/build_corpus.py uses for the AudioMoth corpus. Output is
 corpus/cameratrap.json, shaped so a reader that already understands
 manifest.json needs no second vocabulary.
@@ -51,10 +52,34 @@ import unicodedata
 from datetime import datetime
 from pathlib import Path
 
-SOURCE = Path("/Users/a/Desktop/camaratrampaAgosto2026")
 DEST = Path(__file__).resolve().parent.parent / "corpus"
+SOURCES = (
+    Path("/Users/a/Desktop/camaratrampaAgosto2026"),
+    # Kept inside corpus/ (ignored by git) so they outlive ~/Downloads.
+    DEST / "cameratrap_src" / "camtrampaLR",
+)
 
 STATION = "CT-MANAKAI-01"
+
+# The October batch arrived through WhatsApp, which re-encodes (848x480 or
+# 832x464) and strips creation_time, so ffprobe has no date to give. The
+# camera burns its own clock into the bottom strip of every frame; these were
+# read off that strip, one second before the first full frame, and the files
+# were renamed MMDDhhmm[_label] after them. Both cameras of the reserve
+# appear: the strip says CAM_01 or CAM_02.
+#
+# Their audio was broken in the field — heavy rain wrecked a microphone — and
+# build_visual.py strips every track anyway (-an), so nothing of it survives.
+STAMPED: dict[str, tuple[str, str]] = {
+    "08212320":          ("2026-08-21T23:20:51", "CT-MANAKAI-01"),
+    "09182133_tamandua": ("2026-09-18T21:33:29", "CT-MANAKAI-01"),
+    "09191827":          ("2026-09-19T18:27:46", "CT-MANAKAI-01"),
+    "10050453":          ("2026-10-05T04:53:03", "CT-MANAKAI-01"),
+    "08271058_puma":     ("2026-08-27T10:58:44", "CT-MANAKAI-02"),
+    "08271410":          ("2026-08-27T14:10:38", "CT-MANAKAI-02"),
+    "08272358_ocelote":  ("2026-08-27T23:58:21", "CT-MANAKAI-02"),
+    "08291841_tamandua": ("2026-08-29T18:41:17", "CT-MANAKAI-02"),
+}
 LOCALITY = "Reserva MANAKAI"
 
 # Kept identical to build_corpus.py so both registers fold onto one ring.
@@ -88,6 +113,9 @@ LABELS: tuple[tuple[str, dict], ...] = (
     ("puma",      {"taxon": "Puma concolor",       "rank": "species", "common": "puma",             "group": "felid"}),
     ("aullador",  {"taxon": "Alouatta seniculus",  "rank": "species", "common": "mono aullador",    "group": "primate"}),
     ("mapache",   {"taxon": "Procyon cancrivorus", "rank": "species", "common": "mapache cangrejero", "group": "mammal"}),
+    # Genus only: T. mexicana and T. tetradactyla both reach the Caribbean
+    # dry forest, and an IR frame does not separate them.
+    ("tamandua",  {"taxon": "Tamandua",            "rank": "genus",   "common": "oso hormiguero (tamandúa)", "group": "mammal"}),
     ("garza",     {"taxon": "Ardeidae",            "rank": "family",  "common": "garza",            "group": "bird"}),
     ("avenegra",  {"taxon": "Aves",                "rank": "class",   "common": "ave (oscura)",     "group": "bird"}),
     ("avequecanta", {"taxon": "Aves",              "rank": "class",   "common": "ave cantora",      "group": "bird"}),
@@ -213,18 +241,25 @@ def probe(path: Path) -> dict:
 def scan() -> list[dict]:
     records: list[dict] = []
 
-    for src in sorted(SOURCE.glob("*.MOV")):
+    files = [f for d in SOURCES if d.is_dir()
+             for f in sorted(d.iterdir())
+             if f.suffix.lower() in (".mov", ".mp4") and not f.name.startswith("._")]
+    for src in files:
         try:
             info = probe(src)
         except RuntimeError as e:
             print(f"  skip  {src.name}: {e}", file=sys.stderr)
             continue
 
-        if not info["creation_time"]:
-            print(f"  skip  {src.name}: no creation_time", file=sys.stderr)
+        station = STATION
+        if src.stem in STAMPED:
+            stamp, station = STAMPED[src.stem]
+            when = datetime.fromisoformat(stamp)
+        elif info["creation_time"]:
+            when = datetime.fromisoformat(info["creation_time"].replace("Z", "+00:00"))
+        else:
+            print(f"  skip  {src.name}: no creation_time and no STAMPED entry", file=sys.stderr)
             continue
-
-        when = datetime.fromisoformat(info["creation_time"].replace("Z", "+00:00"))
         doy = when.timetuple().tm_yday
 
         species, raw = parse_labels(src.stem)
@@ -237,7 +272,7 @@ def scan() -> list[dict]:
         records.append({
             "key": f"ct_{src.stem}",
             "source": str(src),
-            "station": STATION,
+            "station": station,
             "locality": LOCALITY,
             "register": "cameratrap",
             "doy": doy,
@@ -258,8 +293,29 @@ def scan() -> list[dict]:
             "sensitivity": round(sensitivity, 3),
         })
 
+    records.extend(carried(records))
     records.sort(key=lambda r: (r["doy"], r["hour"], r["minute"], r["key"]))
     return records
+
+
+def carried(scanned: list[dict]) -> list[dict]:
+    """
+    Records from the last manifest whose original is no longer reachable.
+
+    The August folder lived on the Desktop and is gone; a rescan without this
+    would rewrite the register with only what is still on disk and thin the
+    ring by 22 captures. A record whose source still exists is always taken
+    from the scan, never from here.
+    """
+    path = DEST / "cameratrap.json"
+    if not path.exists():
+        return []
+    have = {r["key"] for r in scanned}
+    old = json.loads(path.read_text(encoding="utf-8")).get("clips", [])
+    keep = [r for r in old if r["key"] not in have and not Path(r["source"]).exists()]
+    if keep:
+        print(f"  carried {len(keep)} records whose originals are offline")
+    return keep
 
 
 def write_manifest(records: list[dict]) -> Path:
@@ -289,8 +345,8 @@ def write_manifest(records: list[dict]) -> Path:
 
     manifest = {
         "generated": datetime.now().astimezone().isoformat(timespec="seconds"),
-        "source": str(SOURCE),
-        "station": STATION,
+        "source": [str(d) for d in SOURCES],
+        "station": sorted({r["station"] for r in records}),
         "locality": LOCALITY,
         "register": "cameratrap",
         # Stated so a reader never has to infer it: this register veils
@@ -347,11 +403,8 @@ def main() -> int:
                     help="scan and summarise without writing the manifest")
     args = ap.parse_args()
 
-    if not SOURCE.is_dir():
-        print(f"source not found: {SOURCE}", file=sys.stderr)
-        return 1
-
-    print(f"scanning  {SOURCE}")
+    for d in SOURCES:
+        print(f"scanning  {d}{'' if d.is_dir() else '  (offline)'}")
     records = scan()
     summarise(records)
 

@@ -387,6 +387,9 @@
     // Store reference
     ~spatialWindow = spatialWindow;
     
+    // Its field is a UserView too: re-allocated after a move to another
+    // screen, like the main window's (4_gui.scd, ~dprWatch).
+    if(~dprWatch.notNil) { ~dprWatch.(spatialWindow) };
     spatialWindow.front;
     
     "Spatial Control GUI loaded successfully".postln;

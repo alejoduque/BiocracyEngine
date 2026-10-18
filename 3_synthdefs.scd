@@ -197,6 +197,21 @@ s.doWhenBooted({
     // \opalPerc (DUST/KICK faders and the three cadences), which at the
     // default settings is 1.0 and in a sparse config well under it.
     ~trimPerc  = 0.0275 * ~trimMaster;
+    // The hsaing waing inside \opalPerc and \opalKick (2026-10-18). Each new
+    // body's level against the one it replaced, MEASURED in NRT at the
+    // registry defaults (peak and RMS of a lone strike, old voice vs new) so
+    // the trims above keep their meaning: these move timbre, not balance.
+    // Result: kick, both halves and a short strike within ~1 dB of the old
+    // voice; the gong ~2 dB over the bowl in its first second and level after
+    // it (shorter, so less sustained energy overall); the cymbal half level on
+    // the attack, with the si ringing on ~28 dB under it where the china had
+    // already stopped. Strike-to-strike spread is about ±2 dB (noise exciter).
+    ~gongNorm    = 1.9;    // kyi waing gongs, against the singing bowl
+    ~drumNorm    = 5.0;    // pat waing drum, against a short bowl strike
+    ~linkwinNorm = 2.3;    // linkwin crash, against the china's trash bank
+    ~siNorm      = 0.4;    // si bell-cymbals, on top of it
+    ~patMaNorm   = 0.6;    // pat ma membrane modes, inside the kick
+    ~waNorm      = 0.09;   // wa clapper, on the kick's strong beats
     // The bed is the ensemble now, so the ONE continuous voice steps back from
     // 8.0 to 3.2 and the partials carry the rest. Its job is the sub anchor
     // under them rather than the whole bed on its own.
@@ -322,10 +337,14 @@ s.doWhenBooted({
     // moves. `fadeIn` ramps the carve in from 0 after a swap, so a fresh node
     // whose filters start empty is heard only as it settles; at boot it is 0
     // and the def behaves as it always did.
-    ~stemSumDef = { |defName, carve, duck|
+    // `role` is the stem's place in the dome (DISPOSICIÓN, below): \keep,
+    // \env or \point. Fixed per stem, so it is a def, not an argument — a
+    // stem only ever runs the branch it needs.
+    ~stemSumDef = { |defName, carve, duck, role = \keep|
         SynthDef(defName, { |in = 0, out = 0, id = 0, pan = 0, auto = 0, rate = 0.012, phase = 0,
                 carveBus = (-1), hpf = 0, dipF = 300, dipDb = 0, lsF = 200, lsDb = 0,
-                hsF = 9500, hsDb = 0, duckIn = (-1), duckDb = 0, tame = 0, fadeIn = 0|
+                hsF = 9500, hsDb = 0, duckIn = (-1), duckDb = 0, tame = 0, fadeIn = 0,
+                spread = 0.5, breathe = 0, home = 0, arc = 30, wander = 0, attend = 0|
             var dry = In.ar(in, ~limiterChans).asArray;
             var x, peak, rms, pos, gl, gr;
             if(carve) {
@@ -369,6 +388,73 @@ s.doWhenBooted({
                     };
                     LinXFade2.ar(ch, y * tameG, c * 2 - 1)
                 };
+                // ── DISPOSICIÓN: where each layer stands in the dome ──────────
+                // Every voice is panned by one global SPREAD, so the whole engine
+                // stood at the front centre of the dome and the rear pair carried
+                // nothing but the room. Disposition gives each layer a place, on
+                // the same MEZCLA knob that gives it a band: at 0 every stem is
+                // exactly where it was; at 1 it stands where its role puts it.
+                //
+                // A stem is folded to its stereo image (the front pair, plus
+                // what its voices already sent behind at -3 dB) and re-placed:
+                //
+                //   \env    the bed: all four speakers, front against rear by
+                //           `spread` (0 front .. 0.5 even .. 1 rear), equal-power,
+                //           the rear pair a decorrelated copy (three short
+                //           allpasses a side) so it surrounds rather than
+                //           phantoms; `breathe` swings the balance slowly
+                //   \point  a place on the ring: `home` degrees (0 front, +90
+                //           right, 180 behind), the image `arc` degrees wide,
+                //           wandering `wander` degrees; with `attend` the layer
+                //           steps toward the front while it surges above its
+                //           own recent level and drifts home after, which is
+                //           how a motor or a noise claims attention and gives it
+                //           back
+                //
+                // Lows need nothing here: the master's carve sums everything under
+                // 120 Hz to mono, so the floor is the whole room's, never a side's.
+                if(role != \keep) {
+                    var lIn, rIn, placed, gF, gR, ang, dl, dr, lvl, ref, att, posC, aw;
+                    if(~limiterChans >= 4) {
+                        lIn = x[0] + (x[3] * 0.7071);
+                        rIn = x[1] + (x[2] * 0.7071);
+                    } {
+                        lIn = x[0]; rIn = x[1] ? x[0];
+                    };
+                    if(role == \env) {
+                        ang = (spread.clip(0, 1)
+                            + (SinOsc.kr(1 / 70, phase) * breathe.clip(0, 0.4))).clip(0, 1) * 0.5pi;
+                        gF = ang.cos; gR = ang.sin;
+                        dl = lIn; dr = rIn;
+                        [0.0031, 0.0047, 0.0083].do { |t| dl = AllpassN.ar(dl, 0.01, t, 0.05) };
+                        [0.0037, 0.0059, 0.0071].do { |t| dr = AllpassN.ar(dr, 0.01, t, 0.05) };
+                        placed = if(~limiterChans >= 4) {
+                            [lIn * gF, rIn * gF, dr * gR, dl * gR]
+                        } {
+                            // Stereo has no behind: the bed stays as it was.
+                            [lIn, rIn]
+                        };
+                    } {
+                        // \point. The surge: a fast level against its own slow
+                        // average, up in under half a second, home over six.
+                        lvl = Amplitude.kr((lIn + rIn) * 0.5, 0.05, 1.5);
+                        ref = Lag.kr(lvl, 20).max(1e-5);
+                        att = LagUD.kr(((lvl / ref) - 1).clip(0, 1), 0.4, 6.0) * attend.clip(0, 1);
+                        posC = (home + (LFNoise1.kr(0.015 + (phase * 0.002)) * wander)) * (1 - (att * 0.7));
+                        aw = arc * (1 - (att * 0.4));
+                        placed = if(~limiterChans >= 4) {
+                            // PanAz(4) at orientation 0.5 puts the speakers at
+                            // -45, +45, +135, -135 degrees: degrees / 180 is its pos.
+                            PanAz.ar(4, lIn, (posC - aw) / 180, 1, 2, 0.5)
+                                + PanAz.ar(4, rIn, (posC + aw) / 180, 1, 2, 0.5)
+                        } {
+                            // Stereo: the ring folded onto the line, behind at centre.
+                            Pan2.ar(lIn, ((posC - aw) * (pi / 180)).sin * 0.85)
+                                + Pan2.ar(rIn, ((posC + aw) * (pi / 180)).sin * 0.85)
+                        };
+                    };
+                    x = x.collect { |ch, i| (ch * (1 - c)) + (placed[i] * c) };
+                };
             } { x = dry };
             // A NaN or inf in one layer (an unstable filter, a voice gone bad)
             // stops here, as silence on that layer, instead of reaching bus 0 and
@@ -388,8 +474,11 @@ s.doWhenBooted({
         }).add;
     };
     ~stemSumDef.(\stemSumFlat, false, false);
-    ~stemSumDef.(\stemSum,     true,  false);
-    ~stemSumDef.(\stemSumDuck, true,  true);
+    [\keep, \env, \point].do { |role|
+        var tag = if(role == \keep, "", "_" ++ role);
+        ~stemSumDef.(("stemSum" ++ tag).asSymbol,     true, false, role);
+        ~stemSumDef.(("stemSumDuck" ++ tag).asSymbol, true, true,  role);
+    };
     // The same levels, for the visuals. The GUI's meters listen to /stem in
     // 4_gui.scd; the projector needs them too — the blended slots read the
     // CORPUS layer as the forest's own voice, apart from the chain's. One
@@ -435,13 +524,18 @@ s.doWhenBooted({
     //   perc    peaks held; its −2 dB air shelf given back
     //   dust    cut 250 Hz: dust is detail, not body
     //   corpus  −3 dB below 200 Hz so the forest sits above the bed
+    //   and each main layer keeps to its own height in the spectrum, so the
+    //   four together reach from the floor to the air without two of them
+    //   standing in one place: drone −2 dB over 6 kHz (the top is the
+    //   metals' and the dust's), pad −2 dB under 160 Hz (the floor is the
+    //   kick's and the drone's), dust +2 dB over 11 kHz (it is the air)
     //   sample  cut 40; motors cut 30, masa 25 (its 10-20 Hz sine)
     ~stemCarveProfiles = (
         kick:   [\hpf, 28, \tame, 12],
-        drone:  [\hpf, 45, \dipF, 400, \dipDb, -2, \duckDb, -4],
-        pad:    [\hpf, 60, \dipF, 300, \dipDb, -3, \duckDb, -4],
+        drone:  [\hpf, 45, \dipF, 400, \dipDb, -2, \duckDb, -4, \hsF, 6000, \hsDb, -2],
+        pad:    [\hpf, 60, \dipF, 300, \dipDb, -3, \duckDb, -4, \lsF, 160, \lsDb, -2],
         perc:   [\tame, 12, \hsDb, 2],
-        dust:   [\hpf, 250],
+        dust:   [\hpf, 250, \hsF, 11000, \hsDb, 2],
         sample: [\hpf, 40],
         corpus: [\lsF, 200, \lsDb, -3],
         masa:   [\hpf, 25],
@@ -449,6 +543,50 @@ s.doWhenBooted({
         ruptura: [\hpf, 30], seq: [\hpf, 30],
         golpe:  [\hpf, 35, \tame, 12]
     );
+    // DISPOSICIÓN — the dome's map, one entry per layer (see \stemSum). The
+    // main layers fill the room and the spectrum between them; the others
+    // each have a place, and the ones that come and go step forward when they
+    // come. On MEZCLA with the carve: at 0 nothing here is heard.
+    //
+    //   kick     keep    the floor, front; its lows are everyone's (master mono)
+    //   perc     keep    the hsaing circle: each strike already stands round the
+    //                    ring at its own pitch (\opalPerc, "the circle")
+    //   drone    env .30 the ground of the room, all round, leaning front
+    //   pad      env .50 the sheet, even all round, breathing front and back
+    //   dust     env .72 the air, behind and over
+    //   corpus   env .62 the forest round the sides and back, as a place is
+    //                    round the one listening — and breathing, slower
+    //   masa     env .50 a mass is everywhere at once
+    //   ultra    point   180, narrow: what cannot be heard arrives from behind
+    //   golpe    point   0, the stage
+    //   sample   point   -60, a voice at the front left
+    //   motors   point   each at home on the ring — remuestreo +90, espectro
+    //                    -90, caos +140, ruptura -140, seq +45 — and stepping
+    //                    forward while they surge
+    ~stemPlace = (
+        drone:  [\role, \env, \spread, 0.30, \breathe, 0.06],
+        pad:    [\role, \env, \spread, 0.50, \breathe, 0.18],
+        dust:   [\role, \env, \spread, 0.72, \breathe, 0.08],
+        corpus: [\role, \env, \spread, 0.62, \breathe, 0.12],
+        masa:   [\role, \env, \spread, 0.50, \breathe, 0.10],
+        ultra:  [\role, \point, \home, 180, \arc, 18, \wander, 12],
+        golpe:  [\role, \point, \home, 0, \arc, 28, \wander, 4],
+        sample: [\role, \point, \home, -60, \arc, 22, \wander, 8],
+        remuestreo: [\role, \point, \home, 90, \arc, 30, \wander, 15, \attend, 1],
+        espectro:   [\role, \point, \home, -90, \arc, 30, \wander, 15, \attend, 1],
+        caos:       [\role, \point, \home, 140, \arc, 24, \wander, 18, \attend, 1],
+        ruptura:    [\role, \point, \home, -140, \arc, 24, \wander, 18, \attend, 1],
+        seq:        [\role, \point, \home, 45, \arc, 20, \wander, 10, \attend, 1]
+    );
+    ~stemPlaceArgs = { |name|
+        var p = (~stemPlace[name] ? []).copy, i = p.indexOf(\role);
+        if(i.notNil) { p.removeAt(i); p.removeAt(i) };
+        p
+    };
+    ~stemRole = { |name|
+        var p = ~stemPlace[name] ? [], i = p.indexOf(\role);
+        if(i.notNil) { p[i + 1] } { \keep }
+    };
     ~stemCarveArgs = { |name|
         var prof = ~stemCarveProfiles[name] ? [];
         var duck = if((prof.indexOf(\duckDb)).notNil and: { ~stems[\kick].notNil },
@@ -463,21 +601,24 @@ s.doWhenBooted({
     ~stemPaused = ~stemPaused ?? { () };
     ~stemCarved = ((~controlValues !? { ~controlValues[\mixCarve] }) ? 0) > 0;
     ~stemDefFor = { |name, carved|
+        var role = ~stemRole.(name);
+        var tag = if(role == \keep, "", "_" ++ role);
         if(carved.not) { \stemSumFlat } {
-            if(((~stemCarveProfiles[name] ? []).indexOf(\duckDb)).notNil, \stemSumDuck, \stemSum)
+            ((if(((~stemCarveProfiles[name] ? []).indexOf(\duckDb)).notNil, "stemSumDuck", "stemSum")) ++ tag).asSymbol
         }
     };
     ~stemStart = { |name, out, target, addAction = \addToTail|
         ~stemBase[name] = [\in, ~stems[name].index, \out, out, \id, ~stemNames.indexOf(name)];
         ~stemPaused[name] = false;
         ~stemNodes[name] = Synth(~stemDefFor.(name, ~stemCarved),
-            ~stemBase[name] ++ ~stemPanArgs.(name) ++ ~stemCarveArgs.(name), target, addAction);
+            ~stemBase[name] ++ ~stemPanArgs.(name) ++ ~stemCarveArgs.(name) ++ ~stemPlaceArgs.(name),
+            target, addAction);
     };
     ~stemSwap = { |name, carved|
         ~stemNodes[name] !? { |old|
             var n = Synth.replace(old, ~stemDefFor.(name, carved),
                 ~stemBase[name] ++ ~stemPanArgs.(name) ++ ~stemCarveArgs.(name)
-                ++ [\fadeIn, if(carved, 0.3, 0)]);
+                ++ ~stemPlaceArgs.(name) ++ [\fadeIn, if(carved, 0.3, 0)]);
             ~stemNodes[name] = n;
             if(~stemPaused[name] == true) { n.run(false) };
         };
@@ -693,7 +834,7 @@ s.doWhenBooted({
 
     // --- Fors Opal Emulation Synths ---
     
-    // opalKick: Deep FM/Distortion kick (Gem style)
+    // opalKick: the PAT MA of the hsaing waing (see below), with the wa
     SynthDef(\opalKick, {
         arg mixCarveBus=(-1), out=0, freq=50, amp=0.5, atk=0.001, dec=0.4,
         masterVolBus=(-1), timeBus=(-1), harmonicBus=(-1), textureBus=(-1), spectralBus=(-1), atmosphereBus=(-1), spatialBus=(-1),
@@ -728,7 +869,7 @@ s.doWhenBooted({
         var percLvl = Select.kr(mixPercBus >= 0, [1.0, In.kr(mixPercBus, 1)]);
         var dustLvl = Select.kr(mixDustBus >= 0, [1.0, In.kr(mixDustBus, 1)]);
 
-        var env, pitchEnv, sig, mod, quadSig, click, sub;
+        var env, pitchEnv, sig, mod, quadSig, click, sub, beater, membrane, waExc, wa;
 
         // Dust adds granular micro-texture to kick beater attack
         nLevel = (nLevel * dustLvl.linlin(0, 2, 0.6, 1.4)).clip(0, 1);
@@ -737,14 +878,31 @@ s.doWhenBooted({
         dec    = dec * percLvl.linlin(0, 2, 1.15, 0.8);
         
         env = EnvGen.ar(Env.perc(atk, dec * tStretch, 1, -4), doneAction: 2);
-        // Grounded sub-bass pitch envelope: drops smoothly from punchy low-mid (2.2x) to fundamental
-        // Never climbs into high frequencies or laser pitch drops
+        // ── Pat ma ───────────────────────────────────────────────────────
+        // The hsaing waing's great barrel drum, hung in its own frame beside
+        // the drum circle and struck on the ensemble's strong beats — which
+        // is exactly where KICK speaks. This was an FM kick: a chirp from
+        // 2.2x down to 0.8x the pitch, the falling sweep of a drum machine.
+        // A pasted barrel head does not sweep. It is struck sharp by a few
+        // per cent, settles onto a pitch and BOOMS there, with the other
+        // modes of a round membrane sounding above it. Still a warm sub
+        // anchor: same register, same 280 Hz ceiling, same sub octave.
         pitchEnv = EnvGen.ar(Env(
-            [freq * 2.2, freq * 1.05, freq * 0.8] * (pShift.clip(-12, 12) / 12).midiratio,
-            [0.025, dec * tStretch], \exp)).clip(25, 180);
+            [freq * 1.32, freq * 1.0, freq * 0.97] * (pShift.clip(-12, 12) / 12).midiratio,
+            [0.04, dec * tStretch], \exp)).clip(25, 180);
 
-        mod = SinOsc.ar(pitchEnv * fmR.linexp(0.1, 8, 0.5, 2.0)) * (fmD * 0.25) * pitchEnv;
+        mod = SinOsc.ar(pitchEnv * fmR.linexp(0.1, 8, 0.5, 2.0)) * (fmD * 0.12) * pitchEnv;
         sig = SinOsc.ar(pitchEnv + mod);
+        // The head's other modes (an ideal circular membrane: 1.59, 2.14,
+        // 2.30, 2.65), struck by a felt beater and damped by the paste, so
+        // they colour the first half-second and leave the fundamental alone.
+        beater = LPF.ar(PinkNoise.ar, (600).min(SampleRate.ir * 0.45))
+            * EnvGen.ar(Env.perc(0.001, 0.012));
+        membrane = (Ringz.ar(beater,
+            ((pitchEnv * #[1.594, 2.136, 2.296, 2.653]).clip(30, 900)).min(SampleRate.ir * 0.45),
+            #[0.35, 0.22, 0.18, 0.12] * tStretch.clip(0.5, 3.0))
+            * #[0.32, 0.20, 0.14, 0.08]).sum * ~patMaNorm;
+        sig = sig + membrane;
 
         // Soft acoustic beater transient — bandpassed pink noise, no high hiss
         click = BPF.ar(
@@ -764,6 +922,18 @@ s.doWhenBooted({
         // drop, which is the difference between a click and something you feel.
         sub = SinOsc.ar(pitchEnv * 0.5) * dDepth.linlin(0, 1, 0.0, 0.85);
         sig = sig + sub;
+
+        // ── Wa ───────────────────────────────────────────────────────────
+        // The bamboo clapper that keeps the hsaing's time, on the strong
+        // beats, with the si (in \opalPerc's cymbal half) on the weak. Added
+        // after the 280 Hz ceiling on purpose: the wa is a dry, woody click a
+        // kilohertz and more up, and the ceiling would leave nothing of it.
+        // NOISE LEVEL sets how much of it, as it sets the beater's.
+        waExc = WhiteNoise.ar * EnvGen.ar(Env.perc(0.0003, 0.006));
+        wa = (Ringz.ar(waExc, (#[1180, 2650, 3900]).min(SampleRate.ir * 0.45), #[0.035, 0.022, 0.014])
+            * #[1.0, 0.6, 0.35]).sum
+            + (BPF.ar(waExc, (2200).min(SampleRate.ir * 0.45), 0.8) * 0.3);
+        sig = sig + (wa * ~waNorm * nLevel.linlin(0, 0.5, 0.6, 1.4));
 
         // Reverb tail and slap
         sig = sig + DelayC.ar(sig, 0.25, 0.055 + (dMix * 0.08), dMix * 0.35);
@@ -837,7 +1007,10 @@ s.doWhenBooted({
         // set and passes -1 for the matching bus, so that one hit ignores the
         // knob and takes the chain's value instead.
         texture = 0.2, resonance = 0.4, noiseF = 0.5, noiseL = 0.1,
-        delayFb = 0.3, timeStr = 2.0, memory = 0.3;
+        delayFb = 0.3, timeStr = 2.0, memory = 0.3,
+        // The drone's fundamental (~droneRoot, appended by ~percSpawn): the
+        // circle of gongs and drums is tuned to it — see "Hsaing waing".
+        root = 55;
 
         var vol   = Lag.kr(Select.kr(masterVolBus >= 0, [0.3, In.kr(masterVolBus, 1)]), 0.08);
         var tStretch= Select.kr(timeBus >= 0, [timeStr, In.kr(timeBus, 1)]);
@@ -892,9 +1065,11 @@ s.doWhenBooted({
         var mixPerc  = Lag.kr(Select.kr(mixPercBus >= 0, [1.0, In.kr(mixPercBus, 1)]), 0.08);
         var sendGain = amp * vol * mixPerc / (0.7 * 0.245 * 0.3);
         var exciter, sig, wet, quadSig, partials, decays, inharm, damp, spread;
-        var shimmer, wash, chug, modeAmps, bend, shaped, bowlFreq, bowlGate, chinaGate;
+        var shimmer, wash, modeAmps, bend, shaped, bowlFreq, bowlGate, chinaGate;
         var symp, symPresence, symDecay;
         var bowl, trash, trashRatios, trashDecays, beats;
+        var scaleR, tuned, gongR, gongA, wow, gong, drumFreq, drumR, drumA, drumDecs, palm, drum, drumW;
+        var si, siF, ring;
 
         // Clamped fundamental in the warm wooden/gong range (35..320 Hz)
         // China/trash cymbals speak from a much higher plate than the wooden
@@ -986,82 +1161,127 @@ s.doWhenBooted({
         // the opposite of the cymbal ladder: a bowl has a clear centre and a
         // handful of overtones, and that is why it reads as a pitch you can
         // hold on to rather than as metal noise.
-        partials = #[1.00, 2.74, 5.12, 8.06, 11.53, 15.44, 19.78];
+        // ── Hsaing waing ─────────────────────────────────────────────────
+        // This half was a Tibetan singing bowl: a lone casting, sustained,
+        // with no key of its own. It is now the tuned heart of a Burmese
+        // hsaing waing — the circle of instruments the ensemble is named for:
+        //
+        //   KYI WAING / MAUNG HSAING  bossed gongs in a circle and a frame.
+        //       A boss concentrates the plate's energy into a clear
+        //       fundamental and a near-octave, so a gong has a PITCH where a
+        //       bowl has a hum; it beats slowly, rises a hair in pitch as the
+        //       strike settles, and rings seconds rather than half a minute.
+        //   PAT WAING  twenty-one drums in a circle, each tuned with a paste
+        //       of rice and ash on its head. The paste pulls the membrane's
+        //       modes toward harmonic, which is why a pat waing drum sings a
+        //       note; the player's palm presses the head as it strikes, so
+        //       each stroke starts a little sharp and falls onto its pitch.
+        //
+        // Which of the two speaks is how long the strike is asked to ring
+        // (tStretch x envScale): a full strike is a gong, a short one — the
+        // retrig bursts a contract call fires, 3-7 hits in a few hundred ms
+        // (5_beat_engine.scd, ~percRetrig) — is a pat waing run, which is
+        // what those bursts always sounded like they wanted to be.
+        //
+        // Both are TUNED. Struck pitches fall on an anhemitonic pentatonic —
+        // the do-re-mi-sol-la shape the hsaing's melodies move in — built on
+        // the drone's own root, so the circle plays in the bed's key. Nearest
+        // degree, at the strike; the chain still chooses which region.
+        scaleR = #[1.0, 1.125, 1.25, 1.5, 1.6667, 2.0];
+        tuned = { |f|
+            var r0 = root.clip(20, 400);
+            var oct = (f / r0).log2.floor;
+            var base = r0 * (2 ** oct);
+            var r = f / base, best = 1.0;
+            scaleR.do { |c| best = Select.kr(((c - r).abs < (best - r).abs), [best, c]) };
+            base * best
+        };
 
-        // The wobble. Every bowl is slightly out of round, so each mode is
-        // really a PAIR a few Hz apart, and the beating between them is the
-        // slow pulse that makes a singing bowl recognisable. Offsets are in
-        // absolute Hz, not ratios, because the beat rate of a real bowl barely
-        // moves with pitch — and they come off bodySeed so each strike is a
-        // different casting with its own wobble.
+        // The gong, an octave under the struck size, as the bowl sat.
+        bowlFreq = tuned.(freq * 0.5).clip(35, 480);
+        // Bossed-gong modes: the fundamental, a strong near-octave and a
+        // near-ninth, the rest thin. Fixed, not a formula — a cast gong is
+        // irregular the way the china table was, only sparser.
+        gongR = #[1.0, 1.52, 2.02, 2.83, 3.41, 4.12, 5.39];
+        gongA = #[1.0, 0.16, 0.50, 0.34, 0.12, 0.10, 0.05];
+        // Slow beating: a gong's two near-degenerate modes are closer than a
+        // bowl's (under 2 Hz), so it pulses rather than wobbles.
         beats = Array.fill(7, { |i|
-            0.7 + ((bodySeed * (i + 1) * 5.73).sin.abs * 4.6);
+            0.25 + ((bodySeed * (i + 1) * 5.73).sin.abs * 1.4);
         });
-
-        // Long, and longer at the bottom. Mode 1 rings ~16 s at the default
-        // timeDilation; the top of the shell fades in ~5 s. Clipped at 34 s so
-        // a large timeDilation cannot leave a node alive indefinitely.
-        // ── Bowl, not bell ───────────────────────────────────────────────
-        //
-        // The partial RATIOS were already right — 1, 2.74, 5.12, 8.06 is close
-        // to a real singing bowl. The two ROLLOFFS made it a bell:
-        //
-        //   amp   (i+1)^-0.62   mode 6 at 0.299, sitting at 3956 Hz
-        //   decay (i+1)^-0.42   mode 6 still ringing after 7.1 s
-        //
-        // A bell is defined by loud, long-lived upper partials. A bowl is
-        // defined by the opposite: its energy sits in the first two or three
-        // modes and everything above dies inside a second, which is why a
-        // struck bowl settles into a hum instead of staying a chime.
-        //
-        //   amp   -0.62 -> -1.45   mode 6 down to 0.086, about 11 dB quieter
-        //   decay -0.42 -> -1.15   mode 6 down to roughly 1.7 s
-        //
-        // The fundamental keeps its long ring — that is the bowl's whole
-        // character. What goes is the bright tail sitting on top of it.
+        // Ringing seconds: ~8 s on the fundamental at the default
+        // timeDilation, the upper modes gone in two or three.
         decays = Array.fill(7, { |i|
-            (((i + 1) ** -1.15) * (tStretch * 8.0) * envScale.clip(0.1, 2.0)
-                * damp.linlin(1.2, 3.5, 1.25, 0.7)).clip(0.4, 34.0);
+            (((i + 1) ** -0.9) * (tStretch * 4.0) * envScale.clip(0.1, 2.0)
+                * damp.linlin(1.2, 3.5, 1.25, 0.7)).clip(0.3, 20.0);
         });
-
-        // The fundamental carries the tone; the overtones colour it.
-        modeAmps = Array.fill(7, { |i| ((i + 1) ** -1.45) });
-
-        // AN OCTAVE DOWN, and only the bowl. The beat engine hands this voice
-        // 100-300 Hz, which for a bowl is a small one struck near the rim; a
-        // large Tibetan bowl sings around 70-150. The china half keeps the
-        // original register — a china cymbal is supposed to be bright, and
-        // dropping both would only make the whole voice dull.
-        bowlFreq = (freq * 0.5).clip(35, 480);
-
-        bowl = Mix([
-            (Ringz.ar(exciter, ((bowlFreq * partials).clip(30, 16000)).min(SampleRate.ir * 0.45), decays)
+        modeAmps = gongA;
+        // The rise as the strike settles: 1.2 % flat, onto pitch in ~0.6 s.
+        wow = 1 - (0.012 * EnvGen.kr(Env([1, 0], [0.6], -3)));
+        // Struck with a padded beater, not a stick: the gong hears the
+        // exciter through a lowpass, the cymbals below still hear all of it.
+        gong = LPF.ar(exciter, ((bowlFreq * 16).clip(800, 9000)).min(SampleRate.ir * 0.45));
+        gong = Mix([
+            (Ringz.ar(gong, ((bowlFreq * gongR * wow).clip(30, 16000)).min(SampleRate.ir * 0.45), decays)
                 * modeAmps).sum,
-            // The twin bank, half a hair sharp and slightly quieter.
-            (Ringz.ar(exciter,
-                (((bowlFreq * partials) + beats).clip(30, 16000)).min(SampleRate.ir * 0.45), decays)
+            (Ringz.ar(gong,
+                (((bowlFreq * gongR * wow) + beats).clip(30, 16000)).min(SampleRate.ir * 0.45), decays)
                 * modeAmps).sum * 0.85
-        ]) * 7.sqrt.reciprocal * 2.9;
+        ]) * 7.sqrt.reciprocal * ~gongNorm;
+
+        // The pat waing drum, at the struck pitch itself.
+        drumFreq = tuned.(freq).clip(90, 900);
+        drumR = #[1.0, 2.0, 2.98, 3.94];
+        drumA = #[1.0, 0.42, 0.20, 0.09];
+        drumDecs = Array.fill(4, { |i| (0.6 * ((i + 1) ** -0.8)).clip(0.05, 1.5) });
+        // The palm: a dull slap, a few ms, and the head pressed sharp.
+        palm = LPF.ar(WhiteNoise.ar, ((drumFreq * 6).clip(400, 5000)).min(SampleRate.ir * 0.45))
+            * EnvGen.ar(Env.perc(0.0005, 0.004));
+        drum = (Ringz.ar(palm + (exciter * 0.05),
+            ((drumFreq * drumR * (1 + (0.045 * EnvGen.kr(Env([1, 0], [0.05], -4)))))
+                .clip(30, 12000)).min(SampleRate.ir * 0.45),
+            drumDecs) * drumA).sum * ~drumNorm;
+        drumW = (tStretch * envScale).linlin(0.35, 1.4, 1, 0);
+
+        // A short strike is mostly drum with the gong behind it; a full one
+        // is the gong. The name stays BOWL on the surface: it is the same
+        // half of the voice, and the same toggle and fader reach it.
+        bowl = (gong * (1 - (drumW * 0.8))) + (drum * drumW);
 
         // The strike. Eighteen crowded, irregular, fast-dying modes — the
         // china reduced to what it is good at, which is the first moment.
         // Same hashed ladder as before so the spacing has no smooth function
         // under it, but spanning higher and decaying in well under a second.
-        trashRatios = Array.fill(18, { |i|
-            var t   = i / 17.0;
+        // ── The cymbals of the hsaing ────────────────────────────────────
+        // LINKWIN, the ensemble's cymbals, where the china was: the same kind
+        // of crowded ladder, but fourteen modes on a gentler jitter that ring
+        // a little longer — a crash that opens, not a trash that spits.
+        trashRatios = Array.fill(14, { |i|
+            var t   = i / 13.0;
             var h   = ((i + 1) * 12.9898 + (bodySeed * 78.233)).sin * 43758.5453;
             var jit = h - h.floor;
-            (6.0 * (5.6 ** t) * (1 + ((jit - 0.5) * 0.34))).clip(2.0, 62.0);
+            (6.0 * (4.6 ** t) * (1 + ((jit - 0.5) * 0.2))).clip(2.0, 48.0);
         });
-        trashDecays = Array.fill(18, { |i|
-            (((i + 1) ** -0.5) * (tStretch * 0.16)).clip(0.03, 0.6);
+        trashDecays = Array.fill(14, { |i|
+            (((i + 1) ** -0.5) * (tStretch * 0.24)).clip(0.04, 0.9);
         });
         trash = Ringz.ar(exciter, ((freq * trashRatios).clip(200, 17000)).min(SampleRate.ir * 0.45), trashDecays)
-            .sum * 18.sqrt.reciprocal * 3.4;
+            .sum * 14.sqrt.reciprocal * ~linkwinNorm;
+        // SI, the small bell-cymbals that keep the hsaing's time: two cups
+        // struck edge to edge, a high clean "ching" with a few sparse modes,
+        // each beating against a twin, ringing on after the crash has gone.
+        siF = (2300 + (bodySeed * 1100)).min(SampleRate.ir * 0.4);
+        si = (Ringz.ar(HPF.ar(exciter, (1500).min(SampleRate.ir * 0.45)),
+            ((siF * #[1.0, 1.47, 2.09, 2.76]) + #[0, 3.1, 4.7, 6.3]).clip(200, 17000).min(SampleRate.ir * 0.45),
+            #[1.6, 1.1, 0.8, 0.55] * tStretch.clip(0.3, 2.5))
+            * #[1.0, 0.55, 0.3, 0.18]).sum * ~siNorm;
         // Confined to the attack. Without this envelope the dense bank runs
         // the whole length of the note and buries the bowl underneath it.
         trash = trash * EnvGen.ar(
-            Env.perc(0.0005, (0.55 * tStretch).clip(0.15, 1.6), 1, -5));
+            Env.perc(0.0005, (0.75 * tStretch).clip(0.2, 2.0), 1, -5));
+        // The si rides on the crash, ungated by its envelope: it is the part
+        // of the strike that is still sounding when the cymbal has stopped.
+        trash = trash + si;
 
         // textureDepth is now the BOWL <-> TRASH morph, which is the most
         // useful thing that knob can do on this voice: at 0 it is almost a
@@ -1247,34 +1467,9 @@ s.doWhenBooted({
           * res.linlin(0.1, 0.8, 0.35, 1.1) * 0.22;
         sig = sig + (wash * chinaGate);
 
-        // ── The chug: inharmonic square-wave cluster ────────────────────────
-        // The third layer of the standard china model. Eight Pulse oscillators
-        // on deliberately UNharmonised fractional ratios collide into each
-        // other before the noise takes over — that collision is the metallic
-        // "weight" a filtered-noise cymbal always lacks, because noise alone
-        // has no partials to beat.
-        //
-        // Highpassed hard: the point is the interference between them up in
-        // the plate's register, not their fundamentals. Very short envelope so
-        // it is part of the ATTACK — a china's chug is gone in ~100 ms, and
-        // leaving it longer would turn the voice into a drone.
-        chug = Mix(
-            #[1.34, 1.79, 2.11, 2.67, 3.41, 4.23, 5.19, 6.44].collect { |r, i|
-                Pulse.ar(
-                    (freq * r * (1 + ((bodySeed * (i + 2) * 3.1).sin * 0.02)))
-                        .clip(60, 9000),
-                    // Width varies per oscillator; a cluster of identical
-                    // squares sounds like one square, not like metal.
-                    0.28 + ((i % 3) * 0.13),
-                    1.0 / 8
-                )
-            }
-        );
-        chug = HPF.ar(chug, ((freq * 3.2).clip(400, 5000)).min(SampleRate.ir * 0.45));
-        chug = (chug * (1 + (fmD * 2.2))).tanh;
-        sig = sig + (chug
-            * EnvGen.ar(Env.perc(0.0008, (0.10 * tStretch).clip(0.04, 0.35), 1, -6))
-            * res.linlin(0.1, 0.8, 0.12, 0.34) * chinaGate);
+        // (The chug — eight saturated square waves on fractional ratios —
+        // was the china's weight. Linkwin and si are cast and turned bronze,
+        // not a trash plate, and have none: it is gone, with its CPU.)
 
         // Doppler comb tail
         bend = CombC.ar(sig * 0.35, 0.35,
@@ -1294,7 +1489,9 @@ s.doWhenBooted({
         // waveshaper folds, and folding this much 10 kHz+ energy at 48 kHz
         // would alias straight back down as an inharmonic whistle. Lowpassing
         // first keeps every fold product under Nyquist.
-        shaped = (sig * fmD.linlin(0, 1, 1.4, 4.2)).tanh
+        // Gentler than it was for the china (1.4-4.2): bronze bells bite, they
+        // do not distort.
+        shaped = (sig * fmD.linlin(0, 1, 1.2, 2.6)).tanh
             / (1 + (fmD * 0.3));
         // These two stages are described in the comment above as "the metallic
         // bite" and "the clangour" — they are china character by their own
@@ -1378,10 +1575,20 @@ s.doWhenBooted({
 
         sig = sig * amp * vol * ~trimPerc * family * mixPerc;
 
+        // ── The circle ───────────────────────────────────────────────────
+        // A hsaing waing is played from inside it: the drums and the gongs
+        // stand round the player in order of pitch. With DISPOSICIÓN (MEZCLA,
+        // see \stemSum) each strike stands round the dome the same way — the
+        // place on the ring is where its note falls in the octave over the
+        // drone's root, one octave a full turn, so a run walks round the room
+        // and the same note always comes from the same seat. At MEZCLA 0 the
+        // ring is not applied and the strike is where it always was.
+        ring = ((bowlFreq / root.clip(20, 400)).log2.frac * 2)
+            * Lag.kr(Select.kr(mixCarveBus >= 0, [0, In.kr(mixCarveBus.max(0), 1)]).clip(0, 1), 0.25);
         quadSig = if(~limiterChans >= 4) {
-            PanAz.ar(4, sig, spatialX.clip(-1, 1) * 0.5, 1, 2, 0.5)
+            PanAz.ar(4, sig, (spatialX.clip(-1, 1) * 0.5) + ring, 1, 2, 0.5)
         } {
-            Pan2.ar(sig, spatialX.clip(-1, 1))
+            Pan2.ar(sig, (spatialX.clip(-1, 1) + ((ring * pi).sin * 0.6)).clip(-1, 1))
         };
         Out.ar(out, quadSig);
     }).add;
