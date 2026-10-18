@@ -217,7 +217,7 @@ pkill -f "parliament-bridge\.js" 2>/dev/null
 pkill -f "laser-bridge\.js" 2>/dev/null
 pkill -f "dome-bridge\.js" 2>/dev/null
 pkill -f "dome-live\.js" 2>/dev/null
-pkill -f "webpack-dev-server" 2>/dev/null   # nw_wrld_local npm run serve
+pkill -f "webpack-dev-server|^webpack( |$)" 2>/dev/null   # nw_wrld_local npm run serve
 pkill -f "eth_sonify\.py" 2>/dev/null
 sleep 0.5
 
@@ -228,7 +228,7 @@ pkill -9 -f "parliament-bridge\.js" 2>/dev/null
 pkill -9 -f "laser-bridge\.js" 2>/dev/null
 pkill -9 -f "dome-bridge\.js" 2>/dev/null
 pkill -9 -f "dome-live\.js" 2>/dev/null
-pkill -9 -f "webpack-dev-server" 2>/dev/null
+pkill -9 -f "webpack-dev-server|^webpack( |$)" 2>/dev/null
 pkill -9 -f "eth_sonify\.py" 2>/dev/null
 
 # Liberar puertos específicos del ecosistema por si quedaron huérfanos
@@ -286,7 +286,7 @@ cleanup() {
     pkill -f "laser-bridge\.js" 2>/dev/null
     pkill -f "dome-bridge\.js" 2>/dev/null
     pkill -f "dome-live\.js" 2>/dev/null
-    pkill -f "webpack-dev-server" 2>/dev/null
+    pkill -f "webpack-dev-server|^webpack( |$)" 2>/dev/null
     pkill -f "eth_sonify\.py" 2>/dev/null
     rm -f "$LOCKFILE"
     echo "Adiós."
