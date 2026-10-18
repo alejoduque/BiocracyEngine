@@ -77,3 +77,10 @@ bandcamp/wav/
 # ffmpeg con HAP compilado localmente (tools/ffmpeg-hap/build.sh): fuentes y binarios.
 tools/ffmpeg-hap/*
 !tools/ffmpeg-hap/build.sh
+
+# Performance del domo: la voz se regenera con web/performance_domo/generar_voces.sh
+# (37 MB de WAV); el zip es la copia de entrega; las .antes-performance son las
+# copias que deja instalar.py antes de insertar sus bloques.
+web/performance_domo/voz/
+web/performance_domo.zip
+*.antes-performance

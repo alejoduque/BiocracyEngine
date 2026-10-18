@@ -30,6 +30,8 @@ esac
 # servidor; si no, las láminas y los clips viejos se quedan ahí para siempre.
 # Los .sh y los .py son las herramientas que construyen el sitio, no el sitio:
 # no se publican. Como están excluidos, --delete tampoco los toca en el destino.
+# performance_domo/ (y su zip) es la partitura privada de «Biocracia en escucha»:
+# guion, voz de la máquina y lanzador. Vive en web/ pero no es parte del sitio.
 #
 # ${DRY[@]+"${DRY[@]}"} y no "${DRY[@]}": el bash de macOS es el 3.2, y con
 # set -u un arreglo VACÍO cuenta como variable sin definir —«DRY[@]: unbound
@@ -37,6 +39,7 @@ esac
 # lleva -n.
 rsync -avz --delete ${DRY[@]+"${DRY[@]}"} -e "ssh -p $PORT" \
     --exclude='*.sh' --exclude='*.py' \
+    --exclude='performance_domo/' --exclude='performance_domo.zip' \
     "$HERE/" "$DEST"
 
 [ ${#DRY[@]} -gt 0 ] && exit 0
