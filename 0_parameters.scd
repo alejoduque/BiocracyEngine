@@ -1260,12 +1260,15 @@ if(File.exists(~presetDir).not) { File.mkdir(~presetDir) };
                         var key = k.asSymbol;
                         var val = v.asFloat;
                         // MEZCLA never comes back from the autosave: every
-                        // start is the instrument as it always sounded (carve
-                        // 0), and only a config loaded on purpose — MEZCLA_*,
-                        // or one saved with the knob moved — carves it. Once
-                        // restored at boot it followed every config after it,
-                        // since base configs don't carry the key (2026-10-07).
-                        if(isAuto and: { key == \mixCarve }) { val = 0 };
+                        // start is the registry default, and only a config
+                        // loaded on purpose — MEZCLA_*, or one saved with the
+                        // knob moved — changes it. Once restored at boot it
+                        // followed every config after it, since base configs
+                        // don't carry the key (2026-10-07). The default is 1
+                        // since 2026-10-18 (the dome); this line still forced
+                        // 0 and undid it at every boot.
+                        if(isAuto and: { key == \mixCarve }) {
+                            val = (~paramDefsByName[\mixCarve] ? ())[\default] ? 1.0 };
                         if(isAuto and: { compounding.includes(key) }) {
                             var def = ~paramDefs.detect { |d| d[\name] == key };
                             if(def.notNil) {
