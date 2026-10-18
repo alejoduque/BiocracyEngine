@@ -435,6 +435,9 @@ class PhenologicalCalendar extends BaseThreeJsModule {
 
     async _loadSpecies() {
         const data = await loadJson("json/manakai_species.json");
+        // destroy() (threeBase) nulls every field: if the slot was switched away
+        // while the JSON loaded, there is nothing left to build into.
+        if (!this.speciesMeshes) return;
         if (!data) {
             console.warn("[PhenologicalCalendar] manakai_species.json not found; using inline fallback");
             this._populateFromData(this._fallbackData());
