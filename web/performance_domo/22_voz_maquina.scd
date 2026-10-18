@@ -16,21 +16,24 @@
             ?? "~/code/BiocracyEngine/web/performance_domo/voz".standardizePath;
 ~consola  = ~visualsDest ?? NetAddr("127.0.0.1", 3333);   // mismo destino que usa el motor hacia la consola
 ~vozOut   = 0;      // bus de salida (0 = estéreo principal; cámbialo al bus del domo)
-~vozAmp   = 0.9;
-~vozPitch = 1.0;    // 1.0 = voz tal cual; 0.92–0.96 la vuelve más grave y andrógina
+~vozAmp   = 0.25;   // ≈ −11 dB respecto de 0.9: la voz queda unos dB sobre la mezcla, no encima de ella
+~vozPitch = 0.93;   // velocidad de lectura: 0.93 ≈ un semitono más grave y 7 % más lenta. 1.0 = tal cual
+~vozSala  = 0.12;   // sala propia de la voz (FreeVerb, 0–1). La sala del motor ya no la toca
 ~votos    = (favor: nil, contra: nil, bosque: nil);
 
 s.waitForBoot {
 	~vozBufs = Dictionary.new;
 	PathName(~vozDir).files.select { |f| f.extension == "wav" }.do { |f|
 		~vozBufs[f.fileNameWithoutExtension.asSymbol] = Buffer.read(s, f.fullPath) };
-	SynthDef(\vozMaquina, { |out = 0, buf, amp = 0.9|
-		var sig = PlayBuf.ar(1, buf, BufRateScale.kr(buf), doneAction: 2);
-		Out.ar(out, sig.dup * amp) }).add;
-	SynthDef(\vozMaquinaPS, { |out = 0, buf, amp = 0.9, pitch = 0.95|
-		var sig = PlayBuf.ar(1, buf, BufRateScale.kr(buf));
-		sig = PitchShift.ar(sig, 0.06, pitch, 0, 0.003);
-		DetectSilence.ar(sig, 0.0005, 0.3, doneAction: 2);
+	// El pitch baja por velocidad de lectura y no con PitchShift: sin granos ni
+	// coro, que en la cúpula sonaban como más reverb. La sala es corta y propia;
+	// la voz entra DESPUÉS de la sala del motor (ver ~vozDecir), así que la
+	// \resonantChamber y la CINTA no la tocan. Sí pasa por el limitador.
+	SynthDef(\vozMaquina, { |out = 0, buf, amp = 0.25, rate = 0.93, sala = 0.12|
+		var sig = PlayBuf.ar(1, buf, BufRateScale.kr(buf) * rate);
+		Line.kr(0, 0, BufDur.kr(buf) / rate + 0.8, doneAction: 2);   // deja sonar la cola de la sala
+		sig = HPF.ar(sig, 110);
+		sig = FreeVerb.ar(sig, sala, 0.28, 0.6);
 		Out.ar(out, sig.dup * amp) }).add;
 	s.sync;
 	("[voz] " ++ ~vozBufs.size ++ " archivos cargados desde " ++ ~vozDir).postln;
@@ -40,9 +43,10 @@ s.waitForBoot {
 			nombres.do { |n|
 				var b = ~vozBufs[n.asSymbol];
 				if (b.notNil) {
-					if (~vozPitch == 1.0) {
-						Synth(\vozMaquina, [\out, ~vozOut, \buf, b, \amp, ~vozAmp]) } {
-						Synth(\vozMaquinaPS, [\out, ~vozOut, \buf, b, \amp, ~vozAmp, \pitch, ~vozPitch]) };
+					var args = [\out, ~vozOut, \buf, b, \amp, ~vozAmp, \rate, ~vozPitch.max(0.5), \sala, ~vozSala];
+					// Después de la sala del motor y antes del limitador y la grabación.
+					if (~chamberSynth.notNil) { Synth.after(~chamberSynth, \vozMaquina, args) }
+						{ Synth(\vozMaquina, args) };
 					(b.duration / ~vozPitch.max(0.5) + 0.15).wait;
 				} { ("[voz] falta " ++ n).postln };
 			};
