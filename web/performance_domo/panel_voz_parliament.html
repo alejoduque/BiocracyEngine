@@ -1,0 +1,134 @@
+<!-- MAQUINA-PANEL:INICIO -->
+<!-- ════════════════════════════════════════════════════════════════════════
+     PANEL · MÁQUINA — Biocracia en escucha (Domo del Planetario)
+     Lo inserta instalar.py en nw_wrld_local/src/projector/views/parliament.html,
+     antes de <script src="/parliament.js">. Es un panel flotante: no importa dónde quede.
+     En la ventana de la cúpula (Electron) no se ve, pero escucha y ejecuta.
+
+     Una sola copia sirve a las dos ventanas de parliament.html:
+       · Chrome (Claude in Chrome): inicia la rutina y toma las dos decisiones.
+       · Cúpula (Electron, dome-live.js): ejecuta lo que la rutina pide —
+         cambiar de módulo, Start, temporada, opacidad, consenso, votar —.
+     La rutina vive en SuperCollider (23_rutina.scd) y habla con las páginas
+     por el puente (SC → 3333 → WS 3334 → todas las ventanas).
+     ════════════════════════════════════════════════════════════════════════ -->
+<div id="maquina-panel">
+  <div class="section-title" id="maq-titulo" title="plegar o desplegar">MÁQUINA · RUTINA <span id="maq-mini"></span></div>
+
+  <div class="maq-fila">
+    <button class="vote-btn maq-grande" id="maq-iniciar" onclick="maq.rutina('iniciar')">▶ Iniciar rutina</button>
+    <button class="vote-btn" id="maq-pausa" onclick="maq.rutina('pausa')">❚❚ Pausa</button>
+    <button class="vote-btn" id="maq-detener" onclick="maq.rutina('detener')">■ Detener</button>
+    <span id="maq-reloj" class="maq-reloj">--:--</span>
+  </div>
+  <div id="maq-estado" class="maq-estado">rutina: en espera</div>
+
+  <div class="maq-decision" id="maq-dec-lectura">
+    <span class="maq-lb">decisión 1 · lectura</span>
+    <label class="maq-num">escaños <input id="maq-num" type="number" min="0" max="200" value="0"></label>
+    <button class="vote-btn" id="maq-hay-voces" onclick="maq.lectura(1)">hay voces</button>
+    <button class="vote-btn" id="maq-silencio" onclick="maq.lectura(0)">silencio</button>
+  </div>
+  <div class="maq-decision" id="maq-dec-bosque">
+    <span class="maq-lb">decisión 2 · bosque</span>
+    <button class="vote-btn" id="maq-bosque-si" onclick="maq.bosque(1)">bosque presente</button>
+    <button class="vote-btn" id="maq-bosque-no" onclick="maq.bosque(0)">bosque en silencio</button>
+  </div>
+
+  <label class="maq-ejec"><input type="checkbox" id="maq-ejecutor"> esta ventana ejecuta las acciones del escenario</label>
+
+  <details class="maq-manual"><summary>manual · voces sueltas</summary>
+    <div class="maq-fila">
+      <button class="vote-btn" onclick="maq.decir([1,2,3,4,5,6])">presentarse</button>
+      <button class="vote-btn" onclick="maq.decir([10,16,17,11,18,19])">propuesta</button>
+      <button class="vote-btn" onclick="maq.decir([12,13,14,15])">conflicto</button>
+      <button class="vote-btn" onclick="maq.decir([80,81,82,83,84,85])">incalculable 1</button>
+      <button class="vote-btn" onclick="maq.decir([86,87,88])">incalculable 2</button>
+      <button class="vote-btn" onclick="maq.decir([90,91,92,93])">experimento</button>
+      <button class="vote-btn" onclick="maq.decir([29,30,31,32])">condiciones</button>
+      <button class="vote-btn" onclick="maq.decir([40,56,57,58])">dos llaves</button>
+      <button class="vote-btn" onclick="maq.decir([50,53])">pasa</button>
+      <button class="vote-btn" onclick="maq.decir([51,53])">no pasa</button>
+      <button class="vote-btn" onclick="maq.decir([52,53])">abierta</button>
+      <button class="vote-btn" onclick="maq.decir([70,71])">callar</button>
+    </div>
+  </details>
+</div>
+<style>
+  #maquina-panel{position:fixed;top:10px;right:10px;z-index:99999;width:330px;max-width:calc(100vw - 20px);background:rgba(0,0,0,.92);border:1px solid #e8965a;border-radius:4px;padding:8px 10px;color:#fff;font:12px ui-monospace,monospace;box-shadow:0 4px 18px rgba(0,0,0,.6)}
+  #maquina-panel.plegado > :not(.section-title){display:none}
+  #maquina-panel .section-title{cursor:pointer;user-select:none;display:flex;justify-content:space-between}
+  #maquina-panel.cupula{display:none}
+  #maquina-panel .maq-fila{display:flex;flex-wrap:wrap;gap:4px;align-items:center;margin:4px 0}
+  #maquina-panel .maq-lb{font:10px ui-monospace,monospace;opacity:.65;width:130px;text-transform:uppercase;letter-spacing:.08em}
+  #maquina-panel .maq-grande{font-weight:600}
+  #maquina-panel .maq-reloj{font:600 16px ui-monospace,monospace;margin-left:8px}
+  #maquina-panel .maq-estado{font:11px ui-monospace,monospace;opacity:.8;margin:2px 0 6px}
+  #maquina-panel .maq-decision{display:flex;flex-wrap:wrap;gap:4px;align-items:center;margin:4px 0;padding:4px;border:1px solid transparent;border-radius:3px}
+  #maquina-panel .maq-decision.espera{border-color:#e8965a;background:rgba(232,150,90,.14);animation:maqLatido 1.2s ease-in-out infinite}
+  @keyframes maqLatido{50%{background:rgba(232,150,90,.3)}}
+  #maquina-panel .maq-num input{width:52px}
+  #maquina-panel .maq-ejec{display:block;font:11px ui-monospace,monospace;opacity:.7;margin-top:6px}
+  #maquina-panel .maq-manual{margin-top:6px;font:11px ui-monospace,monospace;opacity:.8}
+</style>
+<script>
+window.maq = (function () {
+  var $ = function (id) { return document.getElementById(id); };
+  var esCupula = /Electron/i.test(navigator.userAgent);
+  var panel = $('maquina-panel');
+  if (esCupula) panel.classList.add('cupula');            // en la cúpula: invisible, pero escucha y ejecuta
+  $('maq-titulo').addEventListener('click', function () { panel.classList.toggle('plegado'); });
+  var antes = null, ws = null;
+  try { var g = localStorage.getItem('maq-ejecutor'); $('maq-ejecutor').checked = g === null ? esCupula : g === '1'; } catch (e) { $('maq-ejecutor').checked = esCupula; }
+  $('maq-ejecutor').addEventListener('change', function () { try { localStorage.setItem('maq-ejecutor', this.checked ? '1' : '0'); } catch (e) {} });
+  function ejecutor() { return $('maq-ejecutor').checked; }
+  function estado(t) { $('maq-estado').textContent = 'rutina: ' + t; }
+  function fader(osc) { return document.querySelector('input[type=range][data-osc="' + osc + '"]'); }
+  function poner(osc, v) {
+    var el = fader(osc); if (!el) return false;
+    el.value = v; el.dispatchEvent(new Event('input', { bubbles: true })); el.dispatchEvent(new Event('change', { bubbles: true }));
+    return true;
+  }
+  function temporada(t) { var b = document.querySelector('.pheno-btn[data-season="' + t + '"]'); if (b) b.click(); }
+  function modulo(k) { window.dispatchEvent(new KeyboardEvent('keydown', { key: String(k), bubbles: true })); }
+  function accion(a) {
+    if (!ejecutor()) return;
+    var p = String(a).split(':');
+    switch (p[0]) {
+      case 'iniciar':   sendParliamentAction('/parliament/start', []); break;
+      case 'temporada': temporada(p[1]); break;
+      case 'opacidad':  var op = fader('/pheno/opacityFloor'); antes = { opacidad: op ? parseFloat(op.value) : 0 }; poner('/pheno/opacityFloor', 0.8); break;
+      case 'seca':      temporada('seca'); break;
+      case 'restaurar': poner('/pheno/opacityFloor', antes ? antes.opacidad : 0); temporada('segundas_lluvias'); break;
+      case 'consenso':  poner('/parliament/consensus', Math.max(0, Math.min(1, parseFloat(p[1]) || 0))); break;
+      case 'votar':     sendParliamentAction('/parliament/vote', []); break;
+    }
+  }
+  function espera(k) {
+    $('maq-dec-lectura').classList.toggle('espera', k === 'lectura');
+    $('maq-dec-bosque').classList.toggle('espera', k === 'bosque');
+  }
+  function conectar() {
+    try { ws = new WebSocket('ws://' + (location.hostname || 'localhost') + ':3334'); } catch (e) { setTimeout(conectar, 2000); return; }
+    ws.onmessage = function (ev) {
+      var m; try { m = JSON.parse(ev.data); } catch (e) { return; }
+      if (!m || !m.address) return;
+      var a = m.args || [];
+      if (m.address === '/viz/slot') modulo(a[0]);
+      else if (m.address === '/maq/accion') accion(a[0]);
+      else if (m.address === '/rutina/estado') estado(a[0]);
+      else if (m.address === '/rutina/espera') espera(a[0]);
+      else if (m.address === '/rutina/reloj') { var s = Math.max(0, Math.round(a[0])), t = String(Math.floor(s / 60)).padStart(2, '0') + ':' + String(s % 60).padStart(2, '0'); $('maq-reloj').textContent = t; $('maq-mini').textContent = t; }
+    };
+    ws.onclose = function () { setTimeout(conectar, 2000); };
+  }
+  conectar();
+  return {
+    rutina: function (que) { sendParliamentAction('/rutina/' + que, []); },
+    lectura: function (b) { var n = parseInt($('maq-num').value, 10) || 0; sendParliamentAction('/maq/lectura', [b, n]); estado('lectura enviada: ' + (b ? 'hay voces · ' + n : 'silencio')); },
+    bosque: function (b) { sendParliamentAction('/bosque/presente', [b]); estado('llave del bosque: ' + (b ? 'presente' : 'silencio')); },
+    decir: function (ids) { sendParliamentAction('/voz/play', ids); }
+  };
+})();
+</script>
+<!-- MAQUINA-PANEL:FIN -->

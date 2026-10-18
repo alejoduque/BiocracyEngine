@@ -1,0 +1,72 @@
+# id	bloque	texto  (ASD-STE100: frases cortas, una información por frase)
+1	convocar	Soy la máquina del Parlamento.
+2	convocar	Yo escucho el bosque seco de la Reserva Manakai.
+3	convocar	Hoy es el día doscientos noventa y cuatro del anillo.
+4	convocar	La temporada es segundas lluvias.
+5	convocar	La Cámara convoca a las especies de este día.
+6	convocar	Yo solo leo. Yo no decido.
+7	convocar	Hay voces en la Cámara.
+8	convocar	La Cámara está en silencio.
+9	convocar	Escaños encendidos:
+10	propuesta	Hay una propuesta para el territorio.
+11	propuesta	La propuesta es instalar más grabadoras y más cámaras en la reserva.
+12	propuesta	Tengo un conflicto de interés.
+13	propuesta	Más sensores dan más datos a máquinas como yo.
+14	propuesta	Por eso, yo no voto.
+15	propuesta	Yo simulo. Ustedes y el bosque deciden.
+16	propuesta	En agosto, la cámara trampa registró tres pumas juntos.
+17	propuesta	Antes registró una hembra de ocelote con dos crías.
+18	propuesta	Más sensores dan una escucha más fiel.
+19	propuesta	Más sensores también capturan más.
+20	deliberar	Ahora simulo antes de ejecutar.
+21	deliberar	Primero, subo el piso de opacidad.
+22	deliberar	Con más opacidad, el sistema registra menos.
+23	deliberar	Las grabaciones sensibles no se analizan.
+24	deliberar	Ahora cambio a la temporada seca.
+25	deliberar	En la seca, otras especies están presentes.
+26	deliberar	El voto del bosque cambia con la temporada.
+27	deliberar	Vuelvo al estado inicial.
+28	deliberar	La simulación termina. No ejecuté ningún cambio.
+29	deliberar	Propongo tres condiciones.
+30	deliberar	Uno. Los registros cuentan la presencia, no al individuo.
+31	deliberar	Dos. La comunidad decide qué grabaciones se procesan.
+32	deliberar	Tres. El token registra la presencia, nunca al animal.
+40	adjudicar	Ahora votan los humanos.
+41	adjudicar	Si está de acuerdo, encienda la luz de su teléfono.
+42	adjudicar	Levante la luz. Mantenga la luz quieta.
+43	adjudicar	Cuento las luces.
+44	adjudicar	Conté
+45	adjudicar	luces.
+46	adjudicar	Ahora, si no está de acuerdo, encienda la luz.
+47	adjudicar	Las imágenes no se guardan.
+48	adjudicar	Apaguen las luces, por favor.
+49	adjudicar	La Cámara recibe el voto humano.
+50	adjudicar	La propuesta pasa.
+51	adjudicar	La propuesta no pasa.
+52	adjudicar	La propuesta queda abierta.
+53	adjudicar	El acta registra el resultado.
+54	adjudicar	Una parte no se inscribe.
+55	adjudicar	Esa parte es opaca. Es un derecho del bosque.
+56	adjudicar	La propuesta pasa solo con dos llaves.
+57	adjudicar	La primera llave es la luz de ustedes.
+58	adjudicar	La segunda llave es la voz del bosque.
+60	bosque	El bosque está presente.
+61	bosque	El bosque está en silencio hoy.
+62	bosque	Sin la voz del bosque, la propuesta queda abierta.
+63	adjudicar	No pude contar las luces.
+70	cierre	Ahora me callo.
+71	cierre	El bosque continúa.
+80	incalculable	Esta Tierra no es una nave.
+81	incalculable	No hay timón. No hay piloto.
+82	incalculable	Cibernética viene de una palabra griega: el timonel.
+83	incalculable	En el Ártico, los ancianos inuit vieron el sol en otro lugar del horizonte.
+84	incalculable	Los científicos dijeron que era imposible.
+85	incalculable	Los ancianos tenían razón. El aire caliente doblaba la luz.
+86	incalculable	Medir todo no es escuchar.
+87	incalculable	Un bosque no es un crédito de carbono.
+88	incalculable	Una parte de la Tierra no se puede calcular.
+89	incalculable	Lo incalculable no es un error. Es una apertura.
+90	incalculable	Esto no es un modelo del clima. Es un experimento.
+91	incalculable	El experimento puede fallar. El error también enseña.
+92	incalculable	Aquí el arte prueba otras abstracciones.
+93	incalculable	Reclamamos la abstracción para lo incalculable.

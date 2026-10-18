@@ -1,0 +1,77 @@
+<!doctype html>
+<html lang="es"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>BiocracyEngine · encender</title>
+<style>
+:root{--bg:#000;--fg:#fff;--dim:#8a8a8a;--or:#e8965a;--bad:#ff5a4f;color-scheme:dark}
+*{box-sizing:border-box}html,body{margin:0;height:100%;background:var(--bg);color:var(--fg)}
+body{font:16px/1.45 ui-monospace,SFMono-Regular,Menlo,monospace;display:grid;grid-template-rows:auto 1fr auto;height:100vh;overflow:hidden}
+header{padding:4vh 5vw 0;display:flex;justify-content:space-between;align-items:flex-end;gap:24px;flex-wrap:wrap}
+h1{margin:0;font-weight:500;font-size:clamp(22px,3.4vw,46px);letter-spacing:.02em;line-height:1.1}
+.sub{color:var(--dim);font-size:clamp(12px,1.2vw,16px);margin-top:.5em}
+main{display:grid;grid-template-columns:minmax(220px,26vw) 1fr;gap:4vw;padding:4vh 5vw;min-height:0}
+#pasos{list-style:none;margin:0;padding:0;font-size:clamp(13px,1.3vw,18px)}
+#pasos li{padding:.55em 0;border-bottom:1px solid #1d1d1d;color:var(--dim);display:flex;gap:.8em}
+#pasos li .m{width:1.2em;text-align:center}
+#pasos li.on{color:var(--fg)}#pasos li.on .m::before{content:"·";animation:lat 1s infinite}
+#pasos li.ok{color:var(--fg)}#pasos li.ok .m::before{content:"✓"}
+#pasos li.warn .m::before{content:"!";color:var(--or)}
+@keyframes lat{50%{opacity:.2}}
+#log{margin:0;overflow:hidden;display:flex;flex-direction:column;justify-content:flex-end;font-size:clamp(12px,1.25vw,17px);min-height:0}
+#log div{white-space:pre-wrap;color:#cfcfcf;animation:entra .35s ease-out}
+#log div.paso{color:var(--fg);margin-top:.6em}
+#log div.ok{color:var(--fg)}#log div.warn{color:var(--or)}#log div.bad{color:var(--bad)}#log div.tenue{color:#666}
+@keyframes entra{from{opacity:0;transform:translateY(6px)}}
+footer{padding:0 5vw 4vh;display:flex;align-items:center;gap:20px;flex-wrap:wrap}
+button,.ir{font:600 clamp(15px,1.5vw,20px) ui-monospace,Menlo,monospace;letter-spacing:.08em;background:var(--fg);color:#000;border:0;padding:.9em 1.6em;border-radius:3px;cursor:pointer;text-decoration:none}
+button[disabled]{background:#222;color:#777;cursor:default}
+.ir{background:transparent;color:var(--fg);border:1px solid var(--or)}.ir[hidden]{display:none}
+#listo{font-size:clamp(18px,2.4vw,34px);color:var(--fg)}#listo[hidden]{display:none}
+@media (max-width:760px){main{grid-template-columns:1fr}#pasos{display:none}}
+</style></head><body>
+<header><div><h1>BiocracyEngine · Parlamento de lo Vivo</h1>
+<div class="sub">Reserva Manakai · bosque seco tropical · Córdoba — encendiendo el ecosistema: bosque, cadena y Cámara</div></div>
+<div class="sub" id="reloj">--:--</div></header>
+<main>
+<ol id="pasos">
+ <li data-k="Verificando"><span class="m"></span>verificar el entorno</li>
+ <li data-k="Paso 1:"><span class="m"></span>servidor de la consola</li>
+ <li data-k="Paso 1.5"><span class="m"></span>puente OSC ↔ consola</li>
+ <li data-k="Paso 1.7"><span class="m"></span>puente de la cúpula</li>
+ <li data-k="Paso 2"><span class="m"></span>motor de sonido</li>
+ <li data-k="Abriendo Parliament"><span class="m"></span>abrir el Parlamento</li>
+ <li data-k="Paso 3"><span class="m"></span>escuchar la cadena de bloques</li>
+</ol>
+<div id="log"></div>
+</main>
+<footer>
+ <button id="encender" type="button">ENCENDER EL ECOSISTEMA</button>
+ <span id="listo" hidden>El Parlamento está abierto.</span>
+ <a class="ir" id="consola" href="http://localhost:9001/parliament.html" target="_blank" rel="noopener" hidden>Abrir la consola →</a>
+ <a class="ir" id="guion" href="/guion" target="_blank" rel="noopener" hidden>Abrir el guion en vivo →</a>
+</footer>
+<script>
+(function(){
+ var log=document.getElementById('log'), btn=document.getElementById('encender'), pasos=[].slice.call(document.querySelectorAll('#pasos li'));
+ var t0=null, MAX=60;
+ function clase(l){ if(/^>>/.test(l)) return 'paso'; if(/❌|Error|ERROR/.test(l)) return 'bad'; if(/⚠|·  /.test(l)) return 'warn'; if(/✓|listo|Listo/.test(l)) return 'ok'; if(/^\s*$|^=+$/.test(l)) return 'tenue'; return ''; }
+ function marcar(l){
+   pasos.forEach(function(li,i){ if(l.indexOf(li.dataset.k)>=0){ pasos.slice(0,i).forEach(function(p){ if(!p.classList.contains('warn')) {p.classList.remove('on');p.classList.add('ok');} }); li.classList.add('on'); } });
+   if(/⚠/.test(l)){ var on=document.querySelector('#pasos li.on'); if(on) on.classList.add('warn'); }
+   if(/ESCUCHANDO A LA BLOCKCHAIN/.test(l)){ pasos.forEach(function(p){p.classList.remove('on'); if(!p.classList.contains('warn')) p.classList.add('ok');}); listo(); }
+ }
+ function listo(){ document.getElementById('listo').hidden=false; document.getElementById('consola').hidden=false; document.getElementById('guion').hidden=false; btn.textContent='EN MARCHA'; }
+ function agregar(l){ var d=document.createElement('div'); d.textContent=l; var c=clase(l); if(c) d.className=c; log.appendChild(d); while(log.children.length>MAX) log.removeChild(log.firstChild); marcar(l); }
+ function escuchar(){ var es=new EventSource('/log'); es.onmessage=function(e){ try{ agregar(JSON.parse(e.data)); }catch(x){} }; }
+ setInterval(function(){ if(!t0) return; var s=Math.round((Date.now()-t0)/1000); document.getElementById('reloj').textContent=String(Math.floor(s/60)).padStart(2,'0')+':'+String(s%60).padStart(2,'0'); },500);
+ fetch('/estado').then(function(r){return r.json();}).then(function(e){
+   if(!e.script){ agregar('❌ No encuentro start_ecosystem.sh en '+e.repo+' — inicia el lanzador con --repo'); btn.disabled=true; }
+   if(e.corriendo){ btn.disabled=true; btn.textContent='EN MARCHA'; t0=Date.now(); }
+   escuchar();
+ }).catch(function(){ agregar('❌ El lanzador no responde.'); });
+ btn.addEventListener('click',function(){
+   btn.disabled=true; btn.textContent='ENCENDIENDO…'; t0=Date.now();
+   fetch('/iniciar',{method:'POST'}).then(function(r){return r.json();}).then(function(e){ if(!e.ok){ agregar('❌ '+(e.error||'no pude iniciar')); btn.disabled=false; btn.textContent='ENCENDER EL ECOSISTEMA'; } });
+ });
+})();
+</script></body></html>
