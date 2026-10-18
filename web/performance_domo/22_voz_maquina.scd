@@ -85,24 +85,7 @@ s.waitForBoot {
 	}, '/votos/resolver');
 	OSCdef(\votosReiniciar, { ~votos = (favor: nil, contra: nil, bosque: nil); "[votos] reiniciados".postln }, '/votos/reiniciar');
 
-	// Ventana: un botón por frase, por bloque. Tu respaldo si Chrome se demora.
-	{
-		var w = Window("Voz de la máquina", Rect(40, 40, 760, 520)).front;
-		var bloques = [
-			["Convocar",  [1,2,3,4,5,6,7,8]],
-			["Propuesta", [10,11,12,13,14,15]],
-			["Deliberar", [20,21,22,23,24,25,26,27,28,29,30,31,32]],
-			["Adjudicar", [40,41,42,43,46,47,48,49,50,51,52,53,54,55]],
-			["Bosque",    [60,61,62]],
-			["Cierre",    [70,71]] ];
-		w.view.decorator = FlowLayout(w.view.bounds, 8@8, 4@4);
-		bloques.do { |b|
-			StaticText(w, 740@18).string_(b[0]).stringColor_(Color.grey(0.6));
-			b[1].do { |id| Button(w, 56@26).states_([[id.asString]]).action_({ ~vozDecir.([~frase.(id)]) }) };
-			w.view.decorator.nextLine;
-		};
-		StaticText(w, 120@24).string_("Número (0–200):");
-		NumberBox(w, 60@24).clipLo_(0).clipHi_(200).action_({ |nb| ~vozDecir.([~numero.(nb.value)]) });
-	}.defer;
+	// Sin ventana propia: la voz la lleva la rutina (23_rutina.scd). A mano, desde el guion
+	// en vivo o el panel de la consola (/voz/play n …).
 };
 )
