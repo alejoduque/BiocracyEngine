@@ -9,7 +9,10 @@ archivo que le pasa el script (--salida), que las carga con «set -a; . archivo�
   python3 asistente.py --salida /tmp/flags     sale con 0 si hay que lanzar, 1 si se canceló
   python3 asistente.py --mostrar               solo dibuja (para ensayar la pantalla)
 
-Recuerda la última elección en .asistente.json, junto a este archivo.
+Recuerda la última elección en .asistente.json, junto a este archivo. Con ella, Enter en la
+portada va directo al resumen («como la última vez») y un segundo Enter lanza; p recorre las
+preguntas. La portada queda siempre a la vista: a la izquierda de las preguntas, o arriba si la
+terminal es angosta, y el lanzamiento cierra con ella a pantalla completa.
 Solo la biblioteca estándar (curses).
 """
 import argparse, curses, json, locale, math, os, random, subprocess, sys, textwrap, threading, time
@@ -275,39 +278,97 @@ class Cielo:
             pon(w, y0 + fila, int(cx - mitad) - 1, "(" if fila > alto * 0.6 else "·", C["cian"])
             pon(w, y0 + fila, int(cx + mitad) + 1, ")" if fila > alto * 0.6 else "·", C["cian"])
 
-def portada(w):
-    cielo, t0 = Cielo(), time.time()
+FRASES = [("Domo del Planetario de Bogotá · 21 de octubre de 2026 · treinta minutos sin palabras humanas", "blanco"),
+          ("Un Parlamento de lo Vivo decide si se instalan más AudioMoth y cámaras en la Reserva Manakai.", "gris"),
+          ("Votan las especies con su presencia. Votan los humanos con la luz. La máquina no vota: lee, simula y ejecuta.", "gris")]
+
+def dibujar_portada(w, cielo, t, pie=()):
+    """La portada en la ventana (o el panel) w: la cúpula con estrellas, el título, el bosque, la onda
+    y, si caben, las frases y el pie (líneas (texto, color)). Se adapta al alto y al ancho que tenga."""
+    h, ancho = w.getmaxyx()
+    anchura = max(10, min(ancho - 6, 96))
+    x0 = (ancho - anchura) // 2
+    frases = [(l, C[a]) for f, a in FRASES for l in textwrap.wrap(f, anchura)]
+    pies = [(l, C[a] if isinstance(a, str) else a) for f, a in pie for l in (textwrap.wrap(f, anchura) or [""])]
+    # filas fuera de la cúpula: título que asoma (2), bosque, onda, hueco, frases, hueco, pie
+    fijo = 4 + (len(frases) + 1 if frases else 0) + (len(pies) + 1 if pies else 0)
+    if h - fijo < 6:
+        frases, fijo = [], 4 + (len(pies) + 1 if pies else 0)
+    alto_cupula = max(4, min(16, h - fijo - 1))
+    y0 = max(0, (h - (1 + alto_cupula + fijo)) // 2)
+    y = y0 + 1 + alto_cupula - 4
+    tw = max(len(l) for l in TITULO)
+    cielo.dibujar(w, y0 + 1, alto_cupula, x0, anchura, t,
+                  hueco=(y - 1, y + len(TITULO), (ancho - tw) // 2 - 3, (ancho + tw) // 2 + 3))
+    for i, linea in enumerate(TITULO):
+        pon(w, y + i, (ancho - len(linea)) // 2, linea, C["ambar"] | curses.A_BOLD if i < 2 else C["blanco"])
+    y += len(TITULO) + 1
+    pon(w, y, x0, bosque(anchura), C["verde"]); y += 1
+    pon(w, y, x0, onda(anchura, t * 2.2), C["hoja"]); y += 2
+    for s, a in frases:
+        pon(w, y, max(0, (ancho - len(s)) // 2), s, a); y += 1
+    if frases: y += 1
+    for s, a in pies:
+        pon(w, min(h - 1, y), max(0, (ancho - len(s)) // 2), s, a); y += 1
+
+def paneles(w):
+    """La pantalla partida: la portada siempre a la vista, las preguntas al lado (o debajo si la
+    terminal es angosta). Devuelve (portada, preguntas); portada es None si no cabe."""
+    h, ancho = w.getmaxyx()
+    if ancho >= 112:
+        izq = ancho // 2
+        for y in range(h):
+            pon(w, y, izq, "│", C["tenue"])
+        return w.derwin(h, izq, 0, 0), w.derwin(h, ancho - izq - 1, 0, izq + 1)
+    if h >= 40:
+        arriba = 14
+        pon(w, arriba, 0, "─" * ancho, C["tenue"])
+        return w.derwin(arriba, ancho, 0, 0), w.derwin(h - arriba - 1, ancho, arriba + 1, 0)
+    return None, w
+
+def cuadro(w, cielo, t, dibujar):
+    """Un cuadro de la pantalla partida: la portada a un lado y dibujar(panel) al otro."""
+    w.erase()
+    izq, der = paneles(w)
+    if izq is not None:
+        dibujar_portada(izq, cielo, t)
+    dibujar(der)
+    w.touchwin(); w.refresh()
+
+def ultima_vez(recordado):
+    cuando = recordado.get("_cuando")
+    if not cuando:
+        return ""
+    try:
+        return time.strftime("%d·%m %H:%M", time.strptime(cuando, "%Y-%m-%d %H:%M"))
+    except ValueError:
+        return cuando
+
+def portada(w, cielo, recordado):
+    """La portada a pantalla completa. Devuelve "rapido" (como la última vez), "pasos" o None (salir)."""
+    t0 = time.time()
+    hay = bool(ultima_vez(recordado))
     w.nodelay(True)
     while True:
         t = time.time() - t0
         w.erase()
-        h, ancho = w.getmaxyx()
-        alto_cupula = max(6, min(14, h - 16))
-        anchura = min(ancho - 6, 96)
-        x0 = (ancho - anchura) // 2
-        y = 1 + alto_cupula - 4
-        tw = max(len(l) for l in TITULO)
-        cielo.dibujar(w, 1, alto_cupula, x0, anchura, t,
-                      hueco=(y - 1, y + len(TITULO), (ancho - tw) // 2 - 3, (ancho + tw) // 2 + 3))
-        for i, linea in enumerate(TITULO):
-            pon(w, y + i, (ancho - len(linea)) // 2, linea, C["ambar"] | curses.A_BOLD if i < 2 else C["blanco"])
-        y += len(TITULO) + 1
-        pon(w, y, x0, bosque(anchura), C["verde"]); y += 1
-        pon(w, y, x0, onda(anchura, t * 2.2), C["hoja"]); y += 2
-        for s, a in [("Domo del Planetario de Bogotá · 21 de octubre de 2026 · treinta minutos sin palabras humanas", C["blanco"]),
-                     ("Un Parlamento de lo Vivo decide si se instalan más AudioMoth y cámaras en la Reserva Manakai.", C["gris"]),
-                     ("Votan las especies con su presencia. Votan los humanos con la luz. La máquina no vota: lee, simula y ejecuta.", C["gris"])]:
-            pon(w, y, max(0, (ancho - len(s)) // 2), s, a); y += 1
-        y += 1
-        estado = "equipo revisado" if equipo["listo"] else "revisando el equipo conectado" + "." * (int(t * 3) % 4)
-        pie = f"[ Enter ] preparar el arranque     [ q ] salir     · {estado}"
-        pon(w, min(h - 2, y), max(0, (ancho - len(pie)) // 2), pie, C["cian"])
+        if equipo["listo"]:
+            if hay:
+                pie = [(f"[ Enter ] como la última vez · {ultima_vez(recordado)}     [ p ] paso a paso     [ q ] salir", "cian")]
+            else:
+                pie = [("[ Enter ] preparar el arranque     [ q ] salir", "cian")]
+        else:
+            pie = [("revisando el equipo conectado" + "." * (int(t * 3) % 4), "gris")]
+        dibujar_portada(w, cielo, t, pie)
         w.refresh()
         k = tecla(w); w.nodelay(True)
-        if k in (10, 13, curses.KEY_ENTER, ord(" ")) and equipo["listo"]:
-            w.nodelay(False); return True
+        if equipo["listo"]:
+            if k in (10, 13, curses.KEY_ENTER, ord(" ")):
+                w.nodelay(False); return "rapido" if hay else "pasos"
+            if k in (ord("p"), curses.KEY_RIGHT):
+                w.nodelay(False); return "pasos"
         if k in (ord("q"), 27):
-            w.nodelay(False); return False
+            w.nodelay(False); return None
         time.sleep(0.06)
 
 def es_funcion(qs, eleccion):
@@ -334,52 +395,63 @@ def cabecera(w, texto, derecha=""):
     pon(w, 0, ancho - len(derecha) - 2, derecha, C["barra"])
 
 def pantalla(w, q, n, total, actual, t):
-    w.erase()
     h, ancho = w.getmaxyx()
-    cabecera(w, f"BIOCRACIA EN ESCUCHA · ASISTENTE DE ARRANQUE", f"paso {n} de {total}")
+    cabecera(w, "ASISTENTE DE ARRANQUE", f"paso {n} de {total}")
     # barra de pasos
     pon(w, 2, 2, "".join("●" if i < n else "○" for i in range(total)), C["ambar"])
     pon(w, 2, 4 + total * 1, q["titulo"], C["blanco"])
     arte = ARTE.get(q["id"], [])
     lado = ancho >= 104
     ancho_txt = (ancho - 44) if lado else ancho - 6
+    texto = textwrap.wrap(q["texto"], max(30, ancho_txt))
+    det = q["opciones"][actual][1]
+    ancho_det = max(20, ancho - 10)
+    angosto = ancho < 84   # las flags no caben junto a cada opción: van con el detalle de la elegida
+    alto_det = len(textwrap.wrap(det, ancho_det)) + (1 if angosto else 0)
+    # el dibujo solo si cabe: el texto y las opciones van primero
+    if not lado and 4 + len(arte) + 1 + len(texto) + 1 + len(q["opciones"]) + 1 + alto_det + 1 > h:
+        arte = []
     y = 4
     if not lado:
         for i, l in enumerate(arte):
             pon(w, y + i, 4, l, C["verde"] if i % 2 else C["cian"])
-        y += len(arte) + 1
+        if arte: y += len(arte) + 1
     else:
         for i, l in enumerate(arte):
             pon(w, 4 + i, ancho - 38, l, C["verde"] if i % 2 else C["cian"])
         pon(w, 4 + len(arte), ancho - 38, onda(32, t * 2), C["hoja"])
-    for linea in textwrap.wrap(q["texto"], max(30, ancho_txt)):
+    for linea in texto:
         pon(w, y, 4, linea, C["gris"]); y += 1
     y += 1
-    for i, (etq, det, vals) in enumerate(q["opciones"]):
+    def flags(vals):
+        return "  ".join(f"{k}={v}" if v != "" else f"{k}=—" for k, v in vals.items())
+    for i, (etq, _, vals) in enumerate(q["opciones"]):
         sel = i == actual
-        flag = "  ".join(f"{k}={v}" if v != "" else f"{k}=—" for k, v in vals.items())
         pon(w, y, 4, (" ▸ " if sel else "   ") + f"{i + 1}  {etq}".ljust(36), C["sel"] | curses.A_BOLD if sel else C["blanco"])
-        pon(w, y, 42, flag, C["ambar"] if sel else C["tenue"])
+        if not angosto:
+            pon(w, y, 42, flags(vals), C["ambar"] if sel else C["tenue"])
         y += 1
-    det = q["opciones"][actual][1]
-    if det:
-        y += 1
-        for linea in textwrap.wrap(det, ancho - 10):
-            pon(w, y, 6, linea, C["cian"]); y += 1
+    y += 1
+    for linea in textwrap.wrap(det, ancho_det):
+        pon(w, y, 6, linea, C["cian"]); y += 1
+    if angosto:
+        pon(w, y, 6, flags(q["opciones"][actual][2]), C["ambar"])
     pon(w, h - 1, 2, "↑ ↓ elegir   Enter confirmar   ← volver   q salir", C["gris"])
-    w.refresh()
 
-def resumen(w, qs, eleccion, t):
-    w.erase()
+def resumen(w, qs, eleccion, t, rapido="", cambios=()):
     h, ancho = w.getmaxyx()
-    cabecera(w, "BIOCRACIA EN ESCUCHA · LISTO PARA LANZAR", "")
+    cabecera(w, "LISTO PARA LANZAR", f"como la última vez · {rapido}" if rapido else "")
     env = flags_de(qs, eleccion)
     y = 2
     pon(w, y, 4, "Así arranca el motor:", C["blanco"]); y += 2
     for q in visibles(qs, eleccion):
         etq = q["opciones"][eleccion[q["id"]]][0]
         pon(w, y, 6, q["titulo"].ljust(24), C["gris"])
-        pon(w, y, 31, etq, C["verde"]); y += 1
+        pon(w, y, 31, etq, (C["ambar"] | curses.A_BOLD) if q["id"] in cambios else C["verde"]); y += 1
+    ids = {q["id"] for q in visibles(qs, eleccion)}
+    for txt in (v for k, v in cambios.items() if k in ids):
+        for l in textwrap.wrap("⚠ " + txt, ancho - 10):
+            pon(w, y, 6, l, C["ambar"]); y += 1
     y += 1
     linea = " ".join(f"{k}={v}" if " " not in v else f"{k}='{v}'" for k, v in env.items() if v != "") + " WIZARD=0 ./start_ecosystem.sh"
     pon(w, y, 4, "Lo mismo, sin el asistente:", C["gris"]); y += 1
@@ -396,19 +468,17 @@ def resumen(w, qs, eleccion, t):
     for i, p in enumerate(pasos):
         pon(w, y, 6, f"{i + 1}. {p}", C["cian"]); y += 1
     pon(w, min(h - 3, y + 1), 4, onda(min(ancho - 8, 80), t * 2), C["hoja"])
-    pon(w, h - 1, 2, "Enter lanzar   ← volver   q salir", C["blanco"])
-    w.refresh()
+    pon(w, h - 1, 2, "Enter lanzar   ← revisar paso a paso   q salir" if rapido else "Enter lanzar   ← volver   q salir", C["blanco"])
 
-def despegue(w, env):
+def despegue(w, cielo, t0):
+    """Cierra con la portada a pantalla completa y la barra de lanzamiento debajo."""
     for n in (3, 2, 1):
         for k in range(10):
             w.erase()
-            h, ancho = w.getmaxyx()
-            s = f"lanzando en {n}"
-            pon(w, h // 2 - 2, (ancho - len(s)) // 2, s, C["ambar"] | curses.A_BOLD)
-            barra = int((3 - n + k / 10) / 3 * (ancho - 20))
-            pon(w, h // 2, 10, "━" * barra, C["verde"])
-            pon(w, h // 2 + 2, 10, onda(ancho - 20, time.time() * 3), C["hoja"])
+            ancho = w.getmaxyx()[1]
+            barra = int((3 - n + k / 10) / 3 * min(ancho - 6, 96))
+            dibujar_portada(w, cielo, time.time() - t0,
+                            [(f"lanzando en {n}", C["ambar"] | curses.A_BOLD), ("━" * barra or "·", "verde")])
             w.refresh(); time.sleep(0.1)
 
 def tecla(w):
@@ -432,34 +502,49 @@ def asistente(w, recordado):
     curses.curs_set(0)
     colores()
     w.keypad(True)
-    if not portada(w):
+    cielo = Cielo()
+    modo = portada(w, cielo, recordado)
+    if modo is None:
         return None
     qs = preguntas()
+    cambios = {}
     def recordar(q):
         # Se recuerda el valor elegido, no su posición: la lista de cámaras cambia con lo que esté
         # conectado, y la posición 0 de ayer puede ser hoy otra cámara.
         r = recordado.get(q["id"])
         if isinstance(r, dict):
-            return next((i for i, o in enumerate(q["opciones"]) if o[2] == r), q.get("defecto", 0))
+            i = next((i for i, o in enumerate(q["opciones"]) if o[2] == r), None)
+            if i is not None:
+                return i
+            d = q.get("defecto", 0)
+            if q["id"] == "linternas":
+                cambios[q["id"]] = (f"La cámara de la última vez ({r.get('PERF_CONTADOR') or '—'}) no está conectada: "
+                                    f"elijo «{q['opciones'][d][0]}».")
+            return d
         if isinstance(r, int) and q["id"] != "linternas":
             return min(r, len(q["opciones"]) - 1)
         return q.get("defecto", 0)
     eleccion = {q["id"]: recordar(q) for q in qs}
-    i, t0 = 0, time.time()
+    rapido = ultima_vez(recordado) if modo == "rapido" else ""
+    i = len(visibles(qs, eleccion)) if rapido else 0
+    t0 = time.time()
     w.timeout(120)
     while True:
         vis = visibles(qs, eleccion)
+        t = time.time() - t0
         if i >= len(vis):
-            resumen(w, qs, eleccion, time.time() - t0)
+            cuadro(w, cielo, t, lambda p: resumen(p, qs, eleccion, t, rapido, cambios if rapido else {}))
             k = tecla(w)
             if k in (10, 13, curses.KEY_ENTER):
-                despegue(w, flags_de(qs, eleccion))
+                despegue(w, cielo, t0)
                 return {q["id"]: q["opciones"][eleccion[q["id"]]][2] for q in qs}, flags_de(qs, eleccion)
-            if k in (curses.KEY_LEFT, curses.KEY_BACKSPACE, 127, 8, ord("b")): i = len(vis) - 1
+            if k in (curses.KEY_LEFT, curses.KEY_BACKSPACE, 127, 8, ord("b")):
+                i = 0 if rapido else len(vis) - 1
+                rapido = ""
             if k in (ord("q"), 27): return None
             continue
         q = vis[i]
-        pantalla(w, q, i + 1, len(vis), eleccion[q["id"]], time.time() - t0)
+        cuadro(w, cielo, t, lambda p: pantalla(p, q, i + 1, len(vis), eleccion[q["id"]], t))
         k = tecla(w)
         n = len(q["opciones"])
         if k in (curses.KEY_UP, ord("k")): eleccion[q["id"]] = (eleccion[q["id"]] - 1) % n
@@ -469,12 +554,37 @@ def asistente(w, recordado):
         elif k in (curses.KEY_LEFT, curses.KEY_BACKSPACE, 127, 8, ord("b")): i = max(0, i - 1)
         elif k in (ord("q"), 27): return None
 
+def portada_fija():
+    """La portada quieta, impresa en la terminal al salir de curses: queda arriba de los pasos
+    del arranque mientras el motor despierta."""
+    A, V, H, G, B, Cy, R = ("\033[1;38;5;208m", "\033[38;5;71m", "\033[38;5;22m", "\033[38;5;244m",
+                            "\033[1;97m", "\033[38;5;109m", "\033[0m")
+    try: cols = os.get_terminal_size().columns
+    except OSError: cols = 80
+    ancho = max(40, min(cols - 4, 72))
+    rnd = random.Random(3)
+    print()
+    estrella = {"·": G, "*": "\033[38;5;208m", "✦": B}
+    for fila in range(1, 7):
+        mitad = int(ancho / 2 * math.sqrt(1 - (1 - fila / 7) ** 2))
+        cielo = "".join((estrella[ch] + ch + R) if ch != " " else " " for ch in (rnd.choice(" " * 16 + "···*✦") for _ in range(2 * mitad)))
+        borde = ("(", ")") if fila > 4 else ("·", "·")
+        print(" " * (2 + ancho // 2 - mitad - 1) + Cy + borde[0] + R + cielo + Cy + borde[1] + R)
+    tw = max(len(l) for l in TITULO)
+    for i, l in enumerate(TITULO):
+        print(" " * (2 + (ancho - tw) // 2) + (A if i < 2 else B) + l + R)
+    print("  " + V + bosque(ancho) + R)
+    print("  " + H + onda(ancho, 0.0) + R + "\n")
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     ap.add_argument("--salida", help="archivo donde escribir las líneas CLAVE=valor")
     ap.add_argument("--mostrar", action="store_true", help="solo dibujar; no escribe nada")
     a = ap.parse_args()
-    try: recordado = json.loads(MEMORIA.read_text())
+    try:
+        recordado = json.loads(MEMORIA.read_text())
+        # memorias de antes del atajo: la fecha del archivo
+        recordado.setdefault("_cuando", time.strftime("%Y-%m-%d %H:%M", time.localtime(MEMORIA.stat().st_mtime)))
     except Exception: recordado = {}
     threading.Thread(target=mirar_equipo, daemon=True).start()
     r = curses.wrapper(asistente, recordado)
@@ -484,13 +594,14 @@ def main():
     eleccion, env = r
     if a.mostrar:
         sys.exit(0)
-    try: MEMORIA.write_text(json.dumps(eleccion, indent=1))
+    try: MEMORIA.write_text(json.dumps({**eleccion, "_cuando": time.strftime("%Y-%m-%d %H:%M")}, indent=1))
     except OSError: pass
     if a.salida:
         # entre comillas simples: un nombre de cámara lleva espacios
         Path(a.salida).write_text("".join(f"{k}='{v}'\n" for k, v in env.items()))
     A, V, G, B, R = "\033[38;5;208m", "\033[38;5;71m", "\033[38;5;244m", "\033[1;97m", "\033[0m"
-    print(f"\n{A}  ━━━ BIOCRACIA EN ESCUCHA ━━━{R}  {G}{time.strftime('%d·%m·%Y %H:%M')}{R}")
+    portada_fija()
+    print(f"{A}  ━━━ BIOCRACIA EN ESCUCHA ━━━{R}  {G}{time.strftime('%d·%m·%Y %H:%M')}{R}")
     for k, v in env.items():
         print(f"   {V}{k:<14}{R} {B}{v if v != '' else '—'}{R}")
     print(f"{G}   El motor despierta. Cada paso aparece aquí abajo.{R}\n")
