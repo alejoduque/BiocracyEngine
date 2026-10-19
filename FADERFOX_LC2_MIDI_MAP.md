@@ -46,7 +46,9 @@ Los controles **absolutos** del LC2 (faders, crossfader, encoders en Send, EQ y 
 
 - Cambiar de grupo de faders (1–6 ↔ 7–12), cargar una configuración o que la rutina funda el motor no producen saltos.
 - Mientras un control espera, el log dice dónde está y dónde está el valor: `LC2 · fader 3 espera: está en 0.20, mixKick está en 0.55 — llévalo hasta ahí`.
-- Si otra superficie (la GUI, el navegador, la rutina) mueve el valor, el control vuelve a esperar.
+- La mano manda. Mientras mueves un control, el valor lo sigue, aunque otra superficie lo haya movido.
+- Si otra superficie (la GUI, el navegador, la rutina) mueve el valor con el control quieto más de 1 s, el control vuelve a esperar.
+- Si un fundido de la rutina está llevando ese valor, lo suelta en cuanto lo tocas (LC2 o GUI). El fundido siguiente lo toma desde donde lo dejaste.
 
 Los encoders en **Clip, FX3, FX4, FX5** y **Main A** son relativos: suman o restan desde donde esté el valor, y nunca saltan.
 

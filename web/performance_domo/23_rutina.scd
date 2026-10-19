@@ -71,6 +71,10 @@ OSCdef(\maqLectura, { |m| ~lectura = [m[1].asInteger, (m[2] ? 0).asInteger];
 ~fundidos = ~fundidos ? List.new;
 ~dueno    = IdentityDictionary.new;
 
+// La mano manda: ~setParam llama a esto cuando la GUI o el MIDI tocan un valor, y el fundido
+// lo suelta (ya no lo escribe). El fundido siguiente lo toma desde donde lo dejó la mano.
+~soltarFundido = { |k| ~dueno.removeAt(k) };
+
 ~fijar = { |k, v| var ahora = ~controlValues[k];
 	if (ahora.isNil or: { (ahora - v).abs > 1e-4 }) { ~setParam.(k, v, \preset) } };
 

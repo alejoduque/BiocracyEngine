@@ -984,6 +984,13 @@
         //      layer and greys the rest for a moment (4_gui.scd).
         if([\gui, \midi].includes(source)) { ~mixFocusOn !? { ~mixFocusOn.(name) } };
 
+        // 0a' · The hand comes first. A value a crossfade is carrying
+        //      (23_rutina.scd, ~fundirParams) is let go the moment a hand
+        //      touches it, GUI or MIDI: the crossfade rewrote it every 0.25 s
+        //      and pulled the fader back from under the hand. The next block
+        //      takes it again from where the hand left it.
+        if([\gui, \midi].includes(source)) { ~soltarFundido !? { ~soltarFundido.(name) } };
+
         // 0b · CRUDO glides (14_, ~crudoGlide): its length is taken from the
         //      tempo now, before the bus moves.
         if(name == \corpusCrudo) {

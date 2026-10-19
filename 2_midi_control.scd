@@ -67,7 +67,9 @@ s.doWhenBooted({
 // Los controles absolutos (faders, crossfader, Send, EQ, Main C/D, joystick)
 // hacen «soft takeover»: no mueven el valor hasta alcanzarlo (o cruzarlo), así
 // cambiar de grupo de faders o cargar una config no produce saltos. Si otra
-// superficie mueve el valor después, el control vuelve a esperar.
+// superficie mueve el valor mientras el control está quieto (más de 1 s sin
+// mensajes), el control vuelve a esperar. Mientras la mano lo mueve, la mano
+// manda: el valor sigue al control aunque otro lo haya movido.
 // Los encoders en Clip, FX3, FX4, FX5 y Main A son relativos (2's complement).
 ~lc2Activo = true;
 ~lc2Rol = { |chan| case { chan >= 9 and: { chan <= 11 } } { chan - 9 }
@@ -148,13 +150,15 @@ block {
             var st = ~lc2Pick[k];
             // (no `dict[k] = e` como valor: esa asignación devuelve el diccionario)
             if(st.isNil) { st = (en: false); ~lc2Pick[k] = st };
-            // otra superficie movió el valor: volver a esperar
-            if(st[\en] and: { st[\enviado].notNil } and: { (cur - st[\enviado]).abs > 0.02 }) { st[\en] = false };
+            // otra superficie movió el valor con el control quieto: volver a esperar
+            if(st[\en] and: { st[\enviado].notNil } and: { (cur - st[\enviado]).abs > 0.02 }
+                and: { (Main.elapsedTime - (st[\cuando] ? 0)) > 1.0 }) { st[\en] = false };
             if(st[\en].not and: { ((n - cur).abs < 0.03) or: {
                 st[\ultimo].notNil and: { (st[\ultimo] - cur).sign != (n - cur).sign } } }) { st[\en] = true };
             st[\ultimo] = n;
             if(st[\en]) {
-                var v = ~setParamNorm.(p, n, \midi); st[\enviado] = ~lc2Norm.(p);
+                var v = ~setParamNorm.(p, n, \midi);
+                st[\enviado] = ~lc2Norm.(p); st[\cuando] = Main.elapsedTime;
                 "LC2 · % → %: %".format(a[1], p, v.round(0.001)).postln;
             } {
                 ~lc2Espera = ~lc2Espera ?? { () };

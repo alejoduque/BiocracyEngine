@@ -354,9 +354,11 @@
                 var fresh = ~mixFocus.isNil or: { ~mixFocus[\layer] != layer }
                     or: { (Main.elapsedTime - ~mixFocus[\at]) > ~mixFocusHold };
                 ~mixFocus = (layer: layer, at: Main.elapsedTime);
-                // Restyle at once when the focus starts or changes; while the
-                // hand stays on the same fader the 2 Hz refresh keeps it.
-                if(fresh) { { ~guiLookRefresh !? { ~guiLookRefresh.value } }.defer };
+                // Restyle when the focus starts or changes; while the hand
+                // stays on the same fader the 2 Hz refresh keeps it. Queued
+                // after the event, never inside it (.defer runs at once from a
+                // GUI action): the fader's own move goes first.
+                if(fresh) { AppClock.sched(0, { ~guiLookRefresh !? { ~guiLookRefresh.value }; nil }) };
             };
         };
         ~layerSounds = { |mix|
