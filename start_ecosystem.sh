@@ -55,6 +55,15 @@ if [ "$1" = "apagar" ] || [ "$1" = "stop" ]; then
     exit 0
 fi
 
+# ── Monitor MIDI: ./start_ecosystem.sh midi ─────────────────────────────────
+# Lista las entradas MIDI y escribe cada mensaje que llega (60 s, o
+# MIDI_SEGUNDOS), sin arrancar el motor: para saber si el LC2 llega al Mac.
+if [ "$1" = "midi" ]; then
+    SCL=${SCLANG:-$(command -v sclang || echo /Applications/SuperCollider.app/Contents/MacOS/sclang)}
+    "$SCL" "$SCRIPT_DIR/tools/midi_monitor.scd" 2>&1 | sed -n '/^── MIDI/,$p' | grep -v "^cleaning up"
+    exit 0
+fi
+
 # ── Modo render: ./start_ecosystem.sh render [last | pendientes | <archivo>] ─
 # Genera el video y los audios de una toma ya grabada, con todo el progreso en
 # esta terminal. No arranca ni apaga la función: si el ecosistema está
@@ -154,6 +163,7 @@ fi
 ASISTENTE="$SCRIPT_DIR/web/performance_domo/asistente.py"
 if [ -t 0 ] && [ -t 1 ] && [ "${WIZARD:-1}" != "0" ] && [ -f "$ASISTENTE" ]; then
     FLAGS_ASISTENTE=$(mktemp -t biocracy-asistente)
+    [ "${MARCO:-1}" != "0" ] && export BIOCRACY_MARCO=1
     if python3 "$ASISTENTE" --salida "$FLAGS_ASISTENTE"; then
         set -a; . "$FLAGS_ASISTENTE"; set +a
         rm -f "$FLAGS_ASISTENTE"
@@ -161,6 +171,21 @@ if [ -t 0 ] && [ -t 1 ] && [ "${WIZARD:-1}" != "0" ] && [ -f "$ASISTENTE" ]; the
         rm -f "$FLAGS_ASISTENTE"
         exit 0
     fi
+fi
+
+# ── La portada fija arriba de la terminal (marco.py) ───────────────────────
+# Después del asistente, las primeras filas quedan para la cúpula, el título y
+# el reloj de la rutina; los pasos del arranque y la cadena corren debajo.
+# MARCO=0 la apaga. Se cierra con el cleanup (o sola, si este script muere).
+MARCO_PID=""
+if [ "${BIOCRACY_MARCO:-0}" = "1" ] && [ -t 1 ] && [ -f "$SCRIPT_DIR/web/performance_domo/marco.py" ]; then
+    python3 "$SCRIPT_DIR/web/performance_domo/marco.py" &
+    MARCO_PID=$!
+    sleep 0.3
+    # hasta que el cleanup tome su lugar: que una salida temprana suelte la terminal
+    trap 'kill "$MARCO_PID" 2>/dev/null; wait "$MARCO_PID" 2>/dev/null; printf "\x1b7\x1b[r\x1b8"' EXIT
+else
+    unset BIOCRACY_MARCO
 fi
 
 # ── (1) Verificación de dependencias antes de matar nada ───────────────────
@@ -332,6 +357,14 @@ CONTADOR_PID=""
 CUENTA_PID=""
 
 cleanup() {
+    # Una vez: SIGINT corre el cleanup y su «exit» dispara el trap de EXIT.
+    [ -n "$CLEANUP_HECHO" ] && return
+    CLEANUP_HECHO=1
+    trap - SIGINT SIGTERM EXIT
+    # la portada fija deja de animarse; su región se suelta al final, tras el «Adiós»
+    if [ -n "$MARCO_PID" ]; then
+        kill "$MARCO_PID" 2>/dev/null; wait "$MARCO_PID" 2>/dev/null
+    fi
     echo ""
     echo "=============================================="
     echo "    CERRANDO ECOSISTEMA TRES-PARTES..."
@@ -346,6 +379,8 @@ cleanup() {
     cerrar_restos
     rm -f "$LOCKFILE"
     echo "Adiós."
+    # la terminal entera vuelve a desplazarse; la portada queda arriba
+    [ -n "$MARCO_PID" ] && [ -t 1 ] && printf '\x1b7\x1b[r\x1b8'
     exit 0
 }
 trap cleanup SIGINT SIGTERM EXIT

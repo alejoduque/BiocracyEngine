@@ -600,6 +600,8 @@ def main():
         # entre comillas simples: un nombre de cámara lleva espacios
         Path(a.salida).write_text("".join(f"{k}='{v}'\n" for k, v in env.items()))
     A, V, G, B, R = "\033[38;5;208m", "\033[38;5;71m", "\033[38;5;244m", "\033[1;97m", "\033[0m"
+    if os.environ.get("BIOCRACY_MARCO") == "1":
+        sys.exit(0)   # marco.py toma la terminal: la portada queda fija arriba, con los flags
     portada_fija()
     print(f"{A}  ━━━ BIOCRACIA EN ESCUCHA ━━━{R}  {G}{time.strftime('%d·%m·%Y %H:%M')}{R}")
     for k, v in env.items():

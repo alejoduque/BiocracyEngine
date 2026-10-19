@@ -17,11 +17,36 @@ MIDIdef.freeAll;
 // incoming OSC (Python ETH data, parliament bridge, etc.).
 // Deferring to doWhenBooted lets 1_server_config.scd's openUDPPort(57120) claim
 // the port first during the boot sequence.
+//
+// Hot-plug. MIDIClient.init with no arguments opens one input port per source
+// it sees at that moment, and connectAll connects only those: a USB-MIDI
+// interface plugged in after boot (or one CoreMIDI had not registered yet —
+// it happened with the LC2 through an E-MU XMidi1X1) was never heard, and the
+// MIDI light stayed at «-». So the client always opens at least one port, and every
+// 2 s the source list is re-read and any new source is connected to port 0.
+~midiConectadas = ~midiConectadas ?? { Set.new };
+~midiConectar = {
+    MIDIClient.list;
+    MIDIClient.sources.do { |src|
+        if(~midiConectadas.includes(src.uid).not) {
+            MIDIIn.connect(0, src);
+            ~midiConectadas.add(src.uid);
+            ("MIDI · entrada conectada: % · %".format(src.device, src.name)).postln;
+        };
+    };
+};
 s.doWhenBooted({
     if(MIDIClient.initialized.not) {
-        MIDIClient.init;
-        MIDIIn.connectAll;
+        // at least one port, so a source that arrives later has one to join
+        MIDIClient.list;
+        MIDIClient.init((MIDIClient.sources ? []).size.max(1));
     };
+    ~midiConectar.value;
+    if(MIDIClient.sources.isEmpty) {
+        "MIDI · todavía no hay entradas: las busco cada 2 s (conecta la interfaz cuando quieras).".postln;
+    };
+    ~midiVigia.stop;
+    ~midiVigia = Routine({ loop { 2.wait; ~midiConectar.value } }).play(AppClock);
     "MIDI initialized after server boot (port 57120 safe).".postln;
 });
 

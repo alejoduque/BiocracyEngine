@@ -42,6 +42,19 @@ def grande(n):
     filas = ["  ".join(DIG[d][i] for d in str(n)) for i in range(5)]
     return "\n".join("        " + f for f in filas)
 
+def limpiar():
+    """Limpia la pantalla, o solo la región de abajo si marco.py tiene la portada arriba."""
+    if not TTY:
+        return
+    if os.environ.get("BIOCRACY_MARCO") == "1":
+        import shutil
+        sys.path.insert(0, str(Path(__file__).resolve().parent))
+        from marco import filas
+        arriba = filas(shutil.get_terminal_size((100, 40)).lines) + 1
+        sys.stdout.write(f"\033[{arriba};1H\033[J")
+    else:
+        sys.stdout.write("\033[2J\033[H")
+
 def osc(direccion, puerto=57120):
     a = direccion.encode() + b"\0"
     a += b"\0" * (-len(a) % 4)
@@ -95,15 +108,13 @@ def comenzar():
         time.sleep(1)
     time.sleep(8)   # que la página monte su primer módulo antes de pedirle el F
     for n in range(CUENTA, 0, -1):
-        if TTY:
-            sys.stdout.write("\033[2J\033[H")
+        limpiar()
         print("\n\n" + c(GRIS, "        BIOCRACIA EN ESCUCHA · Domo del Planetario de Bogotá") + "\n")
         print(c(AMBAR if n > 3 else BLANCO, grande(n)))
         print("\n" + c(VERDE, "        el bosque entra primero. la máquina escucha.") + "\n", flush=True)
         time.sleep(1)
     osc("/rutina/iniciar")
-    if TTY:
-        sys.stdout.write("\033[2J\033[H")
+    limpiar()
     print("\n\n" + c(BLANCO, "        ▶  COMIENZA") + "   " + c(GRIS, time.strftime("%H:%M:%S")))
     print(c(VERDE, "        30:00 · cinco bloques: convocar · escuchar · la propuesta · deliberar · adjudicar") + "\n", flush=True)
 

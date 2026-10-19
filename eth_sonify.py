@@ -327,4 +327,8 @@ async def main():
 
 if __name__ == "__main__":
     # Fix for Python 3.13 asyncio warning
-    asyncio.run(main())
+    try:
+        asyncio.run(main())
+    except KeyboardInterrupt:
+        # Ctrl+C cierra el ecosistema entero; el cleanup del script dice adiós
+        pass

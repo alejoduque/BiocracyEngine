@@ -2410,14 +2410,26 @@
             walk.(view);
             out
         };
+        // The grid, the clock and the lights have fixed (or maximum) sizes, and
+        // Qt clamps a geometry to them: the +1 px never happened, no resize
+        // event, and the old pixmap stayed (measured: a red fill drawn once
+        // survived the nudge). So the limits are lifted for the nudge and put
+        // back; the view ends at its size, within its limits, and re-lays out
+        // to nothing new.
         ~dprNudge = { |win|
             if(win.notNil and: { win.isClosed.not }) {
                 ~dprUserViews.(win.view).do { |v|
-                    var b;
+                    var b, mn, mx;
                     if(v.isClosed.not) {
                         b = v.bounds;
+                        mn = v.getProperty(\minimumSize);
+                        mx = v.getProperty(\maximumSize);
+                        v.setProperty(\minimumSize, Size(0, 0));
+                        v.setProperty(\maximumSize, Size(16777215, 16777215));
                         v.bounds = Rect(b.left, b.top, b.width + 1, b.height);
                         v.bounds = b;
+                        v.setProperty(\minimumSize, mn);
+                        v.setProperty(\maximumSize, mx);
                         v.refresh;
                     };
                 };

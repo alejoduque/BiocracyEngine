@@ -7,8 +7,20 @@ El código está en `2_midi_control.scd` (bloque «Faderfox LC2»).
 
 - El LC2 **no tiene USB**: sale por **MIDI DIN** (5 pines) y funciona con 3 pilas AA o con un adaptador de 4,5–6 V.
 - Para llegar al Mac necesita una **interfaz MIDI**: la entrada MIDI de la MOTU o un cable USB-MIDI. Conecta el MIDI OUT del LC2 al MIDI IN de la interfaz.
-- SuperCollider escucha **todas** las entradas MIDI (`MIDIIn.connectAll`). Si el LC2 está bien conectado, al mover un fader aparece en `sclang_log.txt` una línea `LC2 · fader 1 → mixDrone: …`.
+- Con la interfaz USB-MIDI **E-MU XMidi1X1 Tab**, el conector de entrada del cable va al MIDI OUT del LC2.
+- SuperCollider escucha **todas** las entradas MIDI. Cada 2 s vuelve a mirar si hay entradas nuevas, así que la interfaz se puede conectar con el motor ya andando. Al conectarla aparece en `sclang_log.txt` la línea `MIDI · entrada conectada: E-MU XMidi1X1 Tab · In`.
+- Si el LC2 está bien conectado, al mover un fader aparece en `sclang_log.txt` la línea `LC2 · fader 1 → mixDrone: …`, y la luz MIDI de la GUI se enciende.
 - Hay que encender el LC2. Se apaga solo tras 10 minutos sin movimiento.
+
+### Probar sin arrancar el motor
+
+`./start_ecosystem.sh midi` lista las entradas MIDI y escribe cada mensaje que llega durante 60 s (`MIDI_SEGUNDOS=120` para más). Cada línea dice el CC o la nota, el canal y qué parte del LC2 es:
+
+```
+  CC    0 · canal 12 · valor  87 · LC2 setup 1 · faders/Main/FX
+```
+
+Si ahí no aparece nada al mover un fader, el problema está antes del mapa: el LC2 apagado, el cable en el conector equivocado o la interfaz sin conectar.
 
 ## Por qué un mapa propio
 
