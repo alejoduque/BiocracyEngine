@@ -12,6 +12,49 @@ echo "=============================================="
 SCRIPT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 cd "$SCRIPT_DIR" || { echo "No se puede entrar a $SCRIPT_DIR"; exit 1; }
 
+# ── Lo que el ecosistema deja corriendo, por nombre ────────────────────────
+# Lo usan el cleanup (Ctrl+C) y «./start_ecosystem.sh apagar». La ventana del
+# contador de linternas lee la cámara por un ffmpeg propio: si el contador se
+# fue sin soltarlo, ese ffmpeg dejaría la Logitech encendida.
+cerrar_restos() {
+    pkill sclang 2>/dev/null
+    pkill scsynth 2>/dev/null
+    pkill -f "parliament-bridge\.js" 2>/dev/null
+    pkill -f "laser-bridge\.js" 2>/dev/null
+    pkill -f "dome-bridge\.js" 2>/dev/null
+    pkill -f "dome-live\.js" 2>/dev/null
+    pkill -f "webpack-dev-server|^webpack( |$)" 2>/dev/null
+    pkill -f "eth_sonify\.py" 2>/dev/null
+    pkill -f "performance_domo/contar_linternas\.py" 2>/dev/null
+    pkill -f "performance_domo/cuenta_regresiva\.py" 2>/dev/null
+    pkill -f "ffmpeg .*-f avfoundation .*-f rawvideo" 2>/dev/null
+}
+
+# ── Apagar: ./start_ecosystem.sh apagar ─────────────────────────────────────
+# Cierra el ecosistema desde cualquier terminal, como un Ctrl+C en la suya:
+# SIGINT a todo su grupo de procesos (el cleanup corre y cierra la cúpula, SC,
+# el contador y su cámara), y después lo que haya quedado suelto.
+if [ "$1" = "apagar" ] || [ "$1" = "stop" ]; then
+    LOCK=/tmp/biocracy.lock
+    P=$(cat "$LOCK" 2>/dev/null)
+    if [ -n "$P" ] && kill -0 "$P" 2>/dev/null; then
+        G=$(ps -o pgid= -p "$P" | tr -d ' ')
+        echo "Cerrando el ecosistema (PID $P)…"
+        if [ -n "$G" ] && [ "$G" != "$(ps -o pgid= -p $$ | tr -d ' ')" ]; then
+            kill -INT -- "-$G" 2>/dev/null
+        else
+            kill -INT "$P" 2>/dev/null
+        fi
+        for i in $(seq 1 40); do kill -0 "$P" 2>/dev/null || break; sleep 0.5; done
+    else
+        echo "No hay un ecosistema registrado en $LOCK; cierro lo que encuentre."
+    fi
+    cerrar_restos
+    rm -f "$LOCK"
+    echo "Cerrado."
+    exit 0
+fi
+
 # ── Modo render: ./start_ecosystem.sh render [last | pendientes | <archivo>] ─
 # Genera el video y los audios de una toma ya grabada, con todo el progreso en
 # esta terminal. No arranca ni apaga la función: si el ecosistema está
@@ -300,16 +343,7 @@ cleanup() {
     done
     sleep 0.5
     # Limpieza de procesos huérfanos (por si algún hijo no respondió a SIGTERM)
-    pkill sclang 2>/dev/null
-    pkill scsynth 2>/dev/null
-    pkill -f "parliament-bridge\.js" 2>/dev/null
-    pkill -f "laser-bridge\.js" 2>/dev/null
-    pkill -f "dome-bridge\.js" 2>/dev/null
-    pkill -f "dome-live\.js" 2>/dev/null
-    pkill -f "webpack-dev-server|^webpack( |$)" 2>/dev/null
-    pkill -f "eth_sonify\.py" 2>/dev/null
-    pkill -f "performance_domo/contar_linternas\.py" 2>/dev/null
-    pkill -f "performance_domo/cuenta_regresiva\.py" 2>/dev/null
+    cerrar_restos
     rm -f "$LOCKFILE"
     echo "Adiós."
     exit 0
@@ -483,7 +517,9 @@ if [ "$PERFORMANCE" = "1" ] && [ -n "$PERF_CONTADOR" ]; then
     CONTADOR_PID=$!
     echo "   contar_linternas.py escucha en 57140 (PID: $CONTADOR_PID). Log: ${TMPDIR:-/tmp}/biocracy-linternas.log"
 fi
-if [ "$PERFORMANCE" = "1" ] && [ "$PERF_AUTO" = "1" ]; then
+#   PERF_CERRAR=1      el mismo script espera el silencio de las 30:00 y, unos
+#                      segundos después, cierra el ecosistema entero
+if [ "$PERFORMANCE" = "1" ] && { [ "$PERF_AUTO" = "1" ] || [ "$PERF_CERRAR" = "1" ]; }; then
     python3 "$SCRIPT_DIR/web/performance_domo/cuenta_regresiva.py" &
     CUENTA_PID=$!
 fi

@@ -106,6 +106,22 @@ def caja(lineas, ancho=28):
 ARTE["modo"] = caja(["00:00 " + "━" * 15 + "▶ 30:00", "▁▂▃▅▆▇▆▅▃▂▁▂▃▅▇█▇▅▃▂▁▂▁▂▃▅▆▇",
                      "convocar · escuchar", "la propuesta · deliberar", "adjudicar · el bosque"])
 
+def opciones_camara(camaras):
+    """Una opción por cámara (por nombre), y la de no abrir el contador."""
+    utiles = [n for n in camaras if "Desk View" not in n]
+    ops = []
+    for n in utiles:
+        logi = "C920" in n or "Logitech" in n
+        ops.append((f"Contador · {n}"[:34],
+                    "La USB Logitech: la que mira al público." if logi else "Otra cámara conectada.",
+                    dict(PERF_CONTADOR="C920" if "C920" in n else n)))
+    ops.append(("No abrir el contador", "La rutina dice que no pudo contar y sigue.", dict(PERF_CONTADOR="")))
+    return ops
+
+def defecto_camara(camaras):
+    utiles = [n for n in camaras if "Desk View" not in n]
+    return next((i for i, n in enumerate(utiles) if "C920" in n or "Logitech" in n), 0)
+
 def preguntas():
     camaras = equipo["camaras"]
     lista_cam = "; ".join(f"{n}" for n in camaras) if camaras else "no veo ninguna (¿conectada por USB?)"
@@ -153,11 +169,9 @@ def preguntas():
              texto="A los 24 minutos votan los humanos con la linterna del teléfono. contar_linternas.py mira al público "
                    "y cuenta las luces: la mediana de tres segundos, para que un reflejo suelto no vote. Los cuadros se "
                    "procesan en memoria; no se guarda ninguna imagen. Al abrirse su ventana, marca la zona del público "
-                   "con r y calibra el umbral con + y − usando linternas reales. Si la imagen no es la de la Logitech, "
-                   "ciérrala con q y elige la otra cámara. Cámaras conectadas: " + lista_cam + ".",
-             opciones=[("Abrir el contador · cámara 0", "En este Mac, la 0 es la Logitech C920 (probado el 18 de octubre).", dict(PERF_CONTADOR="0")),
-                       ("Abrir el contador · cámara 1", "La otra cámara (la del MacBook).", dict(PERF_CONTADOR="1")),
-                       ("No abrir el contador", "La rutina dice que no pudo contar y sigue.", dict(PERF_CONTADOR=""))]),
+                   "con r y calibra el umbral con + y − usando linternas reales. La cámara se abre por su nombre, no "
+                   "por su número: en macOS el número cambia entre arranques. Cámaras conectadas: " + lista_cam + ".",
+             opciones=opciones_camara(camaras), defecto=defecto_camara(camaras)),
         dict(id="decisiones", titulo="LAS DOS DECISIONES", solo_funcion=True,
              texto="Dos veces la rutina espera a la máquina: la lectura del quórum (minuto 4) y la llave del bosque "
                    "(minuto 26). Decide quien tenga el panel MÁQUINA de la consola: Claude in Chrome, o una persona. "
@@ -179,6 +193,13 @@ def preguntas():
                    "el video 4096 para el domo. El render no corre durante la función: compite con ella.",
              opciones=[("Grabar la función", "~startRecording al empezar, ~stopRecording a las 30:00.", dict(PERF_REC="1")),
                        ("No grabar", "", dict(PERF_REC="0"))]),
+        dict(id="final", titulo="AL TERMINAR", solo_funcion=True,
+             texto="Cuando la pieza llega al silencio de las 30:00, el ecosistema puede cerrarse solo: veinte segundos "
+                   "después se cierran la cúpula, la consola, SuperCollider, el contador y su cámara, como un Ctrl+C en "
+                   "esta terminal. O puede quedar todo abierto. En cualquier momento, Ctrl+C aquí cierra todo, y "
+                   "«./start_ecosystem.sh apagar» lo cierra desde otra terminal.",
+             opciones=[("Cerrar todo al terminar", "cuenta_regresiva.py espera el fin y cierra el grupo entero.", dict(PERF_CERRAR="1")),
+                       ("Dejar todo abierto", "Para seguir tocando a mano después de la pieza.", dict(PERF_CERRAR="0"))]),
         dict(id="terminal", titulo="ESTA TERMINAL",
              texto="Mientras el motor despierta, esta terminal se puede proyectar en el domo (NDI Screen Capture o la "
                    "entrada de video) hasta que aparezca la cúpula. Puede mostrar cada transacción de Ethereum que entra "
@@ -360,7 +381,7 @@ def resumen(w, qs, eleccion, t):
         pon(w, y, 6, q["titulo"].ljust(24), C["gris"])
         pon(w, y, 31, etq, C["verde"]); y += 1
     y += 1
-    linea = " ".join(f"{k}={v}" for k, v in env.items() if v != "") + " WIZARD=0 ./start_ecosystem.sh"
+    linea = " ".join(f"{k}={v}" if " " not in v else f"{k}='{v}'" for k, v in env.items() if v != "") + " WIZARD=0 ./start_ecosystem.sh"
     pon(w, y, 4, "Lo mismo, sin el asistente:", C["gris"]); y += 1
     for l in textwrap.wrap(linea, ancho - 8):
         pon(w, y, 6, l, C["ambar"]); y += 1
@@ -371,6 +392,7 @@ def resumen(w, qs, eleccion, t):
              "Ethereum · la cadena en vivo"]
     if env.get("PERF_CONTADOR"): pasos.insert(4, f"contador de linternas · cámara {env['PERF_CONTADOR']}")
     if env.get("PERF_AUTO") == "1" and env.get("PERFORMANCE") == "1": pasos.append("cuenta regresiva → la rutina empieza sola")
+    if env.get("PERF_CERRAR") == "1" and env.get("PERFORMANCE") == "1": pasos.append("al silencio de las 30:00 → todo se cierra solo")
     for i, p in enumerate(pasos):
         pon(w, y, 6, f"{i + 1}. {p}", C["cian"]); y += 1
     pon(w, min(h - 3, y + 1), 4, onda(min(ancho - 8, 80), t * 2), C["hoja"])
@@ -413,7 +435,16 @@ def asistente(w, recordado):
     if not portada(w):
         return None
     qs = preguntas()
-    eleccion = {q["id"]: min(recordado.get(q["id"], q.get("defecto", 0)), len(q["opciones"]) - 1) for q in qs}
+    def recordar(q):
+        # Se recuerda el valor elegido, no su posición: la lista de cámaras cambia con lo que esté
+        # conectado, y la posición 0 de ayer puede ser hoy otra cámara.
+        r = recordado.get(q["id"])
+        if isinstance(r, dict):
+            return next((i for i, o in enumerate(q["opciones"]) if o[2] == r), q.get("defecto", 0))
+        if isinstance(r, int) and q["id"] != "linternas":
+            return min(r, len(q["opciones"]) - 1)
+        return q.get("defecto", 0)
+    eleccion = {q["id"]: recordar(q) for q in qs}
     i, t0 = 0, time.time()
     w.timeout(120)
     while True:
@@ -423,7 +454,7 @@ def asistente(w, recordado):
             k = tecla(w)
             if k in (10, 13, curses.KEY_ENTER):
                 despegue(w, flags_de(qs, eleccion))
-                return eleccion, flags_de(qs, eleccion)
+                return {q["id"]: q["opciones"][eleccion[q["id"]]][2] for q in qs}, flags_de(qs, eleccion)
             if k in (curses.KEY_LEFT, curses.KEY_BACKSPACE, 127, 8, ord("b")): i = len(vis) - 1
             if k in (ord("q"), 27): return None
             continue
@@ -456,7 +487,8 @@ def main():
     try: MEMORIA.write_text(json.dumps(eleccion, indent=1))
     except OSError: pass
     if a.salida:
-        Path(a.salida).write_text("".join(f"{k}={v}\n" for k, v in env.items()))
+        # entre comillas simples: un nombre de cámara lleva espacios
+        Path(a.salida).write_text("".join(f"{k}='{v}'\n" for k, v in env.items()))
     A, V, G, B, R = "\033[38;5;208m", "\033[38;5;71m", "\033[38;5;244m", "\033[1;97m", "\033[0m"
     print(f"\n{A}  ━━━ BIOCRACIA EN ESCUCHA ━━━{R}  {G}{time.strftime('%d·%m·%Y %H:%M')}{R}")
     for k, v in env.items():

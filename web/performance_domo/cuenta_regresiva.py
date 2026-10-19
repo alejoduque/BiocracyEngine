@@ -1,15 +1,18 @@
 #!/usr/bin/env python3
-"""Cuenta regresiva y comienzo de la rutina · Biocracia en escucha.
+"""Cuenta regresiva, comienzo y cierre de la rutina · Biocracia en escucha.
 
-Lo lanza start_ecosystem.sh cuando el asistente eligió «la rutina empieza sola»
-(PERF_AUTO=1). Espera a que SuperCollider haya cargado la partitura y a que la
-página de la cúpula esté conectada al puente, cuenta hacia atrás en grande en
-esta terminal y envía /rutina/iniciar a SuperCollider (57120).
+Lo lanza start_ecosystem.sh con PERF_AUTO=1 o PERF_CERRAR=1 (el asistente).
 
-  PERF_CUENTA   segundos de la cuenta (10 por defecto)
+  PERF_AUTO=1    espera a que SuperCollider haya cargado la partitura y a que la
+                 página de la cúpula esté conectada al puente, cuenta hacia
+                 atrás en grande en esta terminal y envía /rutina/iniciar (57120).
+  PERF_CERRAR=1  espera el final de la pieza («[rutina] fin · 30:00» en
+                 sclang_log.txt) y, PERF_CIERRE segundos después (20), cierra el
+                 ecosistema entero como un Ctrl+C: SIGINT a su grupo de procesos.
+  PERF_CUENTA    segundos de la cuenta (10 por defecto)
 Solo la biblioteca estándar: el OSC se arma a mano (un mensaje sin argumentos).
 """
-import json, os, socket, sys, time, urllib.request
+import json, os, signal, socket, sys, time, urllib.request
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parents[2]
@@ -59,7 +62,30 @@ def clientes():
     except Exception:
         return 0
 
+def finales():
+    try:
+        return LOG.read_text(errors="ignore").count("[rutina] fin · 30:00")
+    except OSError:
+        return 0
+
+def cerrar_al_final(antes):
+    """Espera un «fin» nuevo en el log y cierra el ecosistema."""
+    while finales() <= antes:
+        time.sleep(1)
+    espera = float(os.environ.get("PERF_CIERRE", "20") or 20)
+    print("\n" + c(VERDE, "        el bosque continúa.") + "  " + c(GRIS, f"el ecosistema se cierra en {espera:.0f} s"), flush=True)
+    time.sleep(espera)
+    print(c(GRIS, "        [cuenta] cerrando el ecosistema…"), flush=True)
+    os.killpg(os.getpgrp(), signal.SIGINT)   # como Ctrl+C en la terminal: corre el cleanup
+
 def main():
+    antes = finales()
+    if os.environ.get("PERF_AUTO") == "1":
+        comenzar()
+    if os.environ.get("PERF_CERRAR") == "1":
+        cerrar_al_final(antes)
+
+def comenzar():
     print(c(GRIS, "\n   [cuenta] esperando la partitura en SuperCollider y la cúpula en el puente…"), flush=True)
     t0 = time.time()
     while not (rutina_cargada() and clientes() >= 2):
