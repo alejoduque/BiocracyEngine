@@ -1178,7 +1178,7 @@
 
         mixerView.layout.add(
             StaticText()
-                .string_("MATRIX\nMIXER\nCC 42-49\nMOTOR 57-63")
+                .string_("MATRIX\nMIXER\nLC2 F1-12\nCC 42-49")
                 .font_(Font(~monoFont, 10, true))
                 .stringColor_(Color.white)
                 .align_(\left)
