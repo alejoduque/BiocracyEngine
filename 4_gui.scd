@@ -365,13 +365,17 @@
             (((~controlValues ? ())[mix] ? 0) > 0.001) and: { (~mixerMuted ? ())[mix] != true }
         };
         // One control's look: \normal (its family), \dim (grey), \focus
-        // (its family, caption white). Restyled only when it changes.
+        // (its family, caption white), \target (white, the caption inverted:
+        // the control the LC2 is about to be assigned to, APRENDE). Restyled
+        // only when it changes. A mixer fader keeps its layer's colour.
         ~knobLook = ();
         ~controlLook = { |key, mode|
             if((~knobLook[key] ? \normal) != mode) {
                 var view = (~knobViews ? ())[key];
                 var label = (~controlLabels ? ())[key];
-                var fam = if(mode == \dim) { Color.gray(0.3) } { ~famColor.(key) };
+                var fader = view.isKindOf(Slider);
+                var fam = case { mode == \dim } { Color.gray(0.3) } { mode == \target } { Color.white }
+                    { fader } { ~stripColor.(key) } { ~famColor.(key) };
                 var famBg = ~famBg.(key);
                 ~knobLook[key] = mode;
                 if(view.notNil and: { view.isClosed.not }) {
@@ -383,26 +387,40 @@
                         var cap = view.states[0][0], v = view.value;
                         view.states = [[cap, fam, famBg], [cap, Color.black, fam]];
                         view.value = v;
-                    };
+                    }
+                    { fader } { view.knobColor = fam };
                 };
                 if(label.notNil and: { label.isClosed.not }) {
                     label.stringColor = switch(mode,
-                        \dim, { Color.gray(0.42) }, \focus, { Color.white }, { ~famText.(key) });
+                        \dim, { Color.gray(0.42) }, \focus, { Color.white }, \target, { Color.black },
+                        { if(fader) { Color.gray(0.6) } { ~famText.(key) } });
+                    label.background = if(mode == \target) { Color.white } { Color.clear };
                 };
                 (~knobRings ? ())[key] !? { |r| if(r.isClosed.not) { r.refresh } };
             };
         };
+        // APRENDE (LC2) comes first: the control waiting for an LC2 control
+        // is \target, the one just assigned \focus, and grey means no LC2
+        // control reaches it — the map, on the surface itself.
         ~guiLookRefresh = {
-            var edit = ~golpeEdit;
+            var edit = ~golpeEdit, ap = ~lc2Aprende;
             var mf = ~mixFocus !? { |f| if((Main.elapsedTime - f[\at]) <= ~mixFocusHold) { f[\layer] } };
             (~knobViews ? ()).keysValuesDo { |key, view|
-                if(view.isKindOf(Knob) or: { view.isKindOf(Button) }) {
+                case
+                { ap.notNil } {
+                    ~controlLook.(key, case
+                        { ap[\destino] == key } { \target }
+                        { ap[\hecho] == key } { \focus }
+                        { ~lc2Controles.(key).isEmpty } { \dim } { \normal });
+                }
+                { view.isKindOf(Knob) or: { view.isKindOf(Button) } } {
                     var layers = ~keyLayers.(key);
                     ~controlLook.(key, case
                         { edit.notNil } { if((~golpeEditKnobs ? ())[key].notNil) { \focus } { \dim } }
                         { mf.notNil } { if(layers.includes(mf)) { \focus } { \dim } }
                         { if(layers.isEmpty or: { layers.any { |m| ~layerSounds.(m) } }) { \normal } { \dim } });
-                };
+                }
+                { ~controlLook.(key, \normal) };
             };
         };
 
@@ -485,6 +503,8 @@
             container.layout.add(ageText);
             indicator.setProperty(\status, 0);
             ~ledAges[label.asSymbol] = ageText;
+            ~ledLabels = ~ledLabels ?? ();
+            ~ledLabels[label.asSymbol] = labelText;
             indicator;
         };
 
@@ -922,7 +942,10 @@
                     .action_({
                         if(~phenoNextRecorded.notNil) { ~phenoNextRecorded.value }
                             { "[pheno] corpus layer not loaded".postln };
-                    });
+                    })
+                    // APRENDE: DÍA is a destination for an LC2 key (LAUNCH).
+                    .mouseDownAction_({ |v, x, y, mods, boton| ~lc2Tocar !? { ~lc2Tocar.([\accion, \dia], mods, boton) } })
+                    .mouseUpAction_({ ~lc2Quieto !? { ~lc2Quieto.value } });
                 v.layout.add(~phenoCursorLabel);
                 v.layout.add(~phenoSkipButton);
                 v.layout.add(nil);
@@ -1570,14 +1593,14 @@
             .background_(backgroundColor.blend(mainTheme.accent, 0.10))
             .stringColor_(mainTheme.yellow)
             .font_(Font(~monoFont, 11))
-            .fixedWidth_(150);
+            .fixedWidth_(100);
 
         ~presetMenu = PopUpMenu()
             .items_([])
             .background_(backgroundColor.blend(mainTheme.accent, 0.10))
             .stringColor_(mainTheme.yellow)
             .font_(Font(~monoFont, 11))
-            .fixedWidth_(220);
+            .fixedWidth_(190);
 
         ~refreshPresetMenu = {
             if(~listConfigs.notNil) {
@@ -1612,6 +1635,43 @@
             });
 
         ~refreshPresetMenu.value;
+
+        // ─── Escenas A·B: el crossfader del LC2 (0_parameters.scd) ──────────
+        // Two buttons that also say what each side holds. Click: the config
+        // picked in the menu becomes that scene. Each lights amber as far as
+        // the crossfader leans its way. In APRENDE they are the destination
+        // «ESCENA A·B», so any LC2 control can be given the crossfade. The
+        // name field and the menu gave up 80 px for them (canvas ≤ 1568).
+        ~escenaBotones = ();
+        [\a, \b].do { |lado|
+            ~escenaBotones[lado] = Button()
+                .font_(Font(~monoFont, 9, true))
+                .fixedHeight_(22)
+                .fixedWidth_(88)
+                .action_({
+                    var sel = ~presetMenu.item;
+                    if(sel.notNil and: { ~escenaPoner.notNil }) { ~escenaPoner.(lado, sel) };
+                })
+                .mouseDownAction_({ |v, x, y, mods, boton| ~lc2Tocar !? { ~lc2Tocar.(\escenaAB, mods, boton) } })
+                .mouseUpAction_({ ~lc2Quieto !? { ~lc2Quieto.value } });
+        };
+        ~escenaAlCambiar = { {
+            var x = (~escena ? ())[\x], amber = ~guiFamily[\cadena];
+            [\a, \b].do { |lado|
+                var b = (~escenaBotones ? ())[lado];
+                if(b.notNil and: { b.isClosed.not }) {
+                    var nombre = (~escena[lado] ? "—").asString;
+                    var corto = nombre.replace("_", " ").split($ ).reject { |w| w.every(_.isDecDigit) }.join(" ").toUpper;
+                    var w = if(x.isNil) { 0 } { if(lado == \a) { 1 - x } { x } };
+                    b.states = [[lado.asString.toUpper ++ " " ++ corto.keep(12),
+                        if(w > 0.5) { Color.black } { amber },
+                        backgroundColor.blend(amber, 0.12 + (0.78 * w))]];
+                    b.toolTip = "Escena %: %\nClic: la config elegida en el menú pasa a ser la escena %.\nEl crossfader del LC2 va de A a B."
+                        .format(lado.asString.toUpper, nombre, lado.asString.toUpper);
+                };
+            };
+        }.defer };
+        ~escenaAlCambiar.value;
         
         // ─── LASER · galvo-safety scope ─────────────────────────────────────
         // What a laser projector is driven by IS a waveform: at the DAC's point
@@ -1844,6 +1904,7 @@
             ~headerText,
             StaticText().string_("CONFIG").font_(Font(~monoFont, 9, true)).stringColor_(mainTheme.dim),
             ~presetMenu, ~presetLoadButton, ~presetNameField, ~presetSaveButton,
+            ~escenaBotones[\a], ~escenaBotones[\b],
             View().fixedWidth_(14),
             ~recordingStatus, ~recTimerView, ~recordButton, ~quickRecButton, ~spatialGuiButton,
             View(), ~laserToggle
@@ -2131,6 +2192,70 @@
             (stamp.notNil and: { (Main.elapsedTime - stamp) < window }).binaryValue;
         };
 
+        // ─── APRENDE · asignar el Faderfox LC2 desde aquí ────────────────
+        // The MIDI light is the switch (no new widget): click it and every
+        // control on the surface shows which LC2 control reaches it, grey
+        // where none does. Then touch a knob, fader, toggle or MUTE and move
+        // the LC2 control that should drive it — either order. Right-click
+        // (or option-click) a control to take its LC2 controls away. Click
+        // the light again to leave; shift-click goes back to the factory map.
+        // The learning itself lives in 2_midi_control.scd (~lc2Destino …).
+        //
+        // While learning, touching a control must not move it, so its mouse
+        // actions answer true (Qt's own handling is skipped). Otherwise they
+        // answer nil and the control behaves as it always has — returning
+        // false would skip Qt's handling too.
+        ~lc2Tocar = { |destino, mods, boton|
+            if(~lc2Aprende.notNil) {
+                if(boton == 1 or: { mods.isAlt }) { ~lc2SoltarDestino.(destino) } { ~lc2Destino.(destino) };
+                true
+            };
+        };
+        ~lc2Quieto = { if(~lc2Aprende.notNil) { true } };
+        (~knobViews ? ()).keysValuesDo { |key, view|
+            view.mouseDownAction_({ |v, x, y, mods, boton| ~lc2Tocar.(key, mods, boton) })
+                .mouseMoveAction_(~lc2Quieto).mouseUpAction_(~lc2Quieto);
+        };
+        ~mixerStrips.keysValuesDo { |p, st|
+            st[\mute].mouseDownAction_({ |v, x, y, mods, boton| ~lc2Tocar.([\mute, p], mods, boton) })
+                .mouseUpAction_(~lc2Quieto);
+        };
+        ~statusLights.midi.parent
+            .toolTip_("Clic: APRENDE · toca un control y mueve el LC2.\n"
+                ++ "Clic derecho en un control: quitarle el LC2.\n"
+                ++ "Mayús+clic aquí: volver al mapa de fábrica.")
+            .mouseDownAction_({ |v, x, y, mods|
+                if(~lc2Aprender.notNil) {
+                    if(mods.isShift) { ~lc2VolverFabrica.value } { ~lc2Aprender.(~lc2Aprende.isNil) };
+                };
+                true
+            });
+        // Called by 2_midi_control.scd on every learning step: the light's
+        // caption, the header (the next step, in two short lines) and every
+        // caption and look on the surface.
+        ~lc2AlCambiar = { {
+            var ap = ~lc2Aprende;
+            if(~headerText.notNil and: { ~headerText.isClosed.not }) {
+                ~ledLabels[\MIDI].string_(if(ap.notNil) { "APRENDE" } { "MIDI" })
+                    .stringColor_(if(ap.notNil) { ~guiFamily[\cadena] } { textColor });
+                if(ap.notNil) {
+                    ~headerText.font_(~labelF.()).stringColor_(~guiFamily[\cadena])
+                        .string_(~lc2AprendeAviso ? "");
+                } {
+                    ~headerText.font_(~labelF.(true)).stringColor_(mainTheme.yellow)
+                        .string_("BiocracyEngine");
+                };
+                (~controlLabels ? ()).keysValuesDo { |key, label|
+                    if(label.isClosed.not and: { ~golpeShows.isNil or: { ~golpeShows.(key).not } }) {
+                        label.string = ~knobText.(key, ~controlValues[key]);
+                    };
+                };
+                ~guiLookRefresh.value;
+            };
+        }.defer };
+        // A GUI opened while learning picks the state up.
+        if(~lc2Aprende.notNil) { ~lc2AlCambiar.value };
+
         // Create update routine
         ~guiRoutine = Routine({
             loop {
@@ -2328,6 +2453,11 @@
             ~scrollView = nil;
             ~scrollCanvas = nil;
             ~statusLights = nil;
+            ~ledLabels = nil;
+            ~lc2AlCambiar = nil;
+            ~escenaAlCambiar = nil;
+            ~escenaBotones = nil;
+            ~lc2Aprende = nil;
             ~counters = nil;
             ~knobs = nil;
             ~controlLabels = nil;

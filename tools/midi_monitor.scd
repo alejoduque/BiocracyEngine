@@ -7,7 +7,7 @@
 // MIDI_SEGUNDOS (60 por defecto) dice cuánto escucha.
 (
 var segundos = (("MIDI_SEGUNDOS".getenv ? "60").asInteger).max(5);
-var conectadas = Set.new, n = 0;
+var conectadas = Set.new, n = 0, cuenta = Dictionary.new;
 var lc2 = { |chan|
     // canales de SC 0-based: 9-11 setup 1, 12-14 setup 2
     if(chan.inclusivelyBetween(9, 14)) {
@@ -30,7 +30,10 @@ MIDIClient.init((MIDIClient.sources ? []).size.max(1), 0, false);
 if(MIDIClient.sources.isEmpty) { "  (ninguna: conecta la interfaz USB-MIDI)".postln };
 conectar.value;
 "\nMueve faders, encoders y teclas del LC2. Escucho % s; Ctrl+C para salir.\n".format(segundos).postln;
-MIDIFunc.cc({ |val, num, chan| n = n + 1;
+MIDIFunc.cc({ |val, num, chan| var c;
+    n = n + 1;
+    c = cuenta[[chan, num]] ?? { cuenta[[chan, num]] = [0, val, val] };
+    c[0] = c[0] + 1; c[1] = c[1].min(val); c[2] = c[2].max(val);
     "  CC  % · canal % · valor %%".format(num.asString.padLeft(3), (chan + 1).asString.padLeft(2), val.asString.padLeft(3), lc2.(chan)).postln }, nil, nil);
 MIDIFunc.noteOn({ |vel, num, chan| n = n + 1;
     "  nota % · canal % · on  %%".format(num.asString.padLeft(3), (chan + 1).asString.padLeft(2), vel.asString.padLeft(3), lc2.(chan)).postln }, nil, nil);
@@ -43,7 +46,11 @@ Routine({
     if(n == 0) {
         "\nNo llegó ningún mensaje. Revisa: el LC2 encendido (se apaga a los 10 min);\nsu MIDI OUT en el conector de entrada de la interfaz (si no llega nada,\nprueba el otro conector del cable); y que la interfaz aparezca arriba.".postln;
     } {
-        "\n% mensajes.".format(n).postln;
+        "\n% mensajes. Por control (si uno que no tocaste aparece, tiembla:\npilas bajas o fader gastado):".format(n).postln;
+        cuenta.keys.asArray.sort { |a, b| (a[0] * 128 + a[1]) < (b[0] * 128 + b[1]) }.do { |key|
+            var c = cuenta[key];
+            "  CC % · canal % · % mensajes · valores %–%%".format(key[1].asString.padLeft(3),
+                (key[0] + 1).asString.padLeft(2), c[0], c[1], c[2], lc2.(key[0])).postln };
     };
     0.exit;
 }).play(AppClock);

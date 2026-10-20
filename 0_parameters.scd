@@ -936,11 +936,16 @@
 // in ~labelFormats: the mixer strips show the value alone under their layer
 // caption, and so do the sample knobs under their function label.
 ~labelFormats = ~labelFormats ?? ();
+// While the LC2 is learning (2_midi_control.scd, APRENDE) the value line says
+// which LC2 control reaches the control instead — every writer keeps doing
+// so until it ends, so the map stays on screen while the engine moves.
 ~knobText = { |name, val|
     var f = ~labelFormats[name];
-    if(f.notNil) { f.(name, val) } {
-        (~knobLabels[name] ? ~labelCase.(name)) ++ "\n" ++ (val ? 0).round(0.001)
-    };
+    var lc2 = if(~lc2Aprende.notNil and: { (~knobViews ? ())[name].notNil }) { ~lc2Etiqueta.(name) };
+    case
+    { lc2.notNil } { if(f === ~valueOnly) { lc2 } { (~knobLabels[name] ? ~labelCase.(name)) ++ "\n" ++ lc2 } }
+    { f.notNil } { f.(name, val) }
+    { (~knobLabels[name] ? ~labelCase.(name)) ++ "\n" ++ (val ? 0).round(0.001) };
 };
 ~valueOnly = { |name, val| (val ? 0).round(0.001).asString };
 // The sample row's PITCH SHIFT reads its value as TWELFTHS of a semitone (the
@@ -1213,6 +1218,43 @@ if(File.exists(~presetDir).not) { File.mkdir(~presetDir) };
     safe
 };
 
+// What a config carries besides its params: the sample knobs, the stem pans
+// and the GOLPE grid. ~loadConfig applies them at once; the A·B scenes below
+// apply them when the crossfader crosses the middle.
+~configExtras = { |dict|
+    (dict["sample"] ?? ()).keysValuesDo { |k, v|
+        var key = k.asSymbol, val = v.asFloat;
+        if(~sampleBuses.notNil and: { ~sampleBuses[key].notNil }) {
+            ~sampleBuses[key].set(val);
+        };
+        if(~sampleControlValues.notNil) { ~sampleControlValues[key] = val };
+        {
+            if(~sampleKnobViews.notNil and: { ~sampleKnobViews[key].notNil }
+                and: { ~sampleControlSpecs.notNil } and: { ~sampleControlSpecs[key].notNil }) {
+                ~sampleKnobViews[key].value = ~sampleControlSpecs[key].unmap(val);
+            };
+            if(~sampleControlLabels.notNil and: { ~sampleControlLabels[key].notNil }) {
+                ~sampleControlLabels[key].string = ~knobText.(key, val);
+            };
+        }.defer;
+    };
+    // Stem pans. A config without them leaves the panning where it
+    // is, like the motor faders an old config does not mention.
+    if(~stemPanSet.notNil) {
+        (dict["stems"] ?? ()).keysValuesDo { |k, v|
+            var parts = k.asString.split($_);
+            if(parts.size == 2) {
+                var name = parts[0].asSymbol;
+                if(parts[1] == "pan") { ~stemPanSet.(name, v.asFloat, nil) };
+                if(parts[1] == "auto") { ~stemPanSet.(name, nil, v.asFloat) };
+            };
+        };
+    };
+    // The GOLPE grid. A config without it leaves the pattern as
+    // it is, like the stems above.
+    if(dict["golpe"].notNil and: { ~golpeLoad.notNil }) { ~golpeLoad.(dict["golpe"]) };
+};
+
 ~loadConfig = { |name, retried=false|
     var safe = ~presetNameSafe.(name ? "_autosave");
     var path = ~presetDir +/+ safe ++ ".json";
@@ -1367,37 +1409,7 @@ if(File.exists(~presetDir).not) { File.mkdir(~presetDir) };
                         "  saturates the engine before anything has been touched.".postln;
                     };
                 };
-                (dict["sample"] ?? ()).keysValuesDo { |k, v|
-                    var key = k.asSymbol, val = v.asFloat;
-                    if(~sampleBuses.notNil and: { ~sampleBuses[key].notNil }) {
-                        ~sampleBuses[key].set(val);
-                    };
-                    if(~sampleControlValues.notNil) { ~sampleControlValues[key] = val };
-                    {
-                        if(~sampleKnobViews.notNil and: { ~sampleKnobViews[key].notNil }
-                            and: { ~sampleControlSpecs.notNil } and: { ~sampleControlSpecs[key].notNil }) {
-                            ~sampleKnobViews[key].value = ~sampleControlSpecs[key].unmap(val);
-                        };
-                        if(~sampleControlLabels.notNil and: { ~sampleControlLabels[key].notNil }) {
-                            ~sampleControlLabels[key].string = ~knobText.(key, val);
-                        };
-                    }.defer;
-                };
-                // Stem pans. A config without them leaves the panning where it
-                // is, like the motor faders an old config does not mention.
-                if(~stemPanSet.notNil) {
-                    (dict["stems"] ?? ()).keysValuesDo { |k, v|
-                        var parts = k.asString.split($_);
-                        if(parts.size == 2) {
-                            var name = parts[0].asSymbol;
-                            if(parts[1] == "pan") { ~stemPanSet.(name, v.asFloat, nil) };
-                            if(parts[1] == "auto") { ~stemPanSet.(name, nil, v.asFloat) };
-                        };
-                    };
-                };
-                // The GOLPE grid. A config without it leaves the pattern as
-                // it is, like the stems above.
-                if(dict["golpe"].notNil and: { ~golpeLoad.notNil }) { ~golpeLoad.(dict["golpe"]) };
+                ~configExtras.(dict);
                 (dict["spatial"] ?? ()).keysValuesDo { |k, v|
                     if(~buses.notNil and: { ~buses[k.asSymbol].notNil }) {
                         ~buses[k.asSymbol].set(v.asFloat);
@@ -1432,6 +1444,153 @@ if(File.exists(~presetDir).not) { File.mkdir(~presetDir) };
             };
         };
     };
+};
+
+// ─── Escenas A·B · el crossfader del LC2, como en el Octatrack ──────────────
+// Dos configs, A y B. El crossfader va de una a la otra: cada valor que las
+// dos configs tienen distinto viaja en su escala normalizada (como en los
+// fundidos de la rutina); los que tienen igual no se tocan, así que siguen
+// libres para la mano.
+//
+// Sin saltos (2026-10-20, después de tocarlo): el crossfader no impone la
+// mezcla de A y B que corresponde a su posición. Al tocarlo (tras 1 s quieto)
+// toma lo que suena como punto de partida, y desde ahí lleva cada valor hacia
+// B si se mueve a la derecha, o hacia A si se mueve a la izquierda; en el
+// extremo llega exacto a la config. Los valores no saltan con el mensaje: se
+// deslizan (~escenaTau, 0.5 s). Los niveles de las capas (mix*, SYNTH TRIM)
+// no se amontonan en el medio: el que sube entra tarde y el que baja sale
+// pronto. Los valores con paso (BANCADA, CRUDO, marea) y lo que no es un
+// parámetro (GOLPE, paneos, muestras) cambian a mitad del recorrido.
+// Un valor que una config no nombra (las de añadido, MEZCLA_*, EXT*) vale su
+// valor por defecto. No viajan nunca: el volumen de la sala, el consenso, el
+// giro, la opacidad ni el láser.
+//
+// A y B se eligen en la GUI de SC (botones A y B junto a CONFIG) y quedan en
+// presets/escenas_ab.scd. El crossfader del LC2 (CC 18) es el control de
+// fábrica; con APRENDE se le puede dar otro (tocar A o B como destino).
+~escenaArchivo = ~presetDir +/+ "escenas_ab.scd";
+~escenaFuera = [\masterVolume, \vizConsensus, \vizRotation, \opacityFloor];
+~escena = (a: nil, b: nil, x: nil, lado: nil);
+~escenaDatos = ();
+~escenaLista = [];
+~escenaLeerCfg = { |nombre|
+    var path = ~presetDir +/+ ~presetNameSafe.(nombre) ++ ".json";
+    if(File.exists(path)) { try { File.use(path, "r", { |f| f.readAllString }).parseJSON } { nil } } };
+// Los valores que viajan: [param, spec, a, b] normalizados, solo los distintos.
+~escenaPreparar = {
+    var da = ~escenaDatos[\a], db = ~escenaDatos[\b];
+    ~escenaLista = if(da.isNil or: { db.isNil }) { [] } {
+        ~paramDefs.collect { |def|
+            var k = def[\name], sp = def[\spec];
+            var va = (da["params"] ?? ())[k.asString], vb = (db["params"] ?? ())[k.asString];
+            var na = sp.unmap(sp.constrain((va ? def[\default]).asFloat));
+            var nb = sp.unmap(sp.constrain((vb ? def[\default]).asFloat));
+            if(~escenaFuera.includes(k).not and: { k.asString.beginsWith("laser").not }
+                and: { (na - nb).abs > 1e-4 }) { [k, sp, na, nb] }
+        }.reject(_.isNil) };
+};
+~escenaGuardar = {
+    File.use(~escenaArchivo, "w", { |f|
+        f.write("// Escenas A·B del crossfader del LC2 (GUI de SC: botones A y B junto a CONFIG).\n");
+        f.write("(a: %, b: %)\n".format(~escena[\a].asCompileString, ~escena[\b].asCompileString)) }) };
+// lado: \a o \b; nombre: una config de presets/
+~escenaPoner = { |lado, nombre, guardar = true|
+    var d = ~escenaLeerCfg.(nombre);
+    if(d.isNil) { ("Escena %: no encuentro la config %".format(lado.asString.toUpper, nombre)).warn } {
+        ~escena[lado] = ~presetNameSafe.(nombre);
+        ~escenaDatos[lado] = d;
+        ~escenaPreparar.value;
+        ~escena[\lado] = nil;   // el próximo movimiento aplica también lo de su lado
+        ~escenaAncla = nil;     // y parte de lo que suena
+        if(guardar) {
+            ~escenaGuardar.value;
+            "Escena % = % · % valores viajan entre A y B".format(lado.asString.toUpper, ~escena[lado],
+                ~escenaLista.size).postln;
+        };
+        ~escenaAlCambiar !? { ~escenaAlCambiar.value };
+    } };
+~escenaTau = 0.5;          // segundos: lo que tarda un valor en seguir al fader (≈63 %)
+~escenaAncla = nil;        // (x0:, c: normalizados de partida)
+~escenaObjetivo = IdentityDictionary.new;   // param -> normalizado al que va
+~escenaEscrito = IdentityDictionary.new;    // param -> lo último que escribió el deslizador
+~escenaNivel = { |k| (k.asString.beginsWith("mix") and: { k != \mixCarve }) or: { k == \masterAmp } };
+~escenaNorm = { |k, sp| sp.unmap(sp.constrain(~controlValues[k] ? ~paramDefsByName[k][\default])) };
+~escenaAplicar = { |x|
+    var ahora = Main.elapsedTime, an, haciaB, w, lado;
+    // tocar después de 1 s quieto: lo que suena (o hacia donde iba) es la partida
+    if(~escenaAncla.isNil or: { (ahora - (~escena[\tocado] ? 0)) > 1.0 }) {
+        var c = IdentityDictionary.new;
+        ~escenaLista.do { |e| c[e[0]] = ~escenaObjetivo[e[0]] ?? { ~escenaNorm.(e[0], e[1]) } };
+        // desde donde el fader estaba quieto: un tirón rápido no pierde el recorrido
+        ~escenaAncla = (x0: ~escena[\x] ? x, c: c);
+    };
+    ~escena[\tocado] = ahora;
+    an = ~escenaAncla;
+    haciaB = x >= an[\x0];
+    w = if(haciaB) { (x - an[\x0]) / (1 - an[\x0]).max(1e-3) } { (an[\x0] - x) / an[\x0].max(1e-3) };
+    w = w.clip(0, 1);
+    lado = if(haciaB) { \b } { \a };
+    ~escenaLista.do { |e|
+        var k = e[0], sp = e[1], c = an[\c][k] ? e[2], t = if(haciaB) { e[3] } { e[2] }, v;
+        // la mano manda: un fundido de la rutina suelta lo que mueve el crossfader
+        ~soltarFundido !? { ~soltarFundido.(k) };
+        if(sp.step > 0) {
+            v = sp.map(if(w >= 0.5) { t } { c });
+            ~escenaObjetivo.removeAt(k);
+            if(((~controlValues[k] ? inf) - v).abs > 1e-4) { ~setParam.(k, v, \escena) };
+        } {
+            var f = case
+                { ~escenaNivel.(k).not } { w }
+                { t > c } { w ** 1.5 }              // el que sube entra tarde
+                { 1 - ((1 - w) ** 1.5) };            // el que baja sale pronto
+            ~escenaObjetivo[k] = c + ((t - c) * f);
+            ~escenaEscrito.removeAt(k);
+        };
+    };
+    if(w >= 0.5 and: { lado != ~escena[\lado] }) {
+        ~escena[\lado] = lado;
+        ~escenaDatos[lado] !? { |d| ~configExtras.(d) };
+        "Escena · %".format(~escena[lado]).postln;
+    };
+    ~escena[\x] = x;
+    if(~escenaDeslizador.isNil) { ~escenaDeslizar.value };
+    ~escenaAlCambiar !? { ~escenaAlCambiar.value };
+};
+// Lleva cada valor hacia su objetivo, 16 veces por segundo, y se detiene
+// cuando todos llegaron. Si la mano (GUI, MIDI) mueve un valor mientras
+// tanto, el crossfader lo suelta hasta su próximo movimiento.
+~escenaDeslizar = {
+    ~escenaDeslizador = Routine({
+        var paso = 0.06, k = 1 - exp(paso.neg / ~escenaTau);
+        while { ~escenaObjetivo.size > 0 } {
+            ~escenaObjetivo.keys.do { |p|
+                var sp = ~paramDefsByName[p][\spec], cur = ~escenaNorm.(p, sp), obj = ~escenaObjetivo[p];
+                var hecho = ~escenaEscrito[p];
+                if(hecho.notNil and: { (cur - hecho).abs > 0.01 }) {
+                    ~escenaObjetivo.removeAt(p); ~escenaEscrito.removeAt(p);
+                } {
+                    var nxt = cur + ((obj - cur) * k);
+                    if((obj - nxt).abs < 0.002) { nxt = obj; ~escenaObjetivo.removeAt(p) };
+                    if((nxt - cur).abs > 1e-5) {
+                        ~setParam.(p, sp.map(nxt), \escena);
+                        ~escenaEscrito[p] = ~escenaNorm.(p, sp);
+                    };
+                };
+            };
+            paso.wait;
+        };
+        ~escenaEscrito.clear;
+        ~escenaDeslizador = nil;
+    }).play(AppClock);
+};
+// El crossfader, desde el MIDI. En AppClock: GOLPE y los paneos tocan la GUI.
+~escenaMover = { |x| { ~escenaAplicar.(x) }.defer };
+block {
+    var d = if(File.exists(~escenaArchivo)) { try { File.readAllString(~escenaArchivo).interpret } };
+    d = d ? (a: "01_Lawrence_English", b: "GOLPE_5_Barro");
+    if(d[\a].notNil) { ~escenaPoner.(\a, d[\a], false) };
+    if(d[\b].notNil) { ~escenaPoner.(\b, d[\b], false) };
+    "Escenas del crossfader: A = % · B = % · % valores viajan".format(~escena[\a], ~escena[\b], ~escenaLista.size).postln;
 };
 
 // Autosave: every 30 s persist to presets/_autosave.json if anything changed
