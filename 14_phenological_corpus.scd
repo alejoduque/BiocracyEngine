@@ -97,6 +97,8 @@ if(~corpusReady == true) {
             // How far the expanded file's events rise above its own floor, dB
             // (tools/build_corpus.py --events). nil when not measured.
             events:     c["expanded_events_db"] !? { |v| v.asFloat },
+            // RMS of the whole audible file, dB (build_corpus.py --loudness).
+            rms:        c["audible_rms_db"] !? { |v| v.asFloat },
             source:     c["source"]
         )
     };
@@ -129,6 +131,27 @@ if(~corpusReady == true) {
             };
         };
     }.value;
+
+    // ─── Half-levelled: each clip its own gain ───────────────────────────
+    // The corpus is rendered with ONE gain (build_corpus.py: a quiet night
+    // must stay quiet against a chorus), but the recordings span ~29 dB RMS
+    // (-40 .. -11, median -28), and a quiet dry-season night stayed low with
+    // the CORPUS fader and CORPUS LVL at the top (user, 2026-10-20). So each
+    // clip closes HALF its distance to the corpus median: the quietest comes
+    // up ~6 dB, the loudest down ~8, and a night is still quieter than a
+    // chorus, by half as much. The middle sits 3 dB above the median, since
+    // the layer was low overall. Static per clip — no compressor, no pumping.
+    // A clip with no measurement plays as before.
+    ~corpusNivelar = 0.5;      // 0 = the files as rendered · 1 = all at the same RMS
+    ~corpusNivelarDb = 3.0;
+    ~corpusRmsMediana = block {
+        var r = ~corpusClips.collect(_[\rms]).reject(_.isNil).sort;
+        if(r.size > 0) { r[r.size div: 2] }
+    };
+    ~corpusGanancia = { |clip|
+        if(clip[\rms].isNil or: { ~corpusRmsMediana.isNil }) { 1 } {
+            (((~corpusRmsMediana + ~corpusNivelarDb - clip[\rms]) * ~corpusNivelar).clip(-10, 10)).dbamp
+        } };
 
     // 365 slots. Most are empty, and that is the point.
     ~phenoRing = Array.fill(366, { [] });
@@ -340,7 +363,9 @@ s.waitForBoot {
             // How long the recording itself lasts, in seconds. When the voice
             // is longer (a short file, see ~phenoPlayClip) the grains take
             // over as the file runs out. 0: the voice fits the file.
-            fileDur = 0;
+            fileDur = 0,
+            // This clip's own gain, half-levelled (~corpusGanancia).
+            nivel = 1;
 
         var sig, env, wet, quadSig, level, floorVal, veil, lpf, res, room, spread, master;
         var fx, stretch, semis, grainSz, smpRev, dAmt, dTime, dFb;
@@ -474,7 +499,7 @@ s.waitForBoot {
                 [\welch, 0, \welch]),
             gate, doneAction: 2);
 
-        sig = sig * env * amp.clip(0, 1) * level.clip(0, 1) * veil
+        sig = sig * env * amp.clip(0, 1) * nivel.clip(0, 4) * level.clip(0, 1) * veil
             * (~trimCorpus ? 0.299)
             * Lag.kr(Select.kr(mixCorpusBus >= 0, [1.0, In.kr(mixCorpusBus, 1)]), 0.08);
 
@@ -487,7 +512,7 @@ s.waitForBoot {
         // CRUDO: the same gains, none of the processing above. The bus is
         // ~crudoGlide's 5-10 s S-curve; the 0.15 Lag is only anti-zipper.
         crudo = Lag.kr(Select.kr(corpusCrudoBus >= 0, [0, In.kr(corpusCrudoBus, 1)]).clip(0, 1), 0.15);
-        raw = raw * env * amp.clip(0, 1) * level.clip(0, 1) * veil
+        raw = raw * env * amp.clip(0, 1) * nivel.clip(0, 4) * level.clip(0, 1) * veil
             * (~trimCorpus ? 0.299)
             * Lag.kr(Select.kr(mixCorpusBus >= 0, [1.0, In.kr(mixCorpusBus, 1)]), 0.08);
         sig = XFade2.ar(sig, raw, crudo.linlin(0, 1, -1, 1));
@@ -926,6 +951,7 @@ s.waitForBoot {
             var synth = Synth(\corpusVoice, [
                 \buf, buf,
                 \amp, 0.55 + (clip[\confidence] * 0.35),
+                \nivel, ~corpusGanancia.(clip),
                 \atk, atkS,
                 \hold, (span - atkS - relS).clip(0.5, 560),
                 \rel, relS,

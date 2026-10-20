@@ -28,6 +28,7 @@ Usage:
     python3 tools/build_corpus.py
     python3 tools/build_corpus.py --tiers audible,grains --jobs 8
     python3 tools/build_corpus.py --events     # measure the expanded tier only
+    python3 tools/build_corpus.py --loudness   # measure the audible tier only
 """
 
 from __future__ import annotations
@@ -231,6 +232,51 @@ def measure_events(jobs: int) -> int:
     if vals:
         print(f"  events above floor: min {vals[0]:.1f}  median {vals[len(vals) // 2]:.1f}"
               f"  max {vals[-1]:.1f} dB  ({sum(v < 3 for v in vals)} of {len(vals)} under 3 dB)")
+    print(f"manifest  {path}")
+    return 0
+
+
+def measure_rms_db(path: Path) -> float | None:
+    """RMS level of a whole file, dB, via ffmpeg astats."""
+    proc = subprocess.run(
+        ["ffmpeg", "-v", "info", "-i", str(path),
+         "-af", "astats=metadata=0:measure_perchannel=none:measure_overall=RMS_level",
+         "-f", "null", "-"],
+        capture_output=True, text=True,
+    )
+    match = re.search(r"RMS level dB:\s*(-?\d+(?:\.\d+)?)", proc.stderr)
+    return round(float(match.group(1)), 2) if match else None
+
+
+def measure_loudness(jobs: int) -> int:
+    """
+    --loudness: measure every audible file and write audible_rms_db into the
+    EXISTING manifest, in place, like --events.
+
+    The single global gain stays the rule: nothing is re-rendered. SuperCollider
+    reads the number and closes PART of the distance to the corpus median per
+    clip (~corpusNivelar, 14_phenological_corpus.scd), because the recordings
+    span ~16 dB and a quiet dry-season night could not be brought up even with
+    every fader at the top. It stays quieter than a chorus, by half as much.
+    """
+    path = DEST / "manifest.json"
+    if not path.exists():
+        print(f"no manifest at {path}", file=sys.stderr)
+        return 1
+    manifest = json.loads(path.read_text(encoding="utf-8"))
+    todo = [c for c in manifest["clips"] if c.get("audible") and (DEST / c["audible"]).exists()]
+    print(f"measuring {len(todo)} audible files ...")
+    with ProcessPoolExecutor(max_workers=jobs) as pool:
+        results = list(pool.map(measure_rms_db, [DEST / c["audible"] for c in todo]))
+    for c, v in zip(todo, results):
+        if v is None:
+            c.pop("audible_rms_db", None)
+        else:
+            c["audible_rms_db"] = v
+    path.write_text(json.dumps(manifest, ensure_ascii=False, indent=1), encoding="utf-8")
+    vals = sorted(v for v in results if v is not None)
+    if vals:
+        print(f"  RMS: min {vals[0]:.1f}  median {vals[len(vals) // 2]:.1f}  max {vals[-1]:.1f} dB")
     print(f"manifest  {path}")
     return 0
 
@@ -589,6 +635,8 @@ def main() -> int:
                     help="clips sampled to measure the single global gain")
     ap.add_argument("--events", action="store_true",
                     help="only measure the expanded tier's events into the existing manifest")
+    ap.add_argument("--loudness", action="store_true",
+                    help="only measure the audible tier's RMS into the existing manifest")
     args = ap.parse_args()
 
     if not shutil.which("ffmpeg"):
@@ -596,6 +644,8 @@ def main() -> int:
         return 1
     if args.events:
         return measure_events(args.jobs)
+    if args.loudness:
+        return measure_loudness(args.jobs)
     if not SOURCE.exists():
         print(f"corpus not found: {SOURCE}", file=sys.stderr)
         return 1
